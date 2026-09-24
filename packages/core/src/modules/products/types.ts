@@ -1,15 +1,15 @@
 // src/modules/products/products.types.ts
 // Zod schemas and TypeScript interfaces shared across product modules.
 import { z } from "zod";
-import type { BuyerPriceRange } from "./products.buyer-projection";
+import type { BuyerPriceRange } from "./buyer-projection";
 import type { Product, ProductVariant } from "@scalius/database/schema";
 import type {
     ProductOptionDefinitionRecord,
     ProductOptionStandardMapping,
     SelectedProductOption,
-} from "./products.option-model";
+} from "./option-model";
 import type { ProductCondition } from "@scalius/shared/product-condition";
-import type { ProductMediaProjection } from "./products.media";
+import type { ProductMediaProjection } from "./media";
 import type { BuyerAvailabilityBand } from "@scalius/shared/buyer-availability";
 import {
     MAX_PRODUCT_PRICE,

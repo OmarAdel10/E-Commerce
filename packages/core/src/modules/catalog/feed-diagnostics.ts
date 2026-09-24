@@ -13,8 +13,8 @@ import { and, desc, inArray, isNull, sql } from "drizzle-orm";
 import {
     loadProductMediaProjections,
     resolveProductImageRepresentation,
-} from "./products.media";
-import { presentCatalogPrice, readStoreDecimalPlaces } from "./products.money";
+} from "../products/media";
+import { presentCatalogPrice, readStoreDecimalPlaces } from "../products/money";
 
 export const PRODUCT_FEED_DIAGNOSTIC_SCAN_LIMIT = 500;
 export const PRODUCT_FEED_DIAGNOSTIC_MAX_SCAN_LIMIT = 500;

@@ -10,9 +10,9 @@ import {
 import {
     PRODUCT_CONDITION_VALUES,
 } from "@scalius/shared/product-condition";
-import { catalogMoneySchema, skuStockSchema, skuWeightSchema } from "./products.types";
-import { createProductOptionMatrixSchema } from "./products.option-matrix";
-import { MAX_PRODUCT_MEDIA_ASSOCIATIONS } from "./products.media";
+import { catalogMoneySchema, skuStockSchema, skuWeightSchema } from "./types";
+import { createProductOptionMatrixSchema } from "./option-matrix";
+import { MAX_PRODUCT_MEDIA_ASSOCIATIONS } from "./media";
 
 const canonicalPathSchema = z
     .string()

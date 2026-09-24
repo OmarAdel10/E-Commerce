@@ -15,7 +15,7 @@ import { currencyDocument } from "../settings/documents";
 import { getCurrencyConfig } from "../settings/settings.service";
 import { toStoreMinor, type StoreCurrency } from "../settings/store-money";
 import { SETTINGS_DOCUMENT_ROW_KEY } from "../settings/settings-store";
-import type { BuyerCatalogPricingProjection } from "./products.buyer-projection";
+import type { BuyerCatalogPricingProjection } from "./buyer-projection";
 
 export interface CatalogPriceMinor {
     priceMinor: number;

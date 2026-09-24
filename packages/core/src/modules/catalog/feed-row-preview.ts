@@ -11,12 +11,12 @@ import { normalizeCatalogDiscoveryBaseUrl } from "@scalius/shared/catalog-discov
 import { resolveMediaUrl } from "@scalius/shared/media-url";
 import type { SeoDiscoverySettings } from "@scalius/shared/seo-discovery";
 import { ServiceUnavailableError, ValidationError } from "@scalius/core/errors";
-import type { StorefrontFeedProduct } from "./products.types";
+import type { StorefrontFeedProduct } from "../products/types";
 import {
   getEligibleStorefrontFeedProductById,
   getFeedProjectionDiagnosticById,
   type ProductFeedProjectionDiagnostic,
-} from "./products.storefront";
+} from "./feed";
 
 export const PRODUCT_FEED_ROW_PREVIEW_MAX_LIMIT = 10;
 export const PRODUCT_FEED_ROW_PREVIEW_MAX_OUTCOMES = 250;

@@ -22,22 +22,22 @@ import {
     normalizeCanonicalPathInput,
 } from "@scalius/shared/seo-canonical";
 import { PRODUCT_CONDITION_VALUES } from "@scalius/shared/product-condition";
-import { defaultProductSkuValues } from "./products.public-eligibility";
+import { defaultProductSkuValues } from "./public-eligibility";
 import {
     catalogPriceColumns,
     presentCatalogPrice,
     readStoreDecimalPlaces,
     storeCurrencyCodeSql,
     storeDecimalPlacesFromCode,
-} from "./products.money";
-import { executeProductAggregateMutationBatch } from "./products.aggregate-revision";
-import { updateProductMediaSection } from "./products.admin";
-import { MAX_PRODUCT_MEDIA_ASSOCIATIONS } from "./products.media";
-import { MAX_PRODUCT_PRICE } from "./products.types";
+} from "./money";
+import { executeProductAggregateMutationBatch } from "./aggregate-revision";
+import { updateProductMediaSection } from "./admin/write";
+import { MAX_PRODUCT_MEDIA_ASSOCIATIONS } from "./media";
+import { MAX_PRODUCT_PRICE } from "./types";
 import {
     productMediaAssociationIdSchema,
     productMediaInputSchema,
-} from "./products.validation";
+} from "./validation";
 import { z } from "zod";
 
 export const PRODUCT_SEMANTIC_TEXT_CHUNK_MAX = 12_000;

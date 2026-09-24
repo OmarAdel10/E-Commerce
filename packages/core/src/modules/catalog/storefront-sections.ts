@@ -19,7 +19,7 @@ import {
     storeCurrencyCodeSql,
     storeCurrencyFromCode,
     storeDecimalPlacesFromCode,
-} from "./products.money";
+} from "../products/money";
 import { maskPublicBuyerAvailability } from "@scalius/shared/buyer-availability";
 import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
@@ -30,23 +30,23 @@ import {
 import {
     publicProductHasBuyerResolvableSku,
     normalizeDefaultSkuOptions,
-} from "./products.public-eligibility";
+} from "../products/public-eligibility";
 import { publicCategoryConditions } from "../categories/categories.publication";
-import { loadVariantSelectedOptions } from "./products.option-model";
+import { loadVariantSelectedOptions } from "../products/option-model";
 import {
     resolveProductImageRepresentation,
     resolveProductMediaProjectionRows,
     resolveSkuImageRepresentation,
     selectCheckoutProductMediaProjectionRows,
-} from "./products.media";
-import type { ProductMediaProjection } from "./products.media";
-import type { ProductMediaProjectionRow } from "./products.media";
+} from "../products/media";
+import type { ProductMediaProjection } from "../products/media";
+import type { ProductMediaProjectionRow } from "../products/media";
 import {
     MAX_RECOMMENDATION_LIMIT,
     getStorefrontProductRecommendations,
     rankProductRecommendations,
     type ProductRecommendationItem,
-} from "./products.recommendations";
+} from "./recommendations";
 import { unixToDate } from "@scalius/shared/utils";
 
 export const STOREFRONT_PRODUCT_TEXT_CHUNK_MAX = 12_000;

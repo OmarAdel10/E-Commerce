@@ -18,17 +18,17 @@ import { z } from "zod";
 import { AppError, NotFoundError, ConflictError, ValidationError } from "@scalius/core/errors";
 import { checkAndAlertLowStock } from "../inventory/alerts";
 import { fromMinor, percentToBps, toMinor } from "@scalius/shared/money";
-import { presentCatalogPrice, readStoreDecimalPlaces } from "./products.money";
+import { presentCatalogPrice, readStoreDecimalPlaces } from "./money";
 import { readStoreCurrency, toStoreMinor } from "../settings/store-money";
 import { buildStockMovementClaim } from "../inventory/stock-movement-claims";
 import {
     STOCK_CHANGED_MESSAGE,
     createVariantSchema,
     updateVariantSchema,
-} from "./products.types";
+} from "./types";
 import {
     operationalSkuRowPredicate,
-} from "./products.public-eligibility";
+} from "./public-eligibility";
 import {
     generateInternalCode128Barcode,
     getBarcodeIdentityKey,
@@ -39,15 +39,15 @@ import {
 import {
     executeProductAggregateMutationBatch as executeProductAggregateMutationBatchRaw,
     type ProductAggregateRevisionResult,
-} from "./products.aggregate-revision";
+} from "./aggregate-revision";
 import {
     productVariantBarcodeIdentityEquals,
     productVariantBarcodeIdentityIn,
-} from "./products.variant-identity";
+} from "./variant-identity";
 import {
     loadVariantSelectedOptions,
     resolveSelectedOptionValueIds,
-} from "./products.option-model";
+} from "./option-model";
 
 export function rethrowProductVariantIdentityConstraint(error: unknown): never {
     const message = error instanceof Error ? error.message : String(error);

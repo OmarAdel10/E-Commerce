@@ -26,7 +26,7 @@ import {
     MAX_PRODUCT_OPTION_COMBINATIONS,
     loadVariantSelectedOptions,
     normalizeOptionIdentity,
-} from "./products.option-model";
+} from "./option-model";
 import {
     catalogMoneySchema,
     skuStockSchema,
@@ -34,18 +34,18 @@ import {
     STOCK_CHANGED_MESSAGE,
     expectedProductAggregateRevisionSchema,
     expectedStockVersionSchema,
-} from "./products.types";
+} from "./types";
 import {
     normalizeVariantBarcode,
     resolveNewVariantBarcode,
     assertUniqueVariantBarcodes,
     reconcileVariantLowStockAlerts,
     assertSkusFree,
-} from "./products.variants";
+} from "./variants";
 import {
     executeProductAggregateMutationBatch,
     isProductAggregateRevisionConflict,
-} from "./products.aggregate-revision";
+} from "./aggregate-revision";
 import { buildStockMovementClaim } from "../inventory/stock-movement-claims";
 
 const optionValueInputSchema = z.object({

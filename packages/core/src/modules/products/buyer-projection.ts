@@ -3,7 +3,7 @@ import type { Database } from "@scalius/database/client";
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { fromMinor } from "@scalius/shared/money";
-import { effectivePriceMinorSql } from "./products.money";
+import { effectivePriceMinorSql } from "./money";
 
 /**
  * Builds the one-row-per-product pricing projection used by buyer catalog lists.

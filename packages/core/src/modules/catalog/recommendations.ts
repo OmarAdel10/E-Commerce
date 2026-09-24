@@ -22,19 +22,19 @@ import { products } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import { unixToDate } from "@scalius/shared/utils";
-import { buildBuyerCatalogPricingProjection } from "./products.buyer-projection";
+import { buildBuyerCatalogPricingProjection } from "../products/buyer-projection";
 import {
     buyerPricingSelection,
     effectivePriceMinorSql,
     presentBuyerPricing,
     storeCurrencyCodeSql,
     storeDecimalPlacesFromCode,
-} from "./products.money";
+} from "../products/money";
 import {
     operationalSkuRowPredicate,
     publicProductBaseConditions,
-} from "./products.public-eligibility";
-import { loadProductMediaProjections, resolveProductCardImages } from "./products.media";
+} from "../products/public-eligibility";
+import { loadProductMediaProjections, resolveProductCardImages } from "../products/media";
 
 export const MAX_RECOMMENDATION_SOURCE_IDS = 20;
 export const MAX_RECOMMENDATION_LIMIT = 12;
