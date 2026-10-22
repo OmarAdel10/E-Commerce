@@ -6,7 +6,7 @@
 // (assets.gen.ts), the catalog of first-party plugins not bundled
 // (catalog.gen.ts) and the sandbox wrapper in step.
 //
-//   pnpm plugin create <vendor.name> [--dir <folder>]          scaffold an app (outside this repo: on a packed SDK build)
+//   pnpm plugin create <vendor.name> [--theme] [--dir <folder>]   scaffold an app, or with --theme a theme starter (outside this repo: on a packed SDK build)
 //   pnpm plugin validate [path]                                check a plugin the way a store loads it
 //   pnpm plugin preview <path> [--store sample|empty|other] [--out <html>] [--fixture <json>]   render storefront parts on three fixture stores (or one) to a static HTML file
 //   pnpm plugin dev <path> [--store sample|empty|other] [--fixture <json>]   rebuild and preview fixtures as sources change
@@ -227,7 +227,7 @@ function packSdkInto(directory) {
 }
 
 function create(id, args) {
-  if (!id || !PLUGIN_ID.test(id)) throw new Error("Usage: pnpm plugin create <vendor.name> [--dir <folder>] (lowercase, e.g. acme.loyalty)");
+  if (!id || !PLUGIN_ID.test(id)) throw new Error("Usage: pnpm plugin create <vendor.name> [--theme] [--dir <folder>] (lowercase, e.g. acme.loyalty)");
   const flags = parseCommandArgs(args).flags;
   const name = id.split(".")[1];
   const dir = flags.get("--dir");
@@ -244,7 +244,10 @@ function create(id, args) {
       throw error;
     }
   }
-  const options = standalone ? { standalone, sdkVersion: version, sdkDependency: vendoredSdkDependency(version) } : { standalone };
+  const theme = flags.has("--theme");
+  const options = standalone
+    ? { standalone, theme, sdkVersion: version, sdkDependency: vendoredSdkDependency(version), repo: shellPath(root), app: shellPath(directory) }
+    : { standalone, theme, app: relative(root, directory) };
   for (const [file, contents] of Object.entries(scaffoldFiles(id, basename(directory), options))) {
     const path = join(directory, file);
     mkdirSync(resolve(path, ".."), { recursive: true });
@@ -261,9 +264,10 @@ For a newer SDK build, repack it, point package.json at the new file and npm ins
     return;
   }
   const where = relative(root, directory);
-  console.log(`Created ${where}. Run pnpm install, then:
+  console.log(`Created ${where}${theme ? " (a theme starter)" : ""}. Its AGENTS.md has the rules for you and your AI agent. Run pnpm install, then:
   pnpm --dir ${where} test         run its tests
   pnpm plugin dev ${where}         watch and preview its components
+  pnpm plugin preview ${where}     render it on a sample, an empty and another store
   pnpm plugin validate ${where}    check it the way a store loads it
   pnpm plugin add ${where}         bundle it into this store`);
 }

@@ -1,0 +1,75 @@
+import { defineManifest, definePlugin, PLUGIN_API_VERSION } from "@scalius/plugin-sdk";
+
+// A theme is an app with no backend: a template, sections, skins, an island
+// and a stylesheet. Everything here lands unchanged in every store that
+// installs it, so it names nothing only your store has: no product or page
+// paths, no custom.* fields, no store name. The rules, with examples, are in
+// the SDK's docs/themes.md; `pnpm plugin validate` checks them.
+export const manifest = defineManifest({
+  id: "__ID__",
+  name: "__TITLE__",
+  version: "0.1.0",
+  apiVersion: PLUGIN_API_VERSION,
+  description: "A storefront theme: a header, footer and product card that draw each store's own name, logo, menu and products, a product row section, and a ready-made template.",
+  author: { name: "__VENDOR__" },
+  tagline: "A clean storefront theme",
+  icon: "assets/icon.svg",
+  categories: ["store-design"],
+  storefront: {
+    sections: [{
+      type: "product_row",
+      name: "Product row",
+      description: "A heading and a row of products from a source the merchant picks.",
+      settings: [
+        { key: "heading", label: "Heading", type: "text", default: "New arrivals", maxLength: 80 },
+        // A source, never product paths: each store fills it with its own products.
+        { key: "products", label: "Products", type: "products", default: "newest", limit: 8 },
+        // No default: a link default is the same on every store. The merchant picks a category or collection.
+        { key: "link", label: "Link", type: "link", help: "Where Shop all goes, such as a category. Empty: no link." },
+        { key: "link_label", label: "Link text", type: "text", default: "Shop all", maxLength: 40 },
+      ],
+    }],
+    skins: [
+      {
+        id: "header",
+        target: "header",
+        name: "__TITLE__ header",
+        description: "The store's logo (or name), its menu, search, account and cart.",
+        settings: [{ key: "sticky", label: "Stay at the top while scrolling", type: "boolean", default: true }],
+      },
+      {
+        id: "footer",
+        target: "footer",
+        name: "__TITLE__ footer",
+        description: "The store's menus, policies and contact details.",
+        settings: [{ key: "tagline", label: "Tagline", type: "text", default: "", maxLength: 120 }],
+      },
+      { id: "card", target: "product_card", name: "__TITLE__ product card", description: "Photo, title, price and a quick add.", settings: [] },
+    ],
+    templates: [{
+      id: "__TEMPLATE__",
+      name: "__TITLE__",
+      description: "The header, footer and product card, a row of the newest products and the store's popular products.",
+      // The theme document version these values are written for; stores upgrade them from here.
+      themeVersion: 12,
+      theme: {
+        apps: {
+          skins: {
+            header: { app: "__ID__/header", values: {} },
+            footer: { app: "__ID__/footer", values: {} },
+            product_card: { app: "__ID__/card", values: {} },
+          },
+        },
+        sections: [
+          { id: "__TEMPLATE__-new", type: "app", version: 1, settings: { app: "__ID__/product_row", values: { heading: "New arrivals", products: "newest" } } },
+          // A core section with a product source: every store fills it from its own catalogue.
+          { id: "__TEMPLATE__-popular", type: "product_rail", version: 1, settings: { title: "Popular products", source: { kind: "popular" }, limit: 8 } },
+        ],
+      },
+    }],
+    islands: [{ name: "menu", description: "Closes the phone menu on Escape and after a link is chosen." }],
+    stylesheet: true,
+  },
+});
+
+export default definePlugin({ manifest });

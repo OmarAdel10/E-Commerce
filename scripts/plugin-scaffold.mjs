@@ -2,6 +2,11 @@
 // surfaces most apps need (an event, a checkout function, a storefront
 // section, an admin page and an object migration), with a test for each. Copy the
 // patterns in packages/plugin-sdk/README.md for the rest (settings, storage, cron, webhooks).
+// `--theme` writes the theme starter instead (scripts/plugin-scaffold/theme).
+
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Where a standalone app keeps the SDK build it installs while
@@ -34,7 +39,7 @@ export function standaloneNextSteps({ repo, app, version }) {
     ["npm test", "run its tests"],
     ["npm run typecheck", "check its types"],
     [`pnpm --dir ${repo} plugin validate ${app}`, "check it the way a store loads it"],
-    [`pnpm --dir ${repo} plugin preview ${app}`, "render its storefront parts with fixture data"],
+    [`pnpm --dir ${repo} plugin preview ${app}`, "render its storefront parts on a sample, an empty and another store"],
     [`pnpm --dir ${repo} plugin pack ${app} --key <folder>`, "pack and sign the upload package"],
   ];
 }
@@ -51,8 +56,13 @@ export function sdkRefreshCommand({ repo, app }) {
  * vendored build, `vendoredSdkDependency`) and has a self-contained
  * tsconfig, no workspace protocol and no repo-relative path. Without it the
  * app is a package of this workspace (`plugins/<name>`).
+ *
+ * `theme` scaffolds the theme starter instead (`themeFiles`). Every app gets
+ * an `AGENTS.md` (and a `CLAUDE.md` pointing to it) for AI coding agents;
+ * `repo` and `app` are the checkout and the app folder as the user types
+ * them, for its commands.
  */
-export function scaffoldFiles(id, name, { standalone = false, sdkVersion = "0.1.0", sdkDependency = `^${sdkVersion}` } = {}) {
+export function scaffoldFiles(id, name, { standalone = false, sdkVersion = "0.1.0", sdkDependency = `^${sdkVersion}`, theme = false, repo, app } = {}) {
   // The app's own name comes from its id, never the folder it was made in
   // (`--dir ./acme-engrave` for acme.engrave is still "acme-engrave", not "acme-acme-engrave").
   const [vendor, appName] = id.split(".");
@@ -117,8 +127,11 @@ export function scaffoldFiles(id, name, { standalone = false, sdkVersion = "0.1.
         references: [{ path: "../../packages/shared" }, { path: "../../packages/plugin-sdk" }],
       }, null, 2)}\n`,
     };
+  const guide = agentGuideFiles({ id, title, theme, standalone, repo, app: app ?? (standalone ? "." : `plugins/${name}`) });
+  if (theme) return { ...project, ...guide, ...themeFiles(id, appName, title, vendor) };
   return {
     ...project,
+    ...guide,
     "src/index.ts": `import { defineManifest, definePlugin, PLUGIN_API_VERSION, ui } from "@scalius/plugin-sdk";
 
 // The manifest declares everything the app does. The platform refuses a
@@ -275,5 +288,88 @@ describe(${JSON.stringify(id)}, () => {
   });
 });
 `,
+  };
+}
+
+const THEME_TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), "plugin-scaffold/theme");
+
+/**
+ * The theme starter (`pnpm plugin create <id> --theme`): a template, one
+ * section, header, footer and card skins that draw the store's own identity,
+ * an island, a stylesheet with logical properties, neutral placeholder art and
+ * tests on the three fixture stores. It validates with no warning
+ * (plugins.test.mjs), so a developer starts from a theme that works on any store.
+ */
+export function themeFiles(id, appName, title, vendor) {
+  const fill = (file) => readFileSync(join(THEME_TEMPLATES, file), "utf8")
+    .replaceAll("__ID__", id)
+    .replaceAll("__TITLE__", title)
+    .replaceAll("__VENDOR__", vendor)
+    .replaceAll("__TEMPLATE__", appName.replaceAll("-", "_"))
+    .replaceAll("__P__", appName);
+  return {
+    "src/index.ts": fill("index.ts.txt"),
+    "src/storefront.tsx": fill("storefront.tsx.txt"),
+    "src/storefront.test.ts": fill("storefront.test.ts.txt"),
+    "src/islands/menu.ts": fill("menu.ts.txt"),
+    "src/storefront.css": fill("storefront.css.txt"),
+    "public/placeholder.svg": fill("placeholder.svg.txt"),
+    "assets/icon.svg": fill("icon.svg.txt"),
+  };
+}
+
+/** Where the SDK's guides are, from the app: the SDK it installed (standalone) or this checkout's. */
+const SDK_DOCS_URL = "https://github.com/scaliuslabs/scalius-commerce-lite/blob/mono-repo/packages/plugin-sdk/docs";
+
+/**
+ * `AGENTS.md` for AI coding agents working in the app (and `CLAUDE.md`, which
+ * points to it): the rules first, short, with the commands to run before
+ * packing and links to the full guides.
+ */
+export function agentGuideFiles({ id, title, theme, standalone, repo, app }) {
+  const docs = standalone ? "node_modules/@scalius/plugin-sdk/docs" : "../../packages/plugin-sdk/docs";
+  const scalius = standalone ? `pnpm --dir ${repo ?? "<your Scalius checkout>"} plugin` : "pnpm plugin";
+  const test = standalone ? "npm test" : `pnpm --dir ${app} test`;
+  const agents = `# ${title} (${id}): rules for AI agents
+
+This folder is a Scalius app${theme ? " (a theme)" : ""}. It runs inside many merchants' stores, so everything here must work on a store you have never seen. Follow these rules; when one blocks you, say so instead of working around it.
+
+## Rules
+
+1. **Declare everything in the manifest** (\`src/index.ts\`). The platform refuses a handler, scope, route, section or skin the manifest does not declare. The API only grows: never rely on something undocumented.
+2. **Draw the store, not your demo.** The store's name and logo come from \`data.store\` (header and footer skins); links come from \`data.menu\`, \`data.routes\` and each product's own \`url\`. Never write a store name, a wordmark or your app's name as shop copy.
+3. **No literal catalogue or page links.** Never write \`/products/<slug>\`, \`/categories/<slug>\`, \`/collections/<id>\` or a page path such as \`/about\`. Use product sources (\`{ "kind": "newest" }\`, a \`products\` setting) and, inside template sections only, handle links (\`/categories/@<handle>\`). Leave link defaults empty for the merchant.
+4. **Never depend on \`custom.*\` fields.** They belong to the merchant and no other store has them. Declare your own field in \`customFields\` (it is named \`${id}.<key>\`) and write its values with \`ctx.customFields\`.
+5. **Expect an empty store**: no products, categories, menu, logo, policies or contact details. A part with nothing to show returns \`null\`; never draw an empty shell or invent content.
+6. **Ship only artwork you made or hold a licence to redistribute.** No game covers, console, publisher or brand logos. Use neutral placeholders; merchants add their own images through image settings.
+7. **Real links and buttons that work without JavaScript.** A control that goes somewhere is an \`<a href>\`; one that acts on the page is a \`<button>\`. The product page buys only through \`<BuyForm />\`. An island improves markup that already works.
+8. **Both languages and logical CSS.** Every word through \`t(context, { en, bn })\`; numbers, money and dates through the SDK's \`formatNumber\`, \`formatMoney\`, \`formatDate\`; CSS sides as \`margin-inline\`, \`padding-inline-start\`, \`inset-inline-start\`, \`text-align: start\`.
+9. **Money is integer minor units** (\`amountMinor\`) beside an ISO \`currency\`; never floats.
+10. **No secrets or buyer data** in code, logs, URLs or test fixtures.
+
+## Before you pack
+
+Run each and fix every \`✗\` (a failure) and every \`!\` (a warning that says the fix):
+
+\`\`\`sh
+${test}
+${scalius} validate ${app}
+${scalius} preview ${app}     # open dist/preview.html: check the sample, empty and other store
+\`\`\`
+
+Then \`${scalius} pack ${app} --key <folder>\`. Verify the composed pages in a local store too.
+
+## Docs
+
+- Build a theme (the portability rules, with examples): ${docs}/themes.md
+- Apps (manifest, lifecycle, storage, routes): ${docs}/apps.md
+- Storefront reference (sections, skins, islands, budgets): ${docs}/storefront.md
+- Commerce hooks (scopes, events, checkout functions, the stable API): ${docs}/commerce-hooks.md
+- One-page index for AI tools: ${docs}/llms.txt
+- Online: ${SDK_DOCS_URL}
+`;
+  return {
+    "AGENTS.md": agents,
+    "CLAUDE.md": "# Claude Code\n\nEvery rule for this app is in [AGENTS.md](AGENTS.md). Read it first.\n\n@AGENTS.md\n",
   };
 }

@@ -1,0 +1,25 @@
+import { defineIsland } from "@scalius/plugin-sdk/island";
+
+// The phone menu is a <details>, which opens and closes without JavaScript.
+// This island only adds what a buyer expects on top: Escape closes it, and
+// choosing a link closes it. Return a cleanup for every listener.
+export default defineIsland((element) => {
+  const details = element.querySelector("details");
+  if (!details) return undefined;
+  const summary = details.querySelector("summary");
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === "Escape" && details.open) {
+      details.open = false;
+      summary?.focus();
+    }
+  };
+  const onClick = (event: Event) => {
+    if ((event.target as Element | null)?.closest("a")) details.open = false;
+  };
+  details.addEventListener("keydown", onKey);
+  details.addEventListener("click", onClick);
+  return () => {
+    details.removeEventListener("keydown", onKey);
+    details.removeEventListener("click", onClick);
+  };
+});

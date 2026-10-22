@@ -1,0 +1,219 @@
+/*
+ * The theme's one stylesheet, linked on pages that show its parts. Colours,
+ * type and radius come from the store's own tokens, so the merchant's choices
+ * still apply. Sides are logical (inline-start/end, block-start/end), so a
+ * right-to-left page mirrors without a second stylesheet.
+ */
+.__P__-header,
+.__P__-footer,
+.__P__-row {
+  --__P__-ink: var(--foreground, #1c1c1c);
+  --__P__-bg: var(--background, #ffffff);
+  --__P__-line: var(--border, #e2e2e2);
+  --__P__-brand: var(--primary, #1f4d3a);
+  --__P__-brand-ink: var(--primary-foreground, #ffffff);
+  --__P__-muted: var(--muted-foreground, #5f5f5f);
+  --__P__-radius: var(--radius, 0.5rem);
+  color: var(--__P__-ink);
+  font-family: var(--theme-font-body, system-ui, sans-serif);
+}
+
+.__P__-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--scalius-z-header, 40);
+  background: var(--__P__-bg);
+  border-block-end: 1px solid var(--__P__-line);
+}
+
+.__P__-header:not([data-sticky-header]) {
+  position: static;
+}
+
+.__P__-header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  max-inline-size: 80rem;
+  margin-inline: auto;
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
+}
+
+.__P__-brand {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-family: var(--theme-font-heading, inherit);
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.__P__-brand img {
+  display: block;
+  inline-size: min(var(--__P__-logo-width, 140px), 40vw);
+  block-size: auto;
+}
+
+.__P__-menu summary {
+  cursor: pointer;
+  padding-block: 0.5rem;
+}
+
+.__P__-nav ul,
+.__P__-menu ul,
+.__P__-footer-menu ul,
+.__P__-contact {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.__P__-nav {
+  display: none;
+}
+
+.__P__-nav ul {
+  display: flex;
+  gap: 1.25rem;
+}
+
+.__P__-nav a {
+  color: inherit;
+}
+
+.__P__-menu ul {
+  display: grid;
+  gap: 0.5rem;
+  padding-block: 0.5rem;
+}
+
+.__P__-search {
+  display: flex;
+  flex: 1 1 14rem;
+  gap: 0.5rem;
+}
+
+.__P__-search label {
+  flex: 1;
+}
+
+.__P__-search input {
+  inline-size: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--__P__-line);
+  border-radius: var(--__P__-radius);
+  font: inherit;
+}
+
+.__P__-search button,
+.__P__-add {
+  padding: 0.5rem 0.875rem;
+  border: 0;
+  border-radius: var(--__P__-radius);
+  background: var(--__P__-brand);
+  color: var(--__P__-brand-ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.__P__-action {
+  color: inherit;
+}
+
+.__P__-footer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 2rem;
+  max-inline-size: 80rem;
+  margin-inline: auto;
+  padding-block: 3rem 2rem;
+  padding-inline: 1rem;
+  border-block-start: 1px solid var(--__P__-line);
+}
+
+.__P__-footer h2 {
+  margin-block: 0 0.75rem;
+  font-size: 1rem;
+}
+
+.__P__-legal {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--__P__-muted);
+  font-size: 0.875rem;
+}
+
+.__P__-row {
+  max-inline-size: 80rem;
+  margin-inline: auto;
+  padding-block: 2rem;
+  padding-inline: 1rem;
+}
+
+.__P__-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-block-end: 1rem;
+}
+
+.__P__-row-head h2 {
+  margin: 0;
+  font-family: var(--theme-font-heading, inherit);
+}
+
+.__P__-row-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 1.25rem;
+}
+
+.__P__-card {
+  display: grid;
+  gap: 0.5rem;
+  text-align: start;
+}
+
+.__P__-card-photo img {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--__P__-radius);
+  background: color-mix(in oklab, var(--__P__-line) 40%, transparent);
+}
+
+.__P__-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.__P__-card h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.__P__-add {
+  justify-self: start;
+}
+
+.__P__-sold-out {
+  margin: 0;
+  color: var(--__P__-muted);
+}
+
+@media (min-width: 64rem) {
+  .__P__-nav {
+    display: block;
+  }
+
+  .__P__-menu {
+    display: none;
+  }
+}
