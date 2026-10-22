@@ -161,7 +161,7 @@ export const manifest = defineManifest({
       name: "Banner",
       description: "A short message for the store.",
       settings: [
-        { key: "heading", label: "Heading", type: "text", default: "Hello from ${title}", maxLength: 120 },
+        { key: "heading", label: "Heading", type: "text", default: "New arrivals are in", maxLength: 120 },
         { key: "text", label: "Text", type: "textarea", default: "", maxLength: 500 },
       ],
     }],

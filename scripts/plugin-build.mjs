@@ -155,6 +155,7 @@ export async function loadPluginContract() {
         'export * from "@scalius/shared/plugins";',
         'export { checkPluginAsset, checkStorefrontPublicFile } from "@scalius/shared/plugins/assets";',
         'export { storefrontTemplateCardFieldNotes } from "@scalius/shared/plugins/storefront-template-fields";',
+        'export { storefrontModuleFieldNotes, storefrontPortabilityNotes } from "@scalius/shared/plugins/storefront-portability";',
         'export { storefrontDefinitionOf } from "./src/storefront/define";',
         'export { checkSkinHtml, checkStorefrontHeaderHtml, fixtureContext, fixtureProductCard, fixtureProductPage, fixtureSkinData } from "./src/storefront/testing";',
       ].join("\n"),
