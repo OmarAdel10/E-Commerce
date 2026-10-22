@@ -6,6 +6,8 @@ import {
   STOREFRONT_DECLARATION_THEME_VERSION,
   resolveStorefrontAppTemplateTheme,
   resolveStorefrontPagePresetSections,
+  storefrontAppTemplateCardFields,
+  withStorefrontCardFields,
   type StorefrontHandleLookup,
   type StorefrontThemeDocument,
 } from "@scalius/shared/storefront-theme";
@@ -55,6 +57,7 @@ import {
   customerCountriesDocument,
   mediaDocument,
   seoDocument,
+  readStorefrontCardFields,
 } from "@scalius/core/modules/settings";
 import { listOwnMarketCurrencies, readStoreCurrency, resetBackupPriceIncrement } from "@scalius/core/modules/markets";
 import { settingsMirror } from "@scalius/core/settings-store";
@@ -261,6 +264,8 @@ const themeAppSurfacesSchema = z.object({
     name: z.string(),
     description: z.string().nullable(),
     theme: z.record(z.string(), z.unknown()),
+    /** Card fields (`<namespace>.<key>`) the template names that are not storefront-visible product fields here: left out of `theme`. */
+    omittedCardFields: z.array(z.string()).max(3),
   })),
   /** Ready-made landing pages a new landing page can start from; only ones this document version accepts. */
   pagePresets: z.array(z.object({
@@ -292,8 +297,19 @@ function themeAppDeclarations(installations: PluginInstallations): unknown[] {
     ]);
 }
 
-/** Active apps whose approved grant covers storefront surfaces, with what they offer the theme. */
-function themeAppSurfaces(installations: PluginInstallations, lookup: StorefrontHandleLookup) {
+/** The product card fields the listed templates name: what their `blocks.card.fields` are checked against. */
+function themeAppCardFields(installations: PluginInstallations): string[] {
+  return installations
+    .filter((installation) => installation.status === "active" && installation.grant?.storefrontSurfaces === true && installation.grant.storefrontCode === true)
+    .flatMap((installation) => installation.manifest.storefront.templates.flatMap((template) => storefrontAppTemplateCardFields(template.theme)));
+}
+
+/**
+ * Active apps whose approved grant covers storefront surfaces, with what they
+ * offer the theme. A template keeps only the card fields in `cardFields`
+ * (this store's storefront-visible product fields).
+ */
+function themeAppSurfaces(installations: PluginInstallations, lookup: StorefrontHandleLookup, cardFields: ReadonlySet<string>) {
   return installations
     .filter((installation) => installation.status === "active" && installation.grant?.storefrontSurfaces === true)
     .map((installation) => {
@@ -321,14 +337,17 @@ function themeAppSurfaces(installations: PluginInstallations, lookup: Storefront
         templates: code ? storefront.templates.flatMap((template) => {
           // Catalogue handles resolve against this store; a section naming one it lacks is left out.
           const read = resolveStorefrontAppTemplateTheme(template.theme, template.themeVersion ?? STOREFRONT_DECLARATION_THEME_VERSION, lookup);
-          const theme = read.ok ? read.value : null;
-          return theme ? [{
+          if (!read.ok) return [];
+          // A card field naming a product field this store lacks is left out; the library says which.
+          const { theme, omitted } = withStorefrontCardFields(read.value, (field) => cardFields.has(field));
+          return [{
             key: pluginSurfaceKey(installation.pluginId, template.id),
             id: template.id,
             name: template.name,
             description: template.description ?? null,
             theme: theme as Record<string, unknown>,
-          }] : [];
+            omittedCardFields: omitted,
+          }];
         }) : [],
         pagePresets: code ? storefront.pagePresets.flatMap((preset) => {
           const read = resolveStorefrontPagePresetSections(preset.sections, preset.themeVersion ?? STOREFRONT_DECLARATION_THEME_VERSION, lookup);
@@ -424,7 +443,13 @@ app.openapi(getThemeEditorRoute, async (c) => {
     Promise.all([getThemeWorkspace(db), installations]).then(async ([workspace, installed]) =>
       [workspace, await readThemeMedia(db, workspace.draft.theme, themeAppMediaIds(workspace.draft.theme, installed))] as const),
     readStoreShape(db),
-    installations.then(async (installed) => themeAppSurfaces(installed, await readThemeHandleLookup(db, themeAppDeclarations(installed)))),
+    installations.then(async (installed) => {
+      const [lookup, cardFields] = await Promise.all([
+        readThemeHandleLookup(db, themeAppDeclarations(installed)),
+        readStorefrontCardFields(db, themeAppCardFields(installed)),
+      ]);
+      return themeAppSurfaces(installed, lookup, cardFields);
+    }),
   ]);
   const { lastPublished } = boundedStatus(themeStatus(workspace));
   const { updatedBy: _updatedBy, updatedByName, ...draft } = workspace.draft;

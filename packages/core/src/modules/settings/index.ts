@@ -5,6 +5,7 @@ export * from "./browser";
 export * from "./documents";
 export * from "./settings.service";
 export * from "./site-settings.service";
+export { readStorefrontCardFields } from "./theme-bindings";
 export * from "./store-name";
 export * from "./customer-request-policy";
 export * from "./business-settings.service";

@@ -44,6 +44,8 @@ Sections and components have no render route: they run at the edge with data the
 
 A **template** holds theme values (`tokens`, `blocks`, `apps` and homepage `sections`, at most 64 KiB) that the theme library applies, keeping the merchant's content. A **page preset** is a ready-made landing page (1 to 24 sections, 64 KiB): when the merchant makes a new landing page, the editor offers a blank page or the active apps' presets, and fills `product` settings with a product the merchant picks. Both are written for one theme document version (`themeVersion`, absent means 10). The store upgrades them through its upgrade chain before listing; one that still does not fit is left out and named, with the reason, on the app's page.
 
+A template's product card fields (`blocks.card.fields`) are store data: a store applies the template keeping only the ones that are storefront-visible product fields there, and tells the merchant which it left out. `custom.<key>` is the merchant's namespace, which an app cannot create; your own `<app id>.<key>` field exists in a store once your app writes a value. `pnpm plugin validate` warns about each card field no store is sure to have.
+
 ## Slots
 
 A slot is a named place where apps add their piece.

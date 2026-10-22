@@ -136,6 +136,9 @@ export async function validatePlugin(directory) {
     add("fail", "Storefront", message.startsWith(`${directory}: `) ? message.slice(directory.length + 2) : message);
   }
 
+  // Card fields a template names: a store keeps only the ones it has, so these warn, never fail.
+  for (const note of contract.storefrontTemplateCardFieldNotes(manifest)) add(note.level, "Template card fields", note.message);
+
   // The packed bundle also carries the image digests; their size is fixed, so measure with placeholders.
   const size = Buffer.byteLength(sealBundle(bundled, assets));
   if (size > BUNDLE_MAX_BYTES) add("fail", "Bundle size", `${mib(size)} is over the 16 MiB a registry lists.`);

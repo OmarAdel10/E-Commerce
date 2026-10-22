@@ -27,7 +27,8 @@ import { StatusBadge } from "~/components/admin/resource/StatusBadge";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
-import { formatDateTime, useMessages } from "~/i18n";
+import { formatDateTime, getLocale, useMessages } from "~/i18n";
+import { formatList } from "@scalius/shared/locale-words";
 import { onlineStoreMessages } from "~/i18n/online-store";
 import { themeEditorFull } from "~/i18n/theme-editor-panes";
 import { isAdminApiConflictError } from "~/lib/admin-api-error";
@@ -145,6 +146,7 @@ function ThemeOverview({ workspace, refetch }: {
   const selected = appTemplate?.key ?? builtIn;
   const templateName = (id: string) => fromApps.find((each) => each.template.key === id)?.template.name ?? option(`template_${id}`);
   const changed = workspace.draftDiffersFromLive;
+  const pendingApp = fromApps.find((each) => each.template.key === pendingTemplate)?.template;
   const refresh = async () => {
     await refetch();
     void queryClient.invalidateQueries({ queryKey: ["theme-versions"] });
@@ -274,7 +276,11 @@ function ThemeOverview({ workspace, refetch }: {
         open={pendingTemplate !== null}
         onOpenChange={(open) => { if (!open) setPendingTemplate(null); }}
         title={t("templateReplaceTitle", { name: pendingTemplate ? templateName(pendingTemplate) : "" })}
-        description={editor(fromApps.some((each) => each.template.key === pendingTemplate) ? "appTemplateReplaceBody" : "templateReplaceBody")}
+        description={pendingApp
+          ? [editor("appTemplateReplaceBody"), ...(pendingApp.omittedCardFields.length > 0
+            ? [editor("appTemplateCardFieldsOmitted", { fields: formatList(pendingApp.omittedCardFields, getLocale()), count: pendingApp.omittedCardFields.length })]
+            : [])].join(" ")
+          : editor("templateReplaceBody")}
         confirmLabel={t("templateReplaceConfirm")}
         variant="default"
         onConfirm={() => {

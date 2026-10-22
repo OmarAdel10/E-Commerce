@@ -21373,6 +21373,13 @@
                 "theme": {
                   "type": "object",
                   "additionalProperties": {}
+                },
+                "omittedCardFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 3
                 }
               },
               "required": [
@@ -21380,7 +21387,8 @@
                 "id",
                 "name",
                 "description",
-                "theme"
+                "theme",
+                "omittedCardFields"
               ]
             }
           },

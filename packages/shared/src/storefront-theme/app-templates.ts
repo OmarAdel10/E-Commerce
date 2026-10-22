@@ -141,6 +141,36 @@ export function resolveStorefrontAppTemplateTheme(
   return readTemplate(value, themeVersion, lookup);
 }
 
+/**
+ * The product card fields a template's theme names (`blocks.card.fields`,
+ * `<namespace>.<key>`), as declared: what to look up before
+ * `withStorefrontCardFields`.
+ */
+export function storefrontAppTemplateCardFields(value: unknown): string[] {
+  const blocks = isRecord(value) ? value.blocks : undefined;
+  const card = isRecord(blocks) ? blocks.card : undefined;
+  const fields = isRecord(card) ? card.fields : undefined;
+  return Array.isArray(fields) ? fields.filter((field): field is string => typeof field === "string") : [];
+}
+
+/**
+ * The template keeping only the card fields this store's product cards can
+ * show (`shown`), and the ones left out. A custom field is the store's data,
+ * not the app's: a card field the store has no storefront-visible product
+ * field for is left out, as a section naming a missing handle is, so the rest
+ * of the template applies.
+ */
+export function withStorefrontCardFields(
+  template: StorefrontAppTemplateTheme,
+  shown: (field: string) => boolean,
+): { theme: StorefrontAppTemplateTheme; omitted: string[] } {
+  const card = template.blocks?.card;
+  const omitted = card?.fields?.filter((field) => !shown(field)) ?? [];
+  if (!card?.fields || omitted.length === 0) return { theme: template, omitted };
+  const fields = card.fields.filter(shown);
+  return { theme: { ...template, blocks: { ...template.blocks, card: { ...card, fields } } }, omitted };
+}
+
 /** The template's theme at this store's version, or null when it does not fit. */
 export function readStorefrontAppTemplateTheme(value: unknown, themeVersion: number): StorefrontAppTemplateTheme | null {
   const read = checkStorefrontAppTemplateTheme(value, themeVersion);

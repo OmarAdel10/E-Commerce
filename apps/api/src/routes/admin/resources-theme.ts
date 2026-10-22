@@ -31,13 +31,15 @@ import {
   applyStorefrontAppTemplate,
   resolveStorefrontAppTemplateTheme,
   resolveStorefrontHandles,
+  storefrontAppTemplateCardFields,
+  withStorefrontCardFields,
   storefrontLandingSlugSchema,
   storefrontSectionSchema,
   type StorefrontSection,
   type StorefrontThemeDocument,
 } from "@scalius/shared/storefront-theme";
 import { pluginSurfaceKey } from "@scalius/shared/plugins";
-import { getThemeWorkspace, replaceThemeDraft, saveThemeDraft } from "@scalius/core/modules/settings";
+import { getThemeWorkspace, readStorefrontCardFields, replaceThemeDraft, saveThemeDraft } from "@scalius/core/modules/settings";
 import { listPluginInstallations } from "@scalius/core/modules/plugins";
 import { readThemeHandleLookup } from "@scalius/core/modules/storefront";
 import { ConflictError } from "@scalius/core/errors";
@@ -240,12 +242,17 @@ app.openapi(createRoute({
     ? installation.manifest.storefront.templates.find((template) => template.id === templateId)
     : undefined;
   if (!declared) throw new NotFoundError("No active app offers that template.");
-  const lookup = await readThemeHandleLookup(db, [declared.theme]);
+  const [lookup, cardFields] = await Promise.all([
+    readThemeHandleLookup(db, [declared.theme]),
+    readStorefrontCardFields(db, storefrontAppTemplateCardFields(declared.theme)),
+  ]);
   const read = resolveStorefrontAppTemplateTheme(declared.theme, declared.themeVersion ?? STOREFRONT_DECLARATION_THEME_VERSION, lookup);
   if (!read.ok) throw new AppError(422, "template_unavailable", `This template does not fit the store's theme: ${read.problem}`);
   const workspace = await getThemeWorkspace(db);
   pagePreconditions(workspace, body);
-  const applied: StorefrontThemeDocument = applyStorefrontAppTemplate(workspace.draft.theme, key, read.value);
+  // A card field the store has no storefront-visible product field for is left out.
+  const { theme: template } = withStorefrontCardFields(read.value, (field) => cardFields.has(field));
+  const applied: StorefrontThemeDocument = applyStorefrontAppTemplate(workspace.draft.theme, key, template);
   await replaceThemeDraft(db, applied, workspace.draft.theme, body.expectedRevision, body.basePublishedRevision, actorOf(c));
   return ok(c, {
     theme: themeView(await getThemeWorkspace(db), undefined),

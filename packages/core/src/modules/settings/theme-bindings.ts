@@ -174,6 +174,24 @@ function listFieldsCompatible(
   });
 }
 
+/** A product card can show a storefront-visible product field that is not an object reference. */
+function isCardFieldDefinition(definition: { owner: string; type: string }): boolean {
+  return definition.owner === "product" && !["object_reference", "list.object_reference"].includes(definition.type);
+}
+
+/**
+ * Of `fields` (`<namespace>.<key>`), the ones this store's product cards can
+ * show: what an app template's `blocks.card.fields` may keep when applied here.
+ */
+export async function readStorefrontCardFields(db: Database, fields: readonly string[]): Promise<ReadonlySet<string>> {
+  const keys = [...new Set(fields)];
+  if (!keys.length) return new Set();
+  const definitions = await db.select({ owner: customFieldDefinitions.ownerType, namespace: customFieldDefinitions.namespace, key: customFieldDefinitions.key, type: customFieldDefinitions.type })
+    .from(customFieldDefinitions).where(and(eq(customFieldDefinitions.storefrontVisible, true), eq(customFieldDefinitions.ownerType, "product"),
+      sql`${customFieldDefinitions.namespace} || '.' || ${customFieldDefinitions.key} IN (SELECT CAST(value AS TEXT) FROM json_each(${JSON.stringify(keys)}))`));
+  return new Set(definitions.filter(isCardFieldDefinition).map((definition) => `${definition.namespace}.${definition.key}`));
+}
+
 /** Dashboard, agent, restore and publish writes share the same live definition checks. */
 export async function assertThemeBindings(db: Database, theme: StorefrontThemeDocument): Promise<void> {
   const sites = bindingSites(theme);
@@ -196,8 +214,12 @@ export async function assertThemeBindings(db: Database, theme: StorefrontThemeDo
   ]);
   const issues: Array<{ path: string; message: string }> = [];
   for (const field of fields) {
-    if (!definitions.some((definition) => definition.owner === "product" && !["object_reference", "list.object_reference"].includes(definition.type) && `${definition.namespace}.${definition.key}` === field)) {
-      issues.push({ path: "blocks.card.fields", message: `Card field ${field} must be a storefront-visible product field.` });
+    if (!definitions.some((definition) => isCardFieldDefinition(definition) && `${definition.namespace}.${definition.key}` === field)) {
+      // A field deleted or hidden since the card started showing it lands here too: say what to do.
+      issues.push({
+        path: "blocks.card.fields",
+        message: `Product cards show ${field}, which is not a product field shown on the storefront. Remove it from Product card fields in the theme editor, or create it (or turn on "Show on storefront") under Settings → Custom data.`,
+      });
     }
   }
   for (const site of sites) {

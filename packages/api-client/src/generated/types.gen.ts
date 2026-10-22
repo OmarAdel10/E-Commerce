@@ -4464,6 +4464,7 @@ export type ThemeAppSurfaces = {
         theme: {
             [key: string]: unknown;
         };
+        omittedCardFields: Array<string>;
     }>;
     pagePresets: Array<{
         key: string;
