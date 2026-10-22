@@ -293,6 +293,7 @@ export const installedAppsMessages = defineMessages({
     uninstallHelp: "Removes the app. You choose whether its data stays.",
     uninstallHelpBundled: "Stops the app and resets its approval. It stays in your apps, ready to activate again.",
     uninstallFailed: "Couldn't uninstall. Nothing changed. Try again.",
+    uninstallFieldInTheme: "Your theme shows this app's field {field} on product cards, so its data can't be deleted. Remove it from Product card fields in the theme editor and publish, or keep the app's data.",
   },
   bn: {
     title: "অ্যাপ",
@@ -585,6 +586,7 @@ export const installedAppsMessages = defineMessages({
     uninstallHelp: "অ্যাপটি সরিয়ে দেয়। এর তথ্য থাকবে কি না আপনি বেছে নেন।",
     uninstallHelpBundled: "অ্যাপটি বন্ধ করে আর এর অনুমোদন মুছে দেয়। এটি আপনার অ্যাপে থেকে যায়, আবার চালু করার জন্য তৈরি।",
     uninstallFailed: "আনইনস্টল করা যায়নি। কিছু বদলায়নি। আবার চেষ্টা করুন।",
+    uninstallFieldInTheme: "আপনার থিম প্রোডাক্ট কার্ডে এই অ্যাপের ফিল্ড {field} দেখায়, তাই এর তথ্য ডিলিট করা যাবে না। থিম এডিটরে প্রোডাক্ট কার্ডের ফিল্ড থেকে এটি সরিয়ে পাবলিশ করুন, অথবা অ্যাপের তথ্য রেখে দিন।",
   },
 });
 

@@ -26,7 +26,7 @@ import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { useMessages } from "~/i18n";
 import { installedAppsMessages } from "~/i18n/apps";
 import { type AppDetail } from "~/lib/api-query-options/apps";
-import { activateApp, appErrorCode, deactivateApp, isAppChangedError, uninstallApp } from "~/lib/api-mutations/apps";
+import { activateApp, appErrorCode, appFieldInTheme, deactivateApp, isAppChangedError, uninstallApp } from "~/lib/api-mutations/apps";
 import { queryKeys } from "~/lib/query-keys";
 import { AppAccess } from "./AppAccess";
 import { ThemeAppFallbackNotice } from "./ThemeAppParts";
@@ -173,7 +173,9 @@ export function UninstallAppDialog({ app, open, onOpenChange }: DialogProps) {
       queryClient.removeQueries({ queryKey: queryKeys.apps.detail(app.id) });
     },
     onError: (error) => {
-      if (!result.changed(error)) toast.error(t("uninstallFailed"));
+      const field = appFieldInTheme(error);
+      if (field !== null) toast.error(t("uninstallFieldInTheme", { field }));
+      else if (!result.changed(error)) toast.error(t("uninstallFailed"));
       onOpenChange(false);
     },
   });

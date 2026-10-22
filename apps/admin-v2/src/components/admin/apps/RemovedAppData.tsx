@@ -23,7 +23,7 @@ import { appOwnerMessages } from "~/i18n/app-owner";
 import { removedAppDataMessages } from "~/i18n/removed-app-data";
 import { AdminApiResponseError } from "~/lib/admin-api-error";
 import { removedAppDataQueryOptions, type RemovedAppData } from "~/lib/api-query-options/apps";
-import { deleteRemovedAppData, handOverRemovedAppData } from "~/lib/api-mutations/apps";
+import { appFieldInTheme, deleteRemovedAppData, handOverRemovedAppData } from "~/lib/api-mutations/apps";
 import { pluginKeyFingerprint } from "@scalius/shared/plugins/registry";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { customFieldKeys } from "~/lib/api-query-options/custom-fields";
@@ -68,7 +68,9 @@ export function RemovedAppDataCard({ show }: { show?: (group: RemovedAppData) =>
       toast.success(catalogKept > 0 ? t("deletedKept", { count: catalogKept }) : t("deleted"));
     },
     onError: (error) => {
-      toast.error(error instanceof AdminApiResponseError && error.status === 409 ? t("changed") : t("deleteFailed"));
+      const field = appFieldInTheme(error);
+      toast.error(field !== null ? t("fieldInTheme", { field })
+        : error instanceof AdminApiResponseError && error.status === 409 ? t("changed") : t("deleteFailed"));
     },
     onSettled: async () => {
       setOpen(false);

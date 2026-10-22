@@ -86,6 +86,16 @@ export function appErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+/**
+ * The field a refused data delete names (`custom_field_in_theme`): the theme
+ * shows that app field on product cards. Null for any other error.
+ */
+export function appFieldInTheme(error: unknown): string | null {
+  if (appErrorCode(error) !== "custom_field_in_theme") return null;
+  const field = ((error as AdminApiResponseError).details as { field?: unknown } | null | undefined)?.field;
+  return typeof field === "string" ? field : "";
+}
+
 /** The app changed after the page loaded it (another tab, another person, or an update). */
 export function isAppChangedError(error: unknown): boolean {
   const code = appErrorCode(error);
