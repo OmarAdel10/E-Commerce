@@ -8,8 +8,8 @@
 //
 //   pnpm plugin create <vendor.name> [--dir <folder>]          scaffold an app (outside this repo: on a packed SDK build)
 //   pnpm plugin validate [path]                                check a plugin the way a store loads it
-//   pnpm plugin preview <path> [--out <html>] [--fixture <json>]   render storefront fixtures to a static HTML file
-//   pnpm plugin dev <path> [--fixture <json>]                 rebuild and preview fixtures as sources change
+//   pnpm plugin preview <path> [--store sample|empty|other] [--out <html>] [--fixture <json>]   render storefront parts on three fixture stores (or one) to a static HTML file
+//   pnpm plugin dev <path> [--store sample|empty|other] [--fixture <json>]   rebuild and preview fixtures as sources change
 //   pnpm plugin pack <path> [--key <pem | folder>] [--developer <name>]   pack, sign and zip a plugin for upload or a registry
 //   pnpm plugin keygen <out-dir>                               make an Ed25519 signing key
 //   pnpm plugin index <dist-dir> ... --out <dir> --name <name> [--base-url <url>]   build a static registry
@@ -357,12 +357,20 @@ async function main(argv) {
       if (!parsed.positional[0]) throw new Error(`Usage: pnpm plugin ${command} <path>`);
       const directory = userPath(parsed.positional[0]);
       const fixturePath = parsed.flags.get("--fixture");
-      const options = typeof fixturePath === "string" ? { fixture: readPreviewFixture(userPath(fixturePath)) } : {};
+      const store = parsed.flags.get("--store");
+      const options = {
+        ...(typeof fixturePath === "string" ? { fixture: readPreviewFixture(userPath(fixturePath)) } : {}),
+        // All three fixture stores unless --store names one (sample, empty or other).
+        ...(typeof store === "string" ? { stores: [store] } : {}),
+      };
       const out = parsed.flags.get("--out");
       if (command === "dev") return devPlugin(directory, typeof out === "string" ? userPath(out) : undefined, options);
       const preview = await previewPlugin(directory, typeof out === "string" ? userPath(out) : undefined, options);
-      console.log(`${preview.id}: ${preview.views} fixture view(s). Open ${pathToFileURL(preview.output).href}`);
-      if (preview.empty.length > 0) console.log(`! ${preview.empty.join(", ")} rendered nothing with these fixtures; pass the fields or records it reads with --fixture <json>.`);
+      console.log(`${preview.id}: ${preview.views} fixture view(s) on the ${preview.stores.join(", ")} store${preview.stores.length === 1 ? "" : "s"}. Open ${pathToFileURL(preview.output).href}`);
+      if (preview.emptyOn.sample?.length > 0) console.log(`! ${preview.emptyOn.sample.join(", ")} rendered nothing on the sample store; pass the fields or records it reads with --fixture <json>.`);
+      for (const name of preview.stores.filter((each) => each !== "sample" && preview.emptyOn[each].length > 0)) {
+        console.log(`- ${preview.emptyOn[name].join(", ")} rendered nothing on the ${name} store: right when there is nothing to show, wrong if buyers lose something they need.`);
+      }
       return undefined;
     }
     case "pack": {

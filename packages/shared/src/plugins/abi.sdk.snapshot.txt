@@ -1035,7 +1035,7 @@ export declare function storeTime(context: {
 export {};
 
 // packages/plugin-sdk/src/storefront/testing.d.ts
-import { type StorefrontComponentTarget, type StorefrontFooterData, type StorefrontHeaderData, type StorefrontListingPage, type StorefrontModule, type StorefrontProductCard, type StorefrontProductCardData, type StorefrontProductPage, type StorefrontRenderContext, type StorefrontResolvedSettings, type StorefrontSectionSkinData, type StorefrontSectionSkinSettings, type StorefrontSkinJob, type StorefrontSkinnableSection, type StorefrontSkinTarget, type StorefrontSkinUnit } from "@scalius/shared/plugins/storefront-protocol";
+import { type StorefrontComponentTarget, type StorefrontFooterData, type StorefrontHeaderData, type StorefrontImage, type StorefrontListingPage, type StorefrontModule, type StorefrontProductCard, type StorefrontProductCardData, type StorefrontProductPage, type StorefrontRenderContext, type StorefrontResolvedSettings, type StorefrontSectionSkinData, type StorefrontSectionSkinSettings, type StorefrontSkinJob, type StorefrontSkinnableSection, type StorefrontSkinTarget, type StorefrontSkinUnit } from "@scalius/shared/plugins/storefront-protocol";
 import { type StorefrontHeaderCheckOptions } from "@scalius/shared/plugins/storefront-html-check";
 export { checkStorefrontHeaderHtml } from "@scalius/shared/plugins/storefront-html-check";
 export declare function storefrontShown(html: string, pluginId: string): {
@@ -1055,6 +1055,18 @@ export type SkinData<Target extends StorefrontSkinTarget> = Target extends Store
     target: Target;
 }>["data"] : Target extends `section:${infer Type extends StorefrontSkinnableSection}` ? StorefrontSectionSkinData<SectionSkinSettingsOf<Type>> : StorefrontSectionSkinData;
 export declare function fixtureSkinData(target: StorefrontSkinTarget): StorefrontSkinJob["data"];
+export declare const FIXTURE_STORES: readonly ["sample", "empty", "other"];
+export type FixtureStoreName = (typeof FIXTURE_STORES)[number];
+export interface FixtureStore {
+    name: FixtureStoreName;
+    description: string;
+    context(overrides?: Partial<StorefrontRenderContext>): StorefrontRenderContext;
+    productCards(): StorefrontProductCard[];
+    image(): StorefrontImage | null;
+    productPage(overrides?: Partial<StorefrontProductPage["product"]>): StorefrontProductPage;
+    skinData(target: StorefrontSkinTarget): StorefrontSkinJob["data"];
+}
+export declare function fixtureStore(name: FixtureStoreName): FixtureStore;
 export declare function checkSkinHtml(target: StorefrontSkinTarget, html: string): string[];
 export interface RenderOptions extends StorefrontHeaderCheckOptions {
     context?: Partial<StorefrontRenderContext>;
