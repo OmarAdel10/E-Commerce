@@ -2,7 +2,7 @@
 
 The SDK for Scalius apps (plugins), for plugin authors. An app declares what it may do (the manifest) and writes the handlers the platform calls. Workspace imports use source; the package build emits portable JavaScript and declarations for publishing.
 
-This README is the quick start. The full reference ships with the package in [`docs/`](docs/README.md): the platform and app lifecycle ([apps.md](docs/apps.md)), the checkout functions, ports and stable app API ([commerce-hooks.md](docs/commerce-hooks.md)) and storefront components ([storefront.md](docs/storefront.md)).
+This README is the quick start. The full reference ships with the package in [`docs/`](docs/README.md): the platform and app lifecycle ([apps.md](docs/apps.md)), the checkout functions, ports and stable app API ([commerce-hooks.md](docs/commerce-hooks.md)) and storefront components ([storefront.md](docs/storefront.md)). Building a theme? Start with [Build a theme](docs/themes.md): the rules that make it work on any store, not only yours. AI coding tools can read [docs/llms.txt](docs/llms.txt), and every scaffolded app carries an `AGENTS.md`.
 
 ## Quick start
 
@@ -16,7 +16,7 @@ cd ~/code/acme-tally && npm install                     # the SDK build, TypeScr
 npm test                                                # the harness: the platform's runtime, in memory
 npm run typecheck
 pnpm --dir ~/scalius plugin validate ~/code/acme-tally  # every check a store makes, including the storefront render
-pnpm --dir ~/scalius plugin preview ~/code/acme-tally   # dist/preview.html with fixture data
+pnpm --dir ~/scalius plugin preview ~/code/acme-tally   # dist/preview.html on a sample, an empty and another store
 pnpm --dir ~/scalius plugin pack ~/code/acme-tally --key <folder>   # dist/ and the signed upload ZIP
 ```
 
@@ -26,7 +26,7 @@ pnpm --dir ~/scalius plugin pack ~/code/acme-tally --key <folder>   # dist/ and 
 pnpm --dir ~/scalius/packages/plugin-sdk pack --pack-destination ~/code/acme-tally/vendor
 ```
 
-The scaffold writes `package.json` (no workspace protocol), its own `tsconfig.json`, `src/index.ts` (manifest and handlers), `src/storefront.tsx` (a section), `src/index.test.ts` and a `.gitignore` that keeps `*.pem` out of version control. Inside this repository, `--dir plugins/<name>` (the default) makes a workspace package instead.
+The scaffold writes `package.json` (no workspace protocol), its own `tsconfig.json`, `src/index.ts` (manifest and handlers), `src/storefront.tsx` (a section), `src/index.test.ts`, an `AGENTS.md` for AI coding agents (with a `CLAUDE.md` pointing to it) and a `.gitignore` that keeps `*.pem` out of version control. `pnpm plugin create <vendor.name> --theme` writes the theme starter instead: a template, a section, header, footer and card skins, an island, a stylesheet, placeholder art and tests on three fixture stores ([Build a theme](docs/themes.md)). Inside this repository, `--dir plugins/<name>` (the default) makes a workspace package instead.
 
 ## Install and activate an app locally
 
@@ -388,7 +388,7 @@ The input includes the target, language, locale, currency, relevant cart/order/c
 
 ## Storefront components
 
-An app can redesign the storefront without a fork: component sections, the header, footer and product card, ready-made templates, client islands and a stylesheet, compiled once by `pnpm plugin pack` and run at the edge as a pure function of the page's data. A paid store uploads and activates the app; a free store bundles it with `pnpm plugin add`. Component sections can place the store's own order form (`<OrderForm product={...} />`) for single-page order landings. [packages/plugin-sdk/docs/storefront.md](../../packages/plugin-sdk/docs/storefront.md) is the guide; `plugins/noor` is a complete theme and `apps/api/src/plugins/testing/apps/studio` a small example. Core section types, skin units and embed kinds are snake_case (`usp_strip`, `product_card`, `buy_form`; theme document v12), and `StorefrontMoney` is `{ amountMinor, currency, formatted }`. Publishing a theme that draws with parts of an app that is inactive or no longer declares them is refused (`theme_apps_unavailable`, naming each app and its parts), and deactivating or uninstalling an app lists the live parts that would fall back to the store's design.
+An app can redesign the storefront without a fork: component sections, the header, footer and product card, ready-made templates, client islands and a stylesheet, compiled once by `pnpm plugin pack` and run at the edge as a pure function of the page's data. A paid store uploads and activates the app; a free store bundles it with `pnpm plugin add`. Component sections can place the store's own order form (`<OrderForm product={...} />`) for single-page order landings. [Build a theme](docs/themes.md) is the path and the portability rules, [docs/storefront.md](docs/storefront.md) the reference; `plugins/noor` is a complete theme and `apps/api/src/plugins/testing/apps/studio` a small example. Core section types, skin units and embed kinds are snake_case (`usp_strip`, `product_card`, `buy_form`; theme document v12), and `StorefrontMoney` is `{ amountMinor, currency, formatted }`. Publishing a theme that draws with parts of an app that is inactive or no longer declares them is refused (`theme_apps_unavailable`, naming each app and its parts), and deactivating or uninstalling an app lists the live parts that would fall back to the store's design.
 
 ## Providers
 

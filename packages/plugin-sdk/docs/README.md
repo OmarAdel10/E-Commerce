@@ -11,13 +11,17 @@ Start with the SDK's [quick start](../README.md). It shows how to scaffold an ap
 | [Apps](apps.md) | The manifest, every extension point, access and consent, the app lifecycle (install, activate, update, pause, uninstall, reinstall), the two loaders, signing and trust, limits, isolation, storage, routes, admin UI, jobs, events and webhooks, and what happens when something fails. |
 | [Commerce hooks](commerce-hooks.md) | How an app takes part in commerce: scopes and event payloads, provider ports, the checkout-function interface, the stable app API (`ctx.api.call`), deferred payment, line facts and refunds, the payment port's optional parts, purchase options, discount classes, writes that build a store, and what the contract seal promises. |
 | [Storefront](storefront.md) | Drawing on the storefront: sections, components, skins, templates, page presets, slots, settings, bindings, islands, `Deferred`, core embeds, testing, the packer and the budgets. |
+| [Build a theme](themes.md) | A theme that works on any store, not only yours: the mental model, the portability rules (store identity, links, merchant fields, empty stores, artwork rights, no-JavaScript controls, languages and logical CSS) with right and wrong examples, testing on three stores, and a release checklist. |
+| [llms.txt](llms.txt) | A one-page index of these guides and the rules, for AI coding tools. |
 
 ## Reading order
 
 1. The SDK [README](../README.md): build and test your first app.
 2. [Apps](apps.md): the manifest and the lifecycle. Every app needs this.
 3. [Commerce hooks](commerce-hooks.md) when your app reads or writes store data, runs at checkout or implements a provider.
-4. [Storefront](storefront.md) when your app draws on the storefront.
+4. [Build a theme](themes.md), then [Storefront](storefront.md), when your app draws on the storefront.
+
+Building with an AI agent? Every scaffolded app has an `AGENTS.md` with the rules and the checks to run; point other tools at [llms.txt](llms.txt).
 
 ## Where the contract lives
 
