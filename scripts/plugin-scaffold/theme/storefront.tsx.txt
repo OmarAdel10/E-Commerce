@@ -1,0 +1,140 @@
+import type { StorefrontSettingsOf } from "@scalius/plugin-sdk";
+import {
+  accountLink, asset, CartCount, defineStorefront, editable, Image, Island, Price, quickAdd, Slot, stickyHeader, t,
+  type FooterProps, type HeaderProps, type ProductCardProps, type SectionProps, type StorefrontProductCard, type StorefrontRenderContext,
+} from "@scalius/plugin-sdk/storefront";
+import type { manifest } from "./index";
+
+// Each part draws from the data the store hands it (the projection), never
+// from what one store happens to have:
+// - the store's name and logo come from data.store, its links from data.menu,
+//   data.routes and each product's own url;
+// - a part with nothing to show draws nothing (an empty store has no
+//   products, menu, logo or policies) and the store fills the gap;
+// - every word is in both languages (t), and the stylesheet uses logical
+//   properties (margin-inline, inset-inline-start) so right-to-left works;
+// - controls are real links and buttons that work before the island loads.
+
+type HeaderSettings = StorefrontSettingsOf<typeof manifest, "skin", "header">;
+type FooterSettings = StorefrontSettingsOf<typeof manifest, "skin", "footer">;
+type RowSettings = StorefrontSettingsOf<typeof manifest, "section", "product_row">;
+
+/** The store's logo, or its name when it has none: never a wordmark of your own. */
+function Brand({ store, home, eager }: { store: HeaderProps["data"]["store"]; home: string; eager?: boolean }) {
+  return (
+    <a class="__P__-brand" href={home} style={{ "--__P__-logo-width": `${store.logoWidth}px` }}>
+      {store.logo ? <Image image={store.logo} alt={store.name} loading={eager ? "eager" : "lazy"} /> : <span>{store.name}</span>}
+    </a>
+  );
+}
+
+function Header({ data, settings, context }: HeaderProps<HeaderSettings>) {
+  const menu = t(context, { en: "Menu", bn: "মেনু" });
+  const search = t(context, { en: "Search", bn: "খুঁজুন" });
+  return (
+    <header class="__P__-header" {...(settings.sticky ? stickyHeader() : {})}>
+      <div class="__P__-header-bar">
+        <Brand store={data.store} home={data.routes.home} eager />
+        {/* The merchant's own menu. A new store has none: draw nothing, never links of your own. */}
+        {data.menu.length > 0 && (
+          <>
+            <nav class="__P__-nav" aria-label={menu}>
+              <ul>{data.menu.map((item) => <li><a href={item.url}>{item.title}</a></li>)}</ul>
+            </nav>
+            <Island name="menu" hydrate="interaction" class="__P__-menu">
+              {/* On phones: <details> opens and closes without JavaScript; the island only adds Escape and close-on-choose. */}
+              <details>
+                <summary>{menu}</summary>
+                <ul>{data.menu.map((item) => <li><a href={item.url}>{item.title}</a></li>)}</ul>
+              </details>
+            </Island>
+          </>
+        )}
+        <form class="__P__-search" action={data.routes.search} method="get" role="search">
+          <label>
+            <span class="sr-only">{search}</span>
+            <input type="search" name={data.searchParam} placeholder={search} />
+          </label>
+          <button type="submit">{search}</button>
+        </form>
+        <a class="__P__-action" href={data.routes.account} {...accountLink()}>{t(context, { en: "Account", bn: "অ্যাকাউন্ট" })}</a>
+        <a class="__P__-action" href={data.routes.cart}>{t(context, { en: "Cart", bn: "কার্ট" })} <CartCount /></a>
+        <Slot name="header.actions" />
+      </div>
+    </header>
+  );
+}
+
+function Footer({ data, settings, context }: FooterProps<FooterSettings>) {
+  const tagline = settings.tagline.trim();
+  const contact = [data.store.phone, data.store.email, data.store.address].filter((value): value is string => Boolean(value));
+  return (
+    <footer class="__P__-footer">
+      <div class="__P__-footer-brand">
+        <Brand store={{ ...data.store, logo: data.store.footerLogo ?? data.store.logo }} home={data.routes.home} />
+        {tagline && <p>{tagline}</p>}
+        {contact.length > 0 && <ul class="__P__-contact">{contact.map((line) => <li>{line}</li>)}</ul>}
+      </div>
+      {data.menus.map((menu) => (
+        <nav class="__P__-footer-menu" aria-label={menu.title}>
+          <h2>{menu.title}</h2>
+          <ul>{menu.items.map((item) => <li><a href={item.url}>{item.title}</a></li>)}</ul>
+        </nav>
+      ))}
+      <Slot name="footer.columns" />
+      <p class="__P__-legal">
+        © {data.year} {data.store.name}
+        {data.policies.map((policy) => <> · <a href={policy.url}>{policy.title}</a></>)}
+      </p>
+    </footer>
+  );
+}
+
+/** One product card: the product's own photo (or neutral placeholder art), title, price and quick add. */
+function ProductTile({ product, context, eager }: { product: StorefrontProductCard; context: StorefrontRenderContext; eager: boolean }) {
+  return (
+    <article class="__P__-card">
+      <Slot name="product_card.badges" />
+      <a class="__P__-card-photo" href={product.url}>
+        {product.image
+          ? <Image image={product.image} sizes="(min-width: 64rem) 25vw, 50vw" loading={eager ? "eager" : "lazy"} />
+          : <img src={asset(context, "placeholder.svg")} alt="" width={400} height={400} loading="lazy" />}
+      </a>
+      <h3><a href={product.url}>{product.title}</a></h3>
+      <Price price={product.price} compareAt={product.compareAt} from={product.priceVaries} context={context} />
+      {product.soldOut
+        ? <p class="__P__-sold-out">{t(context, { en: "Sold out", bn: "বিক্রি শেষ" })}</p>
+        // A link that adds in place when JavaScript runs and opens the product page when it does not.
+        : <a class="__P__-add" {...quickAdd(product)}>{product.quickAdd ? t(context, { en: "Add to cart", bn: "কার্টে যোগ করুন" }) : t(context, { en: "Choose options", bn: "অপশন বাছুন" })}</a>}
+      <Slot name="product_card.meta" />
+    </article>
+  );
+}
+
+function Card({ data, context }: ProductCardProps) {
+  return <ProductTile product={data.product} context={context} eager={data.aboveFold} />;
+}
+
+function ProductRow({ settings, context }: SectionProps<RowSettings>) {
+  // A store with no products yet: draw nothing rather than an empty shell.
+  if (settings.products.length === 0) return null;
+  const heading = settings.heading.trim();
+  return (
+    <section class="__P__-row">
+      {(heading || settings.link) && (
+        <div class="__P__-row-head">
+          {heading && <h2 {...editable(context, "heading")}>{heading}</h2>}
+          {settings.link && settings.link_label.trim() && <a href={settings.link}>{settings.link_label}</a>}
+        </div>
+      )}
+      <div class="__P__-row-grid">
+        {settings.products.map((product, index) => <ProductTile product={product} context={context} eager={index < 2} />)}
+      </div>
+    </section>
+  );
+}
+
+export default defineStorefront({
+  sections: { product_row: ProductRow },
+  skins: { header: Header, footer: Footer, card: Card },
+});

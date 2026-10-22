@@ -38,6 +38,8 @@ export type PluginErrorCode =
   | "signature_signer_changed"
   /** An install whose id has data kept from another developer's release (delete it first). */
   | "retained_data_other_developer"
+  /** Deleting an app's data refused: the draft or live theme shows one of its product fields on cards. */
+  | "custom_field_in_theme"
   | "installation_incompatible"
   | "installation_sandbox_required"
   | "installation_source_conflict";
@@ -97,6 +99,7 @@ const STATUS: Partial<Record<PluginErrorCode, number>> = {
   "signature_invalid": 422,
   "signature_signer_changed": 409,
   "retained_data_other_developer": 409,
+  "custom_field_in_theme": 409,
   "installation_incompatible": 409,
   "installation_sandbox_required": 409,
   "installation_source_conflict": 409,

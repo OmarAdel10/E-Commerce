@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { bundlePlugin, loadPluginContract, packStorefront, pluginPackageDir, resolvePluginEntry, root, sealBundle } from "./plugin-build.mjs";
+import { bundlePlugin, loadPluginContract, packStorefront, pluginPackageDir, resolvePluginEntry, root, sealBundle, smokeSettings } from "./plugin-build.mjs";
 import { BUNDLE_MAX_BYTES, shownPath } from "./plugin-registry.mjs";
 
 export const BUNDLE_WARN_BYTES = 1024 * 1024;
@@ -120,8 +120,9 @@ export async function validatePlugin(directory) {
   // The storefront part, exactly as pack builds it: compile the module, islands
   // and stylesheet, check public files and smoke-render every component with
   // its defaults (a skin that breaks its target's embed rule fails here, not at pack).
+  let files = null;
   try {
-    const files = await packStorefront(contract, manifest, directory);
+    files = await packStorefront(contract, manifest, directory);
     const { sections, components, skins, islands } = manifest.storefront;
     const parts = [
       ["section", sections.length],
@@ -139,6 +140,13 @@ export async function validatePlugin(directory) {
   // Card fields a template names: a store keeps only the ones it has, so these warn, never fail.
   for (const note of contract.storefrontTemplateCardFieldNotes(manifest)) add(note.level, "Template card fields", note.message);
 
+  // Whether the storefront part works on any store, not only the developer's (docs/themes.md).
+  if (files) {
+    const notes = await portabilityNotes(contract, manifest, files);
+    for (const note of notes) add(note.level, PORTABILITY_LABELS[note.rule], `${note.where}: ${note.message}`);
+    if (notes.length === 0 && files.length > 0) add("pass", "Works on any store", "no store-specific links, merchant fields, fixed store name or third-party artwork");
+  }
+
   // The packed bundle also carries the image digests; their size is fixed, so measure with placeholders.
   const size = Buffer.byteLength(sealBundle(bundled, assets));
   if (size > BUNDLE_MAX_BYTES) add("fail", "Bundle size", `${mib(size)} is over the 16 MiB a registry lists.`);
@@ -146,6 +154,75 @@ export async function validatePlugin(directory) {
   else add("pass", "Bundle size", mib(size));
 
   return result(manifest.id);
+}
+
+const PORTABILITY_LABELS = {
+  catalog_link: "Catalogue links",
+  page_link: "Page links",
+  header_link: "Header links",
+  merchant_field: "Merchant fields",
+  fixed_identity: "Store name and logo",
+  artwork_size: "Artwork size",
+  artwork_mark: "Artwork rights",
+};
+
+/** A store name and logo no fixture uses, so a skin that draws them shows them and a fixed wordmark does not. */
+const PROBE_STORE = "Probe Store Kestrel";
+const PROBE_LOGO = { url: "https://media.example.com/probe-store-logo.png", srcset: "https://media.example.com/probe-store-logo.png 400w", width: 400, height: 120, alt: PROBE_STORE };
+
+/**
+ * Header and footer skins that draw no store identity: rendered for a store
+ * with no logo (its name should show) and one with a logo (the logo or the
+ * name should show). A fixed wordmark shows the same on every store.
+ */
+function identityNotes(contract, manifest, module) {
+  const skins = manifest.storefront.skins.filter((skin) => skin.target === "header" || skin.target === "footer");
+  if (skins.length === 0 || !module) return [];
+  const job = (skin, logo) => {
+    const data = contract.fixtureSkinData(skin.target);
+    const store = { ...data.store, name: PROBE_STORE, logo, ...(skin.target === "footer" ? { footerLogo: null } : {}) };
+    return { id: `${skin.id}:${logo ? "logo" : "name"}`, kind: "skin", target: skin.target, component: skin.id, settings: smokeSettings(contract, skin.settings), data: { ...data, store } };
+  };
+  const jobs = skins.flatMap((skin) => [job(skin, null), job(skin, PROBE_LOGO)]);
+  let results;
+  try {
+    results = module.render({ abi: contract.STOREFRONT_COMPONENT_ABI, context: contract.fixtureContext({ store: { ...contract.fixtureContext().store, name: PROBE_STORE } }), jobs }).results;
+  } catch {
+    return [];
+  }
+  const html = new Map(results.filter((result) => "html" in result).map((result) => [result.id, result.html]));
+  const notes = [];
+  for (const skin of skins) {
+    const plain = html.get(`${skin.id}:name`);
+    const branded = html.get(`${skin.id}:logo`);
+    if (plain === undefined || branded === undefined) continue;
+    const showsName = plain.includes(PROBE_STORE);
+    const showsLogo = branded.includes(PROBE_LOGO.url) || branded.includes(PROBE_STORE);
+    if (showsName && showsLogo) continue;
+    notes.push({
+      level: "warn",
+      rule: "fixed_identity",
+      where: `skin ${skin.id} (${skin.target})`,
+      message: !showsName && !showsLogo
+        ? "draws neither the store's name nor its logo, so every store shows the same wordmark (or none). Draw data.store.logo with <Image>, falling back to data.store.name."
+        : !showsName
+          ? "draws nothing for a store without a logo. Fall back to data.store.name when data.store.logo is null."
+          : "ignores the store's logo. Draw data.store.logo with <Image> when the store has one, else data.store.name.",
+    });
+  }
+  return notes;
+}
+
+async function portabilityNotes(contract, manifest, files) {
+  const publicFiles = files.filter((file) => file.path.startsWith("public/")).map((file) => ({ path: file.path.slice("public/".length), bytes: file.bytes.byteLength }));
+  const moduleFile = files.find((file) => file.path === contract.STOREFRONT_MODULE_FILE);
+  const notes = contract.storefrontPortabilityNotes(manifest, { publicFiles });
+  if (!moduleFile) return notes;
+  const text = Buffer.from(moduleFile.bytes).toString("utf8");
+  notes.push(...contract.storefrontModuleFieldNotes(text, manifest.id));
+  const loaded = await import(`data:text/javascript;base64,${Buffer.from(moduleFile.bytes).toString("base64")}`);
+  notes.push(...identityNotes(contract, manifest, loaded.default));
+  return notes;
 }
 
 const MARK = { pass: "✓", fail: "✗", warn: "!", note: "-" };

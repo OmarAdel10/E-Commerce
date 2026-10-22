@@ -54,6 +54,7 @@ import { appJobRowsCondition } from "./app-jobs";
 import { releaseHeldPluginDeliveriesStatement } from "./held-deliveries";
 import {
   appDataDeleteStatements,
+  assertAppDataDeletable,
   forgetRetainedAppStatement,
   readRetainedApp,
   removedAppDataOf,
@@ -589,6 +590,8 @@ export async function installPlugin(db: Database, input: InstallPluginInput): Pr
     ] as never);
   } catch (error) {
     if (isPrimaryKeyConflict(error)) throw new PluginError("installation_exists", `Plugin ${manifest.id} is already installed.`);
+    // The old release's leftovers are deleted only while the theme shows none of its fields on cards.
+    if (kept && !retained) await assertAppDataDeletable(db, manifest.id);
     throw error;
   }
   await syncInstallationObjects(db, manifest.id, manifest);
@@ -1019,6 +1022,8 @@ export async function uninstallPlugin(
   const hadChannels = (installed?.manifest.salesChannels.length ?? 0) > 0;
   // Read here: a query builder is a thenable, so the statement is built, never awaited, below.
   const previousRetained = options.keepData ? (await readRetainedApp(db, pluginId))?.app?.revision ?? 0 : 0;
+  // Deleting the data deletes the app's custom fields: refused while the theme's cards show one.
+  if (!options.keepData) await assertAppDataDeletable(db, pluginId);
   const retain = () => {
     const settings = installed?.storedSettings ?? {};
     return retainAppStatement(db, pluginId, {
@@ -1062,6 +1067,8 @@ export async function uninstallPlugin(
     ] as never);
   } catch (error) {
     if (isBatchGuardError(error, REVISION_GUARD)) await requireRevision(db, pluginId, options.expectedRevision, []);
+    // A theme saved since the check above that shows one of the app's fields on cards.
+    if (!options.keepData) await assertAppDataDeletable(db, pluginId);
     throw error;
   }
 }

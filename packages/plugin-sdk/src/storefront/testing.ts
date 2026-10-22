@@ -16,6 +16,7 @@ import {
   type StorefrontComponentTarget,
   type StorefrontFooterData,
   type StorefrontHeaderData,
+  type StorefrontImage,
   type StorefrontListingPage,
   type StorefrontModule,
   type StorefrontProductCard,
@@ -30,6 +31,7 @@ import {
   type StorefrontSkinnableSection,
   type StorefrontSkinTarget,
   type StorefrontSkinUnit,
+  type StorefrontTile,
 } from "@scalius/shared/plugins/storefront-protocol";
 import { splitStorefrontEmbeds } from "@scalius/shared/plugins/storefront-embeds";
 import { storefrontSectionDefault, storefrontVisibleSection } from "@scalius/shared/storefront-theme/sections";
@@ -200,18 +202,25 @@ export function fixtureSectionSkinData<Type extends StorefrontSkinnableSection>(
   type: Type,
   settings: Partial<SectionSkinSettingsOf<Type>> = {},
 ): StorefrontSectionSkinData<SectionSkinSettingsOf<Type>> {
+  return sectionSkinData(type, settings, fixtureSectionResolver, [{ id: "brand_1", title: "Acme", url: "/brands/acme", image: fixtureProductCard().image, cards: [] }]);
+}
+
+function sectionSkinData<Type extends StorefrontSkinnableSection>(
+  type: Type,
+  settings: Partial<SectionSkinSettingsOf<Type>>,
+  resolver: CoreSectionResolver,
+  brands: StorefrontTile[],
+): StorefrontSectionSkinData<SectionSkinSettingsOf<Type>> {
   if (!Object.hasOwn(STOREFRONT_SECTION_SKIN_PROJECTIONS, type)) throw new Error(`${type} is not a core section a skin can draw.`);
   const section = storefrontVisibleSection(storefrontSectionDefault(type, type));
-  const projection = coreSectionSkinSettings(section, fixtureSectionResolver);
+  const projection = coreSectionSkinSettings(section, resolver);
   return {
     type,
     version: STOREFRONT_SECTION_SKIN_PROJECTIONS[type],
     settings: { ...projection, ...settings } as SectionSkinSettingsOf<Type>,
     // A brand wall's brands, and a collections section's fallback products.
-    tiles: type === "brand_wall"
-      ? [{ id: "brand_1", title: "Acme", url: "/brands/acme", image: fixtureProductCard().image, cards: [] }]
-      : [],
-    cards: type === "collections" ? fixtureSectionResolver.products({} as never).cards : [],
+    tiles: type === "brand_wall" ? brands : [],
+    cards: type === "collections" ? resolver.products({} as never).cards : [],
   };
 }
 
@@ -231,6 +240,185 @@ export function fixtureSkinData(target: StorefrontSkinTarget): StorefrontSkinJob
     case "product_main": return fixtureProductPage();
     case "listing_main": return fixtureListingPage();
     default: return fixtureSectionSkinData(target.slice("section:".length) as StorefrontSkinnableSection) as StorefrontSectionSkinData;
+  }
+}
+
+// ── Fixture stores ──────────────────────────────────────────────────────
+
+/**
+ * The stores `pnpm plugin preview` renders an app on, so a theme that works
+ * only on its developer's store shows its breakage on the developer's
+ * machine: `sample` (the fixtures above), `empty` (a new store: no products,
+ * categories, menus, logo, policies or contact details, and a bare product
+ * where one must exist) and `other` (another shop with its own name, logo,
+ * catalogue, brand and currency).
+ */
+export const FIXTURE_STORES = ["sample", "empty", "other"] as const;
+export type FixtureStoreName = (typeof FIXTURE_STORES)[number];
+
+export interface FixtureStore {
+  name: FixtureStoreName;
+  /** One line for a preview heading. */
+  description: string;
+  context(overrides?: Partial<StorefrontRenderContext>): StorefrontRenderContext;
+  /** What a `products` setting resolves to in this store. */
+  productCards(): StorefrontProductCard[];
+  /** What an `image` setting resolves to in this store. */
+  image(): StorefrontImage | null;
+  productPage(overrides?: Partial<StorefrontProductPage["product"]>): StorefrontProductPage;
+  /** The projection a skin target gets in this store. */
+  skinData(target: StorefrontSkinTarget): StorefrontSkinJob["data"];
+}
+
+const SAMPLE_STORE: FixtureStore = {
+  name: "sample",
+  description: "A sample shop: Acme Store, clothing, prices in BDT.",
+  context: (overrides) => fixtureContext(overrides),
+  productCards: () => fixtureSectionResolver.products({} as never).cards,
+  image: () => fixtureProductCard().image,
+  productPage: (overrides) => fixtureProductPage(overrides),
+  skinData: (target) => fixtureSkinData(target),
+};
+
+/** A product with nothing optional: no photo, price cut, rating, brand, description or options. */
+function bareCard(overrides: Partial<StorefrontProductCard> = {}): StorefrontProductCard {
+  return fixtureProductCard({
+    id: "prod_bare", title: "Untitled product", url: "/products/untitled-product",
+    compareAt: null, percentOff: null, image: null, hoverImage: null, rating: null, quickAdd: true, ...overrides,
+  });
+}
+
+const emptySectionResolver: CoreSectionResolver = {
+  image: () => null,
+  products: () => ({ title: "", url: null, cards: [] }),
+  tiles: () => [],
+  promotion: () => null,
+  deliveryFacts: () => [],
+  objectField: () => [],
+};
+
+const EMPTY_STORE: FixtureStore = {
+  name: "empty",
+  description: "A new store: no products, categories, menus, logo, policies or contact details.",
+  context: (overrides) => fixtureContext({ store: { name: "New Store", currency: "BDT", locale: "en-BD", language: "en", timeZone: "Asia/Dhaka" }, ...overrides }),
+  productCards: () => [],
+  image: () => null,
+  productPage: (overrides) => {
+    const card = bareCard();
+    return {
+      product: {
+        id: card.id, title: card.title, url: card.url, brand: null, descriptionHtml: "", media: [],
+        price: card.price, compareAt: null, priceVaries: false, availability: "in_stock", rating: null,
+        options: [], variants: [{ id: "sku_bare", title: card.title, options: [], price: card.price, compareAt: null, available: true, image: null }],
+        fields: {}, breadcrumbs: [{ title: "Home", url: "/" }, { title: card.title, url: card.url }],
+        ...overrides,
+      },
+    };
+  },
+  skinData: (target) => {
+    switch (target) {
+      case "header": return fixtureHeaderData({ store: { name: "New Store", url: "/", logo: null, logoWidth: 140 }, menu: [], categories: [], announcement: null, searchScopes: [] });
+      case "footer": return fixtureFooterData({
+        store: { name: "New Store", url: "/", logo: null, logoWidth: 140, footerLogo: null, phone: null, email: null, address: null, social: [] },
+        menus: [], policies: [], newsletter: false,
+      });
+      case "product_card": return { product: bareCard(), position: 0, aboveFold: true };
+      case "product_main": return EMPTY_STORE.productPage();
+      case "listing_main": return fixtureListingPage({ title: "All products", descriptionHtml: null, cards: [], total: 0, children: [] });
+      default: return sectionSkinData(target.slice("section:".length) as StorefrontSkinnableSection, {}, emptySectionResolver, []) as StorefrontSectionSkinData;
+    }
+  },
+};
+
+const usd = (amountMinor: number) => ({ amountMinor, currency: "USD", formatted: `$${(amountMinor / 100).toFixed(2)}` });
+const otherImage = (name: string, alt: string): StorefrontImage => ({
+  url: `https://media.example.com/harbor/${name}-640.webp`,
+  srcset: `https://media.example.com/harbor/${name}-640.webp 640w, https://media.example.com/harbor/${name}-1280.webp 1280w`,
+  width: 1280, height: 1280, alt,
+});
+const OTHER_LOGO: StorefrontImage = { url: "https://media.example.com/harbor/logo.png", srcset: "https://media.example.com/harbor/logo.png 320w", width: 320, height: 96, alt: "Harbor & Pine" };
+
+function otherCard(overrides: Partial<StorefrontProductCard> = {}): StorefrontProductCard {
+  return fixtureProductCard({
+    id: "prod_skillet", title: "Cast-iron skillet", url: "/products/cast-iron-skillet",
+    price: usd(4800), compareAt: null, percentOff: null, priceVaries: true,
+    image: otherImage("skillet", "Cast-iron skillet"), rating: { average: 4.9, count: 312 }, quickAdd: false, needsOptions: true,
+    ...overrides,
+  });
+}
+
+function otherCards(): StorefrontProductCard[] {
+  return [
+    otherCard(),
+    otherCard({ id: "prod_board", title: "End-grain cutting board, walnut", url: "/products/walnut-board", price: usd(7200), compareAt: usd(9000), percentOff: 20, priceVaries: false, image: otherImage("board", "Walnut cutting board"), quickAdd: true, needsOptions: false }),
+    otherCard({ id: "prod_kettle", title: "Enamel kettle", url: "/products/enamel-kettle", price: usd(3900), priceVaries: false, image: otherImage("kettle", "Enamel kettle"), rating: null, soldOut: true, quickAdd: false, needsOptions: false }),
+  ];
+}
+
+const otherSectionResolver: CoreSectionResolver = {
+  image: (mediaId) => otherImage(`media-${mediaId}`, "Kitchen shelf"),
+  products: () => ({ title: "Kitchen", url: "/categories/kitchen", cards: otherCards() }),
+  tiles: (kind, ids) => ids.map((id, index) => ({
+    id, title: kind === "category" ? ["Kitchen", "Garden", "Outdoor"][index % 3]! : `Season ${index + 1}`,
+    url: `/${kind === "category" ? "categories" : "collections"}/${id}`, image: otherImage(`tile-${index}`, "Tile"),
+    cards: kind === "collection" ? [otherCard()] : [],
+  })),
+  promotion: () => ({ endsAt: "2026-11-30T05:00:00.000Z" }),
+  deliveryFacts: () => [{ title: "Ships in 2 days", detail: "Free over $75" }],
+  objectField: () => [],
+};
+
+const OTHER_STORE: FixtureStore = {
+  name: "other",
+  description: "Another shop: Harbor & Pine, kitchenware, a logo, prices in USD.",
+  context: (overrides) => fixtureContext({ store: { name: "Harbor & Pine", currency: "USD", locale: "en-US", language: "en", timeZone: "America/New_York" }, ...overrides }),
+  productCards: otherCards,
+  image: () => otherImage("hero", "Kitchen shelf"),
+  productPage: (overrides) => {
+    const card = otherCard();
+    return {
+      product: {
+        id: card.id, title: card.title, url: card.url, brand: { title: "Harbor Goods", url: "/brands/harbor-goods" },
+        descriptionHtml: "<p>Pre-seasoned and oven-safe to 500°F.</p>", media: [card.image!, otherImage("skillet-side", "Skillet from the side")],
+        price: card.price, compareAt: null, priceVaries: true, availability: "in_stock", rating: card.rating,
+        options: [{ name: "Diameter", values: [{ label: "10 in", swatch: null }, { label: "12 in", swatch: null }] }],
+        variants: [
+          { id: "sku_10", title: "10 in", options: ["10 in"], price: usd(4800), compareAt: null, available: true, image: null },
+          { id: "sku_12", title: "12 in", options: ["12 in"], price: usd(5800), compareAt: null, available: true, image: null },
+        ],
+        fields: {}, breadcrumbs: [{ title: "Home", url: "/" }, { title: "Kitchen", url: "/categories/kitchen" }, { title: card.title, url: card.url }],
+        ...overrides,
+      },
+    };
+  },
+  skinData: (target) => {
+    switch (target) {
+      case "header": return fixtureHeaderData({
+        store: { name: "Harbor & Pine", url: "/", logo: OTHER_LOGO, logoWidth: 180 },
+        menu: [{ title: "Kitchen", url: "/categories/kitchen", children: [] }, { title: "Garden", url: "/categories/garden", children: [] }, { title: "Journal", url: "/blog", children: [] }],
+        categories: [{ title: "Kitchen", url: "/categories/kitchen", children: [] }, { title: "Garden", url: "/categories/garden", children: [] }],
+        announcement: { text: "Free shipping over $75", url: "/categories/kitchen" },
+      });
+      case "footer": return fixtureFooterData({
+        store: { name: "Harbor & Pine", url: "/", logo: OTHER_LOGO, logoWidth: 180, footerLogo: null, phone: "+1 207 555 0142", email: "hello@harborpine.example", address: "Portland, Maine", social: [{ network: "instagram", url: "https://instagram.com/harborpine" }] },
+        menus: [{ title: "Shop", items: [{ title: "Kitchen", url: "/categories/kitchen", children: [] }] }],
+        policies: [{ title: "Returns", url: "/policies/returns" }],
+      });
+      case "product_card": return { product: otherCard(), position: 0, aboveFold: true };
+      case "product_main": return OTHER_STORE.productPage();
+      case "listing_main": return fixtureListingPage({ title: "Kitchen", descriptionHtml: "<p>Tools that last.</p>", cards: otherCards(), total: 3, children: [] });
+      default: return sectionSkinData(target.slice("section:".length) as StorefrontSkinnableSection, {}, otherSectionResolver, [{ id: "brand_h", title: "Harbor Goods", url: "/brands/harbor-goods", image: OTHER_LOGO, cards: [] }]) as StorefrontSectionSkinData;
+    }
+  },
+};
+
+/** One of the preview's fixture stores. Render your skins and sections over all three in your own tests too. */
+export function fixtureStore(name: FixtureStoreName): FixtureStore {
+  switch (name) {
+    case "sample": return SAMPLE_STORE;
+    case "empty": return EMPTY_STORE;
+    case "other": return OTHER_STORE;
+    default: throw new Error(`${String(name)} is not a fixture store (${FIXTURE_STORES.join(", ")}).`);
   }
 }
 

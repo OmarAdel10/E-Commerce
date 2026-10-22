@@ -1,0 +1,43 @@
+// The theme on the three stores `pnpm plugin preview` renders: a sample shop,
+// an empty new store and another shop with its own name, logo, catalogue and
+// currency. A part that only works on your own store fails here.
+import { describe, expect, it } from "vitest";
+import type { StorefrontFooterData, StorefrontHeaderData, StorefrontProductCardData } from "@scalius/plugin-sdk/storefront";
+import { FIXTURE_STORES, fixtureStore, renderFooter, renderHeader, renderProductCard, renderSection, storefrontShown } from "@scalius/plugin-sdk/storefront/testing";
+import { manifest } from "./index";
+import storefront from "./storefront";
+
+const islands = manifest.storefront.islands.map((island) => island.name);
+
+describe.each(FIXTURE_STORES)("on the %s store", (name) => {
+  const store = fixtureStore(name);
+  const context = store.context();
+  const header = store.skinData("header") as StorefrontHeaderData;
+  const footer = store.skinData("footer") as StorefrontFooterData;
+
+  it("draws the store's own logo, or its name, in the header and footer", () => {
+    const top = renderHeader(storefront, "header", { sticky: true }, header, { islands, context });
+    expect(top).toContain(header.store.logo ? header.store.logo.url : header.store.name.replaceAll("&", "&amp;"));
+    const bottom = renderFooter(storefront, "footer", { tagline: "" }, footer, { context });
+    expect(bottom).toContain(footer.store.name.replaceAll("&", "&amp;"));
+  });
+
+  it("links only the store's own menu and core routes", () => {
+    const html = renderHeader(storefront, "header", { sticky: false }, header, { islands, context });
+    const links = [...html.matchAll(/href="([^"]*)"/g)].map((match) => match[1]);
+    const allowed = new Set([header.routes.home, header.routes.account, header.routes.cart, ...header.menu.map((item) => item.url)]);
+    expect(links.filter((link) => !allowed.has(link))).toEqual([]);
+    // A new store has no menu: no menu markup at all.
+    if (header.menu.length === 0) expect(html).not.toContain("<details");
+  });
+
+  it("draws a card for a product with or without a photo, and nothing for a row with no products", () => {
+    const { product } = store.skinData("product_card") as StorefrontProductCardData;
+    const card = renderProductCard(storefront, "card", {}, product, { context });
+    expect(card).toContain(product.url);
+    if (!product.image) expect(card).toContain("public/placeholder.svg");
+    const row = renderSection(storefront, "product_row", { heading: "New arrivals", products: store.productCards(), link: "", link_label: "Shop all" }, { context });
+    if (store.productCards().length === 0) expect(row).toBe("");
+    else expect(storefrontShown(row, manifest.id).dropped).toBe(0);
+  });
+});

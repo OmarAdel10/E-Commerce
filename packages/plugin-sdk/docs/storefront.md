@@ -2,7 +2,7 @@
 
 An app can redesign a store without a fork: new sections, components in slots and app pages, skins of the header, footer, product card, product page, listings and any core section, a single-page order landing, and ready-made templates that apply a whole look in one click. The merchant activates the app, picks its template in the theme editor and edits every part like the built-in ones.
 
-This page is the storefront reference. [Apps](apps.md) covers the manifest and lifecycle; Buyer UI on private pages (cart, checkout, account) is in [Commerce hooks](commerce-hooks.md#buyer-ui-extensions). The reference theme is `plugins/noor` in the Scalius repository; `plugins/volt` and `plugins/bazaar` are two more.
+This page is the storefront reference. Building a theme? Read [Build a theme](themes.md) first: it is the path through this page and the rules that make a theme work on any store, not only yours. [Apps](apps.md) covers the manifest and lifecycle; Buyer UI on private pages (cart, checkout, account) is in [Commerce hooks](commerce-hooks.md#buyer-ui-extensions). The reference theme is `plugins/noor` in the Scalius repository; `plugins/volt` and `plugins/bazaar` are two more.
 
 The contract is `@scalius/shared/plugins/storefront-protocol` (data shapes, render protocol, limits) and `@scalius/shared/plugins/storefront-components` (manifest declarations). The SDK entries are `@scalius/plugin-sdk/storefront`, `@scalius/plugin-sdk/storefront/testing` and `@scalius/plugin-sdk/island`.
 
@@ -301,10 +301,10 @@ export default defineIsland<{ step: number }>((element, props, context) => {
 ## Build, test, preview
 
 ```sh
-pnpm plugin create acme.studio --dir ~/code/acme-studio
+pnpm plugin create acme.studio --theme --dir ~/code/acme-studio   # the theme starter (drop --theme for a general app)
 npm test                                              # vitest with @scalius/plugin-sdk/storefront/testing
-pnpm plugin validate ~/code/acme-studio               # every store check, including a smoke render
-pnpm plugin preview ~/code/acme-studio                # dist/preview.html with fixture data
+pnpm plugin validate ~/code/acme-studio               # every store check, including a smoke render and portability
+pnpm plugin preview ~/code/acme-studio                # dist/preview.html on a sample, an empty and another store
 pnpm plugin pack ~/code/acme-studio --key <folder>    # dist/ and the signed upload ZIP
 ```
 
@@ -320,12 +320,13 @@ pnpm plugin pack ~/code/acme-studio --key <folder>    # dist/ and the signed upl
 - `checkSkinHtml(target, html)`: the problems that would make the store draw the core unit.
 - `storefrontShown(html, appId)`: what the store shows of your markup after its output check, and how many elements and attributes it `dropped`. Assert `dropped` is 0.
 - Fixtures: `fixtureContext`, `fixtureProductCard`, `fixtureProductPage`, `fixtureListingPage`, `fixtureHeaderData`, `fixtureFooterData`, `fixtureSkinData(target)` and `fixtureSectionSkinData(type)`. `fixtureSectionSkinData` returns a complete projection matching the sealed `StorefrontSectionSkinSettings[type]` for that section type, so a correctly typed section skin passes `validate`.
+- Fixture stores: `fixtureStore(name)` for each of `FIXTURE_STORES` (`sample`, `empty`, `other`) gives that store's `context()`, `productCards()`, `image()`, `productPage()` and `skinData(target)`, the data `pnpm plugin preview` renders with. Loop your skin and section tests over all three ([Build a theme](themes.md#test-on-more-than-one-store)).
 
 These are author checks, not proof of visual correctness. Exercise the composed page in a local store too.
 
 ### Preview
 
-`pnpm plugin preview <app> [--out <html>] [--fixture <json>]` packs the app and writes a static preview with SDK fixtures and the real output check. `pnpm plugin dev <app>` watches, repacks and refreshes it. A view that renders nothing says so. The fixture fills what defaults leave out, keyed by view: `section:<type>`, `component:<type>`, `skin:<id>`.
+`pnpm plugin preview <app> [--store sample|empty|other] [--out <html>] [--fixture <json>]` packs the app and writes a static preview with SDK fixtures and the real output check, on three fixture stores by default: a sample shop, an empty new store (no products, categories, menus, logo, policies or contact details) and another shop with its own name, logo, catalogue, brand and currency. `--store` renders one. `pnpm plugin dev <app>` watches, repacks and refreshes it. A view that renders nothing says so, per store. The fixture fills what defaults leave out, keyed by view: `section:<type>`, `component:<type>`, `skin:<id>`.
 
 ```json
 {

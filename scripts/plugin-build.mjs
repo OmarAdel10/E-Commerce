@@ -155,8 +155,9 @@ export async function loadPluginContract() {
         'export * from "@scalius/shared/plugins";',
         'export { checkPluginAsset, checkStorefrontPublicFile } from "@scalius/shared/plugins/assets";',
         'export { storefrontTemplateCardFieldNotes } from "@scalius/shared/plugins/storefront-template-fields";',
+        'export { storefrontModuleFieldNotes, storefrontPortabilityNotes } from "@scalius/shared/plugins/storefront-portability";',
         'export { storefrontDefinitionOf } from "./src/storefront/define";',
-        'export { checkSkinHtml, checkStorefrontHeaderHtml, fixtureContext, fixtureProductCard, fixtureProductPage, fixtureSkinData } from "./src/storefront/testing";',
+        'export { checkSkinHtml, checkStorefrontHeaderHtml, FIXTURE_STORES, fixtureContext, fixtureProductCard, fixtureProductPage, fixtureSkinData, fixtureStore } from "./src/storefront/testing";',
       ].join("\n"),
       resolveDir: join(root, "packages/plugin-sdk"),
       loader: "ts",
@@ -298,9 +299,10 @@ function storefrontFile(contract, path, bytes) {
 
 /**
  * Settings for a smoke render at pack time: each field's default (or, for a
- * required field, a fixture value), images and products from the SDK's fixtures.
+ * required field, a fixture value), images and products from the SDK's fixtures
+ * (`store`: one of its fixture stores, `fixtureStore(name)`; default the sample).
  */
-export function smokeSettings(contract, schema) {
+export function smokeSettings(contract, schema, store = null) {
   const stored = {};
   const item = (fields) => Object.fromEntries(fields.map((field) => [field.key, fixtureValue(field)]));
   function fixtureValue(field) {
@@ -324,10 +326,12 @@ export function smokeSettings(contract, schema) {
     if (field.type === "secret") continue;
     if (field.required || field.type === "list") stored[field.key] = fixtureValue(field);
   }
-  return contract.resolveStorefrontSettings(schema, stored, {
-    image: () => contract.fixtureProductCard().image,
-    products: () => [contract.fixtureProductCard(), contract.fixtureProductCard({ id: "prod_2", quickAdd: false, compareAt: null })],
-  });
+  return contract.resolveStorefrontSettings(schema, stored, store
+    ? { image: () => store.image(), products: () => store.productCards() }
+    : {
+      image: () => contract.fixtureProductCard().image,
+      products: () => [contract.fixtureProductCard(), contract.fixtureProductCard({ id: "prod_2", quickAdd: false, compareAt: null })],
+    });
 }
 
 /**

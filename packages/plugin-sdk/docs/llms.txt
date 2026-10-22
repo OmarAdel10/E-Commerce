@@ -1,0 +1,40 @@
+# Scalius app SDK (@scalius/plugin-sdk)
+
+> Build apps and themes for Scalius Commerce stores. An app is an npm package with a manifest (`defineManifest`) and handlers (`definePlugin`); a theme is an app whose manifest declares storefront parts. One app runs in many merchants' stores, so it must work on a store its author has never seen. Plugin API version 2026-10; within a version the API only grows.
+
+Rules an AI agent must follow in an app or theme:
+
+- Declare everything in the manifest; the platform refuses anything undeclared.
+- The store's name and logo come from the skin projection (`data.store.name`, `data.store.logo`); never a fixed wordmark or the app's own name as shop copy.
+- No literal `/products/<slug>`, `/categories/<slug>`, `/collections/<id>` or page paths such as `/about`. Use product sources (`{ "kind": "newest" }`, `products` settings), handle links (`/categories/@<handle>`) inside template sections, `data.menu` and `data.routes`.
+- Never depend on `custom.*` fields (the merchant's namespace). Declare your own in `customFields` (named `<app id>.<key>`) and write them with `ctx.customFields`.
+- Expect an empty store (no products, menu, logo, policies): return `null` for a part with nothing to show.
+- Ship only artwork you hold redistribution rights to; neutral placeholders; images under 200 KiB.
+- Real `<a href>` and `<button>` controls that work without JavaScript; buy through `<BuyForm />`; islands only enhance.
+- Every word through `t(context, { en, bn })`; SDK formatters for numbers, money and dates; logical CSS (`margin-inline-start`, `inset-inline-start`, `text-align: start`).
+- Money is integer minor units (`amountMinor`) with an ISO `currency`.
+- Before packing: `npm test`, `pnpm plugin validate <app>` and `pnpm plugin preview <app>` (a sample, an empty and another store); fix every failure and warning.
+
+## Guides
+
+- [Build a theme](themes.md): the mental model, the portability rules with right and wrong examples, testing on three stores, the release checklist.
+- [Storefront](storefront.md): sections, components, skins, templates, page presets, slots, settings, bindings, islands, core embeds, budgets, security.
+- [Apps](apps.md): the manifest, extension points, access and consent, lifecycle, signing and trust, limits, storage, routes, admin UI, jobs, events, webhooks.
+- [Commerce hooks](commerce-hooks.md): scopes, event payloads, provider ports, checkout functions, the stable app API (`ctx.api.call`), payments, discounts.
+- [SDK README](../README.md): quick start, a minimal app, the test harness, providers.
+
+## Commands (from a Scalius checkout)
+
+- `pnpm plugin create <vendor.name> [--theme] [--dir <folder>]`: scaffold an app, or a theme starter; both include AGENTS.md.
+- `pnpm plugin validate <app>`: every check a store makes, including portability.
+- `pnpm plugin preview <app> [--store sample|empty|other]`: static preview on fixture stores.
+- `pnpm plugin dev <app>`: rebuild the preview as sources change.
+- `pnpm plugin pack <app> --key <folder>`: the signed upload package.
+
+## Entry points
+
+- `@scalius/plugin-sdk`: `defineManifest`, `definePlugin`, `ctx` types, `ui`, `PLUGIN_API_VERSION`.
+- `@scalius/plugin-sdk/storefront`: `defineStorefront`, `Image`, `Price`, `Island`, `Slot`, `BuyForm`, `quickAdd`, `t`, `formatMoney`, `asset`.
+- `@scalius/plugin-sdk/storefront/testing`: `renderSection`, `renderSkin`, `renderHeader`, `renderFooter`, `renderProductCard`, `fixtureStore`, `FIXTURE_STORES`.
+- `@scalius/plugin-sdk/island`: `defineIsland`.
+- `@scalius/plugin-sdk/testing`: `createPluginTestHarness`, `fixtures`.

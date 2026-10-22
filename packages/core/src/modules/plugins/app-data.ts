@@ -41,11 +41,13 @@ import {
   pluginLogEntries,
   pluginMigrations,
   systemKv,
+  themeSettings,
+  themeSettingsDrafts,
   webhookSubscriptions,
   type AppOwnedResourceType,
   type PluginInstallationSource,
 } from "@scalius/database/schema";
-import { and, asc, count, eq, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, ne, sql, type SQL } from "drizzle-orm";
 import { listObjectTypes } from "../objects";
 import { appJobKeyPrefix, appJobRowsCondition } from "./app-jobs";
 import { PluginError } from "./errors";
@@ -129,13 +131,62 @@ export function forgetRetainedAppStatement(db: Database, pluginId: string) {
   return db.delete(systemKv).where(eq(systemKv.key, retainedAppKey(pluginId)));
 }
 
+const CARD_FIELD_GUARD = "app_data_card_field";
+
+/**
+ * True while the published or draft theme shows one of the app's own product
+ * fields (`<plugin id>.<key>`) in its Product card fields. Every theme save
+ * and publish requires each card field to be a storefront-visible product
+ * field, so deleting the app's definitions then would refuse every later
+ * theme save: the delete is refused instead, as a custom-field delete is
+ * (`custom_field_in_theme`, custom-fields.service.ts).
+ */
+const qualifiedField = sql`${customFieldDefinitions.namespace} || '.' || ${customFieldDefinitions.key}`;
+
+/** The app's product field definitions that the published or draft theme lists in its Product card fields. */
+function appCardFieldsInTheme(pluginId: string): SQL {
+  return sql`${customFieldDefinitions.namespace} = ${pluginId} AND ${customFieldDefinitions.ownerType} = 'product' AND (
+    EXISTS (SELECT 1 FROM ${themeSettings}, json_each(${themeSettings.colors}, '$.blocks.card.fields') AS card_field WHERE CAST(card_field.value AS TEXT) = ${qualifiedField})
+    OR EXISTS (SELECT 1 FROM ${themeSettingsDrafts}, json_each(${themeSettingsDrafts.theme}, '$.blocks.card.fields') AS card_field WHERE CAST(card_field.value AS TEXT) = ${qualifiedField}))`;
+}
+
+function appCardFieldInThemeSql(pluginId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${customFieldDefinitions} WHERE ${appCardFieldsInTheme(pluginId)})`;
+}
+
+/** The first of the app's product fields the draft or live theme shows on cards, or null. */
+async function readAppCardFieldInTheme(db: Database, pluginId: string): Promise<string | null> {
+  const row = await db.get<{ field: string } | undefined>(sql`SELECT ${qualifiedField} AS field FROM ${customFieldDefinitions}
+    WHERE ${appCardFieldsInTheme(pluginId)} ORDER BY ${customFieldDefinitions.key} LIMIT 1`);
+  return row?.field ?? null;
+}
+
+/**
+ * Refuses deleting the app's data (`custom_field_in_theme`, 409) while the
+ * draft or live theme shows one of its product fields on cards, naming the
+ * field. Call it before the delete (and before the app's uninstall hook), and
+ * again when the delete's batch guard fails.
+ */
+export async function assertAppDataDeletable(db: Database, pluginId: string): Promise<void> {
+  const field = await readAppCardFieldInTheme(db, pluginId);
+  if (field === null) return;
+  throw new PluginError(
+    "custom_field_in_theme",
+    `Your theme shows ${field} on product cards, and deleting this app's data would delete that field. Remove it from Product card fields in the theme editor and publish, then try again, or keep the app's data.`,
+    { field, usedIn: "theme.blocks.card.fields" },
+  );
+}
+
 /**
  * Every statement that permanently deletes what the app owns, for one batch.
  * Records go with their object types and custom-field values with their
- * definitions (cascades, so their cache-dependency triggers fire).
+ * definitions (cascades, so their cache-dependency triggers fire). The first
+ * is a guard: a theme saved since `assertAppDataDeletable` that shows one of
+ * the app's product fields on cards stops the whole batch.
  */
 export function appDataDeleteStatements(db: Database, pluginId: string) {
   return [
+    buildBatchGuard(db, sql`NOT ${appCardFieldInThemeSql(pluginId)}`, CARD_FIELD_GUARD),
     db.delete(pluginKv).where(eq(pluginKv.pluginId, pluginId)),
     db.delete(pluginLogEntries).where(eq(pluginLogEntries.pluginId, pluginId)),
     db.delete(pluginEventDeliveries).where(eq(pluginEventDeliveries.pluginId, pluginId)),
@@ -351,6 +402,7 @@ export async function deleteRemovedAppData(db: Database, pluginId: string, expec
   // A record this release cannot read lists as 0; the batch still compares its stored text.
   const current = retained?.app?.revision ?? 0;
   if (current !== expectedRevision) throw changed(current);
+  await assertAppDataDeletable(db, pluginId);
   const keyMatches = retained
     ? sql`EXISTS (SELECT 1 FROM ${systemKv} WHERE ${systemKv.key} = ${retainedAppKey(pluginId)} AND ${systemKv.value} = ${retained.stored})`
     : sql`NOT EXISTS (SELECT 1 FROM ${systemKv} WHERE ${systemKv.key} = ${retainedAppKey(pluginId)})`;
@@ -361,7 +413,11 @@ export async function deleteRemovedAppData(db: Database, pluginId: string, expec
       ...appDataDeleteStatements(db, pluginId),
     ] as never);
   } catch (error) {
-    if (isBatchGuardError(error, NOT_INSTALLED_GUARD)) throw installedAgain();
+    if (isBatchGuardError(error, NOT_INSTALLED_GUARD) && await db.select({ id: pluginInstallations.pluginId }).from(pluginInstallations).where(eq(pluginInstallations.pluginId, pluginId)).get()) {
+      throw installedAgain();
+    }
+    // A theme saved meanwhile that shows one of the app's fields on cards.
+    await assertAppDataDeletable(db, pluginId);
     if (isBatchGuardError(error, RETAINED_GUARD)) throw changed((await readRetainedApp(db, pluginId))?.app?.revision ?? 0);
     throw error;
   }

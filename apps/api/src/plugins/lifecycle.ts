@@ -21,6 +21,7 @@ import type { Database } from "@scalius/database/client";
 import {
   PluginError,
   activatePlugin,
+  assertAppDataDeletable,
   deactivatePlugin,
   markPluginFailed,
   pluginNeedsApproval,
@@ -238,6 +239,8 @@ export async function uninstallPluginWithHooks(
   options: { expectedRevision: number; keepData: boolean },
 ): Promise<{ hookError: string | null; catalogDeleted: number; catalogKept: number }> {
   const current = await requirePluginInstallation(context.db, pluginId);
+  // Refused before the app's uninstall hook runs, so a refusal changes nothing.
+  if (!options.keepData) await assertAppDataDeletable(context.db, pluginId);
   let hookError: string | null = null;
   if (current.status === "active" && current.revision === options.expectedRevision) {
     const outcome = await hostFor(context).invokeLifecycle(current, "uninstall", { keepData: options.keepData });
