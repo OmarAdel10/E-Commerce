@@ -36,6 +36,13 @@ function notFound(): Response {
   });
 }
 
+/** A browser loading a page (a reload or a typed address), never a script, style or image fetch. */
+function isPageLoad(request: Request): boolean {
+  const destination = request.headers.get("Sec-Fetch-Dest");
+  if (destination) return destination === "document";
+  return request.headers.get("Accept")?.includes("text/html") === true;
+}
+
 function originOf(url: string | undefined): string | null {
   if (!url) return null;
   try {
@@ -67,7 +74,10 @@ async function serveStatic(
   const url = new URL(request.url);
   if (STATIC_FILE_PATTERN.test(path)) {
     url.pathname = path;
-    return env.ASSETS.fetch(new Request(url, { method, headers: request.headers }));
+    const asset = await env.ASSETS.fetch(new Request(url, { method, headers: request.headers }));
+    // A route can end like a file name (an app's page, /admin/apps/scalius.noor): a page
+    // load of a file that does not exist gets the shell. A missing chunk stays a 404.
+    if (asset.status !== 404 || !isPageLoad(request)) return asset;
   }
 
   url.pathname = "/index.html";
