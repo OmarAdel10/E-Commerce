@@ -28,6 +28,7 @@ import { useHasPermission } from "~/contexts/PermissionContext";
 import { useMessages } from "~/i18n";
 import { customFieldMessages, type CustomFieldMessageKey } from "~/i18n/custom-fields";
 import { getServerFnError } from "~/lib/api-helpers";
+import { readAdminApiErrorCode } from "~/lib/admin-api-error";
 import {
   customFieldDefinitionsQueryOptions,
   useDeleteCustomFieldDefinition,
@@ -182,7 +183,7 @@ export function CustomDataSettings() {
               toast.success(t("deleted"));
               setDeleting(null);
             },
-            onError: (error) => void toast.error(getServerFnError(error, t("deleteFailed"))),
+            onError: (error) => void toast.error(readAdminApiErrorCode(error) === "custom_field_in_theme" ? t("inTheme") : getServerFnError(error, t("deleteFailed"))),
           });
         }}
       />

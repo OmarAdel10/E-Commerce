@@ -22,6 +22,8 @@ import {
     pages,
     productVariants,
     products,
+    themeSettings,
+    themeSettingsDrafts,
 } from "@scalius/database/schema";
 import {
     buildBatchGuard,
@@ -74,6 +76,8 @@ type SQLiteBatchItem = BatchItem<"sqlite">;
 export const CUSTOM_FIELD_REVISION_CONFLICT = "custom_field_revision_conflict";
 export const CUSTOM_FIELD_KEY_TAKEN = "custom_field_key_taken";
 export const CUSTOM_FIELD_NAMESPACE_FORBIDDEN = "custom_field_namespace_forbidden";
+/** A delete or "Show on storefront" off refused: the draft or live theme shows the field on product cards. */
+export const CUSTOM_FIELD_IN_THEME = "custom_field_in_theme";
 const GUARD_FAILED = "custom_field_guard_failed";
 
 export class CustomFieldRevisionConflictError extends AppError {
@@ -100,6 +104,34 @@ export class CustomFieldNamespaceError extends AppError {
         );
         this.name = "CustomFieldNamespaceError";
     }
+}
+
+export class CustomFieldInThemeError extends AppError {
+    constructor(field: string) {
+        super(
+            409,
+            CUSTOM_FIELD_IN_THEME,
+            `Your theme shows ${field} on product cards. Remove it from Product card fields in the theme editor and publish, then try again.`,
+            { field, usedIn: "theme.blocks.card.fields" },
+        );
+        this.name = "CustomFieldInThemeError";
+    }
+}
+
+/**
+ * True while the published or draft theme lists `field` (`<namespace>.<key>`)
+ * in its Product card fields. Every theme save and publish requires each card
+ * field to be a storefront-visible product field, so deleting or hiding one
+ * the theme shows would refuse every later save: the write is refused instead.
+ */
+function themeShowsCardField(field: string): SQL {
+    return sql`(EXISTS (SELECT 1 FROM ${themeSettings}, json_each(${themeSettings.colors}, '$.blocks.card.fields') AS card_field WHERE CAST(card_field.value AS TEXT) = ${field})
+        OR EXISTS (SELECT 1 FROM ${themeSettingsDrafts}, json_each(${themeSettingsDrafts.theme}, '$.blocks.card.fields') AS card_field WHERE CAST(card_field.value AS TEXT) = ${field}))`;
+}
+
+async function readThemeShowsCardField(db: Database, field: string): Promise<boolean> {
+    const row = await db.get<{ used: number } | undefined>(sql`SELECT CASE WHEN ${themeShowsCardField(field)} THEN 1 ELSE 0 END AS used`);
+    return Number(row?.used ?? 0) === 1;
 }
 
 // ─────────────────────────────────────────
@@ -358,8 +390,8 @@ export async function createCustomFieldDefinition(
     return created;
 }
 
-async function currentRevision(db: Database, id: string): Promise<{ revision: number; namespace: string } | undefined> {
-    return db.select({ revision: customFieldDefinitions.revision, namespace: customFieldDefinitions.namespace })
+async function currentRevision(db: Database, id: string): Promise<{ revision: number; namespace: string; key: string; ownerType: string } | undefined> {
+    return db.select({ revision: customFieldDefinitions.revision, namespace: customFieldDefinitions.namespace, key: customFieldDefinitions.key, ownerType: customFieldDefinitions.ownerType })
         .from(customFieldDefinitions).where(eq(customFieldDefinitions.id, id)).get();
 }
 
@@ -380,6 +412,10 @@ export async function updateCustomFieldDefinition(
         throw new CustomFieldRevisionConflictError(id, input.expectedRevision, existing.revision);
     }
     assertStorefrontOwner(existing.ownerType as CustomFieldOwnerType, input.storefrontVisible);
+    // Hiding a product field the theme's cards show would refuse every later theme save.
+    const field = `${existing.namespace}.${existing.key}`;
+    const hides = existing.ownerType === "product" && existing.storefrontVisible && input.storefrontVisible === false;
+    if (hides && await readThemeShowsCardField(db, field)) throw new CustomFieldInThemeError(field);
     const validations = input.validations === undefined
         ? undefined
         : parseValidationsOrThrow(existing.type as CustomFieldType, input.validations, context);
@@ -401,6 +437,7 @@ export async function updateCustomFieldDefinition(
             updatedAt: sql`unixepoch()`,
         })
         .where(and(eq(customFieldDefinitions.id, id), eq(customFieldDefinitions.revision, input.expectedRevision), objectTarget,
+            hides ? sql`NOT ${themeShowsCardField(field)}` : undefined,
             objectTarget && validations !== undefined && readCustomFieldValidations(validations).to !== readCustomFieldValidations(existing.validations).to
                 ? sql`NOT EXISTS (SELECT 1 FROM ${customFieldValues} WHERE ${customFieldValues.definitionId} = ${id})` : undefined))
         .returning(definitionColumns)
@@ -408,6 +445,7 @@ export async function updateCustomFieldDefinition(
     if (!updated) {
         const current = await currentRevision(db, id);
         if (!current) throw new NotFoundError("Custom field not found");
+        if (hides && current.revision === input.expectedRevision && await readThemeShowsCardField(db, field)) throw new CustomFieldInThemeError(field);
         throw new CustomFieldRevisionConflictError(id, input.expectedRevision, current.revision);
     }
     return presentDefinition(updated as DefinitionRow, context);
@@ -423,15 +461,21 @@ export async function deleteCustomFieldDefinition(
     const existing = await currentRevision(db, id);
     if (!existing) throw new NotFoundError("Custom field not found");
     assertNamespace(options.writer, existing.namespace);
+    // A product field the theme's cards show stays until it is removed there (every theme save requires it).
+    const field = `${existing.namespace}.${existing.key}`;
+    const product = existing.ownerType === "product";
+    if (product && await readThemeShowsCardField(db, field)) throw new CustomFieldInThemeError(field);
     const [counts, deleted] = await safeBatch(db, [
         db.select({ count: sql<number>`count(*)` }).from(customFieldValues).where(eq(customFieldValues.definitionId, id)),
         db.delete(customFieldDefinitions)
-            .where(and(eq(customFieldDefinitions.id, id), eq(customFieldDefinitions.revision, input.expectedRevision)))
+            .where(and(eq(customFieldDefinitions.id, id), eq(customFieldDefinitions.revision, input.expectedRevision),
+                product ? sql`NOT ${themeShowsCardField(field)}` : undefined))
             .returning({ id: customFieldDefinitions.id }),
     ] as never) as unknown as [Array<{ count: number }>, Array<{ id: string }>];
     if (deleted.length !== 1) {
         const current = await currentRevision(db, id);
         if (!current) throw new NotFoundError("Custom field not found");
+        if (product && current.revision === input.expectedRevision && await readThemeShowsCardField(db, field)) throw new CustomFieldInThemeError(field);
         throw new CustomFieldRevisionConflictError(id, input.expectedRevision, current.revision);
     }
     return { id, deletedValueCount: Number(counts[0]?.count ?? 0) };

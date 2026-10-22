@@ -46,6 +46,7 @@ export const customFieldMessages = defineMessages({
     deleteFailed: "Couldn't delete the field",
     reorderFailed: "Couldn't change the order",
     conflict: "Someone else changed this field. Reload and try again.",
+    inTheme: "Your theme shows this field on product cards. Remove it from Product card fields in the theme editor and publish, then try again.",
     // Definition dialog
     addTitle: "Add {owner} field",
     editTitle: "Edit field",
@@ -181,6 +182,7 @@ export const customFieldMessages = defineMessages({
     deleteFailed: "ফিল্ড ডিলিট হয়নি",
     reorderFailed: "ক্রম বদলানো যায়নি",
     conflict: "অন্য কেউ এই ফিল্ড বদলেছেন। রিলোড করে আবার চেষ্টা করুন।",
+    inTheme: "আপনার থিম এই ফিল্ডটি প্রোডাক্ট কার্ডে দেখায়। থিম এডিটরে প্রোডাক্ট কার্ডের ফিল্ড থেকে এটি সরিয়ে পাবলিশ করুন, তারপর আবার চেষ্টা করুন।",
     addTitle: "{owner} ফিল্ড যোগ করুন",
     editTitle: "ফিল্ড এডিট করুন",
     name: "নাম",

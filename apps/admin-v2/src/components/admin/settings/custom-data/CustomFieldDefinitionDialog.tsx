@@ -241,7 +241,8 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
 
   const keyTaken = save.error !== null && readAdminApiErrorCode(save.error) === "custom_field_key_taken";
   const serverError = save.error && !keyTaken
-    ? isAdminApiConflictError(save.error) ? t("conflict") : getServerFnError(save.error, t("saveFailed"))
+    ? readAdminApiErrorCode(save.error) === "custom_field_in_theme" ? t("inTheme")
+      : isAdminApiConflictError(save.error) ? t("conflict") : getServerFnError(save.error, t("saveFailed"))
     : null;
   const keyError = errors.key ?? (keyTaken ? t("keyTaken") : undefined);
   const binding = `${definition?.namespace ?? CUSTOM_FIELD_MERCHANT_NAMESPACE}.${draft.key || "key"}`;
