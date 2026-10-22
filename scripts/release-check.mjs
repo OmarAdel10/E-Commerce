@@ -1736,6 +1736,14 @@ async function checkDashboard(options, { fetchImpl, logger }) {
   if (!shell.body.includes('name="scalius-dashboard-base-path"')) {
     throw new Error("Dashboard /admin did not return the dashboard SPA shell.");
   }
+  // The shell alone proves nothing if its bundles don't load: fetch every script and
+  // stylesheet it names, so a deploy whose entry chunk fails to serve can't pass.
+  const shellAssets = [...shell.body.matchAll(/<(?:script|link)\b[^>]*\b(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]);
+  if (shellAssets.length === 0) throw new Error("Dashboard /admin names no scripts or stylesheets.");
+  for (const asset of shellAssets) {
+    const assetResponse = await fetchText(new URL(asset, shellUrl).toString(), { fetchImpl, timeoutMs: options.timeoutMs, accept: "*/*" });
+    requireStatus(assetResponse, `Dashboard asset ${asset}`, (status) => status === 200);
+  }
 
   const sessionUrl = buildUrl(options.dashboardUrl, "/api/auth/dashboard-session");
   const sessionResponse = await fetchJson(sessionUrl, { fetchImpl, timeoutMs: options.timeoutMs });
@@ -1745,7 +1753,7 @@ async function checkDashboard(options, { fetchImpl, logger }) {
     throw new Error("Dashboard session state did not report an anonymous, gated session.");
   }
 
-  logger?.log(`PASS dashboard: SPA shell served and anonymous session gated (adminExists=${state.adminExists}).`);
+  logger?.log(`PASS dashboard: SPA shell and its ${shellAssets.length} bundles served, anonymous session gated (adminExists=${state.adminExists}).`);
   return {
     url: redactUrl(shellUrl),
     statusCode: shell.statusCode,
