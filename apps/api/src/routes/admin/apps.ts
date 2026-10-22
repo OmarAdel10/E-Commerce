@@ -367,6 +367,8 @@ const appDetailSchema = appSummarySchema.extend({
     components: z.array(z.object({ type: z.string(), name: z.string(), targets: z.array(z.enum(STOREFRONT_COMPONENT_TARGETS)) })),
     /** Designs (skins) of the store's own parts: a unit (`header`, `product_card`) or a core section (`section:<type>`). */
     skins: z.array(z.object({ id: z.string(), name: z.string(), target: z.string() })),
+    /** Ready-made looks the Theme page's template library offers while the app is active. */
+    templates: z.array(z.object({ id: z.string(), name: z.string(), description: z.string().nullable() })),
     scripts: z.array(z.object({ src: z.string(), placement: z.string(), pages: z.array(z.string()) })),
     themeProblems: z.array(z.object({
       kind: z.enum(["template", "page-preset"]),
@@ -606,6 +608,7 @@ async function detail(c: Context<{ Bindings: Env }>, installation: PluginInstall
   ]);
   const available = runtimeAvailable(c, installation);
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const themeProblems = storefrontAppThemeProblems(manifest.storefront);
   return {
     ...summary(installation),
     ...listingDetail(installation.pluginId, manifest, installation.bundleSha256),
@@ -670,8 +673,12 @@ async function detail(c: Context<{ Bindings: Env }>, installation: PluginInstall
       sections: manifest.storefront.sections.map((section) => ({ type: section.type, name: section.name })),
       components: manifest.storefront.components.map((component) => ({ type: component.type, name: component.name, targets: [...component.targets] })),
       skins: manifest.storefront.skins.map((skin) => ({ id: skin.id, name: skin.name, target: skin.target })),
+      // Only the ones the template library lists (a template the theme cannot use is a theme problem instead).
+      templates: manifest.storefront.templates
+        .filter((template) => !themeProblems.some((problem) => problem.kind === "template" && problem.id === template.id))
+        .map((template) => ({ id: template.id, name: template.name, description: template.description ?? null })),
       scripts: manifest.storefront.scripts.map((script) => ({ src: script.src, placement: script.placement, pages: [...script.pages] })),
-      themeProblems: storefrontAppThemeProblems(manifest.storefront),
+      themeProblems,
     },
     admin: {
       pages: manifest.admin.pages.map(pageEntry),

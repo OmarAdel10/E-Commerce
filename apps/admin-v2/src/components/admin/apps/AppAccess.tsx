@@ -52,6 +52,20 @@ function storefrontParts(app: Pick<AppDetail, "storefront">, t: (key: Storefront
   return formatList(parts.length > 0 ? parts : [t("storefrontPart_other")], getLocale());
 }
 
+type StorefrontAddsKey = `storefrontAdds_${"sections" | "blocks" | "designs" | "templates" | "head"}`;
+
+/** What the app adds to the storefront, in plain words (only what it declares). */
+function storefrontAdds(app: Pick<AppDetail, "storefront">, t: (key: StorefrontAddsKey) => string): string {
+  const { sections = [], components = [], skins = [], templates = [], head = false } = app.storefront ?? {};
+  const parts: string[] = [];
+  if (sections.length > 0) parts.push(t("storefrontAdds_sections"));
+  if (components.length > 0) parts.push(t("storefrontAdds_blocks"));
+  if (skins.length > 0) parts.push(t("storefrontAdds_designs"));
+  if (templates.length > 0) parts.push(t("storefrontAdds_templates"));
+  if (head) parts.push(t("storefrontAdds_head"));
+  return formatList(parts, getLocale());
+}
+
 export function AppAccess({ app, consent }: { app: AppDetail; consent?: ReactNode }) {
   const t = useMessages(installedAppsMessages);
   const scopeText = useMessages(appScopeMessages);
@@ -136,7 +150,7 @@ export function AppAccess({ app, consent }: { app: AppDetail; consent?: ReactNod
   if (request.storefrontSurfaces || extensions.length > 0 || request.publicRoutes || request.storefrontScripts.length > 0 || request.storefrontCode || connect.length > 0) {
     sections.push(
       <Section key="storefront" title={t("access_storefront")}>
-        {request.storefrontSurfaces ? row("surfaces", t("storefrontSurfaces"), added?.storefrontSurfaces === true) : null}
+        {request.storefrontSurfaces ? row("surfaces", t("storefrontSurfaces", { parts: storefrontAdds(app, t) }), added?.storefrontSurfaces === true) : null}
         {extensions.length > 0 ? row("extensions", t("storefrontExtensions"), (added?.extensions?.length ?? 0) > 0) : null}
         {[...new Map((app.extensions ?? []).flatMap((extension) => extension.reads).map((read) => [read.as, read])).values()].map((read) => (read.object
           ? row(`extension-reads:${read.as}`, t("extensionReads", { collection: read.object }), false)

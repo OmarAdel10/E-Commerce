@@ -1,6 +1,7 @@
 // "Where this app appears" (Shopify's app details): every place the app puts
 // something beyond its services, each one a link to it: its pages, resource
-// cards, actions, Home cards and storefront sections, named where they show.
+// cards, actions, Home cards, storefront templates, designs and sections,
+// named where they show.
 // Its providers and a feature's pages show with their row in the service
 // cards instead. Built only from the app's description (its manifest);
 // nothing runs.
@@ -82,6 +83,13 @@ export function appearsEntries(app: AppDetail): AppearsEntry[] {
   }
   for (const widget of app.admin.widgets) {
     entries.push({ key: `widget:${widget.id}`, group: "home", label: widget.title, detail: { message: "widget" }, to: live("/admin") });
+  }
+  // A template is chosen in the Theme page's library; it is the way to use a theme app.
+  for (const template of app.storefront.templates) {
+    entries.push({ key: `template:${template.id}`, group: "store", label: template.name, detail: { message: "template" }, to: live("/admin/online-store/theme") });
+  }
+  for (const skin of app.storefront.skins) {
+    entries.push({ key: `skin:${skin.id}`, group: "store", label: skin.name, detail: { message: "skin" }, to: live("/admin/online-store/theme/editor") });
   }
   for (const section of app.storefront.sections) {
     entries.push({ key: `section:${section.type}`, group: "store", label: section.name, detail: { message: "section" }, to: live("/admin/online-store/theme") });

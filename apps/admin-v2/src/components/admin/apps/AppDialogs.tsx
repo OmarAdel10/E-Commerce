@@ -97,7 +97,8 @@ export function ActivateAppDialog({ app, open, onOpenChange }: DialogProps) {
             <AlertDescription>{t("trustedCode")}</AlertDescription>
           </Alert>
         ) : null}
-        <AppAccess app={app} consent={<p className="text-body">{t("consentWarning", { name: app.name })}</p>} />
+        {/* "Read and change" only for an app granted store data; its changes are then recorded as the approver's. */}
+        <AppAccess app={app} consent={<p className="text-body">{t(app.scopes.length > 0 ? "consentWarning" : "consentListed", { name: app.name })}</p>} />
         {missing.length > 0 ? (
           <Alert variant="warning">
             <TriangleAlert aria-hidden="true" />

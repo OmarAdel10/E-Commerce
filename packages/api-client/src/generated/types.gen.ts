@@ -5469,6 +5469,11 @@ export type AppDetail = AppSummary & {
             name: string;
             target: string;
         }>;
+        templates: Array<{
+            id: string;
+            name: string;
+            description: string | null;
+        }>;
         scripts: Array<{
             src: string;
             placement: string;

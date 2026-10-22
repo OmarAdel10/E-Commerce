@@ -24932,6 +24932,29 @@
                       ]
                     }
                   },
+                  "templates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "description"
+                      ]
+                    }
+                  },
                   "scripts": {
                     "type": "array",
                     "items": {
@@ -24995,6 +25018,7 @@
                   "sections",
                   "components",
                   "skins",
+                  "templates",
                   "scripts",
                   "themeProblems"
                 ]
