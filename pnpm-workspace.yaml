@@ -33,6 +33,11 @@ overrides:
   jws: "^3.2.3"
   esbuild: "0.28.2"
   mdast-util-to-hast: "^13.2.1"
+  # better-auth's optional TanStack Start peer (unused here; we use TanStack Router only)
+  # and the MCP SDK's express body-parser: hold them at their patched releases.
+  "@tanstack/react-start@<1.168.60": ">=1.168.60"
+  "@tanstack/start-server-core@<1.169.39": ">=1.169.39"
+  "body-parser@>=2.0.0 <2.4.0": ">=2.4.0"
   markdown-it: ">=14.1.1"
   devalue: "5.9.4"
   h3: ">=1.15.9"

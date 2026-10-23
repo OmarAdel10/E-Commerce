@@ -1,6 +1,53 @@
-# Scalius Commerce Lite
+<p align="center">
+  <a href="https://scalius.com">
+    <img alt="Scalius Commerce Lite" src="apps/admin-v2/public/logo-dark.png" width="200" />
+  </a>
+</p>
 
-Scalius Commerce Lite is a self-hosted commerce platform: a merchant dashboard, a storefront, and an API. It runs as two Cloudflare Workers on D1, TursoDB, or PostgreSQL. This page is for operators who deploy a store and contributors who work on the code.
+<h1 align="center">
+  Scalius Commerce Lite
+</h1>
+
+<h4 align="center">
+  <a href="https://scalius.com">Website</a> |
+  <a href="https://scalius.com/discord">Discord</a> |
+  <a href="packages/plugin-sdk/docs/README.md">Build apps and themes</a>
+</h4>
+
+<p align="center">
+  Self-hosted commerce platform: merchant dashboard, storefront and API, deployed as two Cloudflare Workers on D1, TursoDB or PostgreSQL, with an app, theme and skin platform anyone can build on.
+</p>
+
+<p align="center">
+  <a href="https://github.com/scaliuslabs/scalius-commerce-lite/releases">
+    <img src="https://img.shields.io/github/v/release/scaliuslabs/scalius-commerce-lite?include_prereleases&label=release" alt="Latest release" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="Scalius Commerce Lite is released under the AGPL v3 license." />
+  </a>
+  <a href="https://github.com/scaliuslabs/scalius-commerce-lite/issues">
+    <img src="https://img.shields.io/badge/Issues-welcome-brightgreen.svg?style=flat" alt="Issues welcome!" />
+  </a>
+  <a href="SECURITY.md">
+    <img src="https://img.shields.io/badge/Security-Policy-red.svg" alt="Security Policy" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://scalius.com/x">
+    <img src="https://img.shields.io/twitter/follow/scaliuslabs.svg?label=Follow%20@scaliuslabs" alt="Follow @scaliuslabs" />
+  </a>
+  <a href="https://scalius.com/discord">
+    <img src="https://img.shields.io/badge/chat-on%20discord-7289DA.svg" alt="Discord Chat" />
+  </a>
+  <a href="https://scalius.com/facebook">
+    <img src="https://img.shields.io/badge/Facebook-Follow-1877F2?logo=facebook" alt="Follow on Facebook" />
+  </a>
+</p>
+
+---
+
+This page is for operators who deploy a store and contributors who work on the code.
 
 - Website: <https://scalius.com>
 - Help and questions: [Discord](https://scalius.com/discord)
