@@ -6,15 +6,11 @@ import { RouteErrorComponent } from "~/lib/route-error";
 import { nullForAdminApiNotFound } from "~/lib/admin-api-error";
 import { toPageFormValues } from "~/lib/page-form-values";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 export const Route = createFileRoute("/admin/articles/$articleId/edit")({
   loader: async ({ context: { queryClient }, params }) => {
-    const data = await queryClient
-      .ensureQueryData({
-        ...pageQueryOptions(params.articleId),
-        staleTime: Infinity,
-      })
-      .catch(nullForAdminApiNotFound);
+    const data = await loadEditorRecord(queryClient, pageQueryOptions(params.articleId)).catch(nullForAdminApiNotFound);
     if (!data || data.contentType !== "article") {
       throw notFound();
     }

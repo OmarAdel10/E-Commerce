@@ -14,16 +14,12 @@ import {
 } from "@scalius/core/modules/collections/browser";
 import { nullForAdminApiNotFound } from "~/lib/admin-api-error";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 export const Route = createFileRoute("/admin/collections/$collectionId/edit")({
   loader: async ({ params, context: { queryClient } }) => {
     const [collection] = await Promise.all([
-      queryClient
-        .ensureQueryData({
-          ...collectionQueryOptions(params.collectionId),
-          staleTime: Infinity,
-        })
-        .catch(nullForAdminApiNotFound),
+      loadEditorRecord(queryClient, collectionQueryOptions(params.collectionId)).catch(nullForAdminApiNotFound),
       queryClient.ensureQueryData(collectionCategoryOptionsQueryOptions()),
     ]);
     if (!collection) throw notFound();

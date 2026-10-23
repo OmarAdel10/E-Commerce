@@ -6,6 +6,7 @@ import { RouteErrorComponent } from "~/lib/route-error";
 import { nullForAdminApiNotFound } from "~/lib/admin-api-error";
 import { toPageFormValues } from "~/lib/page-form-values";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 /** Pages opened from elsewhere return there: only these known places (no free-form URLs). */
 const RETURN_TO = { policies: "/admin/settings/policies" } as const;
@@ -14,12 +15,7 @@ export const Route = createFileRoute("/admin/pages/$pageId/edit")({
   validateSearch: (search: Record<string, unknown>): { from?: keyof typeof RETURN_TO } =>
     typeof search.from === "string" && search.from in RETURN_TO ? { from: search.from as keyof typeof RETURN_TO } : {},
   loader: async ({ context: { queryClient }, params }) => {
-    const data = await queryClient
-      .ensureQueryData({
-        ...pageQueryOptions(params.pageId),
-        staleTime: Infinity,
-      })
-      .catch(nullForAdminApiNotFound);
+    const data = await loadEditorRecord(queryClient, pageQueryOptions(params.pageId)).catch(nullForAdminApiNotFound);
     if (!data || data.contentType !== "page")
       throw notFound();
   },

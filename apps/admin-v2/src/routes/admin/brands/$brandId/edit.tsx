@@ -5,12 +5,11 @@ import { brandQueryOptions } from "~/lib/api-query-options/brands";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { nullForAdminApiNotFound } from "~/lib/admin-api-error";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 export const Route = createFileRoute("/admin/brands/$brandId/edit")({
   loader: async ({ params, context: { queryClient } }) => {
-    const brand = await queryClient
-      .ensureQueryData({ ...brandQueryOptions(params.brandId), staleTime: Infinity })
-      .catch(nullForAdminApiNotFound);
+    const brand = await loadEditorRecord(queryClient, brandQueryOptions(params.brandId)).catch(nullForAdminApiNotFound);
     if (!brand) throw notFound();
     if (brand.deletedAt != null) throw redirect({ to: "/admin/brands", search: { trashed: true } as never });
   },
