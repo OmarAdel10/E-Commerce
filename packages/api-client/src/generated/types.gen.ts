@@ -59860,6 +59860,12 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                     last4: string;
                     storeCredit: boolean;
                 } | null;
+                /**
+                 * The provider flagged this payment for review (its own words): the money counts as paid and the order is held until staff release it.
+                 */
+                review: {
+                    reason: string;
+                } | null;
             }>;
             plan: {
                 id: string;

@@ -150,6 +150,12 @@ async function validate(ctx: PluginContext, account: Account, valId: string): Pr
   }
 }
 
+/** SSLCommerz's high-risk rating in its own words (`risk_title`), for staff. */
+function riskReason(title: string): string {
+  const words = title.replace(/[\u0000-\u001f]/g, " ").slice(0, 120).trim();
+  return words ? `SSLCommerz rated this payment high risk (${words}).` : "SSLCommerz rated this payment high risk.";
+}
+
 /**
  * One validated answer as a payment event. Callback fields are expectations
  * only: any disagreement with the validated answer (or between its metadata
@@ -212,6 +218,12 @@ export function validatedEvent(
       cardType: clean(validation.card_type).slice(0, 100) || null,
       cardBrand: clean(validation.card_brand).slice(0, 100) || null,
     },
+    // SSLCommerz rates a risky payment `risk_level` 1 and asks the merchant
+    // to hold the service while they verify the buyer: the money is paid,
+    // and the platform holds the order for staff review.
+    ...(clean(validation.risk_level) === "1"
+      ? { review: { reason: riskReason(clean(validation.risk_title)) } }
+      : {}),
   };
   return { status: "event", event };
 }

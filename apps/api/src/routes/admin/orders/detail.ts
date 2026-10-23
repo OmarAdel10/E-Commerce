@@ -82,6 +82,7 @@ import {
     listOrderPaymentSessionAttempts,
     listOrderRefundAttempts,
     listRefundSources,
+    paymentReviewFromMetadata,
     summarizeActiveRefundOperation,
 } from "@scalius/core/modules/payments";
 import {
@@ -160,6 +161,9 @@ const orderPaymentSchema = z.object({
         storeCredit: z.boolean(),
     }).nullable().openapi({
         description: "The gift card this row moved money on (last 4 only): a tender, a refund to that card, or (storeCredit) the card a store-credit refund issued.",
+    }),
+    review: z.object({ reason: z.string() }).nullable().openapi({
+        description: "The provider flagged this payment for review (its own words): the money counts as paid and the order is held until staff release it.",
     }),
 });
 
@@ -775,10 +779,11 @@ app.openapi(getPaymentsRoute, (async (c: AdminRouteContext<typeof getPaymentsRou
     // After the parallel reads, so the handler never holds more than six D1 connections.
     const giftCardLinks = await listGiftCardPaymentLinks(db, orderId, payments);
     return ok(c, {
-        payments: payments.map(({ amountMinor, metadata: _metadata, ...payment }) => ({
+        payments: payments.map(({ amountMinor, metadata, ...payment }) => ({
             ...payment,
             amount: amount(amountMinor),
             giftCard: giftCardLinks.get(payment.id) ?? null,
+            review: paymentReviewFromMetadata(metadata),
         })),
         plan: plan
             ? (({ totalAmountMinor, depositAmountMinor, balanceDueMinor, ...facts }) => ({

@@ -159,6 +159,9 @@ export const orderDetailMessages = defineMessages({
     "cod.reason.wrong_address": "Wrong address",
     "cod.reason.other": "Other",
 
+    "review.title": "Payment flagged for review",
+    "review.reason": "{method} flagged this payment: {reason}",
+    "review.help": "The money was received and the order is on hold. Check the order with the buyer before you ship or hand anything over, then release the hold.",
     "refund.issue": "Refund",
     "refund.recordManual": "Record refund",
     "refund.history": "Refunds",
@@ -552,6 +555,9 @@ export const orderDetailMessages = defineMessages({
     "cod.reason.wrong_address": "ভুল ঠিকানা",
     "cod.reason.other": "অন্যান্য",
 
+    "review.title": "পেমেন্টটি রিভিউর জন্য চিহ্নিত",
+    "review.reason": "{method} এই পেমেন্টটি চিহ্নিত করেছে: {reason}",
+    "review.help": "টাকা পাওয়া গেছে এবং অর্ডারটি হোল্ডে আছে। পাঠানো বা কিছু হস্তান্তরের আগে কাস্টমারের সাথে অর্ডারটি যাচাই করুন, তারপর হোল্ড ছেড়ে দিন।",
     "refund.issue": "রিফান্ড",
     "refund.recordManual": "রিফান্ড রেকর্ড করুন",
     "refund.history": "রিফান্ড",

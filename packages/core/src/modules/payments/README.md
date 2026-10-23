@@ -134,6 +134,12 @@ again first; when the units are gone the payment is still recorded and the
 event goes to manual reconciliation (`confirmed_stock_unavailable`, no
 automatic fulfilment).
 
+A confirmed or authorized event the provider flagged (`review: { reason }`,
+e.g. SSLCommerz `risk_level` 1) still counts as paid. `payment-review.ts`
+keeps the reason in the payment's metadata and writes a platform hold on the
+order in the payment's own batch, so nothing ships or is handed over until
+staff release it; the dashboard payments read returns `review` per payment.
+
 COD is not a gateway: collection is recorded in `cod.ts` and COD refunds are
 confirmed manual settlements.
 

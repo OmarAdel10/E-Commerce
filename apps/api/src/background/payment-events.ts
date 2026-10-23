@@ -124,6 +124,8 @@ async function applyPaymentEvent(
         settlement: event.settlement,
         // A kept method is saved for the order's account customer with the payment.
         savedPaymentMethod: event.savedPaymentMethod ?? null,
+        // A payment the provider flagged is held for staff review with it.
+        review: event.review ?? null,
       });
       if (!result.success) {
         if (result.retryable === false) {
@@ -174,8 +176,8 @@ async function applyPaymentEvent(
         console.warn(`[payments] ${provider} payment confirmed for order ${event.orderId}, but its released stock could not be reserved again`);
         return { status: "manual_reconciliation", result: { ...refs, outcome: "confirmed_stock_unavailable" } };
       }
-      console.log(`[payments] ${provider} payment confirmed for order ${event.orderId}`);
-      return { status: "processed", result: { ...refs, outcome: "confirmed" } };
+      console.log(`[payments] ${provider} payment confirmed for order ${event.orderId}${event.review ? " (held for review)" : ""}`);
+      return { status: "processed", result: { ...refs, outcome: "confirmed", ...(event.review ? { heldForReview: true } : {}) } };
     }
     case "authorized": {
       // Money held, not captured: recorded as an authorization, counted as
@@ -192,6 +194,7 @@ async function applyPaymentEvent(
         secondaryRef: event.secondaryRef,
         metadata: { ...event.details },
         savedPaymentMethod: event.savedPaymentMethod ?? null,
+        review: event.review ?? null,
       });
       if (!result.success) {
         if (result.retryable === false) {

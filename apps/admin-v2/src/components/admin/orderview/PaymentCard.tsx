@@ -5,7 +5,7 @@ import { InlineError } from "~/components/admin/states/InlineError";
 import { pollWhileOffline } from "~/lib/admin-query-client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "~/lib/toast";
-import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -186,6 +186,9 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const methodPaidMinor = Math.max(0, Math.round(grossPaid * 10 ** paidDecimalPlaces) - giftCardHeldMinor);
   const methodPaid = methodPaidMinor / 10 ** paidDecimalPlaces;
 
+  // Payments the provider took but flagged for review: paid, and the order is held until staff look.
+  const flaggedPayments = payments.filter((payment) =>
+    payment.review && payment.paymentType !== "refund" && (payment.status === "succeeded" || payment.status === "authorized"));
   // Where a refund draws from (the API's refund order); unknown until the payments read lands.
   const refundSources = paymentsResult?.refundSources ?? null;
   // Every refundable unit was paid by hand (cash, a recorded transfer): a refund is recorded, not sent.
@@ -290,6 +293,17 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
         {inactiveApp ? (
           <Alert>
             <AlertDescription>{t("payment.appInactive", { app: providerLabel(inactiveApp), method: methodLabel(order.paymentMethod ?? "") })}</AlertDescription>
+          </Alert>
+        ) : null}
+        {flaggedPayments.length > 0 ? (
+          <Alert variant="warning" data-testid="payment-review">
+            <AlertTitle>{t("review.title")}</AlertTitle>
+            <AlertDescription className="space-y-1">
+              {flaggedPayments.map((payment) => (
+                <p key={payment.id}>{t("review.reason", { method: methodLabel(payment.paymentMethod), reason: payment.review!.reason })}</p>
+              ))}
+              <p>{t("review.help")}</p>
+            </AlertDescription>
           </Alert>
         ) : null}
         {activeRefundCopy && activeRefund ? (

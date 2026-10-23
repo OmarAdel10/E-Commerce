@@ -88,6 +88,9 @@ export type {
   ComputePaymentStateInput,
 } from "./payment-state";
 
+// --- Provider review (a payment its provider flagged) ---
+export { paymentReviewFromMetadata, paymentReviewHoldReason } from "./payment-review";
+
 // --- Refund service ---
 export { finalizeAcceptedRefundAttemptIds, listRefundSources, processRefund, STORE_CREDIT_NEEDS_STAFF_REASON } from "./refund-service";
 export type {

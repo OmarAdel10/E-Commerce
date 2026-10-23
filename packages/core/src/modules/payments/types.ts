@@ -3,7 +3,7 @@
 export type { PaymentType } from "./gateways/port";
 import type { PaymentType } from "./gateways/port";
 import type { ReportedSettlement } from "@scalius/shared/money-chain";
-import type { SavedPaymentMethod } from "@scalius/shared/plugins/providers/payment";
+import type { PaymentReview, SavedPaymentMethod } from "@scalius/shared/plugins/providers/payment";
 
 export type PaymentResult = "succeeded" | "failed" | "pending" | "cancelled";
 
@@ -53,4 +53,10 @@ export interface ProcessPaymentParams {
    * that applies the payment; ignored for a guest order.
    */
   savedPaymentMethod?: SavedPaymentMethod | null;
+  /**
+   * The provider flagged the payment for review (the payment port's
+   * `review`): kept in the payment's metadata, and the order is held for
+   * staff in the batch that applies it (`payment-review.ts`).
+   */
+  review?: PaymentReview | null;
 }
