@@ -2,7 +2,7 @@ import type { OrderReceipt } from "./api/types";
 import type { GatewayConfig } from "./api/checkout";
 import type { OrderSuccessStateKind } from "./order-success-state";
 import { GIFT_CARD_PAYMENT_METHOD, getOrderSuccessVisibleBalanceDue, isFailedPaymentResult } from "./order-success-state";
-import { appGatewayName, getGatewayPresentation } from "./checkout/gateway-presentation";
+import { appGatewayName } from "./checkout/gateway-presentation";
 import { isPaymentMethodIdShape } from "./payment-method-id";
 
 export type OrderSuccessRetryPaymentType = "full" | "deposit" | "balance";
@@ -10,6 +10,7 @@ export type OrderSuccessRetryPaymentType = "full" | "deposit" | "balance";
 export type OrderSuccessRetryGateway = string;
 export type OrderSuccessRetryOption = {
   gateway: OrderSuccessRetryGateway;
+  /** The store's or app's name for the method; the page names a built-in one in its own copy. */
   label: string;
   endpoint: string;
   current: boolean;
@@ -95,8 +96,9 @@ export function getOrderSuccessRetryOptions(
         gateway,
         endpoint: getOrderSuccessRetryEndpoint(gateway) ?? "",
         current,
-        // An app's wallet reads by the checkout name the store serves, never its id.
-        label: getGatewayPresentation(gateway, appGatewayName(gateway, gateways) ?? gateway).buyerLabel,
+        // An app's wallet reads by the checkout name the store serves, never its id;
+        // a built-in method by the page's copy (`getGatewayPresentation`).
+        label: appGatewayName(gateway, gateways) ?? gateway,
         requiresCardForm: gateway === "stripe",
       };
     })

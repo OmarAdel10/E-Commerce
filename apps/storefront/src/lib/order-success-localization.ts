@@ -8,12 +8,7 @@ import {
   formatCheckoutLanguageText,
   type CheckoutLanguageData,
 } from "@scalius/shared/checkout-language";
-import {
-  appGatewayName,
-  SSLCOMMERZ_GATEWAY_ID,
-  sslcommerzPresentation,
-  type GatewayPresentation,
-} from "./checkout/gateway-presentation";
+import { appGatewayName, SSLCOMMERZ_GATEWAY_ID } from "./checkout/gateway-presentation";
 
 function normalize(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
@@ -93,32 +88,6 @@ export function formatOrderSuccessPaymentMethod(
     default:
       // An app's wallet (`<plugin id>:<provider id>`) by its checkout name.
       return appGatewayName(normalize(value), gateways) ?? copy.orderReceiptStatusNotAvailableText;
-  }
-}
-
-export function localizeOrderReceiptGatewayPresentation(
-  gatewayId: string,
-  presentation: GatewayPresentation,
-  copy: CheckoutLanguageData,
-): GatewayPresentation {
-  switch (gatewayId) {
-    case "stripe":
-      return {
-        ...presentation,
-        buyerLabel: copy.creditDebitCardText,
-        description: copy.paySecurelyByCardText,
-      };
-    case "sslcommerz":
-    case SSLCOMMERZ_GATEWAY_ID:
-      return sslcommerzPresentation(presentation, copy);
-    case "cod":
-      return {
-        ...presentation,
-        buyerLabel: copy.cashOnDeliveryText,
-        description: copy.payOnDeliveryText,
-      };
-    default:
-      return presentation;
   }
 }
 

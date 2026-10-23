@@ -116,6 +116,19 @@ export const policies = [
     sample: 'import { addressRulesFor } from "@scalius/shared/address-metadata";',
   },
   {
+    rule: "checkout payment handlers and the payment methods' presentation write no buyer words: each failure or name is a checkout-language key",
+    why: "the handlers' English (\"Cash on delivery\", \"Payment form not ready\", Stripe's own messages) reached Bangla buyers at payment; the page's checkout language (en + bn presets, merchant edits) is the one source, through CheckoutCopyError and handlers/failure.ts",
+    paths: [`${storefront}/lib/checkout/handlers`, `${storefront}/lib/checkout/gateway-presentation.ts`],
+    forbid: [
+      // A sentence or a capitalised word where a buyer reads it (copy keys are camelCase words).
+      /\b(?:error|label|desc|description|buyerLabel|message|title)\s*:\s*(?:["'`][A-Z]|["'`][^"'`\n]*\s[^"'`\n]*["'`])/,
+      // A raw error or provider message handed to the buyer.
+      /\berror\s*:\s*[\w.?]*\.message\b/,
+      /\bthrow new Error\(/,
+    ],
+    sample: 'return { success: false, error: "Payment form not ready. Please wait a moment." };',
+  },
+  {
     rule: "storefront never puts receipt proof or bearer tokens in URLs or DOM attributes",
     why: "receipt proof travels only in httpOnly cookies and API headers/bodies; URLs and DOM leak to history, referrers, analytics",
     paths: [storefront],

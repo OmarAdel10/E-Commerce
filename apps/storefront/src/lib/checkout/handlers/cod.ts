@@ -1,18 +1,10 @@
 import type { GatewayHandler, PaymentContext, PaymentResult } from "../types";
-import { CheckoutOrderError, createOrder } from "../create-order";
+import { createOrder } from "../create-order";
 import { pagePath } from "@/lib/presence-url";
+import { paymentFailure } from "./failure";
 
 export const codHandler: GatewayHandler = {
   id: "cod",
-  meta: {
-    label: "Cash on delivery",
-    icon: "",
-    desc: "Pay when you receive your order",
-  },
-
-  getButtonText(_isPartialPayment: boolean): string {
-    return "Place order";
-  },
 
   async processPayment(ctx: PaymentContext): Promise<PaymentResult> {
     try {
@@ -23,18 +15,7 @@ export const codHandler: GatewayHandler = {
         redirectUrl: pagePath(`/order-success?orderId=${encodeURIComponent(orderId)}`),
       };
     } catch (err: unknown) {
-      if (err instanceof CheckoutOrderError) {
-        return {
-          success: false,
-          error: err.message,
-          errorCode: err.errorCode,
-          details: err.details,
-          status: err.status,
-          cartIssues: err.cartIssues,
-          refusal: err.refusal,
-        };
-      }
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return paymentFailure(err, ctx, "orderProcessingFailedText");
     }
   },
 };

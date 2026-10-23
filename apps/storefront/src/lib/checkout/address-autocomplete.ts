@@ -12,7 +12,10 @@
  * URL, and are never logged. The module loads only when the layout names an
  * address app (pages/cart.astro).
  */
+import type { CheckoutLanguageData } from "@scalius/shared/checkout-language";
+import { formatCheckoutLanguageText } from "@scalius/shared/checkout-language-format";
 import { serviceCoversCountry, type AddressAutocompleteService } from "@/lib/app-services";
+import { formatPageNumber } from "@/lib/store-time-zone";
 import { LOCATION_COUNTRY, shippingCountryOf } from "./shipping-country";
 
 export const ADDRESS_AUTOCOMPLETE_MIN_CHARS = 3;
@@ -48,16 +51,8 @@ const FIELD_NAMES = {
 } as const satisfies Record<Exclude<keyof ResolvedAddress, "countryCode">, string>;
 const FIELD_KEYS = Object.keys(FIELD_NAMES) as Array<keyof typeof FIELD_NAMES>;
 
-const COPY = {
-  en: {
-    suggestions: (count: number) => `${count} address ${count === 1 ? "suggestion" : "suggestions"} available. Use the up and down arrow keys to choose.`,
-    filled: "Address filled in. Check it before you continue.",
-  },
-  bn: {
-    suggestions: (count: number) => `${count}টি ঠিকানার পরামর্শ আছে। বেছে নিতে উপরে ও নিচের তীর কী ব্যবহার করুন।`,
-    filled: "ঠিকানা পূরণ হয়েছে। এগিয়ে যাওয়ার আগে দেখে নিন।",
-  },
-} as const;
+/** The checkout-language words the suggestions are read out with. */
+export type AddressAutocompleteCopy = Pick<CheckoutLanguageData, "addressSuggestionText" | "addressSuggestionsText" | "addressFilledText">;
 
 type Post = (path: string, body: Record<string, string>, signal: AbortSignal) => Promise<unknown>;
 
@@ -69,6 +64,8 @@ export interface AddressAutocompleteOptions {
   service: AddressAutocompleteService;
   /** The page language, two letters. */
   locale: string;
+  /** The page's checkout language (screen-reader announcements). */
+  copy: AddressAutocompleteCopy;
   /** Sends a JSON POST to the API and returns the parsed response; throws on failure. */
   post: Post;
   signal?: AbortSignal;
@@ -164,10 +161,9 @@ export function apiPost(createUrl: (path: string) => string): Post {
 let listCount = 0;
 
 export function enhanceAddressAutocomplete(options: AddressAutocompleteOptions): AddressAutocomplete {
-  const { root, input, service, locale, post, signal } = options;
+  const { root, input, service, locale, post, signal, copy } = options;
   const debounceMs = options.debounceMs ?? ADDRESS_AUTOCOMPLETE_DEBOUNCE_MS;
   const doc = input.ownerDocument;
-  const copy = locale === "bn" ? COPY.bn : COPY.en;
   const sessionToken = newSessionToken();
   const listId = `${input.id || "address"}-suggestions-${++listCount}`;
   const label = input.id ? doc.querySelector<HTMLLabelElement>(`label[for="${input.id}"]`) : null;
@@ -269,7 +265,9 @@ export function enhanceAddressAutocomplete(options: AddressAutocompleteOptions):
     list.style.top = `${input.offsetTop + input.offsetHeight}px`;
     list.hidden = false;
     input.setAttribute("aria-expanded", "true");
-    status.textContent = copy.suggestions(suggestions.length);
+    status.textContent = suggestions.length === 1
+      ? copy.addressSuggestionText
+      : formatCheckoutLanguageText(copy.addressSuggestionsText, { count: formatPageNumber(suggestions.length, locale) });
     setActive(-1);
   };
 
@@ -321,7 +319,7 @@ export function enhanceAddressAutocomplete(options: AddressAutocompleteOptions):
     } finally {
       filling = false;
     }
-    status.textContent = copy.filled;
+    status.textContent = copy.addressFilledText;
   };
 
   const choose = async (suggestion: AddressSuggestion | undefined) => {

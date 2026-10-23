@@ -1,6 +1,7 @@
 import { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
 export { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
 import type { CheckoutConfig } from "./types";
+import { CheckoutCopyError } from "./error-messages";
 
 export type CheckoutPaymentRequest =
   | { paymentType: "deposit"; depositAmount: number }
@@ -13,7 +14,7 @@ export function resolveExplicitCheckoutPaymentRequest(
 ): CheckoutPaymentRequest {
   if (paymentType !== "deposit") return { paymentType };
   if (!Number.isFinite(depositAmount) || (depositAmount ?? 0) <= 0) {
-    throw new Error("A valid advance amount is required to continue payment.");
+    throw new CheckoutCopyError("paymentStartFailedText", "a deposit needs a positive advance amount");
   }
   return { paymentType: "deposit", depositAmount: depositAmount! };
 }
