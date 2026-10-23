@@ -4,10 +4,12 @@
 // a product's options and values, machine translation through an app, save
 // and delete. It loads on demand (Translate & adapt downloads it only when an
 // item opens).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Languages } from "lucide-react";
 import { RichContent } from "~/components/ui/rich-content";
+import { DeferredTiptapEditor } from "~/components/ui/tiptap/DeferredTiptapEditor";
+import { hasRenderableHtmlContent } from "@scalius/shared/html-sanitize";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
@@ -16,6 +18,8 @@ import { Label } from "~/components/ui/label";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Textarea } from "~/components/ui/textarea";
 import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
+import { useSaveBar } from "~/components/admin/shared/SaveBar";
+import { sameFormValue } from "~/lib/form-values";
 import { useLocale, useMessages } from "~/i18n";
 import { translationsMessages } from "~/i18n/translations";
 import { resourceMessages } from "~/i18n/resource";
@@ -33,7 +37,8 @@ import {
 import {
   STATUS_BADGE,
   draftKey,
-  initialDraft,
+  rebaseTranslationDraft,
+  translationDraftOf,
   isDirty,
   languageName,
   resourcePath,
@@ -86,29 +91,53 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
   const remove = useDeleteTranslation(type, id);
   const machine = useMachineTranslate();
   const rows = useMemo(() => translationRows(view), [view]);
-  const [draft, setDraft] = useState<Record<string, string>>(() => initialDraft(view));
-  const [slug, setSlug] = useState<string>(view.resource.slug ?? "");
+  // `base` is the saved state the draft was made from. A newly loaded view
+  // (another tab's save, a delete) or this editor's own save rebases the
+  // draft onto it, keeping every field changed since.
+  const [state, setState] = useState(() => {
+    const saved = translationDraftOf(view);
+    return { base: saved, draft: saved };
+  });
+  const latest = useRef(state);
+  latest.current = state;
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
-    setDraft(initialDraft(view));
-    setSlug(view.resource.slug ?? "");
+    const saved = translationDraftOf(view);
+    setState((current) => sameFormValue(current.base, saved)
+      ? current
+      : { base: saved, draft: rebaseTranslationDraft(current.base, current.draft, saved) });
   }, [view]);
+  const draft = state.draft.fields;
+  const slug = state.draft.slug;
+  const setDraft = (update: (fields: Record<string, string>) => Record<string, string>) =>
+    setState((current) => ({ ...current, draft: { ...current.draft, fields: update(current.draft.fields) } }));
+  const setSlug = (next: string) => setState((current) => ({ ...current, draft: { ...current.draft, slug: next } }));
 
   const sourceLocale = providers.data?.defaultLocale ?? "";
   const sourceName = sourceLocale ? languageName(sourceLocale, uiLocale) : "";
   const targetName = languageName(locale, uiLocale);
-  const dirty = isDirty(view, draft, slug);
+  const dirty = canEdit && isDirty(view, draft, slug);
   const status = STATUS_BADGE[view.resource.status];
   const slugPath = view.resource.sourceSlug ? resourcePath(type, view.resource.sourceSlug, view.resource.subtitle) : null;
   const provider = providers.data?.items[0] ?? null;
   const emptyRows = rows.filter((row) => !(draft[draftKey(row)] ?? "").trim());
+  const slugId = `slug-${id}`;
 
-  const onSave = () => {
-    save.mutate(saveBody(view, draft, { locale, marketId, slug: slug.trim() || null }), {
-      onSuccess: () => toast.success(t("saved")),
-      onError: (error) => toast.error(getServerFnError(error, t("saveFailed"))),
-    });
-  };
+  // The page's save bar saves it, and the leave guard asks before another
+  // item, kind, language or market (or another page) would drop it.
+  useSaveBar({
+    dirty,
+    saving: save.isPending,
+    label: t("translationOf", { title: view.resource.title, language: targetName }),
+    fields: { slug: slugId },
+    save: async () => {
+      const sent = latest.current.draft;
+      const saved = translationDraftOf(await save.mutateAsync(saveBody(view, sent.fields, { locale, marketId, slug: sent.slug.trim() || null })));
+      // What was typed while the save was on its way stays unsaved.
+      setState((current) => ({ base: saved, draft: rebaseTranslationDraft(sent, current.draft, saved) }));
+    },
+    discard: () => setState((current) => ({ ...current, draft: current.base })),
+  });
 
   const onMachineTranslate = () => {
     if (!provider || emptyRows.length === 0) return;
@@ -150,7 +179,7 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
         {view.resource.sourceSlug !== null ? (
           <div className="grid gap-2 border-t pt-4 md:grid-cols-2 md:gap-4">
             <ReadOnlyValue label={t("field_slug")} value={slugPath} mono />
-            <Field id={`slug-${id}`} label={t("field_slug")} hideLabel help={marketId !== null ? t("slugMarketHelp") : t("slugHelp", { path: slugPath ?? "" })}>
+            <Field id={slugId} label={t("field_slug")} hideLabel help={marketId !== null ? t("slugMarketHelp") : t("slugHelp", { path: slugPath ?? "" })}>
               <Input
                 value={slug}
                 onChange={(event) => setSlug(event.target.value.toLowerCase())}
@@ -166,7 +195,7 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
     </>
   );
 
-  const actions = canEdit ? (
+  const actions = canEdit && (view.resource.translation || (provider && emptyRows.length > 0)) ? (
     <div className="flex w-full flex-wrap items-center justify-end gap-2">
       {view.resource.translation ? (
         <Button type="button" variant="ghost" className="me-auto" onClick={() => setDeleting(true)}>
@@ -179,7 +208,6 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
           {t("translateWith", { provider: provider.name })}
         </Button>
       ) : null}
-      <Button type="button" loading={save.isPending} disabled={!dirty} onClick={onSave}>{t("save")}</Button>
     </div>
   ) : null;
 
@@ -232,7 +260,8 @@ function TranslationEntry({ row, first, value, onChange, disabled, sourceName, t
   return (
     <div className={first ? "flex flex-col gap-2" : "flex flex-col gap-2 border-t pt-4"}>
       <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor={inputId}>{label}</Label>
+        {/* A rich text field is named by its editor's own label. */}
+        <Label htmlFor={row.kind === "html" && !disabled ? undefined : inputId}>{label}</Label>
         {row.outdated ? (
           <Badge variant="warning" title={t("outdatedHelp", { language: sourceName })}>{t("outdated")}</Badge>
         ) : null}
@@ -253,8 +282,22 @@ function TranslationEntry({ row, first, value, onChange, disabled, sourceName, t
               ? <div className="rounded-lg border px-3 py-2"><RichContent content={value} /></div>
               : (
                 <>
-                  <Textarea id={inputId} value={value} onChange={(event) => onChange(event.target.value)} maxLength={row.max} rows={6} />
-                  <span className="text-body text-muted-foreground">{t("htmlSourceHint")}</span>
+                  {/* The same rich text editor as the original's, so links, lists and tables are edited, never typed as tags. */}
+                  <DeferredTiptapEditor
+                    content={value}
+                    onChange={onChange}
+                    ariaLabel={t("translationOfField", { field: label, language: targetName })}
+                    placeholder={t("htmlPlaceholder")}
+                    compact
+                  />
+                  {hasRenderableHtmlContent(value) ? null : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => onChange(row.source)}>
+                        {t("startFromOriginal")}
+                      </Button>
+                      <span className="text-body text-muted-foreground">{t("startFromOriginalHelp")}</span>
+                    </div>
+                  )}
                 </>
               )
           ) : row.kind === "text" ? (

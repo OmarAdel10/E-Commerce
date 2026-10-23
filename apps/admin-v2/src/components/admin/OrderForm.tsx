@@ -95,6 +95,7 @@ import {
   type AddressProblem,
 } from "./address/address-draft";
 import { BillingSection } from "./order-form/BillingSection";
+import { useFormDirty } from "./shared/use-form-save-bar";
 import { addressMessages } from "@/i18n/address";
 import { locationMessages } from "@/i18n/location";
 import { addressRulesQueryOptions } from "@/lib/api-query-options/address-rules";
@@ -697,9 +698,10 @@ function OrderEditor({
     }
   };
 
+  const formDirty = useFormDirty(form);
   useSaveBar({
-    // react-hook-form compares every value with the loaded order (or the empty draft).
-    dirty: form.formState.isDirty,
+    // Every value compared with the loaded order (or the empty draft).
+    dirty: formDirty,
     saving: isSubmitting,
     invalid: !canSave || Object.keys(form.formState.errors).length > 0,
     save,

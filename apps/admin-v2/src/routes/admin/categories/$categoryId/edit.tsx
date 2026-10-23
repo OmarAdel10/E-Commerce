@@ -5,17 +5,13 @@ import { categoryFormOptionsQueryOptions, categoryQueryOptions } from "~/lib/api
 import { RouteErrorComponent } from "~/lib/route-error";
 import { nullForAdminApiNotFound } from "~/lib/admin-api-error";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 export const Route = createFileRoute("/admin/categories/$categoryId/edit")({
   loader: async ({ params, context: { queryClient } }) => {
     // The parent picker names categories by their path.
     void queryClient.prefetchQuery(categoryFormOptionsQueryOptions());
-    const category = await queryClient
-      .ensureQueryData({
-        ...categoryQueryOptions(params.categoryId),
-        staleTime: Infinity,
-      })
-      .catch(nullForAdminApiNotFound);
+    const category = await loadEditorRecord(queryClient, categoryQueryOptions(params.categoryId)).catch(nullForAdminApiNotFound);
     if (!category) throw notFound();
     if (category.deletedAt != null) {
       throw redirect({

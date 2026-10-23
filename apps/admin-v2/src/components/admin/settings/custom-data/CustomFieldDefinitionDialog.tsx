@@ -22,8 +22,10 @@ import {
   type CustomFieldOwnerType,
   type CustomFieldScalarType,
   type CustomFieldType,
+  type CustomFieldValidationSetting,
   type CustomFieldWireValidations,
 } from "@scalius/shared/custom-fields";
+import { sameFormValue } from "~/lib/form-values";
 import { DEFAULT_CURRENCY, getDecimalPlaces } from "@scalius/shared/currency";
 import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
 import { useDirtyDialogClose } from "~/components/admin/shared/use-dirty-dialog-close";
@@ -52,11 +54,10 @@ import { Field, ChoiceField } from "~/components/ui/field";
 /** Scalar types with a list form (all but true/false and JSON). */
 const LISTABLE = new Set<string>(CUSTOM_FIELD_SCALAR_TYPES.filter((type) => type !== "boolean" && type !== "json"));
 
+/** What the merchant sees and can change; dirty compares exactly this. */
 interface Draft {
   name: string;
   key: string;
-  /** The key follows the name until the merchant edits it. */
-  keyEdited: boolean;
   description: string;
   itemType: CustomFieldScalarType;
   list: boolean;
@@ -68,7 +69,20 @@ interface Draft {
   to: string;
 }
 
-type Errors = Partial<Record<"name" | "key" | "validations", string>>;
+type Errors = Partial<Record<"name" | "key" | CustomFieldValidationSetting, string>>;
+
+/** Where each problem is fixed, in the order the form shows them (the first one gets focus). */
+const ERROR_TARGETS: ReadonlyArray<[keyof Errors, string]> = [
+  ["name", "custom-field-definition-name"],
+  ["key", "custom-field-definition-key"],
+  ["to", "custom-field-definition-to"],
+  ["min", "custom-field-definition-min"],
+  ["range", "custom-field-definition-min"],
+  ["max", "custom-field-definition-max"],
+  ["regex", "custom-field-definition-regex"],
+  ["choices", "custom-field-definition-choices"],
+  ["validations", "custom-field-definition-validations"],
+];
 
 /** Money context: bounds cross the API in minor units and are typed in major units. */
 type BoundContext = { decimalPlaces: number; currencyCode: string };
@@ -83,7 +97,6 @@ function draftOf(definition: CustomFieldDefinition | null, context: BoundContext
   return {
     name: definition?.name ?? "",
     key: definition?.key ?? "",
-    keyEdited: definition !== null,
     description: definition?.description ?? "",
     itemType: definition ? customFieldItemType(definition.type) : "single_line_text",
     list: definition ? isCustomFieldListType(definition.type) : false,
@@ -126,6 +139,8 @@ function validationsOf(draft: Draft, context: BoundContext): CustomFieldWireVali
   };
 }
 
+const RANGE_ERROR_ID = "custom-field-definition-range-error";
+
 export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpenChange }: {
   ownerType: CustomFieldOwnerType;
   /** null adds a field. */
@@ -137,6 +152,9 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
   const currencyCode = useCurrency().code ?? DEFAULT_CURRENCY.code;
   const context = useMemo(() => ({ decimalPlaces: getDecimalPlaces(currencyCode), currencyCode }), [currencyCode]);
   const [draft, setDraft] = useState<Draft>(() => draftOf(definition, context));
+  // The key follows the name until the merchant types their own (clearing it follows the name again).
+  // Editing history, not content: it never makes the dialog dirty.
+  const [keyEdited, setKeyEdited] = useState(definition !== null);
   const [errors, setErrors] = useState<Errors>({});
   const save = useSaveCustomFieldDefinition();
   const reset = save.reset;
@@ -148,17 +166,18 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
   useEffect(() => {
     if (!open) return;
     setDraft(draftOf(definition, context));
+    setKeyEdited(definition !== null);
     setErrors({});
     sentKeys.current = new Set();
     reset();
   }, [open, definition, reset, context]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(definition, context));
+  const dirty = !sameFormValue(draft, draftOf(definition, context));
   const { requestClose, discardDialog } = useDirtyDialogClose({ dirty, busy: save.isPending, onClose: () => onOpenChange(false) });
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => {
       const next = { ...current, [key]: value };
-      if (key === "name" && !current.keyEdited) next.key = normalizeCustomFieldKey(String(value)) ?? "";
+      if (key === "name" && !keyEdited) next.key = normalizeCustomFieldKey(String(value)) ?? "";
       return next;
     });
     setErrors({});
@@ -166,6 +185,22 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
 
   const type = typeOf(draft);
   const boundKind = customFieldBoundKind(type);
+
+  /** What to change, said beside the setting the shared codec refused. */
+  const settingProblem = (setting: CustomFieldValidationSetting): string => {
+    switch (setting) {
+      case "range": return t("setting.range");
+      case "min":
+      case "max":
+        return boundKind === "length"
+          ? t("setting.boundLength")
+          : t("setting.boundValue", { type: t(`type.${customFieldItemType(type)}` as CustomFieldMessageKey) });
+      case "regex": return t("setting.regex");
+      case "choices": return t("setting.choices");
+      case "to": return t("setting.to");
+      default: return t("issue.invalid_validation");
+    }
+  };
   const storefrontAllowed = customFieldOwnerIsStorefront(ownerType);
   const creating = definition === null;
 
@@ -177,11 +212,14 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
     if (creating && !isCustomFieldKey(draft.key.trim())) found.key = t("keyInvalid");
     const validations = validationsOf(draft, context);
     const checked = parseCustomFieldValidations(type, validations, context);
-    if (!checked.ok) found.validations = t("issue.invalid_validation");
+    if (!checked.ok) {
+      const setting = checked.issue.validation ?? "validations";
+      found[setting] = settingProblem(setting);
+    }
     if (Object.keys(found).length > 0) {
       setErrors(found);
-      const first = (["name", "key", "validations"] as const).find((field) => found[field]);
-      if (first) document.getElementById(`custom-field-definition-${first}`)?.focus();
+      const first = ERROR_TARGETS.find(([field]) => found[field]);
+      if (first) document.getElementById(first[1])?.focus();
       return;
     }
     const description = draft.description.trim() || null;
@@ -252,13 +290,14 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
     const item = customFieldItemType(type);
     const inputType = boundKind === "length" ? "text" : item === "date" ? "date" : item === "date_time" ? "datetime-local" : "text";
     return (
-      <Field id={id} label={t(label)}>
+      <Field id={id} label={t(label)} error={errors[side]}>
         <Input
           id={id}
           type={inputType}
           inputMode={boundKind === "length" || item === "integer" ? "numeric" : item === "decimal" || item === "money" ? "decimal" : undefined}
           value={draft[side]}
-          aria-invalid={errors.validations ? true : undefined}
+          aria-invalid={errors[side] || errors.range ? true : undefined}
+          aria-describedby={errors.range ? RANGE_ERROR_ID : undefined}
           onChange={(event) => set(side, event.target.value)}
         />
       </Field>
@@ -279,8 +318,6 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
                 id="custom-field-definition-name"
                 value={draft.name}
                 maxLength={80}
-                aria-invalid={errors.name ? true : undefined}
-                aria-describedby={errors.name ? "custom-field-definition-name-note" : undefined}
                 onChange={(event) => set("name", event.target.value)}
               />
             </Field>
@@ -295,7 +332,8 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
                 aria-invalid={keyError ? true : undefined}
                 aria-describedby="custom-field-definition-key-note"
                 onChange={(event) => {
-                  setDraft((current) => ({ ...current, key: event.target.value, keyEdited: true }));
+                  setDraft((current) => ({ ...current, key: event.target.value }));
+                  setKeyEdited(event.target.value !== "");
                   setErrors({});
                 }}
               />
@@ -338,14 +376,13 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
               </div>
             ) : null}
             {draft.itemType === "object_reference" ? (
-              <Field id="custom-field-definition-to" label={t("objectTarget")} help={t("objectTargetHelp")}>
+              <Field id="custom-field-definition-to" label={t("objectTarget")} help={t("objectTargetHelp")} error={errors.to}>
                 <Input
                   id="custom-field-definition-to"
                   value={draft.to}
                   maxLength={150}
                   autoComplete="off"
                   spellCheck={false}
-                  aria-invalid={errors.validations ? true : undefined}
                   onChange={(event) => set("to", event.target.value)}
                 />
               </Field>
@@ -369,31 +406,32 @@ export function CustomFieldDefinitionDialog({ ownerType, definition, open, onOpe
                 <legend className="sr-only">{t("validations")}</legend>
                 <h3 className="text-heading-sm">{t("validations")}</h3>
                 {boundKind ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {boundInput("min")}
-                    {boundInput("max")}
+                  <div className="space-y-1">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {boundInput("min")}
+                      {boundInput("max")}
+                    </div>
+                    {errors.range ? <p id={RANGE_ERROR_ID} className="text-body text-destructive">{errors.range}</p> : null}
                   </div>
                 ) : null}
                 {customFieldSupportsRegex(type) ? (
-                  <Field id="custom-field-definition-regex" label={t("regex")} help={t("regexHelp")}>
+                  <Field id="custom-field-definition-regex" label={t("regex")} help={t("regexHelp")} error={errors.regex}>
                     <Input
                       id="custom-field-definition-regex"
                       value={draft.regex}
                       maxLength={200}
                       autoComplete="off"
                       spellCheck={false}
-                      aria-describedby="custom-field-definition-regex-note"
                       onChange={(event) => set("regex", event.target.value)}
                     />
                   </Field>
                 ) : null}
                 {customFieldSupportsChoices(type) ? (
-                  <Field id="custom-field-definition-choices" label={t("choices")} help={t("choicesHelp")}>
+                  <Field id="custom-field-definition-choices" label={t("choices")} help={t("choicesHelp")} error={errors.choices}>
                     <Textarea
                       id="custom-field-definition-choices"
                       rows={3}
                       value={draft.choices}
-                      aria-describedby="custom-field-definition-choices-note"
                       onChange={(event) => set("choices", event.target.value)}
                     />
                   </Field>

@@ -220,26 +220,42 @@ export function useThemeDraft({ workspace, refetch, canEdit, apps }: {
   }, [canEdit, saved.revision, saving, conflict, failure, save]);
 
   /** The server's draft again (after a conflict, a restore or a discard); `keepEdits` saves ours over it next. */
+  /** Makes a workspace read the editor's saved state; without `keepEdits` the document becomes it too. */
+  const adopt = useCallback((data: ThemeWorkspaceDocument, keepEdits: boolean) => {
+    const newer: SavedDraft = { theme: data.draft.theme as Theme, revision: data.draft.revision, basePublishedRevision: data.draft.basePublishedRevision };
+    setSaved(newer);
+    setLastSent(newer.theme);
+    setPublished({ theme: data.published.theme as Theme, revision: data.published.revision });
+    setLastPublished(data.lastPublished);
+    if (!keepEdits) dispatchHistory({ type: "replace", theme: newer.theme });
+    setConflict(null);
+    setFailure(null);
+  }, []);
   const reload = useCallback(async (keepEdits = false) => {
     setBusy(true);
     try {
       const { data } = await refetch();
-      if (!data) return;
-      const newer: SavedDraft = { theme: data.draft.theme as Theme, revision: data.draft.revision, basePublishedRevision: data.draft.basePublishedRevision };
-      setSaved(newer);
-      setLastSent(newer.theme);
-      setPublished({ theme: data.published.theme as Theme, revision: data.published.revision });
-      setLastPublished(data.lastPublished);
-      if (!keepEdits) dispatchHistory({ type: "replace", theme: newer.theme });
-      setConflict(null);
-      setFailure(null);
+      if (data) adopt(data, keepEdits);
     } catch (error) {
       toast.error(actionErrorText(error));
     } finally {
       setBusy(false);
     }
-  }, [refetch]);
+  }, [refetch, adopt]);
   adoptNewer.current = () => void reload();
+
+  /**
+   * A newer draft read while this editor has nothing unsaved (its open's
+   * refetch, a refetch on focus, another tab's save on a phone, where no
+   * presence runs) is taken at once: there is nothing to keep. With unsaved
+   * edits it is left alone; the next autosave meets the newer revision and
+   * the conflict names who saved.
+   */
+  useEffect(() => {
+    if (workspace.draft.revision <= latest.current.saved.revision) return;
+    if (unsavedEdits || saving || busy || inFlight.current) return;
+    adopt(workspace, false);
+  }, [workspace, unsavedEdits, saving, busy, adopt]);
 
   /**
    * Restores a published version or a restore point to the draft, or discards

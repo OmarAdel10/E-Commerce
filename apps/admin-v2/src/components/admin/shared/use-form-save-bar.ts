@@ -76,6 +76,21 @@ export function useFieldErrorLines<T extends FieldValues, C, R extends FieldValu
 }
 
 /**
+ * Whether the form's values differ from its last-saved values, by the same
+ * rule as every other draft (`sameFormValue`). react-hook-form's own
+ * `isDirty` counts object keys, so a control that mounts without a default
+ * (an optional field shown only in another mode) adds an `undefined` key and
+ * keeps the form dirty after every edit is undone. Its `isDirty` is still the
+ * cheap first check, and `dirtyFields` is read so a field returning to its
+ * saved value re-renders the caller.
+ */
+export function useFormDirty<T extends FieldValues, C, R extends FieldValues>(form: UseFormReturn<T, C, R>): boolean {
+  const { isDirty, dirtyFields, defaultValues } = form.formState;
+  void dirtyFields;
+  return isDirty && !sameFormValue(form.getValues(), defaultValues);
+}
+
+/**
  * Puts a react-hook-form editor on the page's contextual save bar. The bar
  * appears once the form is dirty; Save validates and runs `save`, then the
  * values sent become the last-saved ones (edits typed meanwhile stay unsaved),
@@ -89,7 +104,8 @@ export function useFormSaveBar<T extends FieldValues, R extends FieldValues>({
   savedValues,
   reload,
 }: FormSaveBarOptions<T, R>) {
-  const { isDirty, errors } = form.formState;
+  const isDirty = useFormDirty(form);
+  const { errors } = form.formState;
   const latestLocked = React.useRef(locked);
   latestLocked.current = locked;
   useSaveBar({

@@ -4,10 +4,11 @@ import { CustomerForm } from "~/components/admin/CustomerForm";
 import { customerQueryOptions } from "~/lib/api-query-options/customers";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { pageHead } from "~/i18n/page-titles";
+import { loadEditorRecord } from "~/lib/route-query-warming";
 
 export const Route = createFileRoute("/admin/customers/$customerId/edit")({
   loader: ({ context: { queryClient }, params }) =>
-    queryClient.ensureQueryData({ ...customerQueryOptions(params.customerId), staleTime: Infinity }),
+    loadEditorRecord(queryClient, customerQueryOptions(params.customerId)),
   head: () => pageHead("customer"),
   errorComponent: RouteErrorComponent,
   component: CustomerPage,

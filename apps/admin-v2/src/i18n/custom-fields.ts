@@ -137,6 +137,13 @@ export const customFieldMessages = defineMessages({
     "issue.whole_amount": "Taka amounts are whole numbers.",
     "issue.missing_reference": "That record doesn't exist or is in trash.",
     "issue.invalid_validation": "Check the validation settings.",
+    // Validation settings the merchant typed (beside the control that fixes them)
+    "setting.range": "The minimum can't be more than the maximum. Lower the minimum or raise the maximum.",
+    "setting.boundLength": "Enter a whole number of characters, 0 or more.",
+    "setting.boundValue": "Enter a valid value ({type}), or leave it empty.",
+    "setting.regex": "Enter a valid regular expression.",
+    "setting.choices": "List each allowed value once, one per line.",
+    "setting.to": "Enter an object type handle, such as custom.size_chart.",
     itemIssue: "Item {index}: {message}",
   },
   bn: {
@@ -269,6 +276,12 @@ export const customFieldMessages = defineMessages({
     "issue.whole_amount": "টাকার পরিমাণ পূর্ণ সংখ্যায় দিন, পয়সা নয়।",
     "issue.missing_reference": "এই রেকর্ডটি নেই বা ট্র্যাশে আছে।",
     "issue.invalid_validation": "যাচাইয়ের সেটিংস দেখুন।",
+    "setting.range": "সর্বনিম্ন মান সর্বোচ্চের চেয়ে বেশি হতে পারে না। সর্বনিম্ন কমান বা সর্বোচ্চ বাড়ান।",
+    "setting.boundLength": "অক্ষরের সংখ্যা পূর্ণ সংখ্যায় দিন, ০ বা তার বেশি।",
+    "setting.boundValue": "সঠিক মান দিন ({type}), অথবা খালি রাখুন।",
+    "setting.regex": "সঠিক রেগুলার এক্সপ্রেশন দিন।",
+    "setting.choices": "প্রতিটি অনুমোদিত মান একবার করে, প্রতি লাইনে একটি দিন।",
+    "setting.to": "অবজেক্ট টাইপের হ্যান্ডেল দিন, যেমন custom.size_chart।",
     itemIssue: "আইটেম {index}: {message}",
   },
 });

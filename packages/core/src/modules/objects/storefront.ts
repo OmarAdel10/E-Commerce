@@ -4,7 +4,7 @@ import { objectTypes, objectRecords } from "@scalius/database/schema";
 import type { BatchItem } from "drizzle-orm/batch";
 import { and, eq, sql } from "drizzle-orm";
 import {
-  OBJECT_SECTION_RECORDS_MAX, objectDataWire, objectFieldSchema, objectTypeId,
+  OBJECT_SECTION_RECORDS_MAX, objectDataWire, objectFieldSchema, objectRecordTitle, objectTitleField, objectTypeId,
   parseObjectTypeHandle, type ObjectField,
 } from "@scalius/shared/plugins/objects";
 import { deps } from "../../cache-deps";
@@ -114,12 +114,15 @@ export function planStorefrontObjects(db: Database, requests: readonly Storefron
           return [{ id: entry.recordId, handle: entry.handle, data }];
         });
         bindingObjects[`${row.namespace}.${row.type}`] = { records, fields: Object.fromEntries(fields.map((field) => [field.key, field.type])) };
+        // Named by the dashboard's rule: the display field, else the first text field.
+        const titled = { fields: parsed.data, display: row.displayField };
+        const titleField = objectTitleField(titled);
         const entries = records.map((record): StorefrontObjectEntry => ({
           handle: record.handle ?? record.id,
-          title: (row.displayField && typeof record.data[row.displayField] === "string" ? String(record.data[row.displayField]).trim() : record.handle ?? record.id).slice(0, 200),
+          title: objectRecordTitle(titled, record),
           fields: fields.flatMap((field) => {
             const value = record.data[field.key];
-            return field.key === row.displayField || value === undefined || value === null || value === "" ? []
+            return field.key === titleField || value === undefined || value === null || value === "" ? []
               : [{ key: field.key, name: field.name, type: field.type, value }];
           }),
         }));

@@ -186,6 +186,31 @@ export function objectDataWire(declaration: Pick<ObjectTypeDeclaration, "fields"
   return data;
 }
 
+/** Field types that name a record when its type chooses no display field (the dashboard's "First text field"). */
+export const OBJECT_TITLE_FIELD_TYPES: readonly string[] = ["single_line_text", "multi_line_text"];
+
+/**
+ * The field whose value names a type's records: its display field, else its
+ * first single- or multi-line text field, else none. The one rule for the
+ * dashboard's list, heading and references, related-record cards (whose SQL
+ * mirrors it in `objects/related.ts`) and storefront entries.
+ */
+export function objectTitleField(type: { fields: readonly { key: string; type: string }[]; display?: string | null }): string | null {
+  if (type.display) return type.fields.some((field) => field.key === type.display) ? type.display : null;
+  return type.fields.find((field) => OBJECT_TITLE_FIELD_TYPES.includes(field.type))?.key ?? null;
+}
+
+/** A record's name: its title field's text, else its handle, else its id (at most 200 characters). */
+export function objectRecordTitle(
+  type: { fields: readonly { key: string; type: string }[]; display?: string | null },
+  record: { id: string; handle: string | null; data: Record<string, unknown> },
+): string {
+  const key = objectTitleField(type);
+  const value = key ? record.data[key] : undefined;
+  const text = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  return (text || record.handle || record.id).slice(0, 200);
+}
+
 export function objectHandleFrom(value: string): string {
   return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 100).replace(/-+$/g, "") || "record";
 }

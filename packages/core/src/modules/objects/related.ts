@@ -1,8 +1,18 @@
 import { sql, type SQL } from "drizzle-orm";
 import { encodeIndexTuple, indexPrefixUpperBound } from "./index-encoding";
-import type { RelatedObjectRecord } from "@scalius/shared/plugins/objects";
+import { OBJECT_TITLE_FIELD_TYPES, type RelatedObjectRecord } from "@scalius/shared/plugins/objects";
 
 export const RELATED_OBJECTS_LIMIT = 25;
+
+/**
+ * `objectTitleField()` in SQL: the display field, else the first single- or
+ * multi-line text field. The type names are code constants, written inline so
+ * the detail read it folds into binds no more parameters.
+ */
+const titleField = sql`COALESCE(related_type.display_field, (SELECT json_extract(title_field.value, '$.key')
+  FROM json_each(related_type.fields_json) AS title_field
+  WHERE json_extract(title_field.value, '$.type') IN (${sql.raw(OBJECT_TITLE_FIELD_TYPES.map((type) => `'${type}'`).join(", "))})
+  ORDER BY title_field.id LIMIT 1))`;
 
 /** Fold into the resource's existing read; unused types never read records. */
 export function relatedObjectsJson(resource: "product" | "order" | "customer", id: string): SQL<string | null> {
@@ -16,7 +26,7 @@ export function relatedObjectsJson(resource: "product" | "order" | "customer", i
         'typeHandle', related_type.namespace || '.' || related_type.type,
         'typeName', related_type.name,
         'recordId', related_record.id,
-        'displayName', COALESCE(NULLIF(CAST(json_extract(related_record.data_json, '$.' || related_type.display_field) AS TEXT), ''), related_record.handle, related_record.id)
+        'displayName', COALESCE(NULLIF(TRIM(CAST(json_extract(related_record.data_json, '$.' || ${titleField}) AS TEXT)), ''), related_record.handle, related_record.id)
       ) AS entry
       FROM object_types AS related_type CROSS JOIN object_records AS related_record
       WHERE related_type.admin <> 'none' AND EXISTS (
