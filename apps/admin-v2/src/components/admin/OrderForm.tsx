@@ -100,6 +100,7 @@ import { addressMessages } from "@/i18n/address";
 import { locationMessages } from "@/i18n/location";
 import { addressRulesQueryOptions } from "@/lib/api-query-options/address-rules";
 import { Page } from "~/components/admin/resource/Page";
+import { sameFormValue } from "~/lib/form-values";
 
 type CreateOrderInput = ApiBody<typeof postApiV1AdminOrders>;
 type ManualOrderAmendmentInput = { id: string } &
@@ -427,7 +428,7 @@ function OrderEditor({
   );
   const debouncedQuoteInput = useDebounce(quoteInput, 350);
   const quoteInputIsCurrent =
-    JSON.stringify(quoteInput) === JSON.stringify(debouncedQuoteInput);
+    sameFormValue(quoteInput, debouncedQuoteInput);
   const hasQuotePrerequisites = (!needsAddress || abroad || Boolean(quoteInput.city && quoteInput.zone))
     && quoteInput.items.length > 0
     && quoteInput.items.every((item) => Boolean(item.variantId) && item.quantity >= 1 && item.quantity <= MAX_LINE_QUANTITY)

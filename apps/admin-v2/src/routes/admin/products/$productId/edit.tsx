@@ -29,6 +29,7 @@ import { productMessages } from "~/i18n/products";
 import { pageHead } from "~/i18n/page-titles";
 import { loadEditorRecord } from "~/lib/route-query-warming";
 import { PresenceSlot, announceSave, presenceKey } from "~/lib/realtime/store";
+import { sameFormValue } from "~/lib/form-values";
 
 /**
  * Fields that change together under the aggregate revision: the product's
@@ -323,7 +324,7 @@ function ProductEditor({ productId, initialProduct, categories }: {
       const draft = draftRef.current();
       const before = toFormValues(formSnapshot);
       const after = toFormValues(latest);
-      const same = (key: keyof ProductFormValues) => JSON.stringify(before[key]) === JSON.stringify(after[key]);
+      const same = (key: keyof ProductFormValues) => sameFormValue(before[key], after[key]);
       const clashes = draft.changed.filter((key) => !same(key));
       const matrix = currentMatrix.current;
       const variantsChanged = matrix.dirty && variantsSignature(matrix.snapshot) !== variantsSignature(latest);
@@ -374,7 +375,7 @@ function ProductEditor({ productId, initialProduct, categories }: {
           // The fields this save changed against the last saved version (names, never values).
           const before = toFormValues(formSnapshot);
           const changed = (Object.keys(values) as Array<keyof ProductFormValues>)
-            .filter((key) => JSON.stringify(values[key]) !== JSON.stringify(before[key]));
+            .filter((key) => !sameFormValue(values[key], before[key]));
           handleProductSaved(values, revision);
           announceSave(presenceKey("product", productId), revision, changed);
         }}

@@ -36,6 +36,7 @@ import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { SettingsCard, SettingsDialog, SettingsField, SettingsRow, SettingsCardLoading } from "./SettingsPage";
 import { SettingsCheckbox } from "./SettingsCheckbox";
 import { FieldRow } from "~/components/ui/field";
+import { sameFormValue } from "~/lib/form-values";
 
 function refreshCheckout(queryClient: ReturnType<typeof useQueryClient>, key: readonly unknown[]) {
   return Promise.all([
@@ -158,7 +159,7 @@ function CourierForm({ courier }: { courier: DeliveryProviderRecord | null }) {
   });
   useSaveBar({
     fields: { name: "courier-name" },
-    dirty: JSON.stringify(draft) !== JSON.stringify(saved),
+    dirty: !sameFormValue(draft, saved),
     saving: save.isPending,
     // Fail closed: a courier can't be switched on until its app can book.
     invalid: !draft.name.trim() || !draft.type || (draft.isActive && blocked),

@@ -44,6 +44,7 @@ import { PLUGIN_PRODUCT_BLOCKS_MAX } from "@scalius/shared/plugins/storefront";
 import { STOREFRONT_SKIN_UNITS, storefrontComponentProductSlot } from "@scalius/shared/plugins/storefront-protocol";
 import type { ThemeApp, ThemeAppBlock, ThemeAppSkin } from "~/lib/api-query-options/online-store";
 import { appValuesInvalid, type AppSettingValues } from "./schema-form/app-settings";
+import { sameFormValue } from "~/lib/form-values";
 
 export const COLOR_ROLES = {
   background: ["background", "card", "popover"],
@@ -242,22 +243,8 @@ export const THEME_FIELD_IDS = {
   homeProduct: "theme-home-product",
 } as const;
 
-function canonical(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, canonical((value as Record<string, unknown>)[key])]),
-    );
-  }
-  return value;
-}
-
-function same(left: unknown, right: unknown): boolean {
-  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
-}
-
 function sameLook(left: StorefrontThemeDocument, right: StorefrontThemeDocument): boolean {
-  return same(left.tokens, right.tokens) && same(left.blocks, right.blocks) && same(left.pages, right.pages);
+  return sameFormValue(left.tokens, right.tokens) && sameFormValue(left.blocks, right.blocks) && sameFormValue(left.pages, right.pages);
 }
 
 /** A template an app offers: its key (`<app id>/<template id>`), name, app and look. */

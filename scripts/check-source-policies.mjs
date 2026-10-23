@@ -67,6 +67,13 @@ export const policies = [
     sample: 't("products", { count: formatNumber(total) })',
   },
   {
+    rule: "dashboard values compare through sameFormValue (useFormDirty for react-hook-form), never JSON.stringify",
+    why: "a JSON string is key-order sensitive and turns NaN, files and dates into look-alikes, so a draft rebuilt in another key order stayed dirty after its edits were undone (apps/admin-v2/src/lib/form-values.ts; apps/admin-v2/DESIGN.md, Saving)",
+    paths: ["apps/admin-v2/src"],
+    forbid: [/[!=]==\s*JSON\.stringify\(/, /JSON\.stringify\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)\s*[!=]==/],
+    sample: "const dirty = JSON.stringify(draft) !== JSON.stringify(saved);",
+  },
+  {
     rule: "storefront never imports server-only packages (@scalius/core, @scalius/database)",
     why: "the storefront Worker must not bundle domain services or database credentials",
     paths: [storefront],

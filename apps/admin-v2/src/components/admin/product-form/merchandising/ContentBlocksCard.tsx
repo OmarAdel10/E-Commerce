@@ -32,6 +32,7 @@ import { BlockSettingsEditor, type BlockMediaPreview } from "./block-editors";
 import { productContentBlocksQueryOptions, type ContentBlockItem } from "./section-api";
 import { useProductSection, type ProductSectionChanges } from "./product-sections";
 import { useSectionDraft } from "./use-section-draft";
+import { sameFormValue } from "~/lib/form-values";
 
 interface BlockDraft {
   key: string;
@@ -130,7 +131,7 @@ export default function ContentBlocksCard({ productId, readOnly, onTabsMoved }: 
         contentBlocks: blocks.map((block) => {
           const stored = block.id ? before.get(block.key) : undefined;
           // A saved block whose settings didn't change is kept as stored (moved without resending it).
-          if (block.id && stored && JSON.stringify(stored.settings) === JSON.stringify(block.settings)) {
+          if (block.id && stored && sameFormValue(stored.settings, block.settings)) {
             return { id: block.id, placement: block.placement, keep: true as const };
           }
           return {

@@ -48,6 +48,7 @@ import {
   rotateAgentCredential,
 } from "./api";
 import type { AgentAuditEvent, AgentConnection, AgentRisk } from "./types";
+import { sameFormValue } from "~/lib/form-values";
 
 const ACTIVITY_LIMIT = 10;
 const RISKS: ReadonlySet<string> = new Set<AgentRisk>(["read", "write", "destructive", "financial", "security"]);
@@ -283,7 +284,7 @@ function CreateKeyForm({ onCreated }: { onCreated: (key: string) => void }) {
   const [selection, setSelection] = useState(() => defaultSelection("pat"));
   useSaveBar({
     // Any change counts (the name or the access); changing it back clears it.
-    dirty: name !== "" || JSON.stringify(selection) !== JSON.stringify(defaultSelection("pat")),
+    dirty: name !== "" || !sameFormValue(selection, defaultSelection("pat")),
     invalid: !name.trim() || selectionProblem(selection) !== null,
     // A failure is listed in the dialog's banner; the form keeps its values.
     save: async () => {

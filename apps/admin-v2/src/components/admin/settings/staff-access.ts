@@ -5,6 +5,7 @@ import {
   withPrerequisites,
 } from "@scalius/core/auth/rbac/permissions";
 import type { PermissionName } from "@scalius/core/auth/rbac/types";
+import { sameFormValue } from "~/lib/form-values";
 
 // ── Permission groups (plain merchant words; keys stay exactly as stored) ──
 
@@ -164,7 +165,7 @@ export function normalizeAccess(access: StaffAccess): StaffAccess {
 }
 
 export function sameAccess(a: StaffAccess, b: StaffAccess): boolean {
-  return JSON.stringify(normalizeAccess(a)) === JSON.stringify(normalizeAccess(b));
+  return sameFormValue(normalizeAccess(a), normalizeAccess(b));
 }
 
 export function rolePermissionSet(roleIds: readonly string[], roles: readonly RolePermissions[]): Set<string> {

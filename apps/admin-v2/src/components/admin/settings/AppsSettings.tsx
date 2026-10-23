@@ -56,6 +56,7 @@ import { useSaveBar } from "../shared/SaveBar";
 import { OfficialProviderMark, type ProviderMarkId } from "./provider-marks";
 import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { SettingsCard, SettingsCardLoading, SettingsDialog, SettingsField, SettingsRow } from "./SettingsPage";
+import { sameFormValue } from "~/lib/form-values";
 
 /** Saved secrets come back masked; sending the mask back keeps them. */
 const MASKED_VALUE = "••••••••••••";
@@ -181,7 +182,7 @@ function ScriptForm({ script, scripts, types }: {
   });
   const [draft, setDraft] = useState(saved);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const dirty = !sameFormValue(draft, saved);
   const set = <K extends keyof ScriptDraft>(key: K, value: ScriptDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 

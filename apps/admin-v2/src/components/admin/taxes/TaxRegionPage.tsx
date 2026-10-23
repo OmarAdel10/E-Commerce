@@ -52,6 +52,7 @@ import {
 } from "./tax-form";
 import { NONE, CheckRow, useCanManageTaxes, useGroupName, useRefreshTaxes, useSaveFailure, useWriteFailure } from "./tax-shared";
 import { FieldRow } from "~/components/ui/field";
+import { sameFormValue } from "~/lib/form-values";
 
 const BD = "BD";
 
@@ -181,7 +182,7 @@ function RateForm({ rate, country, regions, config }: {
   });
   useSaveBar({
     fields: { name: "tax-rate-name" },
-    dirty: JSON.stringify(draft) !== JSON.stringify(saved),
+    dirty: !sameFormValue(draft, saved),
     saving: save.isPending,
     invalid: !draft.name.trim() || rateBps === null || priority === null || !draft.taxClassId || breaksCoverage,
     save: () => save.mutateAsync().catch(saveFailure),

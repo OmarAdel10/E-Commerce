@@ -3,6 +3,7 @@
 import { translatableField, type TranslatableResourceType } from "@scalius/shared/translations";
 import type { BadgeVariant } from "~/components/ui/badge";
 import type { ResourceTranslationsView, SaveTranslationBody, TranslatableResource, TranslationEditorType } from "~/lib/api-query-options/translations";
+import { sameFormValue } from "~/lib/form-values";
 
 /** Common ISO 639-1 languages, the choices of "Add language" (named in the dashboard's language). */
 export const LANGUAGE_CODES = [
@@ -150,7 +151,7 @@ export function saveBody(
   const partsChanged = view.parts.filter((part) => {
     const next = fieldsOf(part);
     const saved = part.translation?.fields ?? {};
-    return JSON.stringify(next) !== JSON.stringify(Object.fromEntries(Object.entries(saved).filter(([, value]) => value.trim() !== "")));
+    return !sameFormValue(next, Object.fromEntries(Object.entries(saved).filter(([, value]) => value.trim() !== "")));
   });
   return {
     locale: context.locale,

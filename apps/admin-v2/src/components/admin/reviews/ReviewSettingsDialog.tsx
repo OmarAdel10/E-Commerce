@@ -26,6 +26,7 @@ import {
   type ReviewSettingsForm,
 } from "./reviews-api";
 import { Field } from "~/components/ui/field";
+import { sameFormValue } from "~/lib/form-values";
 
 /** A newer saved version under the form: edited fields keep the edit, the rest update. */
 function keepEdits(form: ReviewSettingsForm, previous: ReviewSettingsForm, saved: ReviewSettingsForm): ReviewSettingsForm {
@@ -64,7 +65,7 @@ export function ReviewSettingsDialog({ open, onOpenChange }: { open: boolean; on
   const [conflict, setConflict] = useState(false);
   const [invalid, setInvalid] = useState<ReviewSettingsError | null>(null);
   const save = useSaveReviewSettings();
-  const dirty = Boolean(form && saved) && JSON.stringify(form) !== JSON.stringify(saved);
+  const dirty = Boolean(form && saved) && !sameFormValue(form, saved);
   const close = () => {
     setConflict(false);
     setInvalid(null);

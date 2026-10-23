@@ -49,6 +49,7 @@ import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { InlineError } from "~/components/admin/states/InlineError";
 import { SettingsCard, SettingsCardLoading, SettingsDialog, SettingsField, SettingsRow } from "./SettingsPage";
 import { settingsSheet } from "./SettingsSheet";
+import { sameFormValue } from "~/lib/form-values";
 
 type Zone = DeliveryZones["zones"][number];
 type Rate = Zone["rates"][number];
@@ -817,7 +818,7 @@ function ZoneForm({ zone, zones }: { zone: Zone | null; zones: Zone[] }) {
     }));
   useSaveBar({
     fields: fieldId,
-    dirty: JSON.stringify(draft) !== JSON.stringify(saved),
+    dirty: !sameFormValue(draft, saved),
     saving: save.isPending,
     invalid: !draft.name.trim()
       || draft.countries.length === 0
@@ -904,7 +905,7 @@ function PickupForm({ pickup }: { pickup: DeliveryZones["pickup"] }) {
   });
   useSaveBar({
     fields: fieldId,
-    dirty: JSON.stringify(rates) !== JSON.stringify(saved),
+    dirty: !sameFormValue(rates, saved),
     saving: save.isPending,
     invalid: rates.some((rate) => Object.keys(rateErrors(rate, wholeTaka)).length > 0),
     save: () => save.mutateAsync(),

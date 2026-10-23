@@ -18,6 +18,7 @@ import { resourceMessages } from "~/i18n/resource";
 import { useSaveSupplier, type Supplier } from "~/lib/api-query-options/purchasing";
 import { PurchasingProblemBanner, readPurchasingProblem, type PurchasingProblem } from "./purchasing-problem";
 import { Field, FieldRow } from "~/components/ui/field";
+import { sameFormValue } from "~/lib/form-values";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -29,7 +30,7 @@ interface SupplierFields {
   notes: string;
 }
 
-function fieldsOf(supplier: Supplier | null): SupplierFields {
+export function fieldsOf(supplier: Supplier | null): SupplierFields {
   return {
     name: supplier?.name ?? "",
     contactName: supplier?.contactName ?? "",
@@ -67,7 +68,7 @@ export function SupplierDialog({
   const set = (key: keyof SupplierFields) => (value: string) => setFields((current) => ({ ...current, [key]: value }));
 
   const key = open && supplier ? presenceKey("supplier", supplier.id) : null;
-  const dirty = JSON.stringify(fields) !== JSON.stringify(fieldsOf(supplier));
+  const dirty = !sameFormValue(fields, fieldsOf(supplier));
 
   const errors = {
     name: touched && !fields.name.trim() ? t("nameRequired") : null,
