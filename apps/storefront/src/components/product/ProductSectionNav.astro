@@ -43,11 +43,10 @@ const links = [
       <Icon name="chevron-up" class="h-4 w-4" aria-hidden="true" />
       {copy.top}
     </a>
-    {links.map((link, index) => (
+    {links.map((link) => (
       <a
         href={`#${link.id}`}
         data-section-anchor={link.id}
-        aria-current={index === 0 ? "location" : undefined}
         class="flex min-w-0 flex-1 items-center justify-center border-b-4 border-transparent px-1 pt-1 text-base font-medium text-foreground"
       >{link.label}</a>
     ))}
@@ -81,7 +80,7 @@ const links = [
 </style>
 
 <script>
-  import { currentSection } from "./lib/section-nav";
+  import { currentSection, sectionLandingLine } from "./lib/section-nav";
 
   let cleanup: (() => void) | null = null;
 
@@ -98,7 +97,7 @@ const links = [
         const section = document.getElementById(link.dataset.sectionAnchor ?? "");
         return section ? [{ id: section.id, top: section.getBoundingClientRect().top, rendered: section.getClientRects().length > 0 }] : [];
       }), {
-        boundary: nav.getBoundingClientRect().bottom + 12,
+        boundary: sectionLandingLine({ scrollPaddingTop: getComputedStyle(root).scrollPaddingTop, barTop: getComputedStyle(nav).top, barHeight: nav.offsetHeight }),
         height: window.innerHeight,
         atEnd: window.scrollY + window.innerHeight >= root.scrollHeight - 2,
       });

@@ -12,23 +12,34 @@ export interface SectionPlacement {
 }
 
 /**
+ * Where a followed section link lands a section, plus a little: the page's
+ * scroll padding (header, bar and gap) or the bar's pinned bottom edge. Read
+ * from styles, never from the bar's current place, which is far down the
+ * page until it pins.
+ */
+export function sectionLandingLine(styles: { scrollPaddingTop: string; barTop: string; barHeight: number }): number {
+  const padding = Number.parseFloat(styles.scrollPaddingTop);
+  const pinned = (Number.parseFloat(styles.barTop) || 0) + styles.barHeight;
+  return Math.max(Number.isFinite(padding) ? padding : 0, pinned) + 16;
+}
+
+/**
  * The current section: of the rendered ones whose top has passed the
- * boundary (the bar's bottom edge plus a little), the one that starts
+ * boundary (where a followed link lands it, under the pinned header and
+ * bar, plus a little), the one that starts
  * lowest. At the end of the page every section already on screen counts as
  * passed, so a short last section can still be current. Before any has
- * passed, the first section of the page is current.
+ * passed (the product itself is on screen), none is.
  */
 export function currentSection(
   sections: readonly SectionPlacement[],
   view: { boundary: number; height: number; atEnd: boolean },
 ): string | null {
   const shown = sections.filter((section) => section.rendered);
-  if (shown.length === 0) return null;
   const reached = (section: SectionPlacement) => section.top <= view.boundary || (view.atEnd && section.top < view.height);
   let current: SectionPlacement | null = null;
   for (const section of shown) {
     if (reached(section) && (!current || section.top > current.top)) current = section;
   }
-  if (current) return current.id;
-  return shown.reduce((first, section) => (section.top < first.top ? section : first)).id;
+  return current?.id ?? null;
 }
