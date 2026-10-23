@@ -713,9 +713,12 @@ phone it gives. The order's tax snapshot keeps `tax_exempt` and
 exempt buyer pays the listed price: in a market whose prices include tax,
 nothing is taken off it.
 
-**Left for later.** Calling `void` on cancellation and `refund` on a refund
-for app providers (the port and the snapshot's calculation id are ready).
-Duties and import taxes. The store's own tax registration number on invoices.
+**Void and refund (migration 0168).** A cancelled order and a refund queue a
+durable `tax_document_commands` row (`void`, `refund`; beside `commit`) for an
+app provider, written by triggers; the scheduled maintenance drains them with
+backoff (`drainTaxDocumentCommands`).
+
+**Left for later.** Duties and import taxes. The store's own tax registration number on invoices.
 Exemptions limited to some regions, or by segment. Taking included tax off
 an exempt buyer's price. Tax overrides per collection.
 
@@ -838,8 +841,11 @@ price increment. With a step, it rounds up to the step, and an ending sets
 the last part (step 10 and ending 9: 1,428.90 becomes 1,429). Prices are
 computed at read time; nothing is stored. The rate is a cache dependency
 (`pl:<market>`). The rate source is manual (`MANUAL_FX_RATE_SOURCE_ID`).
-`FxRateSource` is the port for a rate provider app; no provider is wired
-yet. While every market sells the shop currency, the rate is 1.
+`FxRateSource` is the port for a rate provider app: an app `fx` provider is
+wired to it (`apps/api/src/plugins/providers/fx.ts`), asked once when the
+merchant chooses it and refreshed hourly by scheduled plugin maintenance for
+every market that uses it. Pages and checkouts read the stored rate only.
+While every market sells the shop currency, the rate is 1.
 
 **Reads.** Products, categories, brands, collections, the homepage and
 landing pages are market-keyed (`PUBLIC_API_CACHE_ROUTES`). A presence read
@@ -879,11 +885,11 @@ moved out of the first download.
 `prices_set`; markets take the pricing fields. RBAC: reads need
 `products.view`, writes `products.edit`. The SDK is regenerated.
 
-**Left for later.** Listing sort, price facets and discount sort use the
-base or FX price in a market with lists. Sale lists on the backup market.
+**Left for later.** Discount sort uses the base or FX price in a market with
+lists (price sort and the price range already use the market's list prices:
+`catalog/market-price-order.ts`). Sale lists on the backup market.
 Segment lists in staff orders. Buyer-input surcharges and delivery charges
-are not converted. A rate provider app through `FxRateSource`. A second
-currency (step 6).
+are not converted. A second currency (step 6).
 
 ## Step 4b implemented
 
@@ -1263,8 +1269,7 @@ matrix, presence reads and the checkout config show it. `fx_rate_as_of` and
 rates declare its market's `mk:<id>` and `pl:<id>` (the currency and rate
 ride in the rate statement).
 
-**Left for later.** A rate provider app through `FxRateSource`. Listing sort,
-price facets and discount sort on market prices. Per-currency fixed delivery
+**Left for later.** Discount sort on market prices. Per-currency fixed delivery
 and promotion amounts. Gift cards in a third currency. Duties and
 merchant-of-record. Multi-currency payouts. Staff orders in a market's
 currency.

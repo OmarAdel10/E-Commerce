@@ -28,7 +28,7 @@ Related docs:
 └────────────────────────────┬───────────────────────────┘
                              │
 ┌────────────────────────────▼───────────────────────────┐
-│ @scalius/core: 40 domains (acyclic graph)              │
+│ @scalius/core: 45 domains (acyclic graph)              │
 │ plus settings-store, cache-deps, errors, auth,         │
 │ integrations, search, utils                            │
 └────────────────────────────┬───────────────────────────┘
@@ -69,7 +69,7 @@ Worker bindings, database clients, credentials, in-flight I/O and tenant data ar
 Each directory under `packages/core/src/modules/` is one domain with at most two public entries:
 
 - `index.ts` is the server API.
-- `browser.ts` exists only when the domain has pure types and policies that other code needs without its server graph. It is closed: every file it reaches is exported by a browser entry, and it imports only `zod`, `@scalius/shared/*` and other browser files. 23 of the 40 domains have one.
+- `browser.ts` exists only when the domain has pure types and policies that other code needs without its server graph. It is closed: every file it reaches is exported by a browser entry, and it imports only `zod`, `@scalius/shared/*` and other browser files. 22 of the 45 domains have one.
 
 Other code reaches a domain only through these entries: `../<domain>` or `../<domain>/browser` inside core, `@scalius/core/modules/<domain>` (and `/browser`) outside it. Core also has shared areas that are not domains: `settings-store`, `cache-deps`, `errors`, `auth`, `integrations`, `search`, `utils` and `testing` (test-only fixtures).
 
@@ -98,6 +98,7 @@ Other code reaches a domain only through these entries: `../<domain>` or `../<do
 | `markets` | Markets, their countries and URL presences, the presence matrix, the backup market's price increment and the store pricing currency, an order's market |
 | `media` | The Files library: uploads, usage index, permanent delete |
 | `media-references` | Stored-file key and URL projection, deleting-reference guard |
+| `onboarding` | The store setup step after the first admin: country, currency, language, time zone and units written as one guarded batch, and the setup guide |
 | `objects` | Typed app and merchant records, indexed queries, atomic writes, and published storefront content |
 | `navigation` | Menus, publications, placements |
 | `notifications` | Channel rules and templates, order notification outbox, delivery receipts, provider health, Web Push subscriptions and delivery |
@@ -108,13 +109,16 @@ Other code reaches a domain only through these entries: `../<domain>` or `../<do
 | `platform` | The `platform` settings document: origins, CORS, identity handoff |
 | `plugins` | Installed apps' state and lifecycle |
 | `product-admin` | The dashboard product editor under one aggregate revision |
+| `price-lists` | Price lists and their prices, market pricing at read time (price context, card and SKU overlays) and the checkout pricing scope |
 | `products` | The product model and its rules: eligibility, buyer pricing, option model, low-stock policy, catalog projections |
 | `promotions` | Discount engine, checkout snapshots, redemptions |
 | `reviews` | Verified-purchase reviews, moderation, rating projection, review requests |
+| `sales-channels` | Sales channels, their locations, publishing and unpublishing products, a staff order's channel |
 | `settings` | Shared settings documents and services |
 | `store-transfer` | Product, customer and inventory import and export |
 | `storefront` | Homepage and layout reads for the storefront |
 | `tax` | Tax classes, rates, the quote calculator |
+| `translations` | Store languages, the translation editor's reads and writes, and the SQL fold that resolves a presence's translations |
 | `warranty` | Warranty policies, per-line warranties, claims backed by threads |
 
 ### How the boundaries are enforced
@@ -133,7 +137,7 @@ The graph has no cycle, and no file cycle crosses a unit. So importing a domain 
 
 ### The dependency graph
 
-The allowlist holds 170 directed edges. A domain sits one layer above the highest domain it imports. There are 10 layers:
+The allowlist holds 169 directed edges. A domain sits one layer above the highest domain it imports. There are 10 layers:
 
 ```text
 L9   agent-storefront
@@ -156,7 +160,7 @@ Rules that keep it acyclic:
 - **Leaf domains import no domain:** `agent-access`, `attributes`, `collections`, `events`, `fraud-checker`, `gift-cards`, `media-references`, `order-kernel`, `translations`. Put a fact in a leaf when several domains act on it and none should own the others.
 - **`settings` imports only `media-references`.** The document store is infrastructure (`@scalius/core/settings-store`). A domain declares the documents it owns.
 - **`markets` imports only `settings` and `translations`** (a presence names a store language). A domain that prices reads the store currency and the price increment from `markets` (`readStoreCurrency()`, `storePriceIncrementSql()`); the code-only money helpers stay in `settings`.
-- **`plugins` imports only `events`.**
+- **`plugins` imports only `events` and `objects`.**
 - **Orchestrators sit on top.** `checkout`, `fulfilment`, `storefront`, `agent-storefront` and `store-transfer` compose lower domains, and nothing below them imports them. Work that needs two peers goes into the orchestrator or the API route that calls both.
 - **The model sits below its editor.** `products` is below `inventory`. `product-admin` is above `inventory` and `tax`.
 - **`orders` sits above `payments`, `delivery` and `notifications`.** These share `order-kernel` instead of importing `orders`.
@@ -173,7 +177,7 @@ Shared composition files are split so that features in different domains never e
 
 ## Provider ports
 
-`@scalius/shared/plugins/providers` defines one port per provider kind: `payment`, `courier`, `sms`, `email`, `courier_history` and `tax`. Built-in adapters (Stripe, the email senders) and app providers (the Bangladesh pack's SSLCommerz, couriers, SMS gateways and fraud checkers, bKash, Nagad) implement the same port. Core resolves a provider by id and never asks which kind it got. A built-in id never contains a colon. An app provider id is `<plugin id>:<provider id>`.
+`@scalius/shared/plugins/providers` defines one port per provider kind (14: `payment`, `courier`, `sms`, `email`, `courier_history`, `tax`, `translation`, `ai`, `messaging`, `push`, `search`, `address`, `fx` and `identity`; `PROVIDER_KINDS`). Built-in adapters (Stripe, the email senders) and app providers (the Bangladesh pack's SSLCommerz, couriers, SMS gateways and fraud checkers, bKash, Nagad) implement the same port. Core resolves a provider by id and never asks which kind it got. A built-in id never contains a colon. An app provider id is `<plugin id>:<provider id>`.
 
 - The API builds each request's app providers from `plugin_registrations` rows of kind `provider` (`apps/api/src/plugins/providers/`). Payment and courier providers join their registries (`payments/gateways/registry.ts`, `delivery/couriers/registry.ts`). SMS, email and fraud providers reach core through the `AppProviders` lookup (`packages/core/src/integrations/provider-port.ts`).
 - Core asks for an app provider only when the saved choice names one, so a store on built-in providers reads no plugin table. Without a lookup an app choice fails closed.
@@ -188,7 +192,7 @@ Wrangler configs declare resource bindings only and carry no `vars`, except `LOC
 - The API Worker resolves the document once per invocation in `runtime/runtime-env.ts`, through the `platform` domain only, so the entry's static graph stays small. It returns a request-scoped env with the derived secrets and `PLATFORM_CONFIG`. Consumers read fields such as `env.STOREFRONT_URL`.
 - The storefront Worker reads the origins from the platform fields of the layout payload that every page fetches (`applyPlatformOrigins`, `apps/storefront/src/lib/api/runtime.ts`). Its own URL falls back to the request origin. The dashboard SPA calls the same-origin API Worker and needs no origins.
 - `--plan paid` (default Free) generates a Wrangler config with the Paid CPU limit and the build constant `__SCALIUS_PLAN__`. Plan-sized values live in `packages/shared/src/plan-limits.ts` and are read through `planLimits()`. Code never branches on the plan name. See [FREE-PLAN.md](./FREE-PLAN.md).
-- Seven opt-in contracts support automated deployments. All are off by default and add no `vars` and no installed secret. See [AUTOMATED-DEPLOYMENTS.md](./AUTOMATED-DEPLOYMENTS.md).
+- Seven opt-in contracts support automated deployments. All are off by default, except that a new store requires the first-admin setup key outside local development. None adds a `vars` entry or an installed secret. See [AUTOMATED-DEPLOYMENTS.md](./AUTOMATED-DEPLOYMENTS.md).
 
 ### Build outputs and secrets
 

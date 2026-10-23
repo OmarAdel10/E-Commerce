@@ -10,8 +10,8 @@ A baseline is one measurement at one date on one build. Measure again before you
 
 | Area | Threshold | Enforced by |
 | --- | --- | --- |
-| Cache-hit TTFB, cache-miss TTFB, phone LCP, desktop LCP, CLS | 50 ms, 300 ms, 1200 ms, 300 ms, 0.05 | `pnpm perf:storefront` (`DEFAULT_BUDGETS` in `scripts/storefront-perf.mjs`) |
-| Template fidelity and page weights | `tolerances` and `budgets` in `scripts/storefront-fidelity/reference-metrics.json` (CLS 0.05 there) | `pnpm fidelity:check` |
+| Cache-hit TTFB, cache-miss TTFB, phone LCP, desktop LCP, CLS | 50 ms, 300 ms, 1200 ms, 300 ms, 0.01 | `pnpm perf:storefront` (`DEFAULT_BUDGETS` in `scripts/storefront-perf.mjs`) |
+| Template fidelity and page weights | `tolerances` and `budgets` in `scripts/storefront-fidelity/reference-metrics.json` (CLS 0.01 there) | `pnpm fidelity:check` |
 | API calls, D1 round trips and waves per page render | 1 call; per-page limits in [STOREFRONT-PERFORMANCE.md](./STOREFRONT-PERFORMANCE.md#budgets-and-guardrails) | `render-batch.test.ts`, `storefront-render-budget.test.ts` |
 | Dashboard first-render JavaScript (Brotli) | `BUNDLE_BUDGETS` in `scripts/admin-perf-check.mjs` | `pnpm check:admin-perf` |
 | API Worker size | 90% of 64 MiB uncompressed | `pnpm check:api-bundle` |
@@ -24,7 +24,7 @@ Policy (decided 2026-08; no script enforces it):
 
 - Dashboard: a warm navigation shows first feedback within 100 ms at p75, and Interaction to Next Paint (INP) stays at or below 200 ms. Reopen a dashboard architecture change only when a measured hot interaction misses one of these, with at least a 15% or 50 ms p75 gain and no p95 regression.
 - Storefront images: reopen image work only when a change that keeps visual fidelity gains at least 100 ms at p75.
-- Early Hints: keep the preconnect hint only while a test (at least 20 paired cold runs in three data centers) shows at least 100 ms median or 150 ms p75 LCP gain and unchanged hit latency. Never extend it to a hero, product, query or build-hashed URL.
+- Early Hints: keep the preconnect hint only while a test (at least 20 paired cold runs in three data centers) shows at least 100 ms median or 150 ms p75 LCP gain and unchanged hit latency. Never extend it to a hero, product or query URL. The only other hints are the immutable build files a stored page names in its head: its `/_astro/` stylesheets and preloaded fonts (`pageEarlyHintLinks` in `apps/storefront/src/lib/public-worker-cache.ts`, at most six); never merchant content.
 - Field data: treat 7 days of post-release real-user data as provisional and 28 days as final, with adequate cohort samples and Good LCP, INP and CLS. Label it Chromium-only.
 
 ## Storefront baselines

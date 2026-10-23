@@ -18,7 +18,7 @@ pnpm quality:storefront --only listing,token  # only entries whose id contains o
 pnpm quality:storefront --widths 390,1280     # other widths
 pnpm gallery:storefront                       # only the gallery: open http://127.0.0.1:4799/__gallery/
 pnpm quality:storefront --base-url http://127.0.0.1:4799                    # audit a gallery that runs already
-pnpm quality:storefront --base-url http://localhost:4321 --paths /,/cart    # audit real pages of a running `pnpm dev`
+pnpm quality:storefront --base-url http://localhost:4322 --paths /,/cart    # audit real pages of a running `pnpm dev` (default storefront port)
 ```
 
 Install the browser once: `pnpm exec playwright install chromium`.
@@ -96,7 +96,7 @@ The `catalog:cardinality` entries share finite catalogs of 0, 1 or 200 products 
 
 - The gallery lives in `src/gallery/`, outside `src/pages/`, and no route imports it (`entries.test.ts` checks this). Tailwind does not scan it (`@source not "../gallery"`).
 - `src/gallery/server.ts` throws in a production build, and the gallery server refuses to start with `NODE_ENV=production`. It listens on 127.0.0.1 only.
-- `pnpm check:dist-secrets` (part of every storefront build and deploy) fails when the storefront build output names the gallery or its fixture API.
+- `pnpm check:dist-secrets` (run by `pnpm run deploy*` and CI after the build; run it yourself after a standalone `astro build`) fails when the storefront build output names the gallery or its fixture API.
 - The gallery renders in Vite dev mode: CSS and scripts are unbundled. Use `pnpm perf:storefront` for production timing; the storefront render budgets do not include the gallery.
 
 ## Accessibility foundations

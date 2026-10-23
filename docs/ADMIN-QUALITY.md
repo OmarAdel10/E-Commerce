@@ -52,8 +52,8 @@ Each finding has a stable rule id and names the rule of "The polish bar" in `app
 | `truncated-no-title` | Text is truncated (ellipsis or line clamp) with no title, label or tooltip carrying the full value | T7 | yes |
 | `label-truncated` | A button, tab, label or heading is wider than its box | N3 | yes |
 | `control-height` | Inputs, selects, comboboxes or buttons in one row or form section differ in height by more than 1 px | C2 | yes |
-| `control-size` | An input, textarea or combobox is not 36 px tall (44 px below 640 px wide) | C1 | yes |
-| `touch-target` | A button, link, checkbox, switch, radio or tab is under 24x24 px, or under 44 px tall below 640 px | C6 | yes |
+| `control-size` | A text-like input, a one-row textarea (`rows="1"`) or a combobox is not 36 px tall (44 px below 640 px wide); checkboxes, radios, ranges, file and color inputs, rich editors, listboxes and command palettes are skipped | C1 | yes |
+| `touch-target` | A button, link, checkbox, switch, radio or tab is under 24x24 px, or, other than a link, under 44 px tall below 640 px; links inside running text are skipped | C6 | yes |
 | `multiple-primary` | More than one primary button in the page, or in one open dialog | C3 | yes |
 | `dialog-stack` | Two dialogs are open at once | O2 | yes |
 | `row-height` | Rows of one table differ in height by more than 1 px | T3 | yes |
@@ -82,7 +82,7 @@ Each finding has a stable rule id and names the rule of "The polish bar" in `app
 
 ### Not yet automated
 
-These rules of the polish bar are `harness` rules in DESIGN.md that the harness does not check yet. They need a `data-slot` name that the shared components do not carry yet (Wave B), a mocked or delayed API, a view-only session, or presence injection: `S4`, `S5`, `S6`, `S7`, `S8`, `S9`, `F8`, `C4`, `T4`, `T6`, `T8`, `T9`, `T10`, `T12`, `T13`, `P2`, `P4`, `O1 (needs the dialog-content slot)`, `E1`, `E2`, `L1 (cold load with a delayed API)`, `L2 (skeleton CLS with a delayed API)`, `L3`, `L4`, `R1 (mocked read failure)`, `R2`, `R3`, `R5`, `R6`, `M1 (delayed mutation)`, `Q2 (global shortcuts)`, `W1`, `W2`, `W4`, `N5`, `X1`. Review them by hand until they land.
+These rules of the polish bar are `harness` rules in DESIGN.md that the harness does not check yet. They need a `data-slot` name that the shared components do not carry yet, a mocked or delayed API, a view-only session, or presence injection: `S4`, `S6`, `S8`, `S9`, `F8`, `C4`, `T4`, `T6`, `T8`, `T9`, `T10`, `T12`, `T13`, `P2`, `P4`, `E1`, `E2`, `L1 (cold load with a delayed API)`, `L2 (skeleton CLS with a delayed API)`, `L3`, `L4`, `R1 (mocked read failure)`, `R2`, `R3`, `R5`, `R6`, `M1 (delayed mutation)`, `Q2 (global shortcuts)`, `W1`, `W2`, `W4`, `N5`, `X1`. `S5`, `S7` and `O1` are checked as advisory findings (`field-misaligned`, `dialog-width`). Review the rest by hand until they land.
 
 ### How the checks work
 
