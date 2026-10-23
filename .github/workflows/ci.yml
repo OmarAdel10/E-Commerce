@@ -61,6 +61,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Rulebook check
+        # The rulebook lives only in the private repository (rules/ is stripped from the export).
+        if: ${{ github.event.repository.private }}
+        run: node rules/cli.mjs check
+
       - name: Test
         # The suite lives only in the private repository; the public export carries no tests.
         if: ${{ github.event.repository.private }}
