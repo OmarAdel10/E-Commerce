@@ -52,7 +52,7 @@ export function AppProviderSetupButton({ provider, size = "default" }: { provide
  * one that offers a connection test, a test passed with its current keys.
  * The outcome is stored when the merchant tests; nothing here calls it.
  */
-export function appProviderState(provider: Pick<AppProvider, "readiness" | "connection">): "ready" | "untested" | "testFailed" | "notReady" {
+export function appProviderState(provider: { readiness: { usable: boolean }; connection: Pick<AppProvider["connection"], "status"> }): "ready" | "untested" | "testFailed" | "notReady" {
   if (!provider.readiness.usable) return "notReady";
   if (provider.connection.status === "failed") return "testFailed";
   return provider.connection.status === "untested" ? "untested" : "ready";
@@ -80,9 +80,6 @@ export function AppProviderStatus({ provider, onTested }: { provider: AppProvide
   });
   const usable = provider.readiness.usable;
   const state = appProviderState(provider);
-  const testedAt = provider.connection.testedAt
-    ? formatDateTime(new Date(provider.connection.testedAt), { dateStyle: "medium", timeStyle: "short" })
-    : null;
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-3">
@@ -104,20 +101,46 @@ export function AppProviderStatus({ provider, onTested }: { provider: AppProvide
           </Button>
         ) : null}
       </div>
-      {test.data ? (
-        <p role="status" className={test.data.ok ? "text-body text-success" : "text-body text-destructive"}>{test.data.message}</p>
-      ) : test.isError ? (
+      <AppProviderConnectionNote
+        provider={provider}
+        answer={test.data ?? (test.isError ? "error" : null)}
+      />
+    </div>
+  );
+}
+
+/**
+ * What a provider's connection test said, wherever the provider is shown (its
+ * settings dialog, a payment method row): the answer of a test just run, else
+ * the stored outcome. A failed test's answer (the app's own, merchant-safe) is
+ * kept across reloads until a test passes or its settings change, with what to
+ * do next and when it was last tested.
+ */
+export function AppProviderConnectionNote({ provider, answer }: {
+  provider: Pick<AppProvider, "name" | "connection" | "canTestConnection"> & { readiness: { usable: boolean } };
+  /** A test run on this page: its answer, or "error" when it couldn't run. */
+  answer: { ok: boolean; message: string } | "error" | null;
+}) {
+  const t = useMessages(appProvidersMessages);
+  const state = appProviderState(provider);
+  const testedAt = provider.connection.testedAt
+    ? formatDateTime(new Date(provider.connection.testedAt), { dateStyle: "medium", timeStyle: "short" })
+    : null;
+  return (
+    <>
+      {answer === "error" ? (
         <p role="status" className="text-body text-destructive">{t("testFailed")}</p>
+      ) : answer ? (
+        <p role="status" className={answer.ok ? "text-body text-success" : "text-body text-destructive wrap-anywhere"}>{answer.message}</p>
       ) : state === "untested" && provider.canTestConnection ? (
         <p className="text-body text-muted-foreground">{t("untestedHelp")}</p>
       ) : state === "testFailed" ? (
-        // The app's own answer (merchant-safe), kept across reloads until a test passes or its settings change.
         <p className="text-body text-destructive wrap-anywhere">{provider.connection.message ?? t("connectionFailed")}</p>
       ) : null}
       {state === "testFailed" ? <p className="text-body text-muted-foreground">{t("testFailedHelp", { name: providerLabel(provider.name) })}</p> : null}
       {testedAt && (state === "ready" || state === "testFailed") ? (
         <p className="text-body text-muted-foreground">{t("lastTested", { time: testedAt })}</p>
       ) : null}
-    </div>
+    </>
   );
 }
