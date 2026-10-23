@@ -8,7 +8,8 @@ export const INTENT_PREFETCH_MOUNT_GRACE_MS = 5_000;
  * link's hover) is cached and nothing invalidated it since. An edit form takes
  * its saved values and revision once, when it mounts, so opening it on an
  * older cached copy (from before a trash and restore, say) made its first
- * save fail as if someone else had saved.
+ * save fail as if someone else had saved. This holds only because the router
+ * waits for the loader on every visit (`ROUTER_LOADING_OPTIONS`).
  */
 export function loadEditorRecord<TQueryFnData, TError, TData, TQueryKey extends QueryKey>(
   queryClient: QueryClient,
