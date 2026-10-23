@@ -8,6 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Languages } from "lucide-react";
 import { RichContent } from "~/components/ui/rich-content";
+import { DeferredTiptapEditor } from "~/components/ui/tiptap/DeferredTiptapEditor";
+import { hasRenderableHtmlContent } from "@scalius/shared/html-sanitize";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "~/components/ui/card";
@@ -258,7 +260,8 @@ function TranslationEntry({ row, first, value, onChange, disabled, sourceName, t
   return (
     <div className={first ? "flex flex-col gap-2" : "flex flex-col gap-2 border-t pt-4"}>
       <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor={inputId}>{label}</Label>
+        {/* A rich text field is named by its editor's own label. */}
+        <Label htmlFor={row.kind === "html" && !disabled ? undefined : inputId}>{label}</Label>
         {row.outdated ? (
           <Badge variant="warning" title={t("outdatedHelp", { language: sourceName })}>{t("outdated")}</Badge>
         ) : null}
@@ -279,8 +282,22 @@ function TranslationEntry({ row, first, value, onChange, disabled, sourceName, t
               ? <div className="rounded-lg border px-3 py-2"><RichContent content={value} /></div>
               : (
                 <>
-                  <Textarea id={inputId} value={value} onChange={(event) => onChange(event.target.value)} maxLength={row.max} rows={6} />
-                  <span className="text-body text-muted-foreground">{t("htmlSourceHint")}</span>
+                  {/* The same rich text editor as the original's, so links, lists and tables are edited, never typed as tags. */}
+                  <DeferredTiptapEditor
+                    content={value}
+                    onChange={onChange}
+                    ariaLabel={t("translationOfField", { field: label, language: targetName })}
+                    placeholder={t("htmlPlaceholder")}
+                    compact
+                  />
+                  {hasRenderableHtmlContent(value) ? null : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => onChange(row.source)}>
+                        {t("startFromOriginal")}
+                      </Button>
+                      <span className="text-body text-muted-foreground">{t("startFromOriginalHelp")}</span>
+                    </div>
+                  )}
                 </>
               )
           ) : row.kind === "text" ? (

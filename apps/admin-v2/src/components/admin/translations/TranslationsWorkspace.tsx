@@ -36,8 +36,8 @@ import { SaveBarProvider } from "~/components/admin/shared/SaveBar";
 import { canEditTranslations } from "./translation-permissions";
 import { Field } from "~/components/ui/field";
 
-// The editor downloads when the first item opens. It edits HTML fields as
-// HTML here: the rich text editor stays with the resource pages that load it.
+// The editor downloads when the first item opens. Rich text fields use the
+// resource pages' own rich text editor, which downloads with the first one.
 const TranslationEditor = lazy(() => import("./TranslationEditor").then((module) => ({ default: module.TranslationEditor })));
 
 const text = (value: unknown, max: number) => typeof value === "string" && value && value.length <= max ? value : undefined;
