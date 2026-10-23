@@ -76,9 +76,11 @@ export function SalesChannelsSettings() {
           {locations.isError ? (
             // Without the locations, neither the summary nor a repair can be shown: say so.
             <Alert variant="warning" className="m-4">
-              <AlertDescription className="flex flex-wrap items-center gap-3">
-                <span className="min-w-0 flex-1">{t("locationsLoadFailed")}</span>
-                <Button type="button" variant="outline" size="sm" onClick={() => void locations.refetch()}>{t("retry")}</Button>
+              <AlertDescription>
+                <span className="flex flex-wrap items-center gap-3">
+                  <span className="min-w-0 flex-1">{t("locationsLoadFailed")}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void locations.refetch()}>{t("retry")}</Button>
+                </span>
               </AlertDescription>
             </Alert>
           ) : null}
