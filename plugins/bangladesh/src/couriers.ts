@@ -209,6 +209,22 @@ function feeMinor(fee: unknown, decimalPlaces: number): number | null {
 
 const PATHAO_SECRET_HEADER = "x-pathao-merchant-webhook-integration-secret";
 
+/** Pathao bills at least 0.5 kg and carries at most 10 kg a parcel. */
+const PATHAO_MIN_KG = 0.5;
+const PATHAO_MAX_KG = 10;
+
+/**
+ * The weight Pathao is quoted and booked at, one rule for both: the parcel's
+ * own weight, else the merchant's default, raised to Pathao's minimum. Null
+ * for a parcel over Pathao's maximum, which is neither quoted nor booked;
+ * NaN for an unusable default.
+ */
+function pathaoWeightKg(weightGrams: number | null | undefined, settings: PluginContext["settings"]): number | null {
+  const kg = weightGrams ? weightGrams / 1000 : Number(settings.pathao_item_weight ?? PATHAO_MIN_KG);
+  if (!Number.isFinite(kg) || kg <= 0) return Number.NaN;
+  return kg > PATHAO_MAX_KG ? null : Math.max(PATHAO_MIN_KG, kg);
+}
+
 const pathao = defineCourierProvider({
   async rates(input, ctx) {
     if (input.destination.country !== "BD" || input.currency !== "BDT" || input.decimalPlaces !== 2) return { rates: [] };
@@ -220,12 +236,12 @@ const pathao = defineCourierProvider({
     const storeId = Number(optionalText(ctx, "pathao_store_id"));
     const deliveryType = Number(ctx.settings.pathao_delivery_type ?? 48);
     const itemType = Number(ctx.settings.pathao_item_type ?? 2);
-    // Pathao's minimum billable weight is 0.5 kg; missing catalog weights use the merchant's booking default.
-    const weight = Math.max(0.5, input.parcel.weightGrams === null ? Number(ctx.settings.pathao_item_weight ?? 0.5) : input.parcel.weightGrams / 1000);
-    if (!Number.isSafeInteger(storeId) || storeId <= 0 || ![48, 12].includes(deliveryType) || ![1, 2].includes(itemType) || !Number.isFinite(weight)) {
+    // Quoted at the weight a booking sends (`pathaoWeightKg`).
+    const weight = pathaoWeightKg(input.parcel.weightGrams, ctx.settings);
+    if (!Number.isSafeInteger(storeId) || storeId <= 0 || ![48, 12].includes(deliveryType) || ![1, 2].includes(itemType) || Number.isNaN(weight)) {
       throw new ProviderError("misconfigured", "Check Pathao's store, delivery type, item type and weight settings.", { code: "pathao_rates_settings" });
     }
-    if (weight > 10) return { rates: [] };
+    if (weight === null) return { rates: [] };
     try {
       const account = pathaoAccount(ctx);
       const token = await pathaoToken(ctx, account);
@@ -292,6 +308,11 @@ const pathao = defineCourierProvider({
     if (!Number.isSafeInteger(amountToCollect) || amountToCollect < 0) {
       throw new ProviderError("declined", "Pathao requires a whole-taka COD amount. Use another courier for this balance.", { code: "pathao_cod_fraction" });
     }
+    // Booked at the weight it was quoted at (`pathaoWeightKg`).
+    const weight = pathaoWeightKg(input.parcel.weightGrams, ctx.settings);
+    if (weight === null) {
+      throw new ProviderError("declined", `Pathao carries parcels up to ${PATHAO_MAX_KG} kg. Split the parcel or use another courier.`, { code: "pathao_weight" });
+    }
     const ids = input.recipient.locationIds;
     if (!ids?.city || !ids.zone) {
       throw new ProviderError("declined", "Pathao requires precisely mapped numeric location IDs. Missing mapping for: city, zone. Please configure these in the Delivery Locations settings.", { code: "pathao_locations" });
@@ -302,7 +323,7 @@ const pathao = defineCourierProvider({
       // The staff's booking choices (the declared `bookingOptions`), else the store's defaults.
       const deliveryType = Number(input.options.deliveryType ?? ctx.settings.pathao_delivery_type ?? 48);
       const itemType = Number(input.options.itemType ?? ctx.settings.pathao_item_type ?? 2);
-      const weight = input.parcel.weightGrams ? input.parcel.weightGrams / 1000 : Number(ctx.settings.pathao_item_weight ?? 0.5);
+      if (Number.isNaN(weight)) throw new Error("Unusable Pathao weight");
       request = {
         baseUrl: account.baseUrl,
         token: await pathaoToken(ctx, account),

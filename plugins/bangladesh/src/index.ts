@@ -94,7 +94,7 @@ const SETTINGS = [
   text("pathao", "pathao_store_id", "Store ID", 100, "The pickup store in your Pathao merchant account."),
   choice("pathao", "pathao_delivery_type", "Delivery type", [["48", "Regular"], ["12", "Express"]], "48"),
   choice("pathao", "pathao_item_type", "Item type", [["2", "Parcel"], ["1", "Document"]], "2"),
-  { key: "pathao_item_weight", label: "Default weight (kg)", type: "number" as const, default: 0.5, min: 0.1, max: 50, group: "pathao" as const, help: "Used when a booking does not give a weight." },
+  { key: "pathao_item_weight", label: "Default weight (kg)", type: "number" as const, default: 0.5, min: 0.1, max: 50, group: "pathao" as const, help: "Used when a parcel has no weight. Pathao quotes and books at least 0.5 kg and carries up to 10 kg." },
   secret("pathao", "pathao_webhook_secret", "Webhook secret", "A long random text. Enter the same in Pathao's webhook settings, with the URL from Settings → Shipping → Couriers."),
   url("steadfast", "steadfast_base_url", "API address", "https://portal.packzy.com/api/v1"),
   secret("steadfast", "steadfast_api_key", "API key"),
