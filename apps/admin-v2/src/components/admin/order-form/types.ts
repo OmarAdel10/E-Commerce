@@ -11,6 +11,7 @@ import { ORDER_CHANNEL_SOURCE_MAX_LENGTH, ORDER_CHANNEL_SOURCE_PRESETS } from "@
 import { normalizeOrderChannelSource } from "@scalius/shared/order-channel-source";
 import { orderNeedsAddress } from "./order-line-properties";
 import { toLatinDigits } from "@scalius/shared/phone-input";
+import type { AddressDraft } from "~/components/admin/address/address-draft";
 
 export interface Product {
   id: string;
@@ -215,6 +216,12 @@ export const orderFormSchema = z.object({
   paidReference: z.string().max(120).optional(),
   /** An invoice's days; null: the store's net days. */
   paymentTermsDays: z.number().int().min(1).max(365).nullable().optional(),
+  /**
+   * New orders: the billing address is part of the draft, so it is dirty,
+   * discarded and guarded with every other field (the API checks it).
+   */
+  billingSameAsShipping: z.boolean().optional(),
+  billing: z.custom<AddressDraft>().optional(),
 }).superRefine((values, context) => {
   if (values.sourceChoice === "other") {
     const name = values.sourceName?.trim() ?? "";
