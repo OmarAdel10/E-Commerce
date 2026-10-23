@@ -31,6 +31,15 @@ export interface ProviderConnection {
   testedAt: string | null;
   /** The provider's answer to a failed test (merchant-safe: the host masks it). */
   message: string | null;
+  /** True when the last test failed because no answer came back in time: there is nothing in the answer to fix. */
+  timedOut?: boolean;
+}
+
+/** A test's outcome as the provider gave it, or as its failure reads. */
+export interface ProviderConnectionTest {
+  ok: boolean;
+  message: string;
+  timedOut?: boolean;
 }
 
 interface StoredTest {
@@ -38,6 +47,16 @@ interface StoredTest {
   at: number;
   fingerprint: string;
   message?: string;
+  timedOut?: true;
+}
+
+/**
+ * A failed call as a test outcome. A timeout is the host's deadline
+ * (`provider_timeout`), the platform fetch's (`http_timeout`) or an app's own
+ * `<name>_timeout` code (`sslcommerz_timeout`).
+ */
+export function failedConnectionTest(failure: { message: string; code: string }): ProviderConnectionTest {
+  return { ok: false, message: failure.message, ...(/(^|_)timeout$/.test(failure.code) ? { timedOut: true } : {}) };
 }
 
 export function providerOffersConnectionTest(declaration: Declaration): boolean {
@@ -57,7 +76,13 @@ function parseStored(value: string | null | undefined): StoredTest | null {
   try {
     const parsed = JSON.parse(value) as Partial<StoredTest>;
     return typeof parsed.ok === "boolean" && typeof parsed.at === "number" && typeof parsed.fingerprint === "string"
-      ? { ok: parsed.ok, at: parsed.at, fingerprint: parsed.fingerprint, ...(typeof parsed.message === "string" ? { message: parsed.message } : {}) }
+      ? {
+          ok: parsed.ok,
+          at: parsed.at,
+          fingerprint: parsed.fingerprint,
+          ...(typeof parsed.message === "string" ? { message: parsed.message } : {}),
+          ...(parsed.timedOut === true ? { timedOut: true as const } : {}),
+        }
       : null;
   } catch {
     return null;
@@ -69,13 +94,13 @@ export async function recordProviderConnectionTest(
   db: Database,
   installation: PluginInstallation,
   declaration: Declaration,
-  result: { ok: boolean; message: string },
+  result: ProviderConnectionTest,
 ): Promise<void> {
   const stored: StoredTest = {
     ok: result.ok,
     at: Math.floor(Date.now() / 1000),
     fingerprint: await settingsFingerprint(installation, declaration),
-    ...(result.ok ? {} : { message: result.message.slice(0, MESSAGE_MAX) }),
+    ...(result.ok ? {} : { message: result.message.slice(0, MESSAGE_MAX), ...(result.timedOut ? { timedOut: true as const } : {}) }),
   };
   await putSystemKv(db, `${KEY_PREFIX}${qualifiedProviderId(installation.pluginId, declaration.id)}`, JSON.stringify(stored));
 }
@@ -105,6 +130,7 @@ export async function providerConnections(
       status: stored.ok ? "passed" : "failed",
       testedAt: new Date(stored.at * 1000).toISOString(),
       message: stored.ok ? null : stored.message ?? null,
+      ...(!stored.ok && stored.timedOut ? { timedOut: true } : {}),
     });
   }
   return result;

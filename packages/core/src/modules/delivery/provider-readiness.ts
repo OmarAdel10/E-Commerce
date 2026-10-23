@@ -38,6 +38,8 @@ export type DeliveryProviderConnection = {
   status: "none" | "untested" | "passed" | "failed";
   testedAt: string | null;
   message: string | null;
+  /** The last test failed because no answer came back in time. */
+  timedOut?: boolean;
 };
 
 /**

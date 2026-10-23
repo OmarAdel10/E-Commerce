@@ -33,7 +33,7 @@ import {
   type DeliveryProviderConnection,
 } from "@scalius/core/modules/delivery";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
-import { providerConnections, recordProviderConnectionTest } from "../provider-connection";
+import { failedConnectionTest, providerConnections, recordProviderConnectionTest } from "../provider-connection";
 import { listActiveProviderPlugins, type PluginInstallation } from "@scalius/core/modules/plugins";
 import {
   declaredCourierBookingOptions,
@@ -267,7 +267,7 @@ export function appCourier(
         return result;
       } catch (error) {
         const failure = providerErrorOf(error);
-        if (failure) await recordProviderConnectionTest(db, installation, declaration, { ok: false, message: failure.message });
+        if (failure) await recordProviderConnectionTest(db, installation, declaration, failedConnectionTest(failure));
         throw error;
       }
     };

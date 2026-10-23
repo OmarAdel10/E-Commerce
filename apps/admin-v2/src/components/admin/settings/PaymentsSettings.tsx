@@ -400,7 +400,7 @@ export function PaymentMethodsCard() {
   const marketCurrencies = useQuery(marketCurrenciesQueryOptions());
   // Installed apps' providers, offered or not; without them the active ones still list.
   const appProviders = useQuery({ ...appPaymentProvidersQuery, enabled: useProviderPortAccess("payment").canView });
-  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string; timedOut?: boolean }>>({});
   const connectionTest = useMutation({
     mutationFn: (id: string) => apiData(postApiV1AdminSettingsProvidersByIdTest({ path: { id } })),
     onSuccess: (result, id) => setTestResults((current) => ({ ...current, [id]: result })),

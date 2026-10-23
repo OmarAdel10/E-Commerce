@@ -25,7 +25,7 @@ import { errorResponses, successEnvelope } from "../../../schemas/responses";
 import { readAppProviderSettings, requestProviderRuntime } from "../../../plugins/providers/runtime";
 import { pluginAssetUrl, providerIconUrl } from "../../../plugins/listing";
 import { providerConnectionSchema } from "../../../schemas/app-settings";
-import { providerConnections, recordProviderConnectionTest } from "../../../plugins/provider-connection";
+import { failedConnectionTest, providerConnections, recordProviderConnectionTest } from "../../../plugins/provider-connection";
 
 const app = new OpenAPIHono<{ Bindings: Env }>();
 
@@ -131,7 +131,15 @@ const testRoute = createRoute({
   responses: {
     200: {
       description: "The provider's answer",
-      content: { "application/json": { schema: successEnvelope(z.object({ ok: z.boolean(), message: z.string() })) } },
+      content: {
+        "application/json": {
+          schema: successEnvelope(z.object({
+            ok: z.boolean(),
+            message: z.string(),
+            timedOut: z.boolean().optional().openapi({ description: "True when the provider gave no answer in time (nothing in the answer to fix)." }),
+          })),
+        },
+      },
     },
     ...errorResponses,
   },
@@ -167,8 +175,9 @@ app.openapi(testRoute, async (c) => {
     const failure = providerErrorOf(error);
     if (!failure) throw error;
     // The host masks provider messages: they are merchant-safe.
-    await recordProviderConnectionTest(c.get("db"), installation, declaration, { ok: false, message: failure.message });
-    return ok(c, { ok: false, message: failure.message });
+    const outcome = failedConnectionTest(failure);
+    await recordProviderConnectionTest(c.get("db"), installation, declaration, outcome);
+    return ok(c, outcome);
   }
 });
 
