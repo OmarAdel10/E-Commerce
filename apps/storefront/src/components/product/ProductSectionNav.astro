@@ -81,6 +81,8 @@ const links = [
 </style>
 
 <script>
+  import { currentSection } from "./lib/section-nav";
+
   let cleanup: (() => void) | null = null;
 
   function bind() {
@@ -89,15 +91,19 @@ const links = [
     if (!nav) return;
     const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>("[data-section-anchor]"));
     let frame = 0;
+    // Where each section is on screen decides, not the bar's order (lib/section-nav.ts).
     const update = () => {
-      const boundary = nav.getBoundingClientRect().bottom + 12;
-      let active = links[0];
-      for (const link of links) {
+      const root = document.documentElement;
+      const id = currentSection(links.flatMap((link) => {
         const section = document.getElementById(link.dataset.sectionAnchor ?? "");
-        if (section && section.getBoundingClientRect().top <= boundary) active = link;
-      }
+        return section ? [{ id: section.id, top: section.getBoundingClientRect().top, rendered: section.getClientRects().length > 0 }] : [];
+      }), {
+        boundary: nav.getBoundingClientRect().bottom + 12,
+        height: window.innerHeight,
+        atEnd: window.scrollY + window.innerHeight >= root.scrollHeight - 2,
+      });
       for (const link of links) {
-        if (link === active) link.setAttribute("aria-current", "location");
+        if (id !== null && link.dataset.sectionAnchor === id) link.setAttribute("aria-current", "location");
         else link.removeAttribute("aria-current");
       }
     };
@@ -107,9 +113,15 @@ const links = [
     };
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("hashchange", schedule);
+    window.addEventListener("resize", schedule, { passive: true });
+    // A tab switch or a panel opening moves the sections below it without a scroll.
+    const resize = typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+    resize?.observe(document.body);
     cleanup = () => {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("hashchange", schedule);
+      window.removeEventListener("resize", schedule);
+      resize?.disconnect();
       cancelAnimationFrame(frame);
     };
     update();
