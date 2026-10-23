@@ -143,9 +143,6 @@ async function readCourierSetup(
       readiness: getDeliveryProviderReadinessSummary({
         type: provider.type,
         isActive: provider.isActive,
-        lastTestAttemptAt: provider.lastTestAttemptAt,
-        lastTestSuccessAt: provider.lastTestSuccessAt,
-        lastTestFailureAt: provider.lastTestFailureAt,
       }),
     },
   };
@@ -186,10 +183,6 @@ export async function assertDeliveryProviderActivatable(
     isActive: true,
     credentials: "{}",
     config: "{}",
-    lastTestAttemptAt: null,
-    lastTestSuccessAt: null,
-    lastTestFailureAt: null,
-    lastTestSuccessFingerprint: null,
     ...provider,
   }, encryptionKey, couriers);
   const blockers = setup.readiness.activationBlockers;
@@ -361,7 +354,11 @@ export async function saveDeliveryProvider(
   return { ...provider, id: providerId };
 }
 
-/** Runs a courier's connection test with a row's settings. */
+/**
+ * Runs a courier's connection test with a row's settings. The answer is the
+ * app's own, merchant-safe (the host masks provider messages), whether the
+ * test ran or the provider refused it; its adapter keeps the outcome.
+ */
 async function testCourierConnection(
   courier: Courier,
   settings: unknown,
@@ -370,12 +367,20 @@ async function testCourierConnection(
   if (!courier.testConnection) {
     return { success: false, message: `${courier.label} does not offer a connection test.` };
   }
-  const result = await courier.testConnection({}, courierCall(settings, db));
-  return { success: result.ok, message: result.message };
+  try {
+    const result = await courier.testConnection({}, courierCall(settings, db));
+    return { success: result.ok, message: result.message };
+  } catch (error) {
+    const failure = providerErrorOf(error);
+    if (!failure) throw error;
+    return { success: false, message: failure.message };
+  }
 }
 
 /**
- * Test provider connection
+ * Tests a saved courier with its app. Answers what the dashboard shows: the
+ * app's own answer (passed, failed or refused), or the setup to finish
+ * before a test can run. An unexpected failure is thrown, never returned.
  */
 export async function testDeliveryProvider(
   db: Database,
@@ -388,60 +393,18 @@ export async function testDeliveryProvider(
     throw new NotFoundError(`Provider with ID ${id} not found`);
   }
 
-  const testedAt = sql`unixepoch()`;
-  await db
-    .update(deliveryProviders)
-    .set({
-      lastTestAttemptAt: testedAt,
-      updatedAt: sql`unixepoch()`,
-    })
-    .where(eq(deliveryProviders.id, id));
-
-  try {
-    if (!encryptionKey) {
-      throw new ServiceUnavailableError("CREDENTIAL_ENCRYPTION_KEY is required to test provider readiness.");
-    }
-    const { courier, setup } = await readCourierSetup(provider, encryptionKey, couriers);
-    if (setup.unreadable) throw new ServiceUnavailableError(setup.error ?? "Delivery provider credentials cannot be read.");
-    if (setup.readiness.activationBlockers.length > 0) {
-      throw new ValidationError("Delivery provider cannot be activated until required setup is complete.", {
-        blockers: setup.readiness.activationBlockers,
-      });
-    }
-    if (!courier || setup.settings === null) throw new ServiceUnavailableError(setupFailureMessage(setup));
-    const result = await testCourierConnection(courier, setup.settings, db);
-    if (result.success) {
-      await db
-        .update(deliveryProviders)
-        .set({
-          lastTestSuccessAt: sql`unixepoch()`,
-          lastTestFailureAt: null,
-          updatedAt: sql`unixepoch()`,
-        })
-        .where(eq(deliveryProviders.id, id));
-    } else {
-      await db
-        .update(deliveryProviders)
-        .set({
-          lastTestFailureAt: sql`unixepoch()`,
-          updatedAt: sql`unixepoch()`,
-        })
-        .where(eq(deliveryProviders.id, id));
-    }
-    return result;
-  } catch (error: unknown) {
-    await db
-      .update(deliveryProviders)
-      .set({
-        lastTestFailureAt: sql`unixepoch()`,
-        updatedAt: sql`unixepoch()`,
-      })
-      .where(eq(deliveryProviders.id, id));
-    return {
-      success: false,
-      message: `Failed to test provider: ${error instanceof Error ? error.message : String(error)}`,
-    };
+  if (!encryptionKey) {
+    throw new ServiceUnavailableError("CREDENTIAL_ENCRYPTION_KEY is required to test provider readiness.");
   }
+  // Why the test can't run is the setup to finish, said as the courier's settings say it.
+  const { courier, setup } = await readCourierSetup(provider, encryptionKey, couriers);
+  if (setup.unreadable) return { success: false, message: setup.error ?? "Delivery provider credentials cannot be read." };
+  const blockers = setup.readiness.activationBlockers;
+  if (blockers.length > 0) return { success: false, message: blockers.map((blocker) => blocker.message).join(" ") };
+  if (!courier || setup.settings === null) {
+    return { success: false, message: setup.error ?? "Delivery provider setup is incomplete or unreadable." };
+  }
+  return testCourierConnection(courier, setup.settings, db);
 }
 
 /**

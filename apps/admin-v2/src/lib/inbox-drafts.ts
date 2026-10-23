@@ -16,6 +16,7 @@ export {
   setInboxSearch,
   subscribeInboxDrafts,
 } from "./inbox-draft-session";
+import { sameFormValue } from "./form-values";
 
 export type DraftMode = "public" | "internal";
 export interface DraftImage {
@@ -96,7 +97,7 @@ export function getInboxDrafts(userId: string, owner: string): InboxDrafts {
 function persist(key: string, value: InboxDrafts): boolean {
   try {
     const row = (draft: MessageDraft) => ({ body: draft.body, products: draft.products, imageCount: Math.min(3, draft.images.length + draft.uploading + draft.omittedImages), attempt: draft.attempt,
-      retry: draft.images.length ? JSON.stringify(draft.images.map((image) => image.attachmentId)) === JSON.stringify(draft.attempt?.payload.attachmentIds ?? []) : draft.retryImages });
+      retry: draft.images.length ? sameFormValue(draft.images.map((image) => image.attachmentId), draft.attempt?.payload.attachmentIds ?? []) : draft.retryImages });
     if (value.public.body.length > MAX_BODY || value.internal.body.length > MAX_BODY) return false;
     const hasContent = [value.public, value.internal].some((draft) => draft.body || draft.products.length || draft.images.length || draft.uploading || draft.omittedImages || draft.attempt);
     if (hasContent) sessionStorage.setItem(key, JSON.stringify({ updatedAt: Date.now(), public: row(value.public), internal: row(value.internal) }));

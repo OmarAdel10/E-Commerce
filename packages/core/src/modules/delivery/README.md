@@ -11,7 +11,7 @@ The `delivery` domain owns the courier port, saved courier accounts (delivery pr
 
 | Table | Purpose |
 |-------|---------|
-| `delivery_providers` | A merchant's courier: `type` (the app courier), `is_active` (default false) and the last test (`last_test_*` columns). `credentials` and `config` are `{}`: the app's settings hold the keys. A row saved before its courier moved into an app keeps its old encrypted keys until the app's activation moves them. |
+| `delivery_providers` | A merchant's courier: `type` (the app courier), `is_active` (default false); its last connection test is the app provider's (below), not the row's. `credentials` and `config` are `{}`: the app's settings hold the keys. A row saved before its courier moved into an app keeps its old encrypted keys until the app's activation moves them. |
 | `delivery_shipments` | A parcel. `provider_type` is `manual` for an own rider. |
 | `places` | The place directory: a tree of numbered levels per country (Bangladesh: City, Thana, Area). `external_ids` is JSON, for example `{ "pathao": "123" }`. Imports key places by `source_key`. Soft delete. [Places](../../../../../docs/PLACES.md). |
 | `delivery_zones`, `delivery_zone_locations` | A zone and its Bangladesh places. A place belongs to at most one zone. `delivery_zones.revision` guards edits. |
@@ -36,7 +36,7 @@ The `delivery` domain owns the courier port, saved courier accounts (delivery pr
 `getDeliveryProviderReadinessSummary()` reports a lifecycle: `draft`, `configured` (set up, no passing test), `tested`, `active` or `blocked`. `active` means on and set up.
 
 - The courier names what blocks it (`activationBlockers`): the app's missing, unreadable or placeholder settings, or the app not active. The first blocker is the issue the dashboard shows.
-- The app tests its own setup (`testConnection` through the app). Every test path (Shipping's status, `dashboard.delivery_providers.test`, `dashboard.settings_providers.test`) records the outcome in the app provider's one `system_kv` row (`apps/api/src/plugins/provider-connection.ts`, fingerprinted to the settings it ran with), and the courier's `setup()` reads it into `connection`. `status` is `ready` only when active and the test passed (or the courier offers none); a failed test is `error` with a `test_failed` issue carrying the app's answer; not tested is `incomplete`. A test never gates booking and never changes saved settings.
+- The app tests its own setup (`testConnection` through the app). Every test path (Shipping's status, `dashboard.delivery_providers.test`, `dashboard.settings_providers.test`) records the outcome in the app provider's one `system_kv` row (`apps/api/src/plugins/provider-connection.ts`, fingerprinted to the settings it ran with), and the courier's `setup()` reads it into `connection`. `status` is `ready` only when active and the test passed (or the courier offers none); a failed test is `error` with a `test_failed` issue carrying the app's answer; not tested is `incomplete`. A test never gates booking and never changes saved settings. Every path answers the same: the app's own answer, merchant-safe because the host masks provider messages, or the setup to finish before a test can run (`testDeliveryProvider`); an unexpected failure is a 500, never returned as the answer.
 - Shipment creation and status checks need an active provider.
 
 ## Shipment creation

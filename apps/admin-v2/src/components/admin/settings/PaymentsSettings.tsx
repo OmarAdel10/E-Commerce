@@ -69,8 +69,11 @@ import { appProviderSetupPath } from "~/components/admin/apps/app-sections";
 import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { MoneyInput, useWholeUnitPrices } from "../shared/MoneyInput";
-import { ProvidedByChip } from "./AppProviderStatus";
+import { AppProviderConnectionNote, ProvidedByChip } from "./AppProviderStatus";
 import { SettingsCard, SettingsDialog, SettingsField, SettingsCardLoading, useCloseSettingsDialog } from "./SettingsPage";
+
+/** An app provider whose last test is unknown: only a test run here has anything to say. */
+const NOT_TESTABLE = { status: "none", testedAt: null, message: null } as const;
 
 /** Saved secrets come back masked; sending the mask back keeps them. */
 const MASKED = "••••••••••••";
@@ -585,10 +588,12 @@ export function PaymentMethodsCard() {
             <p className="text-body text-muted-foreground">{t("fromApp", { app: providerLabel(row.appName) })}</p>
           ) : null}
           <p className="text-body text-muted-foreground">{detail}</p>
-          {testResult ? (
-            <p role="status" className={cn("text-body", testResult.ok ? "text-success" : "text-destructive")}>
-              {[t(testResult.ok ? "testWorked" : "testFailed"), testResult.message].filter(Boolean).join(" · ")}
-            </p>
+          {row.kind === "app" ? (
+            // The answer of a test run here, else the stored one: a failed test says why after a reload too.
+            <AppProviderConnectionNote
+              provider={{ name: row.name, canTestConnection: row.canTestConnection, readiness: { usable: Boolean(status?.usable) }, connection: row.connection ?? NOT_TESTABLE }}
+              answer={testResult ?? null}
+            />
           ) : null}
         </div>
         {hasActions ? (

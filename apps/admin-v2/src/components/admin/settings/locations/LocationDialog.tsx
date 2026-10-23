@@ -24,6 +24,7 @@ import {
   type InventoryLocationBody,
 } from "~/lib/api-query-options/inventory-locations";
 import { Field } from "~/components/ui/field";
+import { sameFormValue } from "~/lib/form-values";
 
 const KINDS = ["warehouse", "store", "other"] as const;
 type Kind = (typeof KINDS)[number];
@@ -110,7 +111,7 @@ export function LocationDialog({ location, open, onOpenChange }: {
     reset();
   }, [open, location, reset]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(location));
+  const dirty = !sameFormValue(draft, draftOf(location));
   const { requestClose, discardDialog } = useDirtyDialogClose({ dirty, busy: save.isPending, onClose: () => onOpenChange(false) });
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));

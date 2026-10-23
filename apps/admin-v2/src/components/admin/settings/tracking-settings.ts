@@ -12,6 +12,7 @@ import {
 import type { ConsentRegime } from "@scalius/shared/tracking-consent";
 import { apiData, type ApiBody, type ApiResult } from "~/lib/api";
 import type { SettingsPrivacyMessageKey } from "~/i18n/settings-privacy";
+import { sameFormValue } from "~/lib/form-values";
 
 type TrackingSettings = ApiResult<typeof getApiV1AdminSettingsTracking>;
 export type TrackingHealth = ApiResult<typeof getApiV1AdminAnalyticsTrackingHealth>;
@@ -57,8 +58,6 @@ export function loadedFrom(settings: TrackingSettings): Loaded {
   };
 }
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
 /**
  * Only the sections that changed, each at its own revision; a secret goes
  * only when the merchant typed a new one (the masked value keeps it).
@@ -68,11 +67,11 @@ export function trackingSaveBody(values: PrivacyValues, saved: PrivacyValues, re
   if (values.otherRegions !== saved.otherRegions) {
     body.consent = { otherRegions: values.otherRegions, expectedRevision: revision.consent };
   }
-  if (!same(values.ga4, saved.ga4)) {
+  if (!sameFormValue(values.ga4, saved.ga4)) {
     const { apiSecret, ...rest } = values.ga4;
     body.ga4 = { ...rest, measurementId: rest.measurementId.trim(), ...(apiSecret !== saved.ga4.apiSecret ? { apiSecret } : {}), expectedRevision: revision.ga4 };
   }
-  if (!same(values.tiktok, saved.tiktok)) {
+  if (!sameFormValue(values.tiktok, saved.tiktok)) {
     const { accessToken, ...rest } = values.tiktok;
     body.tiktok = {
       ...rest,

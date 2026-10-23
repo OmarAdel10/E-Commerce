@@ -30,23 +30,7 @@ const DELIVERY_PROVIDER_PAGE_LIMIT = 10;
 type AppRouteHandler<R extends RouteConfig> = RouteHandler<R, { Bindings: Env }>;
 type AppRouteContext<R extends RouteConfig> = Parameters<AppRouteHandler<R>>[0];
 
-function safeProviderTestResult(result: { success?: unknown }): {
-    success: boolean;
-    message: string;
-} {
-    const success = result.success === true;
-    return {
-        success,
-        message: success ? "Connection successful" : "Connection failed",
-    };
-}
-
 type DeliveryProviderRouteRecord = NonNullable<Awaited<ReturnType<typeof getDeliveryProvider>>>;
-
-function timestampForClient(value: Date | number | string | null | undefined): string | number | null {
-    if (value instanceof Date) return value.toISOString();
-    return value ?? null;
-}
 
 function requiredTimestampForClient(value: Date | number | string): string | number {
     if (value instanceof Date) return value.toISOString();
@@ -98,9 +82,6 @@ async function serializeProviderForClient(
                 label: blocker.label.slice(0, 100),
                 message: blocker.message.slice(0, 500),
             })),
-            lastTestAttemptAt: timestampForClient(readiness.lastTestAttemptAt),
-            lastTestSuccessAt: timestampForClient(readiness.lastTestSuccessAt),
-            lastTestFailureAt: timestampForClient(readiness.lastTestFailureAt),
         },
     };
 }
@@ -132,9 +113,6 @@ const deliveryProviderSchema = z.object({
             label: z.string(),
             message: z.string(),
         })),
-        lastTestAttemptAt: z.union([z.string(), z.number()]).nullable().optional(),
-        lastTestSuccessAt: z.union([z.string(), z.number()]).nullable().optional(),
-        lastTestFailureAt: z.union([z.string(), z.number()]).nullable().optional(),
     }).optional(),
     createdAt: z.union([z.string(), z.number()]),
     updatedAt: z.union([z.string(), z.number()]),
@@ -321,9 +299,9 @@ app.openapi(testExistingRoute, async (c) => {
     const { id } = c.req.valid("param");
     const provider = await getDeliveryProvider(db, id);
     if (!provider) throw new NotFoundError("Provider not found");
+    // The courier app's own answer (merchant-safe), or the setup to finish: what Shipping shows.
     const result = await testDeliveryProvider(db, id, getCredentialEncryptionKey(c.env as Record<string, unknown>), requestCourierProviders(c));
-
-    return ok(c, safeProviderTestResult(result));
+    return ok(c, result);
 });
 
 // ── Delete Provider ──

@@ -31,6 +31,7 @@ import { useSaveWarrantyPolicy, type WarrantyPolicy, type WarrantyPolicyBody } f
 import { warrantySummary } from "../../warranty/warranty-format";
 import { Field } from "~/components/ui/field";
 import { formMessages } from "~/i18n/forms";
+import { sameFormValue } from "~/lib/form-values";
 
 interface Draft {
   name: string;
@@ -45,7 +46,7 @@ type Errors = Partial<Record<"name" | "durationValue" | "replacementDays" | "ter
 
 const EMPTY: Draft = { name: "", provider: "brand", durationValue: 1, durationUnit: "years", replacementDays: null, terms: "" };
 
-function draftOf(policy: WarrantyPolicy | null): Draft {
+export function draftOf(policy: WarrantyPolicy | null): Draft {
   if (!policy) return EMPTY;
   return {
     name: policy.name,
@@ -103,7 +104,7 @@ export function WarrantyPolicyDialog({ policy, open, onOpenChange }: {
     reset();
   }, [open, policy, reset]);
 
-  const dirty = JSON.stringify(draft) !== JSON.stringify(draftOf(policy));
+  const dirty = !sameFormValue(draft, draftOf(policy));
   const { requestClose, discardDialog } = useDirtyDialogClose({ dirty, busy: save.isPending, onClose: () => onOpenChange(false) });
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));

@@ -8,7 +8,7 @@ import {
   deliveryHierarchyLevel,
   type DeliveryHierarchyField,
 } from "@scalius/shared/places";
-import { apiData, type ApiQuery, type ApiResult, type WithTimestamps } from "../api";
+import { apiData, type ApiQuery, type ApiResult } from "../api";
 import { queryKeys } from "../query-keys";
 import type { SearchableSelectLoader, SearchableSelectOption } from "~/components/ui/searchable-select";
 
@@ -17,12 +17,7 @@ const LOOKUP_STALE_TIME_MS = 1000 * 60 * 10;
 
 type ApiDeliveryProvider =
   ApiResult<typeof getApiV1AdminSettingsDeliveryProviders>["providers"][number];
-export type DeliveryProviderRecord = Omit<ApiDeliveryProvider, "readiness"> & {
-  readiness?: WithTimestamps<
-    NonNullable<ApiDeliveryProvider["readiness"]>,
-    "lastTestAttemptAt" | "lastTestSuccessAt" | "lastTestFailureAt"
-  >;
-};
+export type DeliveryProviderRecord = ApiDeliveryProvider;
 export type DeliveryLocationsQuery = ApiQuery<typeof getApiV1AdminSettingsDeliveryLocations>;
 export type DeliveryLocation =
   ApiResult<typeof getApiV1AdminSettingsDeliveryLocations>["locations"][number];

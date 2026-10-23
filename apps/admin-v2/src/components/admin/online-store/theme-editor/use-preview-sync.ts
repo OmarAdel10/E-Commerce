@@ -21,10 +21,9 @@ import { canvasTextField } from "./canvas-text";
 import type { AppSectionEntry } from "./editor-state";
 import { pageScope, pageSections, type EditorPage } from "./editor-pages";
 import type { PreviewCommand } from "./use-preview";
+import { sameFormValue } from "~/lib/form-values";
 
 type Theme = StorefrontThemeDocument;
-
-const same = (left: unknown, right: unknown) => left === right || JSON.stringify(left) === JSON.stringify(right);
 
 /** Edits settle this long before a section is drawn again (typed words show at once by the `text` patch). */
 export const PREVIEW_RENDER_DELAY_MS = 90;
@@ -56,10 +55,10 @@ function sameShape(left: readonly StorefrontSection[], right: readonly Storefron
 
 /** What a change outside the page's sections and tokens needs: the page drawn again from the saved draft. */
 function needsWholePage(before: Theme, after: Theme, page: EditorPage): boolean {
-  return !same(before.blocks, after.blocks)
-    || !same(before.brand, after.brand)
-    || !same(before.apps, after.apps)
-    || (page.kind === "home" && !same(before.pages.homeMode, after.pages.homeMode));
+  return !sameFormValue(before.blocks, after.blocks)
+    || !sameFormValue(before.brand, after.brand)
+    || !sameFormValue(before.apps, after.apps)
+    || (page.kind === "home" && !sameFormValue(before.pages.homeMode, after.pages.homeMode));
 }
 
 /** A changed text's canvas field: the setting path, or an app section's setting key (`values.<key>`). */
@@ -138,14 +137,14 @@ export function usePreviewSync({ send, reload, connectedAt, working, sendable, s
     revision.current += 1;
 
     // Theme tokens: at once as custom properties, then painted (fonts, card attributes).
-    if (!same(before.tokens, working.tokens)) {
+    if (!sameFormValue(before.tokens, working.tokens)) {
       if (Object.values(working.tokens.colors).every((color) => isStorefrontThemeHexColor(color))) {
         emit({ type: "tokens", vars: buildStorefrontThemeTokens(working) });
       }
       window.clearTimeout(paintTimer.current);
       paintTimer.current = window.setTimeout(() => {
         const document = latest.current.sendable;
-        if (document && same(document.tokens, shown.current?.tokens)) emit({ type: "paint", theme: document });
+        if (document && sameFormValue(document.tokens, shown.current?.tokens)) emit({ type: "paint", theme: document });
       }, PREVIEW_RENDER_DELAY_MS);
     }
 
@@ -159,7 +158,7 @@ export function usePreviewSync({ send, reload, connectedAt, working, sendable, s
     const grouped = (section: StorefrontSection) => section.type === "banner" && section.settings.layout !== "full";
     const settingsChanged = now.filter((section) => {
       const old = was.find((each) => each.id === section.id);
-      return !section.hidden && old && !same(old.settings, section.settings);
+      return !section.hidden && old && !sameFormValue(old.settings, section.settings);
     });
     // Grouped banners are one render unit. DOM moves cannot edit one sibling.
     const groupChanged = (shapeChanged && [...was, ...now].some(grouped))
@@ -203,7 +202,7 @@ export function usePreviewSync({ send, reload, connectedAt, working, sendable, s
           const document = latest.current.sendable;
           if (!document) return;
           const valid = pageSections(document, latest.current.page)?.find((each) => each.id === section.id);
-          if (!valid || !same(valid.settings, section.settings)) return;
+          if (!valid || !sameFormValue(valid.settings, section.settings)) return;
           const currentScope = pageScope(document, latest.current.page);
           const region = currentScope && storefrontScopeRegions(document.pages, currentScope)
             .find((each) => each.sections.some((item) => item.id === section.id));
@@ -240,7 +239,7 @@ export function usePreviewSync({ send, reload, connectedAt, working, sendable, s
   // The saved draft caught up with a change only a whole page shows: load it again (in a hidden frame).
   useEffect(() => {
     if (!enabled || !reloadAfterSave.current) return;
-    if (!sendable || !same(sendable.blocks, savedTheme.blocks) || !same(sendable.brand, savedTheme.brand) || !same(sendable.apps, savedTheme.apps)) return;
+    if (!sendable || !sameFormValue(sendable.blocks, savedTheme.blocks) || !sameFormValue(sendable.brand, savedTheme.brand) || !sameFormValue(sendable.apps, savedTheme.apps)) return;
     reloadAfterSave.current = false;
     reload();
   }, [savedTheme]); // eslint-disable-line react-hooks/exhaustive-deps -- once per save

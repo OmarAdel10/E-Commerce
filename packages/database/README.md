@@ -140,6 +140,10 @@ Migration 0155 installs transactional event demand and the expanded event catalo
 
 Migration 0182 adds `untracked_quantity` to `order_return_lines` and `order_return_receipt_lines`: an untracked item's received units, neither restocked nor damaged (each table's disposition check is now restock + damaged + untracked = received). SQLite rebuilds both tables (receipts first reference the new lines table, so no foreign-key pragma is needed) and drops and reinstalls, verbatim, the seven triggers on other tables that read return lines. Untracked lines' and receipts' `damaged_quantity`, which the receipt form had forced, moves to `untracked_quantity`, and a `return_received` timeline line is corrected where its order's receipts determine it. PostgreSQL adds the columns and replaces the checks and the two receipt triggers in place.
 
+Migration 0183 makes "every sales channel sells from at least one active location" a database rule: `sales_channel_locations_active_required` aborts (`SALES_CHANNEL_LOCATION_REQUIRED`) an unlink that leaves a live channel no active location, and `inventory_locations_archive_keeps_channels` aborts archiving a channel's last active location. Unlinking an archived location never trips it, so a stranded channel can still be repaired (link first, then unlink, as `updateSalesChannel` writes). A channel's location change and an archive running at once can no longer both commit; PostgreSQL compiles the same triggers, and its SERIALIZABLE writes retry the loser.
+
+Migration 0184 drops `delivery_providers.last_test_attempt_at`, `last_test_success_at`, `last_test_failure_at` and `last_test_success_fingerprint`: a courier's connection test is kept by its app provider (`system_kv`, `apps/api/src/plugins/provider-connection.ts`) and read into its readiness `connection`; the columns were written by `dashboard.delivery_providers.test` and read by nothing.
+
 | Path | Content |
 |------|---------|
 | `migrations/NNNN_<name>.sql` | The canonical SQLite SQL (D1 and TursoDB) |

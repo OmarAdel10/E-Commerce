@@ -4,6 +4,7 @@
 // and the body carries it only when it changes (a typed value sets it, null
 // clears it, leaving it out keeps the saved one).
 import type { AppDetail, AppSettingField, AppSettingValue } from "~/lib/api-query-options/apps";
+import { sameFormValue } from "~/lib/form-values";
 
 export interface SettingsDraft {
   /** Every plain field: text-like as typed (numbers too), switches, multi-choice lists. */
@@ -42,7 +43,7 @@ export function draftFromSettings(settings: AppDetail["settings"]): SettingsDraf
 }
 
 export function sameDraft(a: SettingsDraft, b: SettingsDraft): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return sameFormValue(a, b);
 }
 
 function text(draft: SettingsDraft, key: string): string {

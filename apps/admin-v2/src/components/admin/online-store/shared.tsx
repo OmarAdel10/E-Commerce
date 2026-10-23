@@ -6,6 +6,7 @@ import { isAdminApiConflictError } from "~/lib/admin-api-error";
 import { translate } from "~/i18n";
 import { onlineStoreMessages } from "~/i18n/online-store";
 import { Page } from "~/components/admin/resource/Page";
+import { sameFormValue } from "~/lib/form-values";
 
 export { SettingsCard as SectionCard, SettingsField as Field } from "~/components/admin/settings/SettingsPage";
 
@@ -71,7 +72,7 @@ export function isWebAddress(value: string): boolean {
 }
 
 function sameValue(left: unknown, right: unknown): boolean {
-  return left === right || JSON.stringify(left) === JSON.stringify(right);
+  return sameFormValue(left, right);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

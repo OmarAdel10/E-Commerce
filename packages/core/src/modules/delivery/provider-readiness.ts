@@ -53,9 +53,6 @@ export type DeliveryProviderReadinessSummary = Readiness & {
   active: boolean;
   activationBlockers: DeliveryProviderActivationBlocker[];
   connection: DeliveryProviderConnection;
-  lastTestAttemptAt?: Date | number | string | null;
-  lastTestSuccessAt?: Date | number | string | null;
-  lastTestFailureAt?: Date | number | string | null;
 };
 
 type DeliveryProviderSummaryInput = {
@@ -70,9 +67,6 @@ type DeliveryProviderSummaryInput = {
   isActive?: boolean | null;
   /** The courier's stored connection test. Absent: nothing is known (`untested`). */
   connection?: DeliveryProviderConnection;
-  lastTestAttemptAt?: Date | number | string | null;
-  lastTestSuccessAt?: Date | number | string | null;
-  lastTestFailureAt?: Date | number | string | null;
 };
 
 const UNTESTED: DeliveryProviderConnection = { status: "untested", testedAt: null, message: null };
@@ -160,18 +154,7 @@ export function getDeliveryProviderReadinessSummary(
     tested,
     active,
     activationBlockers,
+    // The courier's stored test (its app keeps it) is the one record of when it passed or failed.
     connection,
-    // A courier's stored test is the one record of when it passed or failed.
-    ...(input.connection
-      ? {
-          lastTestAttemptAt: connection.testedAt ?? input.lastTestAttemptAt,
-          lastTestSuccessAt: connection.status === "passed" ? connection.testedAt : null,
-          lastTestFailureAt: connection.status === "failed" ? connection.testedAt : null,
-        }
-      : {
-          lastTestAttemptAt: input.lastTestAttemptAt,
-          lastTestSuccessAt: input.lastTestSuccessAt,
-          lastTestFailureAt: input.lastTestFailureAt,
-        }),
   };
 }

@@ -54,6 +54,7 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { useSaveBar } from "../shared/SaveBar";
 import { SettingsCard, SettingsDialog, SettingsField } from "./SettingsPage";
 import { SettingsCheckbox } from "./SettingsCheckbox";
+import { sameFormValue } from "~/lib/form-values";
 
 const PAGE_SIZE = 20;
 
@@ -149,7 +150,7 @@ function LocationForm({ country, level, location }: { country: string; level: nu
   });
   useSaveBar({
     fields: { name: "location-name", parentId: "location-parent" },
-    dirty: JSON.stringify(draft) !== JSON.stringify(saved),
+    dirty: !sameFormValue(draft, saved),
     saving: save.isPending,
     invalid: !draft.name.trim() || (!top && !draft.parentId),
     save: () => save.mutateAsync(),

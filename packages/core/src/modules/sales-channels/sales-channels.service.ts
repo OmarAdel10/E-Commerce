@@ -16,6 +16,7 @@ import {
     productChannelPublications,
     products,
     salesChannelLocations,
+    SALES_CHANNEL_LOCATION_REQUIRED,
     salesChannels,
     type SalesChannel,
 } from "@scalius/database/schema";
@@ -27,7 +28,7 @@ import {
     type SalesChannelKind,
     type SalesChannelStatus,
 } from "@scalius/shared/sales-channels";
-import { NotFoundError, ValidationError } from "@scalius/core/errors";
+import { AppError, NotFoundError, ValidationError } from "@scalius/core/errors";
 import {
     catalogProjectionRefreshStatements,
     publishProductsStatement,
@@ -148,21 +149,41 @@ export async function updateSalesChannel(
         if (locationsChanged) {
             const added = requested.filter((locationId) => !before.includes(locationId));
             const removed = before.filter((locationId) => !requested.includes(locationId));
+            // Links first, unlinks second: the unlink trigger (0183) checks the channel's final locations.
+            if (added.length > 0) {
+                writes.push(db.insert(salesChannelLocations)
+                    .values(added.map((locationId) => ({ channelId: id, locationId })))
+                    .onConflictDoNothing() as unknown as SQLiteBatchItem);
+            }
             if (removed.length > 0) {
                 writes.push(db.delete(salesChannelLocations).where(and(
                     eq(salesChannelLocations.channelId, id),
                     inArray(salesChannelLocations.locationId, removed),
                 )) as unknown as SQLiteBatchItem);
             }
-            if (added.length > 0) {
-                writes.push(db.insert(salesChannelLocations)
-                    .values(added.map((locationId) => ({ channelId: id, locationId })))
-                    .onConflictDoNothing() as unknown as SQLiteBatchItem);
-            }
         }
     }
-    if (writes.length > 0) await safeBatch(db, writes as never);
+    if (writes.length > 0) {
+        try {
+            await safeBatch(db, writes as never);
+        } catch (error) {
+            // A location this change keeps was archived meanwhile (the read above saw it active).
+            if (errorText(error).includes(SALES_CHANNEL_LOCATION_REQUIRED)) {
+                throw new AppError(409, "conflict", "A location you chose was just archived. Reload and choose at least one active location.", {
+                    field: "locationIds",
+                    reason: "location_archived",
+                });
+            }
+            throw error;
+        }
+    }
     return { channel: await getSalesChannel(db, id), locationsChanged };
+}
+
+function errorText(error: unknown, depth = 0): string {
+    if (depth > 5 || error === null || typeof error !== "object") return error === null || error === undefined ? "" : String(error);
+    const candidate = error as { message?: unknown; cause?: unknown };
+    return `${typeof candidate.message === "string" ? candidate.message : ""} ${errorText(candidate.cause, depth + 1)}`;
 }
 
 function requireChannelIds(channelIds: readonly string[]): string[] {

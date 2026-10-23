@@ -4,7 +4,7 @@
  * The order list adds rows itself (the "new orders" bar), so a new order never
  * shifts a list the merchant is reading.
  */
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import { partialMatchKey, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import type { RealtimeChange, RealtimeTopic } from "@scalius/shared/realtime";
 import { queryKeys } from "~/lib/query-keys";
 import { inboxKeys } from "~/lib/api-query-options/inbox";
@@ -79,10 +79,6 @@ export function resyncKeys(topics: readonly RealtimeTopic[]): KeyMatch[] {
   return [...keys.values()].map((prefix) => ({ prefix }));
 }
 
-function startsWith(key: QueryKey, prefix: QueryKey): boolean {
-  return prefix.length <= key.length && prefix.every((part, index) => JSON.stringify(part) === JSON.stringify(key[index]));
-}
-
 /** One order's own reads (`["orders", <part>, id]`), never the list. */
 function isOrderRead(key: QueryKey, orderId: string): boolean {
   return key[0] === "orders" && key[1] !== "list" && key[2] === orderId;
@@ -103,7 +99,7 @@ export function createInvalidator(queryClient: QueryClient, delayMs = 250) {
     void queryClient.invalidateQueries({
       refetchType: "active",
       predicate: (query) => matches.some((match) => "prefix" in match
-        ? startsWith(query.queryKey, match.prefix)
+        ? partialMatchKey(query.queryKey, match.prefix)
         : isOrderRead(query.queryKey, match.orderId)),
     });
   };

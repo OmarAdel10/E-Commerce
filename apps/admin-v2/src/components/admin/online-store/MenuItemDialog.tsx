@@ -36,6 +36,7 @@ import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
 import { useDirtyDialogClose } from "~/components/admin/shared/use-dirty-dialog-close";
 import { NavigationResourcePicker } from "./NavigationResourcePicker";
 import { actionErrorText, Field, isWebAddress, normalizeWebAddress, rebaseDraft } from "./shared";
+import { sameFormValue } from "~/lib/form-values";
 
 type SystemKey = Extract<NavigationItemDraft["target"], { type: "system" }>["key"];
 const SYSTEM_PAGES: SystemKey[] = ["home", "catalog", "search", "account", "cart", "checkout", "order_lookup"];
@@ -125,7 +126,7 @@ function ItemForm({
   }
   const setDraft = (update: (current: NavigationItemDraft) => NavigationItemDraft) =>
     setState((value) => ({ ...value, draft: update(value.draft) }));
-  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  const dirty = !sameFormValue(draft, initial);
   const [busy, setBusy] = useState(false);
   useEffect(() => onStateChange({ dirty, busy }), [dirty, busy, onStateChange]);
   const [error, setError] = useState<string>();

@@ -29,6 +29,7 @@ import { editorHistory, startHistory, type EditorAction } from "./editor-state";
 import type { SaveStatus } from "./EditorTopBar";
 import { saveableDraft, type DraftApps } from "./saveable-draft";
 import { themeVersionsKey } from "./theme-history-queries";
+import { sameFormValue } from "~/lib/form-values";
 
 type Theme = StorefrontThemeDocument;
 
@@ -37,8 +38,6 @@ export const THEME_PRESENCE_KEY = presenceKey("theme", "draft");
 
 /** How long the editor waits after the last edit before saving the draft. */
 export const AUTOSAVE_DELAY_MS = 800;
-
-const same = (left: unknown, right: unknown) => left === right || JSON.stringify(left) === JSON.stringify(right);
 
 /**
  * Edits autosave cannot send yet (a setting to fix holds its part back) are
@@ -110,10 +109,10 @@ export function useThemeDraft({ workspace, refetch, canEdit, apps }: {
 
   const saveable = useMemo(() => saveableDraft(working, saved.theme, apps), [working, saved.theme, apps]);
   const pending = saveable?.theme ?? null;
-  const dirty = useMemo(() => pending !== null && !same(pending, lastSent), [pending, lastSent]);
+  const dirty = useMemo(() => pending !== null && !sameFormValue(pending, lastSent), [pending, lastSent]);
   const held = saveable?.held ?? [];
-  const unsavedEdits = useMemo(() => !same(working, lastSent), [working, lastSent]);
-  const failedHere = failure !== null && pending !== null && same(failure.for, pending);
+  const unsavedEdits = useMemo(() => !sameFormValue(working, lastSent), [working, lastSent]);
+  const failedHere = failure !== null && pending !== null && sameFormValue(failure.for, pending);
 
   const dispatch = useCallback((action: EditorAction) => {
     if (!canEdit && action.type !== "replace") return;
@@ -180,7 +179,7 @@ export function useThemeDraft({ workspace, refetch, canEdit, apps }: {
       // A save that carried none of this editor's edits (the first draft it
       // creates on open), with none made since, loses nothing to a newer
       // draft: take the newer one instead of asking.
-      const untouched = same(sending, base.theme) && same(latest.current.pending, sending);
+      const untouched = sameFormValue(sending, base.theme) && sameFormValue(latest.current.pending, sending);
       if (isAdminApiConflictError(error) && untouched) adoptNewer.current?.();
       else if (isAdminApiConflictError(error)) void noteConflict();
       else setFailure({ for: sending, message: actionErrorText(error) });
@@ -204,7 +203,7 @@ export function useThemeDraft({ workspace, refetch, canEdit, apps }: {
     if (restoredHeld.current || !canEdit) return;
     restoredHeld.current = true;
     const kept = readHeldEdits(workspace.draft.revision);
-    if (!kept || same(kept, workspace.draft.theme)) return;
+    if (!kept || sameFormValue(kept, workspace.draft.theme)) return;
     dispatchHistory({ type: "edit", update: () => kept, at: Date.now() });
     toast.info(t("heldRestored"));
   }, [canEdit, workspace.draft.revision, workspace.draft.theme, t]);

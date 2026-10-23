@@ -40,6 +40,7 @@ import { useMessages } from "~/i18n";
 import { settingsMessages, settingsNavMessages } from "~/i18n/settings";
 import { usersMessages } from "~/i18n/settings-users";
 import { pageHead } from "~/i18n/page-titles";
+import { sameFormValue } from "~/lib/form-values";
 
 const NEW_ROLE = "new";
 
@@ -120,7 +121,7 @@ function RoleForm({ role, initial, readOnly = false }: {
   const nameError = draft.name.trim() ? undefined : t("roleNameRequired");
   useSaveBar({
     fields: { name: "role-name", displayName: "role-name" },
-    dirty: !readOnly && JSON.stringify(draft) !== JSON.stringify(saved),
+    dirty: !readOnly && !sameFormValue(draft, saved),
     invalid: Boolean(nameError),
     save: async () => {
       const displayName = draft.name.trim();

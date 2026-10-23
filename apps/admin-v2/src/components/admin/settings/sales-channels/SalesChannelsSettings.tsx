@@ -5,7 +5,7 @@
 // an app's follows the app) and, in a store with more than one location,
 // choose the locations whose stock it sells.
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "~/lib/toast";
 import { StatusBadge } from "~/components/admin/resource/StatusBadge";
@@ -18,6 +18,7 @@ import { useHasPermission } from "~/contexts/PermissionContext";
 import { formatNumber, translate, useMessages } from "~/i18n";
 import { salesChannelsMessages, type SalesChannelsMessageKey } from "~/i18n/sales-channels";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
+import { readAdminApiError } from "~/lib/admin-api-error";
 import { getServerFnError } from "~/lib/api-helpers";
 import { inventoryLocationsQueryOptions, type InventoryLocation } from "~/lib/api-query-options/inventory-locations";
 import {
@@ -133,7 +134,7 @@ export function SalesChannelsSettings() {
   );
 }
 
-function ManageChannelDialog({ channel, locations, choosesLocations, onClose }: {
+function ManageChannelDialog({ channel, locations, choosesLocations: storeChooses, onClose }: {
   channel: SalesChannel;
   locations: InventoryLocation[];
   choosesLocations: boolean;
@@ -141,15 +142,18 @@ function ManageChannelDialog({ channel, locations, choosesLocations, onClose }: 
 }) {
   const t = useMessages(salesChannelsMessages);
   const update = useUpdateSalesChannel();
+  const queryClient = useQueryClient();
   const [active, setActive] = useState(channel.status === "active");
   const [locationIds, setLocationIds] = useState<string[]>(channel.locationIds);
   const [error, setError] = useState<string | null>(null);
   const statusLocked = channel.id === ONLINE_STORE
     ? t("statusLockedStore")
     : channel.kind === "app" ? t("statusLockedApp") : null;
-  // Archived locations show only while the channel still names one.
-  const shown = locations.filter((location) => location.status === "active" || channel.locationIds.includes(location.id));
+  // Archived locations show only while the channel or this draft still names one.
+  const shown = locations.filter((location) => location.status === "active" || channel.locationIds.includes(location.id) || locationIds.includes(location.id));
   const name = salesChannelName(channel);
+  // A choice archived since it was ticked keeps the locations on screen, so it can be unticked.
+  const choosesLocations = storeChooses || shown.some((location) => location.status !== "active" && locationIds.includes(location.id));
 
   const save = () => {
     if (choosesLocations && !locationIds.some((id) => shown.find((location) => location.id === id)?.status === "active")) {
@@ -173,7 +177,15 @@ function ManageChannelDialog({ channel, locations, choosesLocations, onClose }: 
         toast.success(t("saved"));
         onClose();
       },
-      onError: (failure) => setError(getServerFnError(failure, t("saveFailed"))),
+      onError: (failure) => {
+        // A chosen location was archived while the dialog was open: show it as archived and say so.
+        if ((readAdminApiError(failure)?.details as { reason?: unknown } | undefined)?.reason === "location_archived") {
+          void queryClient.invalidateQueries({ queryKey: inventoryLocationsQueryOptions(true).queryKey });
+          setError(t("locationArchivedMeanwhile"));
+          return;
+        }
+        setError(getServerFnError(failure, t("saveFailed")));
+      },
     });
   };
 
