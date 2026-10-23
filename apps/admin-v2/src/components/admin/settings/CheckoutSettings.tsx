@@ -109,6 +109,12 @@ export const PAYMENT_START_TEXT_FIELDS = [
   "paymentPreparingText",
   "checkoutStorageBlockedText",
 ] as const;
+/** The order form posted without JavaScript, refused before the order is placed. */
+export const ORDER_PROBLEM_TEXT_FIELDS = [
+  "checkoutFieldsMissingText",
+  "checkoutDeliveryChangedText",
+  "cashOnDeliveryUnavailableText",
+] as const;
 /** The address app's suggestions, read out by screen readers. */
 export const ADDRESS_SUGGESTION_TEXT_FIELDS = [
   "addressSuggestionText",
@@ -119,6 +125,7 @@ export const ADDRESS_SUGGESTION_TEXT_FIELDS = [
 const TEXT_GROUPS = [
   { id: "card", title: "cardTextTitle", help: "cardTextHelp", keys: CARD_TEXT_FIELDS },
   { id: "payment-start", title: "paymentStartTextTitle", help: "paymentStartTextHelp", keys: PAYMENT_START_TEXT_FIELDS },
+  { id: "order-problems", title: "orderProblemTextTitle", help: "orderProblemTextHelp", keys: ORDER_PROBLEM_TEXT_FIELDS },
   { id: "address-suggestions", title: "addressSuggestionGroupTitle", help: "addressSuggestionGroupHelp", keys: ADDRESS_SUGGESTION_TEXT_FIELDS },
 ] as const;
 /** Every checkout-language key this editor lists. */
@@ -131,6 +138,7 @@ export const EDITABLE_CHECKOUT_TEXT_KEYS: ReadonlySet<string> = new Set<string>(
   ...APP_TEXT_FIELDS,
   ...CARD_TEXT_FIELDS,
   ...PAYMENT_START_TEXT_FIELDS,
+  ...ORDER_PROBLEM_TEXT_FIELDS,
   ...ADDRESS_SUGGESTION_TEXT_FIELDS,
 ]);
 /** The agreement line's link placeholders; the storefront links each to its policy page. */

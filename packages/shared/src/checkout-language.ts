@@ -478,6 +478,10 @@ export const ENGLISH_CHECKOUT_LANGUAGE_DATA = {
   addressSuggestionText: "1 address suggestion. Use the up and down arrow keys to choose.",
   addressSuggestionsText: "{count} address suggestions. Use the up and down arrow keys to choose.",
   addressFilledText: "Address filled in. Check it before you continue.",
+  // The order form posted without JavaScript, refused before the order is placed.
+  checkoutFieldsMissingText: "Fill in all required fields and add items to your cart.",
+  checkoutDeliveryChangedText: "Delivery details are no longer available. Refresh checkout and try again.",
+  cashOnDeliveryUnavailableText: "This order can't be paid with cash on delivery.",
   onlinePaymentText: "Pay online",
   onlinePaymentDescriptionText: "bKash, Nagad, cards and more",
   completeWithProviderText: "Complete payment with {provider}",
@@ -1240,6 +1244,9 @@ export const BANGLA_CHECKOUT_LANGUAGE_DATA: CheckoutLanguageData = {
   addressSuggestionText: "ঠিকানার ১টি পরামর্শ আছে। বেছে নিতে উপরে ও নিচের তীর কী ব্যবহার করুন।",
   addressSuggestionsText: "ঠিকানার {count}টি পরামর্শ আছে। বেছে নিতে উপরে ও নিচের তীর কী ব্যবহার করুন।",
   addressFilledText: "ঠিকানা পূরণ হয়েছে। এগিয়ে যাওয়ার আগে দেখে নিন।",
+  checkoutFieldsMissingText: "সব প্রয়োজনীয় ঘর পূরণ করুন এবং কার্টে পণ্য যোগ করুন।",
+  checkoutDeliveryChangedText: "ডেলিভারির তথ্য আর পাওয়া যাচ্ছে না। চেকআউট রিফ্রেশ করে আবার চেষ্টা করুন।",
+  cashOnDeliveryUnavailableText: "এই অর্ডারে ক্যাশ অন ডেলিভারিতে পেমেন্ট করা যাচ্ছে না।",
   onlinePaymentText: "অনলাইনে পেমেন্ট করুন",
   onlinePaymentDescriptionText: "বিকাশ, নগদ, কার্ড ও আরও অনেক পদ্ধতি",
   completeWithProviderText: "{provider}-এর মাধ্যমে পেমেন্ট সম্পন্ন করুন",
@@ -1655,6 +1662,9 @@ export const CHECKOUT_LANGUAGE_LONG_TEXT_KEYS =/* @__PURE__ */ new Set<CheckoutL
   "paymentStartFailedText",
   "checkoutStorageBlockedText",
   "addressSuggestionsText",
+  "checkoutFieldsMissingText",
+  "checkoutDeliveryChangedText",
+  "cashOnDeliveryUnavailableText",
 ]);
 
 const CHECKOUT_LANGUAGE_PRESETS: Record<string, CheckoutLanguageData> = {
