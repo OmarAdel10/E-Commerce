@@ -240,7 +240,7 @@ export const themeEditorMessages = defineMessages({
     // The preview frame
     previewLoading: "Loading the storefront…",
     previewFailed: "The preview couldn't load.",
-    previewBlocked: "Your browser kept the preview from opening here. Use Preview in More actions to open it in a new tab.",
+    previewBlocked: "The preview didn't open here. Use Preview in More actions to open it in a new tab. Running the store on your own computer? Start the dashboard, API and storefront together with pnpm dev, so the storefront answers this dashboard.",
     previewRetry: "Try again",
     previewNeedsUrl: "Set your store address under Settings → Store details → Web addresses to preview the storefront here.",
     previewFrame: "Storefront preview",
@@ -609,7 +609,7 @@ export const themeEditorMessages = defineMessages({
 
     previewLoading: "স্টোরফ্রন্ট লোড হচ্ছে…",
     previewFailed: "প্রিভিউ লোড করা যায়নি।",
-    previewBlocked: "আপনার ব্রাউজার প্রিভিউ এখানে খুলতে দেয়নি। নতুন ট্যাবে খুলতে আরও অ্যাকশন থেকে প্রিভিউ চাপুন।",
+    previewBlocked: "প্রিভিউ এখানে খোলেনি। নতুন ট্যাবে খুলতে আরও অ্যাকশন থেকে প্রিভিউ চাপুন। নিজের কম্পিউটারে স্টোর চালাচ্ছেন? ড্যাশবোর্ড, API আর স্টোরফ্রন্ট একসঙ্গে pnpm dev দিয়ে চালু করুন, যাতে স্টোরফ্রন্ট এই ড্যাশবোর্ডের সঙ্গে কাজ করে।",
     previewRetry: "আবার চেষ্টা করুন",
     previewNeedsUrl: "এখানে স্টোরফ্রন্ট প্রিভিউ করতে সেটিংস → স্টোরের তথ্য → ওয়েব ঠিকানায় আপনার স্টোরের ঠিকানা দিন।",
     previewFrame: "স্টোরফ্রন্ট প্রিভিউ",
