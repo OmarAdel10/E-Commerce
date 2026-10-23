@@ -149,6 +149,7 @@ export interface ProductListItem {
     };
     variantCount: number;
     onHand: number | null;
+    available: number | null;
     hasVariantDiscount: boolean;
     hasStockHistory: boolean;
     mediaCount: number;

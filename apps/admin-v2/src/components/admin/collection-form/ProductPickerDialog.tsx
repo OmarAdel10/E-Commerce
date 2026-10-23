@@ -7,6 +7,7 @@ import { useCurrency } from "~/hooks/use-currency";
 import { useDebounce } from "~/hooks/use-debounce";
 import { collectionProductOptionsQueryOptions } from "~/lib/api-query-options/collections";
 import { priceRangeText } from "~/lib/price-range";
+import { availableStockText } from "~/lib/stock-availability";
 import { Badge } from "~/components/ui/badge";
 import { StatusBadge } from "~/components/admin/resource/StatusBadge";
 import { Button } from "~/components/ui/button";
@@ -62,14 +63,15 @@ export function useProductOptions({
   return { query, products, total, visibleOnline, isLoading, searched: debouncedSearch };
 }
 
-/** "৳1,200 · 3 variants · 12 in stock", the resource picker's second line. */
+/** "৳1,200 · 3 variants · 12 available", the resource picker's second line. */
 export function ProductOptionMeta({ product }: { product: Product }) {
   const t = useMessages(collectionFormMessages);
   const { fmt } = useCurrency();
   const parts = [
     product.priceRange === undefined ? null : priceRangeText(product.priceRange, fmt) ?? t("noPrice"),
     product.variantCount ? (product.variantCount === 1 ? t("variantOne") : t("variantCount", { count: product.variantCount })) : null,
-    product.available === undefined ? null : product.available === null ? t("stockNotTracked") : product.available === 0 ? t("outOfStock") : t("inStock", { count: product.available }),
+    // Available, as Inventory and the Products list count it (the variant count is its own part).
+    product.available === undefined ? null : availableStockText(product.available),
   ].filter(Boolean);
   return <span className="block truncate tabular-nums text-muted-foreground">{parts.join(" · ")}</span>;
 }

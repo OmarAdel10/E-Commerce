@@ -57349,6 +57349,10 @@ export type GetApiV1AdminOrdersCatalogProductsResponses = {
                  */
                 onHand: number | null;
                 /**
+                 * Units tracked SKUs can still sell: on hand minus open orders, never below 0 per SKU; null when no SKU tracks quantity.
+                 */
+                available: number | null;
+                /**
                  * Some SKUs carry their own discount.
                  */
                 hasVariantDiscount: boolean;
@@ -62519,6 +62523,10 @@ export type GetApiV1AdminProductsResponses = {
                  * Tracked on-hand units across live SKUs; null when no SKU tracks quantity.
                  */
                 onHand: number | null;
+                /**
+                 * Units tracked SKUs can still sell: on hand minus open orders, never below 0 per SKU; null when no SKU tracks quantity.
+                 */
+                available: number | null;
                 /**
                  * Some SKUs carry their own discount.
                  */

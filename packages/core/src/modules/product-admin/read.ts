@@ -356,6 +356,7 @@ export async function listProducts(db: Database, options: {
                 count: sql<number>`count(${productVariants.id})`,
                 trackedCount: sql<number>`sum(CASE WHEN ${productVariants.trackInventory} = 1 THEN 1 ELSE 0 END)`,
                 onHand: sql<number>`sum(CASE WHEN ${productVariants.trackInventory} = 1 THEN ${productVariants.stock} ELSE 0 END)`,
+                available: sql<number>`sum(CASE WHEN ${productVariants.trackInventory} = 1 AND ${productVariants.stock} > ${productVariants.reservedStock} THEN ${productVariants.stock} - ${productVariants.reservedStock} ELSE 0 END)`,
                 hasSkuDiscount: sql<number>`max(CASE WHEN ${productVariants.discountBps} > 0 OR ${productVariants.discountAmountMinor} > 0 THEN 1 ELSE 0 END)`,
             })
             .from(productVariants)
@@ -397,7 +398,7 @@ export async function listProducts(db: Database, options: {
         selectProductMediaProjectionRows(db, agentSummary ? [] : productIds),
         db.select({ productId: pagePricing.productId, ...buyerPriceRangeColumns(pagePricing) }).from(pagePricing),
     ]);
-    type VariantSummaryRow = { productId: string; count: number; trackedCount: number; onHand: number; hasSkuDiscount: number };
+    type VariantSummaryRow = { productId: string; count: number; trackedCount: number; onHand: number; available: number; hasSkuDiscount: number };
     const variantCounts = enrichmentResults[0] as VariantSummaryRow[];
     const productsWithStockHistory = new Set((enrichmentResults[1] as { productId: string }[]).map((row) => row.productId));
     const mediaCounts = enrichmentResults[2] as { productId: string; count: number }[];
@@ -457,6 +458,10 @@ export async function listProducts(db: Database, options: {
         /** Tracked on-hand units across live SKUs; null when no SKU tracks quantity. */
         onHand: Number(variantSummaryMap.get(product.id)?.trackedCount ?? 0) > 0
             ? Number(variantSummaryMap.get(product.id)?.onHand ?? 0)
+            : null,
+        /** What tracked SKUs can still sell (on hand minus open orders, never below 0 per SKU); null when none tracks quantity. */
+        available: Number(variantSummaryMap.get(product.id)?.trackedCount ?? 0) > 0
+            ? Number(variantSummaryMap.get(product.id)?.available ?? 0)
             : null,
         /** Some SKUs carry their own discount, so the product price isn't the whole story. */
         hasVariantDiscount: Number(variantSummaryMap.get(product.id)?.hasSkuDiscount ?? 0) > 0,

@@ -13,6 +13,7 @@ import { productMessages, type ProductMessageKey } from "~/i18n/products";
 import { salesChannelNamesMessages } from "~/i18n/sales-channel-names";
 import type { ProductListItemDto } from "~/lib/api-query-options/products";
 import { priceRangeText } from "~/lib/price-range";
+import { availableStockText } from "~/lib/stock-availability";
 
 export type ProductListItem = ProductListItemDto;
 
@@ -55,13 +56,15 @@ export function ProductThumb({ src }: { src: string | null }) {
   );
 }
 
-/** "15 in stock", "62 in stock for 6 variants", or "Not tracked": one line, whole on hover when cut. */
+/**
+ * "15 available", "62 available for 6 variants", or "Stock not tracked": what
+ * can still be sold, as Inventory's Available column and the pickers count it.
+ * One line, whole on hover when cut.
+ */
 function InventoryText({ product }: { product: ProductListItem }) {
-  if (product.onHand === null) return <span className="block truncate text-muted-foreground">{t("notTracked")}</span>;
-  const text = product.variantCount > 1
-    ? t("inStockVariants", { count: product.onHand, variants: product.variantCount })
-    : t("inStock", { count: product.onHand });
-  return <span title={text} className={cn("block truncate tabular-nums", product.onHand === 0 ? "text-destructive" : "text-muted-foreground")}>{text}</span>;
+  const text = availableStockText(product.available, product.variantCount);
+  if (product.available === null) return <span className="block truncate text-muted-foreground">{text}</span>;
+  return <span title={text} className={cn("block truncate tabular-nums", product.available === 0 ? "text-destructive" : "text-muted-foreground")}>{text}</span>;
 }
 
 /** Price customers pay, with the regular price struck through while a product discount runs. */
@@ -89,7 +92,7 @@ function PriceText({ product, fmt }: { product: ProductListItem; fmt: (price: nu
 export const PRODUCT_COLUMN_LAYOUT = {
   name: { mobile: "primary", minWidth: 216 },
   status: { mobile: "status", priority: 90, minWidth: 72 },
-  // "497 in stock for 20 variants" is 182px (195 in Bangla): it shows whole where the window has room.
+  // "497 available for 20 variants" shows whole where the window has room (`list-layout.test.tsx`).
   inventory: { mobile: "secondary", priority: 70, maxWidth: 196, minWidth: 208 },
   category: { mobile: "secondary", priority: 40, maxWidth: 140, minWidth: 152 },
   price: { mobile: "secondary", numeric: true, priority: 80, minWidth: { en: 220, bn: 228 } },

@@ -201,8 +201,6 @@ export const productMessages = defineMessages({
 
     // List: inventory, sale prices and actions
     columnInventory: "Inventory",
-    inStock: "{count} in stock",
-    inStockVariants: "{count} in stock for {variants, plural, one {# variant} other {# variants}}",
     notTracked: "Not tracked",
     saleOnSome: "Sale on some variants",
     keptForHistory: "Kept for stock history",
@@ -499,8 +497,6 @@ export const productMessages = defineMessages({
 
     // List: inventory, sale prices and actions
     columnInventory: "স্টক",
-    inStock: "{count}টি স্টকে",
-    inStockVariants: "{variants}টি ভ্যারিয়েন্টে {count}টি স্টকে",
     notTracked: "হিসাব রাখা হয় না",
     saleOnSome: "কিছু ভ্যারিয়েন্টে ছাড়",
     keptForHistory: "স্টকের হিসাবের জন্য রাখা",
