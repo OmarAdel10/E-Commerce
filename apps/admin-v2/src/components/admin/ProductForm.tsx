@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { ConfirmDialog } from "./shared/ConfirmDialog";
-import { useFieldErrorLines } from "./shared/use-form-save-bar";
+import { useFieldErrorLines, useFormDirty } from "./shared/use-form-save-bar";
 import { useFormWithRefusals } from "~/lib/input-refusals";
 import { sortedUniqueStrings } from "~/lib/form-values";
 import {
@@ -291,7 +291,7 @@ function ProductEditor({
     onVariantIssue: (path, message) => matrixRef.current?.showServerIssue(path, message) ?? null,
     onCompositionSaved: (revision) => matrixRef.current?.compositionSaved(revision),
   });
-  const productFormDirty = form.formState.isDirty;
+  const productFormDirty = useFormDirty(form);
   // Read while rendering so react-hook-form keeps tracking which fields changed.
   const dirtyFields = form.formState.dirtyFields;
 
