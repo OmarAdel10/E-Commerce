@@ -213136,6 +213136,37 @@
                               "staleProcessing"
                             ]
                           }
+                        },
+                        "refundSources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "paymentId": {
+                                "type": "string"
+                              },
+                              "paymentMethod": {
+                                "type": "string"
+                              },
+                              "settlement": {
+                                "type": "string",
+                                "enum": [
+                                  "provider",
+                                  "manual",
+                                  "gift_card"
+                                ]
+                              },
+                              "refundable": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "paymentId",
+                              "paymentMethod",
+                              "settlement",
+                              "refundable"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -213144,7 +213175,8 @@
                         "refundAttempts",
                         "activeRefundOperation",
                         "paymentWebhookIssues",
-                        "paymentSessionAttempts"
+                        "paymentSessionAttempts",
+                        "refundSources"
                       ]
                     }
                   },

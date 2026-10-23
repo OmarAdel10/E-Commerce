@@ -89,7 +89,7 @@ export type {
 } from "./payment-state";
 
 // --- Refund service ---
-export { finalizeAcceptedRefundAttemptIds, processRefund, STORE_CREDIT_NEEDS_STAFF_REASON } from "./refund-service";
+export { finalizeAcceptedRefundAttemptIds, listRefundSources, processRefund, STORE_CREDIT_NEEDS_STAFF_REASON } from "./refund-service";
 export type {
   FinalizeAcceptedRefundAttemptsResult,
   RefundCaller,
@@ -97,6 +97,7 @@ export type {
   RefundNotificationFact,
   RefundRequest,
   RefundResult as RefundServiceResult,
+  RefundSource,
 } from "./refund-service";
 export {
   reconcileDueRefundAttempts,

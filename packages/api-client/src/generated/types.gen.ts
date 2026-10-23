@@ -59953,6 +59953,12 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 activeProcessing: boolean;
                 staleProcessing: boolean;
             }>;
+            refundSources: Array<{
+                paymentId: string;
+                paymentMethod: string;
+                settlement: 'provider' | 'manual' | 'gift_card';
+                refundable: number;
+            }>;
         };
     };
 };

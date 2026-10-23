@@ -137,6 +137,14 @@ automatic fulfilment).
 COD is not a gateway: collection is recorded in `cod.ts` and COD refunds are
 confirmed manual settlements.
 
+A refund fills the order's captures in one order (newest first, gift-card
+tenders last; `allocateRefundAcrossSources`, `@scalius/shared/refund-sources`).
+`listRefundSources()` returns those sources with what each still refunds and
+how it settles (`provider`, `manual`, `gift_card`); the dashboard payments
+read carries them so the refund dialog asks staff to confirm exactly the share
+paid back by hand (COD and recorded transfers), never guessing from the
+order's method.
+
 ## Saved methods, off-session charges, authorizations
 
 Core runs no subscription logic; it gives apps the primitives (the stable

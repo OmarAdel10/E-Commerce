@@ -186,8 +186,10 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const methodPaidMinor = Math.max(0, Math.round(grossPaid * 10 ** paidDecimalPlaces) - giftCardHeldMinor);
   const methodPaid = methodPaidMinor / 10 ** paidDecimalPlaces;
 
-  const hasCashPayment = isCOD || payments.some((payment) =>
-    payment.paymentMethod === "cod" && payment.paymentType !== "refund" && payment.status === "succeeded");
+  // Where a refund draws from (the API's refund order); unknown until the payments read lands.
+  const refundSources = paymentsResult?.refundSources ?? null;
+  // Every refundable unit was paid by hand (cash, a recorded transfer): a refund is recorded, not sent.
+  const refundIsRecordOnly = Boolean(refundSources?.length) && refundSources!.every((source) => source.settlement === "manual");
   const hasCashBalanceDueOnDelivery = plan?.status === "deposit_paid"
     && order.paymentStatus === "partial"
     && Number(order.balanceDue ?? 0) > 0;
@@ -558,8 +560,8 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
         ) : null}
 
         {canRefund && paid > 0 && order.paymentStatus !== "refunded" ? (
-          <Button variant="outline" size="sm" disabled={isRefundLocked} onClick={openRefund}>
-            {t(hasCashPayment ? "refund.recordCash" : "refund.issue")}
+          <Button variant="outline" size="sm" disabled={isRefundLocked || !refundSources} onClick={openRefund}>
+            {t(refundIsRecordOnly ? "refund.recordManual" : "refund.issue")}
           </Button>
         ) : null}
       </CardContent>
@@ -601,7 +603,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
           />
         </Suspense>
       ) : null}
-      {refundLoaded ? (
+      {refundLoaded && refundSources ? (
         <Suspense fallback={null}>
           <RefundDialog
             key={refundSession}
@@ -611,7 +613,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
             paid={paid}
             money={money}
             locked={isRefundLocked}
-            hasCashPayment={hasCashPayment}
+            refundSources={refundSources}
           />
         </Suspense>
       ) : null}

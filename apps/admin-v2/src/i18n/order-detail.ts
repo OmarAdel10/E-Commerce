@@ -160,7 +160,7 @@ export const orderDetailMessages = defineMessages({
     "cod.reason.other": "Other",
 
     "refund.issue": "Refund",
-    "refund.recordCash": "Record cash refund",
+    "refund.recordManual": "Record refund",
     "refund.history": "Refunds",
     "refund.checkNow": "Check now",
     "refund.reason.requested_by_customer": "Customer asked",
@@ -553,7 +553,7 @@ export const orderDetailMessages = defineMessages({
     "cod.reason.other": "অন্যান্য",
 
     "refund.issue": "রিফান্ড",
-    "refund.recordCash": "ক্যাশ রিফান্ড রেকর্ড করুন",
+    "refund.recordManual": "রিফান্ড রেকর্ড করুন",
     "refund.history": "রিফান্ড",
     "refund.checkNow": "এখন যাচাই করুন",
     "refund.reason.requested_by_customer": "কাস্টমার চেয়েছেন",
