@@ -25,6 +25,8 @@
     "**/*.gen.js",
     ".claude/**",
     "**/.claude/**",
+    "audit/**",
+    "artifacts/**",
     "node_modules/.cache/**"
   ],
   "rules": {
