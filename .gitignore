@@ -30,8 +30,8 @@ astro-docs/
 .dev.vars.*
 !.dev.vars*.example
 
-# private test suite (core team only)
-tests/
+# local package-manager state
+.pnpm-store/
 
 # macOS-specific files
 .DS_Store
