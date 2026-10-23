@@ -58,10 +58,10 @@ export function columnAttributes<TData extends TableRowData>(
  * never narrower than `PINNED_SELECT_WIDTH` (an overflowing auto table would
  * shrink it to its 28px content) and the title column sticks exactly that far
  * in, so it never covers the column after it. Applies while the table
- * scrolls sideways (`ui/table.tsx`); inline, so it cannot drift from the number.
+ * scrolls sideways, as `--pin-min` and `--pin-start` that `ui/table.tsx` reads.
  */
-export function pinGeometry(pin: ColumnAttributes["data-pin"], hasSelect: boolean): CSSProperties {
-  if (pin === "select") return { minWidth: PINNED_SELECT_WIDTH };
-  if (pin === "primary") return { insetInlineStart: hasSelect ? PINNED_SELECT_WIDTH : 0 };
+export function pinGeometry(pin: ColumnAttributes["data-pin"], hasSelect: boolean): { "--pin-min"?: string; "--pin-start"?: string } {
+  if (pin === "select") return { "--pin-min": `${PINNED_SELECT_WIDTH}px` };
+  if (pin === "primary") return { "--pin-start": `${hasSelect ? PINNED_SELECT_WIDTH : 0}px` };
   return {};
 }

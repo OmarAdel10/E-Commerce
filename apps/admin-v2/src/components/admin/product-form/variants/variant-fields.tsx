@@ -144,7 +144,6 @@ export function VariantImagePicker({ readOnly = false, value, images, onChange, 
   const triggerLabel = `${label ?? t("variantPhoto")}: ${state}`;
   // No photo of its own: buyers see the product's main photo, so the cell shows it, muted.
   const inherited = inheritedMainPhoto(value, images);
-  const mainPhoto = inheritedMainPhoto(null, images);
   if (readOnly) {
     // Only an exact SKU image or the explicit primary fallback; mixed groups have no image.
     const image = selected ?? inherited;
@@ -191,10 +190,8 @@ export function VariantImagePicker({ readOnly = false, value, images, onChange, 
           onClick={() => onChange(null)}
           className={cn("mb-1 flex min-h-11 w-full items-center gap-2 rounded p-1.5 text-start text-body hover:bg-muted", value === null && "bg-muted")}
         >
-          <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded border">
-            {mainPhoto
-              ? <img src={mediaImageUrl(mainPhoto.url, 80)} alt="" className="h-full w-full object-contain opacity-50" />
-              : <ImageIcon className="h-4 w-4" />}
+          <span className="flex h-9 w-9 items-center justify-center rounded border">
+            <ImageIcon className="h-4 w-4" />
           </span>
           {t("mainPhoto")}
         </button>

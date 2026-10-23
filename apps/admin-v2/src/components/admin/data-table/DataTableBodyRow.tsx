@@ -113,7 +113,8 @@ export function DataTableHeadCell<TData extends TableRowData>({
       // INDEX_CELL's padding, written out for the class checker.
       className={cn("px-1.5 first:ps-3 last:pe-3", size !== 150 && "w-(--column-width)", holdWidth && "min-w-(--column-min)")}
       style={{
-        ...pin,
+        "--pin-min": pin["--pin-min"],
+        "--pin-start": pin["--pin-start"],
         "--column-width": `${size}px`,
         "--column-max": maxWidth ? `${maxWidth}px` : undefined,
         "--column-min": holdWidth ? `${layoutColumnOf(column).minWidth}px` : undefined,

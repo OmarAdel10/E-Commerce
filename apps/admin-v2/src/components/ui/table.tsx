@@ -93,8 +93,8 @@ TableRow.displayName = "TableRow";
  * - `data-numeric`: right aligned, tabular, never wrapped.
  * - `data-pin`: when the table scrolls sideways (the wrapper's `data-scrolls`),
  *   the checkbox and the title column after
- *   it (`columnAttributes` holds the checkbox at `PINNED_SELECT_WIDTH` and
- *   sticks the title at that offset) stick left and the actions column right,
+ *   it (`columnAttributes` sets `--pin-min` on the checkbox and `--pin-start`
+ *   on the title from `PINNED_SELECT_WIDTH`) stick left and the actions column right,
  *   each with a soft fade over the content passing under it. Body cells then
  *   take the row's background so nothing shows through.
  * - `data-capped` with `--column-max`: the cell's content is at most that
@@ -107,7 +107,7 @@ TableRow.displayName = "TableRow";
  * while rows are selected, else 0).
  */
 const LAYOUT =
-  "data-[capped]:*:max-w-(--column-max) data-[numeric]:whitespace-nowrap data-[numeric]:text-end data-[numeric]:tabular-nums data-[pin=actions]:w-px data-[pin=actions]:whitespace-nowrap data-[pin=actions]:text-end data-[pin=primary]:min-w-40 in-data-[scrolls]:data-[pin]:sticky data-[pin=select]:inset-s-0 data-[pin=actions]:inset-e-0 in-data-[scrolls]:data-[pin=primary]:before:pointer-events-none in-data-[scrolls]:data-[pin=primary]:before:absolute in-data-[scrolls]:data-[pin=primary]:before:inset-y-0 in-data-[scrolls]:data-[pin=primary]:before:-inset-e-3 in-data-[scrolls]:data-[pin=primary]:before:w-3 in-data-[scrolls]:data-[pin=primary]:before:bg-linear-to-r in-data-[scrolls]:data-[pin=primary]:before:from-foreground/10 in-data-[scrolls]:data-[pin=primary]:before:to-transparent in-data-[scrolls]:data-[pin=actions]:before:pointer-events-none in-data-[scrolls]:data-[pin=actions]:before:absolute in-data-[scrolls]:data-[pin=actions]:before:inset-y-0 in-data-[scrolls]:data-[pin=actions]:before:-inset-s-3 in-data-[scrolls]:data-[pin=actions]:before:w-3 in-data-[scrolls]:data-[pin=actions]:before:bg-linear-to-l in-data-[scrolls]:data-[pin=actions]:before:from-foreground/10 in-data-[scrolls]:data-[pin=actions]:before:to-transparent";
+  "data-[capped]:*:max-w-(--column-max) data-[numeric]:whitespace-nowrap data-[numeric]:text-end data-[numeric]:tabular-nums data-[pin=actions]:w-px data-[pin=actions]:whitespace-nowrap data-[pin=actions]:text-end data-[pin=primary]:min-w-40 data-[pin=select]:min-w-(--pin-min) in-data-[scrolls]:data-[pin]:sticky data-[pin=select]:inset-s-0 data-[pin=primary]:inset-s-(--pin-start) data-[pin=actions]:inset-e-0 in-data-[scrolls]:data-[pin=primary]:before:pointer-events-none in-data-[scrolls]:data-[pin=primary]:before:absolute in-data-[scrolls]:data-[pin=primary]:before:inset-y-0 in-data-[scrolls]:data-[pin=primary]:before:-inset-e-3 in-data-[scrolls]:data-[pin=primary]:before:w-3 in-data-[scrolls]:data-[pin=primary]:before:bg-linear-to-r in-data-[scrolls]:data-[pin=primary]:before:from-foreground/10 in-data-[scrolls]:data-[pin=primary]:before:to-transparent in-data-[scrolls]:data-[pin=actions]:before:pointer-events-none in-data-[scrolls]:data-[pin=actions]:before:absolute in-data-[scrolls]:data-[pin=actions]:before:inset-y-0 in-data-[scrolls]:data-[pin=actions]:before:-inset-s-3 in-data-[scrolls]:data-[pin=actions]:before:w-3 in-data-[scrolls]:data-[pin=actions]:before:bg-linear-to-l in-data-[scrolls]:data-[pin=actions]:before:from-foreground/10 in-data-[scrolls]:data-[pin=actions]:before:to-transparent";
 
 /** A start-aligned column after a numeric one starts 20px in (32px from the numbers, T6). */
 const afterNumeric = (props: object) => ("data-after-numeric" in props ? "ps-5" : null);

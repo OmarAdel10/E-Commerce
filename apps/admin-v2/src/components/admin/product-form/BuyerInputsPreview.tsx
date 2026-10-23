@@ -9,7 +9,6 @@ import {
 } from "@/components/admin/order-form/LinePropertyFields";
 import { useMessages } from "~/i18n";
 import { orderFormMessages } from "~/i18n/order-form";
-import { productMessages } from "~/i18n/products";
 
 /**
  * The block the buyer fills on the product page, live from the editor's
@@ -23,7 +22,6 @@ export function BuyerInputsPreview({ schema, surcharge }: {
   schema: CustomizationSchema;
   surcharge: (priceMinor: number) => string;
 }) {
-  const t = useMessages(productMessages);
   const o = useMessages(orderFormMessages);
   const [values, setValues] = React.useState<Record<string, string>>({});
   const [errors, setErrors] = React.useState<LinePropertyError[]>([]);
@@ -48,8 +46,8 @@ export function BuyerInputsPreview({ schema, surcharge }: {
         surcharge={surcharge}
       />
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" size="sm" onClick={tryAdd}>{t("buyerInputsTryAdd")}</Button>
-        <p className="text-body text-muted-foreground" role="status">{accepted ? t("buyerInputsAccepted") : ""}</p>
+        <Button type="button" variant="outline" size="sm" onClick={tryAdd}>{o("buyerInputsTryAdd")}</Button>
+        <p className="text-body text-muted-foreground" role="status">{accepted ? o("buyerInputsAccepted") : ""}</p>
       </div>
     </div>
   );
