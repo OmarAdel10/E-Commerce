@@ -149,6 +149,10 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const payments = paymentsResult?.payments ?? [];
   const sessionAttempts = paymentsResult?.paymentSessionAttempts ?? [];
   const webhookIssues = paymentsResult?.paymentWebhookIssues ?? [];
+  // A refund the provider reports that the order doesn't record yet is being
+  // reconciled, not a failed update: its own words, apart from the failures.
+  const externalRefundIssues = webhookIssues.filter((issue) => issue.reason === "external_refund");
+  const failedWebhookIssues = webhookIssues.filter((issue) => issue.reason !== "external_refund");
   const refundAttempts: OrderRefundAttempt[] = paymentsResult?.refundAttempts ?? order.refundAttempts ?? [];
   const activeRefund = paymentsResult?.activeRefundOperation ?? order.activeRefundOperation ?? null;
   // An app's method reads as its provider's name (orders store `<plugin id>:<provider id>`).
@@ -402,7 +406,27 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
           </div>
         ) : null}
 
-        {webhookIssues.length > 0 ? (
+        {externalRefundIssues.length > 0 ? (
+          <section role="status" className="space-y-2" data-testid="external-refunds">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{t("webhook.externalTitle")}</p>
+                <p className="text-muted-foreground">{t("webhook.externalHelp")}</p>
+              </div>
+              {refreshButton}
+            </div>
+            <ul className="divide-y text-muted-foreground">
+              {externalRefundIssues.map((issue) => (
+                <li key={issue.id} className="py-2">
+                  <p>{[methodLabel(issue.provider), time(issue.processedAt)].filter(Boolean).join(" · ")}</p>
+                  <p>{t("webhook.reason.external_refund", { gateway: methodLabel(issue.provider) })}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {failedWebhookIssues.length > 0 ? (
           <section role="status" className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -412,7 +436,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
               {refreshButton}
             </div>
             <ul className="divide-y text-muted-foreground">
-              {webhookIssues.map((issue) => (
+              {failedWebhookIssues.map((issue) => (
                 <li key={issue.id} className="py-2">
                   <p>{[methodLabel(issue.provider), time(issue.processedAt)].filter(Boolean).join(" · ")}</p>
                   <p>{t(`webhook.reason.${issue.reason}`, { gateway: methodLabel(issue.provider) })}</p>

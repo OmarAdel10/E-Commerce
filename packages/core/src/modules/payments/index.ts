@@ -105,6 +105,8 @@ export type {
 export {
   reconcileDueRefundAttempts,
   reconcileExternalRefundWebhooks,
+  verifyObservedRefund,
+  LOCAL_REFUND_IN_PROGRESS_REASON,
   reconcileRefundAttemptForOrder,
   reconcileRefundAttemptById,
 } from "./refund-reconciliation";

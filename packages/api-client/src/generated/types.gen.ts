@@ -59936,7 +59936,7 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 provider: string;
                 eventType: string;
                 status: 'failed' | 'manual_reconciliation';
-                reason: 'manual_reconciliation' | 'dead_letter' | 'failed';
+                reason: 'manual_reconciliation' | 'dead_letter' | 'failed' | 'external_refund';
                 message: string;
                 error: string | null;
                 processedAt: string | number;

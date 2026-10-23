@@ -134,6 +134,14 @@ again first; when the units are gone the payment is still recorded and the
 event goes to manual reconciliation (`confirmed_stock_unavailable`, no
 automatic fulfilment).
 
+A `refund_observed` event is checked when it arrives (`verifyObservedRefund`,
+read-only): when every refund the provider lists is already recorded (the
+merchant's own refund) it is processed at once; otherwise it waits for
+`reconcileExternalRefundWebhooks`, which imports refunds made in the provider
+dashboard but never while one of the order's own refunds is still settling
+(`local_refund_in_progress`). The order page lists only a refund made outside
+Scalius (`external_refund`), never the order's own.
+
 A confirmed or authorized event the provider flagged (`review: { reason }`,
 e.g. SSLCommerz `risk_level` 1) still counts as paid. `payment-review.ts`
 keeps the reason in the payment's metadata and writes a platform hold on the
