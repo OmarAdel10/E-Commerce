@@ -1,7 +1,7 @@
 import { memo, type CSSProperties, type MouseEvent } from "react";
 import { cn } from "@scalius/shared/utils";
 import { flexRender, type Cell, type Column, type Header, type TableRowData } from "./table-config";
-import { columnAttributes } from "./column-attributes";
+import { columnAttributes, pinGeometry } from "./column-attributes";
 import { layoutColumnOf } from "./column-layout";
 import { DataTableColumnHeader, sortableHeaderTitle } from "./DataTableColumnHeader";
 
@@ -104,6 +104,7 @@ export function DataTableHeadCell<TData extends TableRowData>({
 }) {
   const size = column.getSize();
   const { style: _cap, className: _padding, ...attributes } = columnAttributes(column, hasSelect, previous);
+  const pin = pinGeometry(attributes["data-pin"], hasSelect);
   const maxWidth = column.columnDef.meta?.maxWidth;
   const sortTitle = sortableHeaderTitle(column.columnDef.header);
   return (
@@ -112,6 +113,7 @@ export function DataTableHeadCell<TData extends TableRowData>({
       // INDEX_CELL's padding, written out for the class checker.
       className={cn("px-1.5 first:ps-3 last:pe-3", size !== 150 && "w-(--column-width)", holdWidth && "min-w-(--column-min)")}
       style={{
+        ...pin,
         "--column-width": `${size}px`,
         "--column-max": maxWidth ? `${maxWidth}px` : undefined,
         "--column-min": holdWidth ? `${layoutColumnOf(column).minWidth}px` : undefined,

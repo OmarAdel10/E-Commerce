@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getLocale } from "~/i18n";
-import { PINNED_SELECT_WIDTH } from "~/components/ui/table";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table-pins";
 import type { Column, Table, TableRowData } from "./table-config";
 
 /**

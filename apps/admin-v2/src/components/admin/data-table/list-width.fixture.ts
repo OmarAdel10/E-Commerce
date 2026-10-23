@@ -5,7 +5,7 @@
 // Sans Bengali for Bangla; per-mille of the em, read from the shipped font
 // files). Shaping (Bangla conjuncts, kerning) only makes real text narrower.
 import type { ColumnDef, TableRowData } from "./table-config";
-import { PINNED_SELECT_WIDTH } from "~/components/ui/table";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table-pins";
 import { ACTIONS_COLUMN, SELECT_COLUMN, fitWithStandIns, type LayoutColumn, type StandInColumn } from "./column-layout";
 
 // Inter, U+0020 to U+007E.
