@@ -152,7 +152,8 @@ async function validate(ctx: PluginContext, account: Account, valId: string): Pr
 
 /** SSLCommerz's high-risk rating in its own words (`risk_title`), for staff. */
 function riskReason(title: string): string {
-  const words = title.replace(/[\u0000-\u001f]/g, " ").slice(0, 120).trim();
+  // Control characters become spaces, so a provider string can never break a staff log or note.
+  const words = Array.from(title, (char) => (char.charCodeAt(0) < 32 ? " " : char)).join("").slice(0, 120).trim();
   return words ? `SSLCommerz rated this payment high risk (${words}).` : "SSLCommerz rated this payment high risk.";
 }
 
