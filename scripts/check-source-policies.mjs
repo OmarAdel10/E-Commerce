@@ -116,9 +116,9 @@ export const policies = [
     sample: 'import { addressRulesFor } from "@scalius/shared/address-metadata";',
   },
   {
-    rule: "checkout payment handlers and the payment methods' presentation write no buyer words: each failure or name is a checkout-language key",
-    why: "the handlers' English (\"Cash on delivery\", \"Payment form not ready\", Stripe's own messages) reached Bangla buyers at payment; the page's checkout language (en + bn presets, merchant edits) is the one source, through CheckoutCopyError and handlers/failure.ts",
-    paths: [`${storefront}/lib/checkout/handlers`, `${storefront}/lib/checkout/gateway-presentation.ts`],
+    rule: "checkout payment handlers, the payment methods' presentation, the no-JavaScript order form (lib/cart/server.ts) and the account order card form write no buyer words: each failure or name is a checkout-language key",
+    why: "the handlers' English (\"Cash on delivery\", \"Payment form not ready\", Stripe's own messages) reached Bangla buyers at payment, and so did the cart server's and the account card form's; the page's checkout language (en + bn presets, merchant edits) is the one source, through CheckoutCopyError and handlers/failure.ts",
+    paths: [`${storefront}/lib/checkout/handlers`, `${storefront}/lib/checkout/gateway-presentation.ts`, `${storefront}/lib/cart/server.ts`, `${storefront}/lib/account-order-detail.ts`],
     forbid: [
       // A sentence or a capitalised word where a buyer reads it (copy keys are camelCase words).
       /\b(?:error|label|desc|description|buyerLabel|message|title)\s*:\s*(?:["'`][A-Z]|["'`][^"'`\n]*\s[^"'`\n]*["'`])/,
