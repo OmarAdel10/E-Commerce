@@ -302,7 +302,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
         {flaggedPayments.length > 0 ? (
           <Alert variant="warning" data-testid="payment-review">
             <AlertTitle>{t("review.title")}</AlertTitle>
-            <AlertDescription className="space-y-1">
+            <AlertDescription>
               {flaggedPayments.map((payment) => (
                 <p key={payment.id}>{t("review.reason", { method: methodLabel(payment.paymentMethod), reason: payment.review!.reason })}</p>
               ))}
