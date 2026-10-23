@@ -58,6 +58,18 @@ export function blocksDelivered(type: FulfillmentType): boolean {
   return !isAutoFulfillmentType(type);
 }
 
+/**
+ * The one rule for "may this order be paid in cash?" (on delivery, at the
+ * pickup counter, at the service): only when every line is handed over in
+ * person. A download or a gift card is sent once the order is paid, so one
+ * such line refuses cash for the whole order (an e-book beside a vase is paid
+ * online). A physical line still without a delivery method (null) is handed
+ * over in person whichever method is chosen. An empty cart never.
+ */
+export function allowsCashOnDelivery(lineTypes: readonly (FulfillmentType | null)[]): boolean {
+  return lineTypes.length > 0 && lineTypes.every((type) => type === null || !isAutoFulfillmentType(type));
+}
+
 /** What a sellable line is, as read with its product and variant. */
 export interface FulfilmentLineSource {
   fulfillmentKind: FulfillmentKind;
@@ -102,10 +114,7 @@ export interface CheckoutFulfilmentPlan {
   requiresAddress: boolean;
   /** Without an address the tax destination is null: only store-wide rates apply. */
   usesAddressTaxDestination: boolean;
-  /**
-   * Cash on delivery / at the counter / at the service. Never for carts made
-   * only of digital or gift-card lines.
-   */
+  /** Cash on delivery / at the counter / at the service (`allowsCashOnDelivery`): every line is handed over in person. */
   allowsCashOnDelivery: boolean;
 }
 
@@ -139,6 +148,6 @@ export function resolveCheckoutFulfilment(
     requiresShipping,
     requiresAddress: requiresShipping,
     usesAddressTaxDestination: requiresShipping,
-    allowsCashOnDelivery: lineTypes.some((type) => !isAutoFulfillmentType(type)),
+    allowsCashOnDelivery: allowsCashOnDelivery(lineTypes),
   };
 }

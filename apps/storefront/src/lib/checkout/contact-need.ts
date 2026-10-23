@@ -7,7 +7,8 @@
  * The information step does not know the payment method yet. It assumes the
  * one that needs the most: a deferred method when one is offered (the
  * invoice, or an app's pay-later method, `flow: "deferred"`), else cash when
- * the cart can be paid in cash (a service line and an enabled cash method),
+ * the cart can be paid in cash (every line handed over in person and an
+ * enabled cash method),
  * else the store's deposit plan, else a full online payment. A phone that
  * the rule lets go is optional; email is then required.
  */
@@ -17,7 +18,7 @@ import {
   type OrderContactNeeds,
   type OrderPaymentKind,
 } from "@scalius/shared/customer-auth-policy";
-import { isFulfillmentKind } from "@scalius/shared/fulfilment";
+import { allowsCashOnDelivery, isFulfillmentKind, resolveLineFulfillmentType } from "@scalius/shared/fulfilment";
 
 export interface CheckoutContactNeedInput {
   identity: Pick<CustomerIdentitySettings, "email" | "phoneOptionalForDigital">;
@@ -38,8 +39,8 @@ export function checkoutContactNeeds(input: CheckoutContactNeedInput): OrderCont
     fulfillmentKind: isFulfillmentKind(line.fulfillmentKind) ? line.fulfillmentKind : "physical" as const,
     isGiftCard: false,
   }));
-  // Digital lines alone can't be paid in cash; a service line can.
-  const cashPossible = input.cashEnabled && lines.some((line) => line.fulfillmentKind !== "digital");
+  // The one line rule: cash only when every line is handed over in person.
+  const cashPossible = input.cashEnabled && allowsCashOnDelivery(lines.map((line) => resolveLineFulfillmentType(line, null)));
   const payment: OrderPaymentKind = input.deferredEnabled === true
     ? "deferred"
     : cashPossible ? "cod" : input.partialPaymentEnabled ? "partial" : "online";

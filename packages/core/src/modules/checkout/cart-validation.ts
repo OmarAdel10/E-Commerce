@@ -11,6 +11,7 @@ import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { ONLINE_STORE_CHANNEL_ID } from "@scalius/shared/sales-channels";
 import {
     isFulfillmentKind,
+    allowsCashOnDelivery,
     resolveLineFulfillmentType,
     type FulfillmentKind,
     type FulfillmentType,
@@ -1158,12 +1159,10 @@ export function summarizeStorefrontCartFulfilment(
         requiresDeliveryMethod,
         deliveryMethodKind,
         requiresShipping: lineTypes.includes("ship"),
-        // Physical and service lines are handed over in person: cash fits. A
-        // digital item or gift card is paid online only, so one such line
-        // refuses cash for the whole order (buyer QA M1: an e-book beside a
-        // vase was ordered by cash on delivery and could never be delivered).
-        allowsCashOnDelivery: result.items.length > 0 && result.items.every((item) =>
-            !item.isGiftCard && item.fulfillmentKind !== "digital"),
+        // The one line rule (@scalius/shared/fulfilment): every line handed
+        // over in person (buyer QA M1: an e-book beside a vase was ordered by
+        // cash on delivery and could never be delivered).
+        allowsCashOnDelivery: allowsCashOnDelivery(lineTypes),
     };
 }
 

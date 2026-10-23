@@ -192,7 +192,9 @@ staff get a push when it opens and the app page lists open circuits.
   fulfiller (`fulfilment/registry.ts`) fails closed with `fulfilment_unavailable`.
 - **Address.** Required only when a line ships (`orders.requires_shipping`,
   also a trigger). Without one the tax destination is null: only store-wide
-  rates apply. Cash on delivery needs a line handed over in person.
+  rates apply. Cash on delivery needs every line handed over in person
+  (`allowsCashOnDelivery`, `@scalius/shared/fulfilment`): one download or gift
+  card makes the whole order online-only.
 - **Buyer inputs.** `items[].properties` are resolved against
   `products.customization_schema` (`@scalius/shared/line-properties`) in cart
   validation and again at commit. The unit price is base + surcharges; the

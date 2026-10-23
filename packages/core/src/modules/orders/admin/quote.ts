@@ -463,11 +463,12 @@ export async function prepareManualOrderQuote(
     // Downloads and gift cards are handed over once the order is paid
     // (automatic fulfilment of a settled order). An invoice (or an order
     // marked paid, placed as one) gets paid before that; cash on delivery is
-    // collected at a door they never reach, so those lines are refused.
-    const paidBeforeHandover = (data.paymentMethod ?? "cod") !== COD_PAYMENT_METHOD;
+    // collected at a door they never reach: the one line rule
+    // (`allowsCashOnDelivery`) refuses cash, and names each such line.
+    const cashRefused = (data.paymentMethod ?? "cod") === COD_PAYMENT_METHOD && !plan.allowsCashOnDelivery;
     const unavailable: AdminOrderSkuIssue[] = [];
     plan.lineTypes.forEach((type, index) => {
-        if (isAutoFulfillmentType(type) && !paidBeforeHandover) {
+        if (cashRefused && isAutoFulfillmentType(type)) {
             addAdminOrderSkuIssue(unavailable, resolvedItems[index]!, index, "fulfilment_unavailable",
                 type === "gift_card"
                     ? "A gift card is sent once it's paid, so it can't be cash on delivery. Choose Mark as paid or Invoice."
