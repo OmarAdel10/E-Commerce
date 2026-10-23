@@ -116,6 +116,7 @@ export function DataTableToolbar({
             <Search className="absolute inset-s-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
+              type="search"
               placeholder={searchPlaceholder ?? t("search")}
               aria-label={searchPlaceholder ?? t("search")}
               value={localSearch}

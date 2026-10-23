@@ -17,6 +17,7 @@ import { cn } from "@scalius/shared/utils";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import { SecretInput } from "~/components/admin/shared/SecretInput";
 import { useCurrency } from "~/hooks/use-currency";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { SearchableSelect } from "~/components/ui/searchable-select";
@@ -216,10 +217,8 @@ function PasswordField({
   const keepsSaved = saved && value === MASKED;
   return (
     <SettingsField id={id} label={label} help={keepsSaved ? t("secretSaved") : undefined} error={error}>
-      <Input
+      <SecretInput
         id={id}
-        type="password"
-        autoComplete="off"
         value={keepsSaved ? "" : value}
         placeholder={keepsSaved ? MASKED : undefined}
         aria-describedby={`${id}-note`}

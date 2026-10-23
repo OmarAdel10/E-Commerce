@@ -880,6 +880,7 @@ export function TaxOverridesCard() {
           }}
         >
           <Input
+            type="search"
             value={searchDraft}
             maxLength={180}
             placeholder={kind === "product" ? t("searchProducts") : t("searchVariants")}

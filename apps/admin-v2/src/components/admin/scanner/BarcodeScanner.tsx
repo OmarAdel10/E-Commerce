@@ -3,6 +3,7 @@ import { CameraOff, Flashlight, FlashlightOff, Keyboard, Search, Camera } from "
 import type { Html5Qrcode as Html5QrcodeInstance } from "html5-qrcode";
 import { useMessages } from "~/i18n";
 import { scannerMessages } from "~/i18n/scanner";
+import { searchFieldProps } from "~/components/ui/input";
 
 interface BarcodeScannerProps {
   onScan: (code: string, format: string) => void;
@@ -255,6 +256,7 @@ export function BarcodeScanner({
         <form method="post" onSubmit={handleManualSubmit} className="flex items-center gap-2 bg-card px-3 py-3" noValidate>
           <input
             type="text"
+            {...searchFieldProps}
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
             placeholder={t("codePlaceholder")}

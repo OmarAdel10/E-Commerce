@@ -67,6 +67,17 @@ export const policies = [
     sample: 't("products", { count: formatNumber(total) })',
   },
   {
+    rule: "dashboard provider secrets use SecretInput, never a bare password field",
+    why: "browsers ignore autocomplete=off on password fields: a GA4 API secret filled with the staff member's saved dashboard password (Save would have sent it to Google) and their email landed in the settings search (apps/admin-v2/src/components/admin/shared/SecretInput.tsx)",
+    paths: ["apps/admin-v2/src"],
+    allow: {
+      "apps/admin-v2/src/components/admin/shared/SecretInput.tsx": "the field itself",
+      "apps/admin-v2/src/components/admin/account-settings/TwoFactorSetup.tsx": "confirms the staff member's own password (current-password)",
+    },
+    forbid: [/type=["']password["']/],
+    sample: '<Input id="ga4-api-secret" type="password" autoComplete="off" />',
+  },
+  {
     rule: "dashboard values compare through sameFormValue (useFormDirty for react-hook-form), never JSON.stringify",
     why: "a JSON string is key-order sensitive and turns NaN, files and dates into look-alikes, so a draft rebuilt in another key order stayed dirty after its edits were undone (apps/admin-v2/src/lib/form-values.ts; apps/admin-v2/DESIGN.md, Saving)",
     paths: ["apps/admin-v2/src"],

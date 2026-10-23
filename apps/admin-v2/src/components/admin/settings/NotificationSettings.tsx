@@ -18,6 +18,7 @@ import { Alert } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
+import { SecretInput } from "~/components/admin/shared/SecretInput";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { useHasPermission } from "~/contexts/PermissionContext";
@@ -422,10 +423,8 @@ function EmailFields() {
           label={t("resendKey")}
           help={values.apiKey === MASKED_VALUE ? t("keySaved") : undefined}
         >
-          <Input
+          <SecretInput
             id="email-resend-key"
-            type="password"
-            autoComplete="new-password"
             value={values.apiKey}
             placeholder="re_..."
             aria-describedby="email-resend-key-note"
@@ -551,10 +550,8 @@ function WhatsAppFields() {
     <>
       <p className="text-body text-muted-foreground">{t("waHelp")}</p>
       <SettingsField id="wa-token" label={t("waAccessToken")} help={token === MASKED_VALUE ? t("secretSaved") : undefined}>
-        <Input
+        <SecretInput
           id="wa-token"
-          type="password"
-          autoComplete="off"
           value={token}
           aria-describedby="wa-token-note"
           onFocus={() => token === MASKED_VALUE && auth.setValue("whatsappAccessToken", "")}

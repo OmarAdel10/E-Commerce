@@ -12,6 +12,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField, ReadOnlyValue } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { SecretInput } from "~/components/admin/shared/SecretInput";
 import { usePermissions } from "~/contexts/PermissionContext";
 import { useSettingsForm } from "~/hooks/use-settings-form";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
@@ -209,7 +210,7 @@ function GoogleCard() {
           </SettingsField>
         )}
         <SettingsField id="ga4-api-secret" label={t("apiSecret")} help={ga4.apiSecret && ga4.apiSecret === form.savedValues.ga4.apiSecret ? t("secretSaved") : t("apiSecretHelp")}>
-          <Input id="ga4-api-secret" type="password" value={ga4.apiSecret} autoComplete="off" spellCheck={false} maxLength={4096} disabled={!canEdit} onChange={(event) => setValue("ga4", { ...ga4, apiSecret: event.target.value })} />
+          <SecretInput id="ga4-api-secret" value={ga4.apiSecret} maxLength={4096} disabled={!canEdit} onChange={(event) => setValue("ga4", { ...ga4, apiSecret: event.target.value })} />
         </SettingsField>
         <ChoiceField
           id="ga4-debug"
@@ -259,7 +260,7 @@ function TikTokCard() {
           </SettingsField>
         )}
         <SettingsField id="tiktok-access-token" label={t("accessToken")} help={tiktok.accessToken && tiktok.accessToken === form.savedValues.tiktok.accessToken ? t("secretSaved") : t("accessTokenHelp")}>
-          <Input id="tiktok-access-token" type="password" value={tiktok.accessToken} autoComplete="off" spellCheck={false} maxLength={4096} disabled={!canEdit} onChange={(event) => setValue("tiktok", { ...tiktok, accessToken: event.target.value })} />
+          <SecretInput id="tiktok-access-token" value={tiktok.accessToken} maxLength={4096} disabled={!canEdit} onChange={(event) => setValue("tiktok", { ...tiktok, accessToken: event.target.value })} />
         </SettingsField>
         <SettingsField id="tiktok-test-event-code" label={t("testEventCode")} optional help={t("testEventCodeHelp")}>
           <Input id="tiktok-test-event-code" value={tiktok.testEventCode} autoComplete="off" spellCheck={false} maxLength={64} disabled={!canEdit} onChange={(event) => setValue("tiktok", { ...tiktok, testEventCode: event.target.value })} />

@@ -7,7 +7,7 @@ import { useDebounce } from "~/hooks/use-debounce";
 import { useMessages } from "~/i18n";
 import { comboboxMessages } from "~/i18n/combobox";
 import { useFieldControl } from "./field-context";
-import { fieldClassName } from "./input";
+import { fieldClassName, searchFieldProps } from "./input";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 
 export interface SearchableSelectOption {
@@ -413,6 +413,7 @@ function ComboboxView({
           <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
+            {...searchFieldProps}
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);

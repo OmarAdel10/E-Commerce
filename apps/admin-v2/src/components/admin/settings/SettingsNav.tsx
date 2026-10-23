@@ -2,7 +2,7 @@ import { useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Link, useLocation, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { ChevronRight, Search } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
-import { Input } from "~/components/ui/input";
+import { Input, searchFieldProps } from "~/components/ui/input";
 import { canAccessAdminPath } from "~/lib/admin-access";
 import { useMessages } from "~/i18n";
 import {
@@ -127,6 +127,7 @@ export function SettingsNav({ variant, onNavigate }: { variant: "sidebar" | "row
       {sidebar ? (
         <input
           type="search"
+          {...searchFieldProps}
           {...field}
           className="h-11 w-full rounded-lg border border-sidebar-border bg-sidebar-hover ps-8 pe-2 text-body-lg text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring sm:text-nav md:h-9"
         />

@@ -25,6 +25,7 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField, ReadOnlyValue } from "~/components/ui/field";
 import { Input } from "~/components/ui/input";
+import { SecretInput } from "~/components/admin/shared/SecretInput";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { Textarea } from "~/components/ui/textarea";
 import { usePermissions } from "~/contexts/PermissionContext";
@@ -84,7 +85,6 @@ function MarkLabel({ mark, children }: { mark: ReactNode; children: ReactNode })
 function secretInputProps(value: string, onChange: (value: string) => void) {
   return {
     value,
-    autoComplete: "off",
     onFocus: () => value === MASKED_VALUE && onChange(""),
     onChange: (event: { target: { value: string } }) => onChange(event.target.value),
   };
@@ -628,9 +628,8 @@ export function MetaConnectionFields({ canEdit, tagPixelId }: { canEdit: boolean
         label={t("accessToken")}
         help={draft.accessToken === MASKED_VALUE ? t("secretSaved") : undefined}
       >
-        <Input
+        <SecretInput
           id="meta-token"
-          type="password"
           aria-describedby="meta-token-note"
           {...secretInputProps(draft.accessToken, (value) => set("accessToken", value))}
         />

@@ -13,6 +13,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
+import { SecretInput } from "~/components/admin/shared/SecretInput";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { ChoiceField } from "~/components/ui/field";
 import { Textarea } from "~/components/ui/textarea";
@@ -273,11 +274,8 @@ export function AppSettingControl({ app, field, form, canManage, idPrefix }: {
             help={field.help ?? (isSet ? t("secretKeepHelp") : null)}
             error={error}
           >
-            <Input
+            <SecretInput
               id={id}
-              type="password"
-              autoComplete="new-password"
-              spellCheck={false}
               value={typeof edit === "string" ? edit : ""}
               placeholder={isSet ? t("secretReplace") : undefined}
               disabled={disabled}

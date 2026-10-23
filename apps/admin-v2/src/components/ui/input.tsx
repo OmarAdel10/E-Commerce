@@ -20,6 +20,20 @@ const room = (affix: React.ReactNode) =>
 
 const AFFIX = "pointer-events-none absolute inset-y-0 flex items-center text-muted-foreground";
 
+/**
+ * A search box is never a sign-in username or a remembered entry: browsers and
+ * password managers otherwise fill a saved email into it (or offer old
+ * queries) when a page also holds a secret field. `Input type="search"` sets
+ * it; a raw search or code field spreads it. A caller may still override.
+ */
+export const searchFieldProps = {
+  autoComplete: "off",
+  "data-1p-ignore": "",
+  "data-lpignore": "true",
+  "data-bwignore": "",
+  "data-form-type": "other",
+} as const;
+
 const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type, prefix, suffix, style, ...rest }, ref) => {
   const props = useFieldControl(rest);
   const affixed = prefix !== undefined || suffix !== undefined;
@@ -35,6 +49,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type,
       )}
       style={affixed ? { ...style, "--affix-start": prefix === undefined ? undefined : room(prefix), "--affix-end": suffix === undefined ? undefined : room(suffix) } as React.CSSProperties : style}
       ref={ref}
+      {...(type === "search" ? searchFieldProps : null)}
       {...props}
     />
   );
