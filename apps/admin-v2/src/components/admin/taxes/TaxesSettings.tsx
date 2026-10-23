@@ -3,7 +3,7 @@
 // collects tax in (each opens its own page with its rates and regions),
 // tax groups and product overrides. Whether prices include tax is each
 // market's (Settings → Markets).
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
@@ -64,7 +64,9 @@ import {
   useSaveFailure,
   useWriteFailure,
 } from "./tax-shared";
-import { FieldRow } from "~/components/ui/field";
+import { Field, FieldRow } from "~/components/ui/field";
+import { cn } from "@scalius/shared/utils";
+import { TRY_IT_FIELDS, tryItKey, tryItProblems, type TryItField, type TryItInputs } from "./tax-try-it";
 
 const configurationQuery = taxConfigurationQueryOptions();
 const taxSettingsQuery = taxSettingsQueryOptions();
@@ -446,8 +448,39 @@ function AddCountryForm({ taken }: { taken: ReadonlySet<string> }) {
   );
 }
 
-/** Runs the saved setup on a sample order at an address; the server does the math. */
-function TryItRow({ config }: { config: TaxConfigurationPayload }) {
+const TRY_IT_IDS: Record<TryItField, string> = {
+  price: "tax-try-price",
+  delivery: "tax-try-delivery",
+  city: "tax-try-city",
+  zone: "tax-try-zone",
+};
+
+type TaxPreview = Awaited<ReturnType<typeof requestTaxPreview>>;
+
+function requestTaxPreview(inputs: TryItInputs) {
+  const bd = inputs.country === "BD";
+  return apiData(postApiV1AdminTaxesPreview({
+    body: {
+      amount: Number(inputs.price),
+      quantity: 1,
+      shippingAmount: Number(inputs.delivery || "0"),
+      discountAmount: 0,
+      taxClassId: inputs.group === NONE ? null : inputs.group,
+      countryCode: inputs.country,
+      ...(bd
+        ? { city: inputs.city, zone: inputs.zone, area: inputs.area || null }
+        : { adminArea: inputs.adminArea || null, postalCode: inputs.postalCode.trim() || null }),
+    },
+  }));
+}
+
+/**
+ * Runs the saved setup on a sample order at an address; the server does the
+ * math. Calculate says what is missing beside the field instead of greying
+ * out; a result belongs to the inputs it was calculated with (an edit marks
+ * it out of date) and only the latest request's answer is shown.
+ */
+export function TryItRow({ config }: { config: TaxConfigurationPayload }) {
   const t = useMessages(taxesMessages);
   const groupName = useGroupName();
   const countries = config.regions.filter((region) => region.kind === "country").map((region) => region.countryCode);
@@ -458,35 +491,61 @@ function TryItRow({ config }: { config: TaxConfigurationPayload }) {
   const [location, setLocation] = useState<LocationValue>(EMPTY_LOCATION);
   const [adminArea, setAdminArea] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [attempted, setAttempted] = useState(false);
+  const [left, setLeft] = useState<ReadonlySet<TryItField>>(new Set());
+  // The latest answer, with the inputs it answers; an older request's answer is dropped.
+  const [answer, setAnswer] = useState<{ key: string; result: TaxPreview } | { key: string; failed: true } | null>(null);
+  const latestRequest = useRef(0);
   const rules = useQuery({ ...addressRulesQueryOptions(country), enabled: country !== "BD" });
   const countryOptions = useCountryOptions();
-  const city = location.city?.id ?? "";
-  const zone = location.zone?.id ?? "";
-  const area = location.area?.id ?? "";
-  const amount = Number(price);
-  const deliveryAmount = Number(delivery || "0");
+  const inputs: TryItInputs = {
+    price,
+    delivery,
+    group,
+    country,
+    city: location.city?.id ?? "",
+    zone: location.zone?.id ?? "",
+    area: location.area?.id ?? "",
+    adminArea,
+    postalCode,
+  };
   const bd = country === "BD";
-  const ready = price.trim() !== "" && amount >= 0 && deliveryAmount >= 0 && (!bd || Boolean(city && zone));
+  const problems = tryItProblems(inputs);
+  const key = tryItKey(inputs);
+  const shownProblem = (field: TryItField) => (attempted || left.has(field) ? problems[field] : undefined);
+  const leave = (field: TryItField) => setLeft((current) => (current.has(field) ? current : new Set([...current, field])));
   const preview = useMutation({
-    mutationFn: () =>
-      apiData(postApiV1AdminTaxesPreview({
-        body: {
-          amount,
-          quantity: 1,
-          shippingAmount: deliveryAmount,
-          discountAmount: 0,
-          taxClassId: group === NONE ? null : group,
-          countryCode: country,
-          ...(bd
-            ? { city, zone, area: area || null }
-            : { adminArea: adminArea || null, postalCode: postalCode.trim() || null }),
-        },
-      })),
+    mutationFn: ({ inputs: sample }: { inputs: TryItInputs; key: string; request: number }) => requestTaxPreview(sample),
+    onSuccess: (result, sent) => {
+      if (sent.request === latestRequest.current) setAnswer({ key: sent.key, result });
+    },
+    onError: (_error, sent) => {
+      if (sent.request === latestRequest.current) setAnswer({ key: sent.key, failed: true });
+    },
   });
-  const result = preview.data;
+  const calculate = () => {
+    const first = TRY_IT_FIELDS.find((field) => problems[field]);
+    if (first) {
+      setAttempted(true);
+      // Fields are checked in order: the first one wrong takes the focus (DESIGN F8).
+      requestAnimationFrame(() => document.getElementById(TRY_IT_IDS[first])?.focus());
+      return;
+    }
+    latestRequest.current += 1;
+    preview.mutate({ inputs, key, request: latestRequest.current });
+  };
+  const reset = () => {
+    latestRequest.current += 1;
+    preview.reset();
+    setAnswer(null);
+    setAttempted(false);
+    setLeft(new Set());
+  };
+  const stale = answer !== null && answer.key !== key;
+  const result = answer && "result" in answer ? answer.result : null;
   const areas = rules.data?.adminAreas ?? [];
   return (
-    <Dialog onOpenChange={() => preview.reset()}>
+    <Dialog onOpenChange={reset}>
       <DialogTrigger asChild>
         <SettingsRow label={t("tryIt")} value={t("tryItValue")} />
       </DialogTrigger>
@@ -496,12 +555,12 @@ function TryItRow({ config }: { config: TaxConfigurationPayload }) {
         </DialogHeader>
         <div className="space-y-4">
           <FieldRow>
-            <SettingsField id="tax-try-price" label={t("price")}>
-              <Input id="tax-try-price" type="number" min="0" step="0.01" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} />
-            </SettingsField>
-            <SettingsField id="tax-try-delivery" label={t("deliveryCharge")}>
-              <Input id="tax-try-delivery" type="number" min="0" step="0.01" inputMode="decimal" value={delivery} onChange={(event) => setDelivery(event.target.value)} />
-            </SettingsField>
+            <Field id={TRY_IT_IDS.price} label={t("price")} error={shownProblem("price") ? t(shownProblem("price")!) : undefined} onBlur={() => leave("price")}>
+              <Input id={TRY_IT_IDS.price} type="number" min="0" step="0.01" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} />
+            </Field>
+            <Field id={TRY_IT_IDS.delivery} label={t("deliveryCharge")} error={shownProblem("delivery") ? t(shownProblem("delivery")!) : undefined} onBlur={() => leave("delivery")}>
+              <Input id={TRY_IT_IDS.delivery} type="number" min="0" step="0.01" inputMode="decimal" value={delivery} onChange={(event) => setDelivery(event.target.value)} />
+            </Field>
           </FieldRow>
           <SettingsField id="tax-try-group" label={t("rateGroup")}>
             <SearchableSelect
@@ -520,7 +579,6 @@ function TryItRow({ config }: { config: TaxConfigurationPayload }) {
               onValueChange={(value) => {
                 setCountry(value);
                 setAdminArea("");
-                preview.reset();
               }}
               options={countryOptions}
               searchPlaceholder={t("countrySearch")}
@@ -530,13 +588,21 @@ function TryItRow({ config }: { config: TaxConfigurationPayload }) {
             />
           </SettingsField>
           {bd ? (
-            <LocationPicker
-              className="sm:grid-cols-3"
-              ids={{ city: "tax-try-city", zone: "tax-try-zone", area: "tax-try-area" }}
-              required={{ city: true, zone: true }}
-              value={location}
-              onChange={setLocation}
-            />
+            <div className="space-y-2">
+              {/* Why a Bangladesh sample needs a place before it calculates, said up front (DESIGN C5). */}
+              <p className="text-body text-muted-foreground">{t("tryItBdPlaceHelp")}</p>
+              <LocationPicker
+                className="sm:grid-cols-3"
+                ids={{ city: TRY_IT_IDS.city, zone: TRY_IT_IDS.zone, area: "tax-try-area" }}
+                required={{ city: true, zone: true }}
+                errors={{
+                  city: shownProblem("city") ? t(shownProblem("city")!) : undefined,
+                  zone: shownProblem("zone") ? t(shownProblem("zone")!) : undefined,
+                }}
+                value={location}
+                onChange={setLocation}
+              />
+            </div>
           ) : (
             <FieldRow>
               {areas.length > 0 ? (
@@ -556,12 +622,20 @@ function TryItRow({ config }: { config: TaxConfigurationPayload }) {
               </SettingsField>
             </FieldRow>
           )}
-          <Button type="button" loading={preview.isPending} disabled={!ready} onClick={() => preview.mutate()}>
+          <Button type="button" loading={preview.isPending} onClick={calculate}>
             {t("calculate")}
           </Button>
-          {preview.isError ? <p role="alert" className="text-body text-destructive">{t("tryFailed")}</p> : null}
+          {answer && "failed" in answer && !stale ? <p role="alert" className="text-body text-destructive">{t("tryFailed")}</p> : null}
+          {result && stale ? (
+            <p role="status" className="text-body text-muted-foreground">{t("tryItStale")}</p>
+          ) : null}
           {result ? (
-            <dl className="space-y-2 border-t border-border pt-4 text-body" aria-live="polite">
+            <dl
+              className={cn("space-y-2 border-t border-border pt-4 text-body", stale && "text-muted-foreground opacity-60")}
+              aria-live="polite"
+              data-stale={stale || undefined}
+              aria-label={stale ? t("tryItStaleLabel") : undefined}
+            >
               {result.components.map((component, index) => (
                 <div key={`${component.name}:${index}`} className="flex justify-between gap-4 text-muted-foreground">
                   <dt>{component.name} · {basisPointsToPercent(component.rateBps)}%</dt>
