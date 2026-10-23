@@ -185826,6 +185826,9 @@
                                   "canCreateShipment": {
                                     "type": "boolean"
                                   },
+                                  "connection": {
+                                    "$ref": "#/components/schemas/AppProviderConnection"
+                                  },
                                   "activationBlockers": {
                                     "type": "array",
                                     "items": {
@@ -185894,6 +185897,7 @@
                                   "tested",
                                   "active",
                                   "canCreateShipment",
+                                  "connection",
                                   "activationBlockers"
                                 ]
                               },
@@ -186229,6 +186233,9 @@
                             "canCreateShipment": {
                               "type": "boolean"
                             },
+                            "connection": {
+                              "$ref": "#/components/schemas/AppProviderConnection"
+                            },
                             "activationBlockers": {
                               "type": "array",
                               "items": {
@@ -186297,6 +186304,7 @@
                             "tested",
                             "active",
                             "canCreateShipment",
+                            "connection",
                             "activationBlockers"
                           ]
                         },
@@ -186614,6 +186622,9 @@
                             "canCreateShipment": {
                               "type": "boolean"
                             },
+                            "connection": {
+                              "$ref": "#/components/schemas/AppProviderConnection"
+                            },
                             "activationBlockers": {
                               "type": "array",
                               "items": {
@@ -186682,6 +186693,7 @@
                             "tested",
                             "active",
                             "canCreateShipment",
+                            "connection",
                             "activationBlockers"
                           ]
                         },
@@ -186851,6 +186863,9 @@
                             "canCreateShipment": {
                               "type": "boolean"
                             },
+                            "connection": {
+                              "$ref": "#/components/schemas/AppProviderConnection"
+                            },
                             "activationBlockers": {
                               "type": "array",
                               "items": {
@@ -186919,6 +186934,7 @@
                             "tested",
                             "active",
                             "canCreateShipment",
+                            "connection",
                             "activationBlockers"
                           ]
                         },
@@ -187212,6 +187228,9 @@
                             "canCreateShipment": {
                               "type": "boolean"
                             },
+                            "connection": {
+                              "$ref": "#/components/schemas/AppProviderConnection"
+                            },
                             "activationBlockers": {
                               "type": "array",
                               "items": {
@@ -187280,6 +187299,7 @@
                             "tested",
                             "active",
                             "canCreateShipment",
+                            "connection",
                             "activationBlockers"
                           ]
                         },

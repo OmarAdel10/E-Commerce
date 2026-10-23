@@ -52533,6 +52533,7 @@ export type GetApiV1AdminSettingsDeliveryProvidersResponses = {
                     tested: boolean;
                     active: boolean;
                     canCreateShipment: boolean;
+                    connection: AppProviderConnection;
                     activationBlockers: Array<{
                         source: string;
                         key: string;
@@ -52631,6 +52632,7 @@ export type PostApiV1AdminSettingsDeliveryProvidersResponses = {
                 tested: boolean;
                 active: boolean;
                 canCreateShipment: boolean;
+                connection: AppProviderConnection;
                 activationBlockers: Array<{
                     source: string;
                     key: string;
@@ -52724,6 +52726,7 @@ export type PutApiV1AdminSettingsDeliveryProvidersResponses = {
                 tested: boolean;
                 active: boolean;
                 canCreateShipment: boolean;
+                connection: AppProviderConnection;
                 activationBlockers: Array<{
                     source: string;
                     key: string;
@@ -52764,6 +52767,7 @@ export type PutApiV1AdminSettingsDeliveryProvidersResponses = {
                 tested: boolean;
                 active: boolean;
                 canCreateShipment: boolean;
+                connection: AppProviderConnection;
                 activationBlockers: Array<{
                     source: string;
                     key: string;
@@ -52899,6 +52903,7 @@ export type GetApiV1AdminSettingsDeliveryProvidersByIdResponses = {
                 tested: boolean;
                 active: boolean;
                 canCreateShipment: boolean;
+                connection: AppProviderConnection;
                 activationBlockers: Array<{
                     source: string;
                     key: string;
