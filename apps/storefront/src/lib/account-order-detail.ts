@@ -34,6 +34,8 @@ import { addOrderToCart } from "@/lib/account-buy-again";
 import { accountPill, orderStatusTone } from "@/lib/account-ui";
 import { getProductImageUrl } from "@/lib/product-media";
 import { appGatewayName, getGatewayPresentation } from "@/lib/checkout/gateway-presentation";
+import { CheckoutBuyerMessage, CheckoutCopyError, checkoutFailureText } from "@/lib/checkout/error-messages";
+import { stripeErrorCopyKey, type StripeError } from "@/lib/checkout/stripe-error";
 import { isPaymentMethodIdShape } from "@/lib/payment-method-id";
 import { isGatewayEligibleForPaymentAmount } from "@/lib/checkout/gateway-amount-eligibility";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
@@ -82,7 +84,7 @@ function paymentFacts(detail: AccountOrderDetail) {
 
 interface StripeCardElement {
   mount(selector: string): void;
-  on(event: string, handler: (e: { error?: { message: string } }) => void): void;
+  on(event: string, handler: (e: { error?: StripeError }) => void): void;
   unmount?(): void;
 }
 
@@ -91,7 +93,7 @@ interface StripeInstance {
   confirmCardPayment(
     clientSecret: string,
     data: { payment_method: { card: StripeCardElement } },
-  ): Promise<{ error?: { message?: string }; paymentIntent?: { status: string } }>;
+  ): Promise<{ error?: StripeError; paymentIntent?: { status: string } }>;
 }
 
 type DetailWindow = Window & {
@@ -291,7 +293,7 @@ async function loadStripeScript(): Promise<void> {
   stripeScript ??= new Promise<void>((resolve, reject) => {
     const script = document.querySelector<HTMLScriptElement>('script[src="https://js.stripe.com/v3/"]') ?? document.head.appendChild(Object.assign(document.createElement("script"), { src: "https://js.stripe.com/v3/", async: true }));
     script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error(accountCopy().recovery.cardFormUnavailable)), { once: true });
+    script.addEventListener("error", () => reject(new CheckoutBuyerMessage(accountCopy().recovery.cardFormUnavailable)), { once: true });
   });
   return stripeScript;
 }
@@ -299,9 +301,9 @@ async function loadStripeScript(): Promise<void> {
 async function prepareStripe(session: CustomerOrderPaymentSession): Promise<void> {
   const stripe = session.stripe;
   const words = accountCopy().recovery;
-  if (!stripe?.publishableKey || !stripe.clientSecret) throw new Error(words.cardCouldNotStart);
+  if (!stripe?.publishableKey || !stripe.clientSecret) throw new CheckoutBuyerMessage(words.cardCouldNotStart);
   await loadStripeScript();
-  if (!detailWindow.Stripe) throw new Error(words.cardFormUnavailable);
+  if (!detailWindow.Stripe) throw new CheckoutBuyerMessage(words.cardFormUnavailable);
   stripeClientSecret = stripe.clientSecret;
   stripeOrderId = currentDetail?.order.id ?? null;
   if (!stripeCard) {
@@ -310,7 +312,8 @@ async function prepareStripe(session: CustomerOrderPaymentSession): Promise<void
       style: { base: { fontSize: "15px", color: "#111", fontFamily: "sans-serif" }, invalid: { color: "#e53e3e" } },
     });
     stripeCard.mount("#accountStripeCardElement");
-    stripeCard.on("change", (event) => setStripeError(event.error?.message ?? null));
+    // Stripe's own message is in Stripe's language: the field to check is the page's copy.
+    stripeCard.on("change", (event) => setStripeError(event.error ? copy[stripeErrorCopyKey(event.error, "cardDetailsIncompleteText")] : null));
   }
   byId("accountStripeSection")?.classList.remove("hidden");
   setRecoveryMessage(words.enterCardThenConfirm);
@@ -329,15 +332,15 @@ async function confirmStripe(): Promise<void> {
     const { error, paymentIntent } = await stripeInstance.confirmCardPayment(stripeClientSecret, {
       payment_method: { card: stripeCard },
     });
-    if (error) throw new Error(error.message || words.cardFailed);
+    if (error) throw new CheckoutCopyError(stripeErrorCopyKey(error, "cardPaymentFailedText"), error.message);
     if (paymentIntent?.status !== "succeeded" && paymentIntent?.status !== "requires_capture") {
-      throw new Error(words.notCompleted);
+      throw new CheckoutBuyerMessage(words.notCompleted);
     }
     setRecoveryMessage(words.submitted, "success");
     setRecoveryButton(words.updating, true);
     window.setTimeout(() => void loadOrderDetail(), 1500);
   } catch (error: unknown) {
-    setRecoveryMessage(error instanceof Error ? error.message : words.couldNotComplete, "error");
+    setRecoveryMessage(checkoutFailureText(error, copy, "cardPaymentFailedText"), "error");
     setRecoveryButton(words.confirmCard);
   } finally {
     recoveryLoading = false;
@@ -361,18 +364,18 @@ async function startRecovery(): Promise<void> {
       replaceExistingAttempt: detail.paymentRecovery.paymentType !== "balance",
       onProcessing: (event) => setRecoveryMessage(words.retryingIn(event.message, formatCount(event.retryAfterSeconds))),
     });
-    if (!result.success || !result.session) throw new Error(writeError(result, words.couldNotStart));
+    if (!result.success || !result.session) throw new CheckoutBuyerMessage(writeError(result, words.couldNotStart));
     if (result.session.gateway === "stripe") {
       selectedGateway = "stripe";
       await prepareStripe(result.session);
       return;
     }
     const gatewayUrl = normalizeHostedGatewayUrl(result.session.hosted?.gatewayUrl);
-    if (!gatewayUrl) throw new Error(words.pageCouldNotOpen);
+    if (!gatewayUrl) throw new CheckoutBuyerMessage(words.pageCouldNotOpen);
     setRecoveryButton(words.redirecting, true);
     window.location.assign(gatewayUrl);
   } catch (error: unknown) {
-    setRecoveryMessage(error instanceof Error ? error.message : words.couldNotStart, "error");
+    setRecoveryMessage(checkoutFailureText(error, copy, "paymentStartFailedText"), "error");
     setRecoveryButton(recoveryButtonLabel(selectedGateway));
   } finally {
     recoveryLoading = false;
