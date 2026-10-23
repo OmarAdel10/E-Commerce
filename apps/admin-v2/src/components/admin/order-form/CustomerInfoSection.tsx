@@ -254,12 +254,16 @@ export function CustomerInfoSection() {
                           returning.filled ? t("nameFromLatestOrder") : null,
                         ].filter(Boolean).join(" ")
                       : [
-                          returning.customer.totalOrders === 1
-                            ? t("returningCustomerOne")
-                            : t("returningCustomer", { count: returning.customer.totalOrders }),
+                          returning.customer.totalOrders === 0
+                            ? t("savedCustomerNoOrders")
+                            : returning.customer.totalOrders === 1
+                              ? t("returningCustomerOne")
+                              : t("returningCustomer", { count: returning.customer.totalOrders }),
+                          // Filled from the customer record and its default address, never from an order.
                           returning.filled ? t("filledFromCustomer") : null,
                         ].filter(Boolean).join(" ")
-                    : t("phoneHelp")}
+                    // Who uses the number follows how the order is fulfilled.
+                    : t(needsAddress ? "phoneHelp" : shippingMethodKind === "pickup" ? "phoneHelpPickup" : "phoneHelpNoDelivery")}
               >
                 <AdminPhoneInput
                   ref={(el) => {
