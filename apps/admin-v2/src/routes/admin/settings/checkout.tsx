@@ -3,6 +3,7 @@ import {
   CheckoutTextCard,
   CustomerContactCard,
   CustomerRequestsCard,
+  DigitalDeliveryCard,
 } from "~/components/admin/settings/CheckoutSettings";
 import { AppKindCard } from "~/components/admin/settings/AppKindCard";
 import { SettingsPage } from "~/components/admin/settings/SettingsPage";
@@ -39,6 +40,7 @@ function CheckoutPage() {
       <CustomerContactCard />
       <CheckoutTextCard />
       <CustomerRequestsCard />
+      <DigitalDeliveryCard />
       <AppKindCard kind="address" />
     </SettingsPage>
   );

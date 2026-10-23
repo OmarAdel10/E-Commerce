@@ -16,7 +16,7 @@ export interface SaveCheckoutFlowSettingsInput {
     checkoutMode: CheckoutMode;
     partialPaymentEnabled: boolean;
     partialPaymentAmount: number;
-    /** Omitted = keep the saved mode (the dashboard offers it once Wave B delivery lands). */
+    /** Omitted = keep the saved mode (Settings → Checkout → Downloads and gift cards sends it). */
     autoFulfilMode?: AutoFulfilMode;
     /** Omitted = keep the saved choice. */
     requireFullBillingAddress?: boolean;

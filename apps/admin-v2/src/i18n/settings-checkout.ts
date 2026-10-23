@@ -139,6 +139,13 @@ export const checkoutMessages = defineMessages({
     intro: "Message above the request buttons",
     introPlaceholder: "Send us a request and we'll get back to you.",
     loadRequests: "Customer requests",
+
+    digitalDeliveryTitle: "Downloads and gift cards",
+    digitalDeliveryDescription: "When buyers get their downloads, licence keys and gift cards.",
+    digitalAfterPayment: "As soon as the order is paid",
+    digitalAfterPaymentHelp: "Sent automatically once the payment is confirmed. Best for most stores.",
+    digitalAfterConfirmation: "After you confirm the order",
+    digitalAfterConfirmationHelp: "A paid order waits until you mark it confirmed, then they are sent. Choose this to check orders first, for example for fraud.",
   },
   bn: {
     contactTitle: "কাস্টমারের যোগাযোগ",
@@ -278,5 +285,12 @@ export const checkoutMessages = defineMessages({
     intro: "রিকোয়েস্ট বাটনের উপরের মেসেজ",
     introPlaceholder: "আমাদের রিকোয়েস্ট পাঠান, আমরা জানিয়ে দেব।",
     loadRequests: "কাস্টমার রিকোয়েস্ট",
+
+    digitalDeliveryTitle: "ডাউনলোড ও গিফট কার্ড",
+    digitalDeliveryDescription: "ক্রেতা কখন তার ডাউনলোড, লাইসেন্স কি ও গিফট কার্ড পাবে।",
+    digitalAfterPayment: "অর্ডারের পেমেন্ট হলেই",
+    digitalAfterPaymentHelp: "পেমেন্ট নিশ্চিত হলে নিজে থেকেই পাঠানো হয়। বেশিরভাগ স্টোরের জন্য এটাই ভালো।",
+    digitalAfterConfirmation: "আপনি অর্ডার কনফার্ম করার পরে",
+    digitalAfterConfirmationHelp: "পেমেন্ট হওয়া অর্ডার আপনি কনফার্ম না করা পর্যন্ত অপেক্ষা করে, তারপর পাঠানো হয়। আগে অর্ডার যাচাই করতে চাইলে, যেমন জালিয়াতি ধরতে, এটি বেছে নিন।",
   },
 });

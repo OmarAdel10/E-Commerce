@@ -19,6 +19,7 @@ export const SETTINGS_CARDS = [
   { page: "checkout", card: "customerContact" },
   { page: "checkout", card: "checkoutText" },
   { page: "checkout", card: "customerRequests" },
+  { page: "checkout", card: "digitalDelivery" },
   { page: "checkout", card: "addressAutocomplete" },
   { page: "shipping", card: "deliveryCharges" },
   { page: "shipping", card: "localPickup" },

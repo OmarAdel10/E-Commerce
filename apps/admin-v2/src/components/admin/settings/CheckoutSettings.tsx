@@ -22,6 +22,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Textarea } from "~/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useSettingsForm } from "~/hooks/use-settings-form";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
@@ -276,6 +277,43 @@ export function CustomerContactCard() {
           disabled={!canEdit}
         />
       </div>
+    </SettingsCard>
+  );
+}
+
+/**
+ * When downloads, licence keys and gift cards reach the buyer
+ * (`checkout.autoFulfilMode`): once the order is paid, or once staff confirm
+ * a paid order.
+ */
+export function DigitalDeliveryCard() {
+  const t = useMessages(checkoutMessages);
+  const canEdit = useCanEditCheckout();
+  const { values, setValue, isLoaded, isLoadError, refetch } = useCheckoutFlowForm(() => true, t("digitalDeliveryTitle"));
+  if (isLoadError) return <SettingsLoadFailure title={t("digitalDeliveryTitle")} onRetry={refetch} />;
+  if (!isLoaded) return <SettingsCardLoading />;
+  const modes = [
+    ["after_payment", "digitalAfterPayment", "digitalAfterPaymentHelp"],
+    ["after_confirmation", "digitalAfterConfirmation", "digitalAfterConfirmationHelp"],
+  ] as const;
+  return (
+    <SettingsCard id="digitalDelivery" title={t("digitalDeliveryTitle")} description={t("digitalDeliveryDescription")}>
+      <RadioGroup
+        value={values.autoFulfilMode}
+        disabled={!canEdit}
+        aria-label={t("digitalDeliveryTitle")}
+        onValueChange={(mode) => setValue("autoFulfilMode", mode === "after_confirmation" ? "after_confirmation" : "after_payment")}
+      >
+        {modes.map(([value, label, description]) => (
+          <label key={value} className="flex min-h-11 items-start gap-2 py-1 text-body">
+            <span className="flex h-lh items-center"><RadioGroupItem value={value}/></span>
+            <span>
+              <span className="block font-medium">{t(label)}</span>
+              <span className="block text-muted-foreground">{t(description)}</span>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
     </SettingsCard>
   );
 }

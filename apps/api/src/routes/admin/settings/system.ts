@@ -306,7 +306,7 @@ const checkoutFlowSettingsSchema = z.object({
     checkoutMode: z.enum(["guest_cod_only", "gateways_only", "all"]),
     partialPaymentEnabled: z.boolean(),
     partialPaymentAmount: z.number(),
-    /** When digital and gift-card lines are delivered (Wave B); B3/B4 surface it in the dashboard. */
+    /** When digital and gift-card lines are delivered (Settings → Checkout → Downloads and gift cards). */
     autoFulfilMode: z.enum(["after_payment", "after_confirmation"]),
     /**
      * Every order asks for a full billing address (Shopify's "Require full

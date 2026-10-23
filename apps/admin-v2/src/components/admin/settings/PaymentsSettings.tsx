@@ -100,7 +100,7 @@ function useCanEditPayments() {
   return useHasPermission(ADMIN_PERMISSIONS.SETTINGS_GENERAL_EDIT);
 }
 
-/** The checkout flow (guest checkout, gateways, advance payment). */
+/** The checkout flow (guest checkout, gateways, advance payment, when downloads are sent). */
 export function useCheckoutFlowForm(isValid: (draft: CheckoutFlow) => boolean, label?: string) {
   const common = useMessages(settingsMessages);
   return useSettingsForm<CheckoutFlow, CheckoutFlow>({
@@ -115,6 +115,7 @@ export function useCheckoutFlowForm(isValid: (draft: CheckoutFlow) => boolean, l
           partialPaymentEnabled: draft.partialPaymentEnabled,
           partialPaymentAmount: draft.partialPaymentAmount,
           requireFullBillingAddress: draft.requireFullBillingAddress,
+          autoFulfilMode: draft.autoFulfilMode,
           expectedRevision,
         },
       })),
