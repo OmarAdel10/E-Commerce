@@ -19,7 +19,7 @@
   },
   "scripts": {
     "lint": "oxlint -c ../../.oxlintrc.json src/",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "../../node_modules/typescript7/bin/tsc --build",
     "build": "node ../../scripts/build-plugin-sdk.mjs",
     "prepack": "pnpm run build"

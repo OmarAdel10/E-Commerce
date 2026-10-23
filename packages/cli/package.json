@@ -45,7 +45,7 @@
     "build": "../../node_modules/typescript7/bin/tsc -p tsconfig.build.json && node scripts/set-bin-mode.mjs",
     "lint": "oxlint -c ../../.oxlintrc.json src/ test/",
     "prepublishOnly": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "../../node_modules/typescript7/bin/tsc --build",
     "generate:recipes": "node scripts/generate-recipes.mjs"
   },

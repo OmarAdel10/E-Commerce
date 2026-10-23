@@ -12,7 +12,7 @@
     "db:generate": "cd ../../packages/database && drizzle-kit generate --config drizzle.config.ts",
     "db:migrate:local": "node ../../scripts/deploy.mjs --migrate-only --local",
     "db:migrate:remote": "node ../../scripts/deploy.mjs --migrate-only",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "oxlint -c ../../.oxlintrc.json src/"
   },
   "dependencies": {

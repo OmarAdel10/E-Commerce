@@ -62,6 +62,8 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
+        # The suite lives only in the private repository; the public export carries no tests.
+        if: ${{ github.event.repository.private }}
         run: pnpm test:ci
 
       - name: Build

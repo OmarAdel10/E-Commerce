@@ -16,7 +16,7 @@
   },
   "scripts": {
     "lint": "oxlint -c ../../.oxlintrc.json src/",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "../../node_modules/typescript7/bin/tsc --build"
   },
   "devDependencies": {
