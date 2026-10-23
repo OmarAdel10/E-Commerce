@@ -150,32 +150,25 @@ function PolicyFields({ kind, canEdit }: { kind: PolicyKind; canEdit: boolean })
     fields: { [kind]: `policy-${kind}` },
   });
   // A draft page from the template, linked at once; the merchant stays in Settings.
+  // A page created whose link didn't save is remembered for this session (closing
+  // the dialog too), so a retry links it instead of making another draft.
+  const unlinkedKey = ["settings", "policies", "unlinked-template", kind] as const;
   const createFromTemplate = useMutation({
     mutationFn: async () => {
-      // The store's name and contact, and its shipping zones, fill the text; missing ones keep placeholders.
-      const [store, storefront, zones] = await Promise.all([
-        queryClient.ensureQueryData(businessQuery).catch(() => null),
-        queryClient.ensureQueryData(storefrontUrlQueryOptions()).catch(() => null),
-        kind === "shipping" && canViewShipping
-          ? queryClient.fetchQuery({ ...deliveryZonesQuery, staleTime: 0 }).catch(() => null)
-          : null,
-      ]);
-      const template = policyTemplate(
-        kind,
-        {
-          companyName: store?.companyName ?? "",
-          email: store?.email ?? "",
-          phone: store?.phone ?? "",
-          addressLine1: store?.addressLine1 ?? "",
-          city: store?.city ?? "",
-          storefrontUrl: (storefront as { storefrontUrl?: string } | null)?.storefrontUrl ?? "",
-        },
-        zones ? { zones, currencySymbol: symbol } : null,
-      );
-      const page = await createPolicyPage({ ...template, metaTitle: null, metaDescription: null, canonicalPath: null, isPublished: false });
-      const { revision } = await queryClient.fetchQuery({ ...policiesQuery, staleTime: 0 });
-      await savePolicies({ [kind]: page.id, expectedRevision: revision });
-      return page.id;
+      let pageId = queryClient.getQueryData<string>(unlinkedKey);
+      if (!pageId) {
+        pageId = await createTemplatePage();
+        queryClient.setQueryDefaults(unlinkedKey, { gcTime: Infinity });
+        queryClient.setQueryData(unlinkedKey, pageId);
+      }
+      try {
+        const { revision } = await queryClient.fetchQuery({ ...policiesQuery, staleTime: 0 });
+        await savePolicies({ [kind]: pageId, expectedRevision: revision });
+      } catch {
+        throw new Error(t("templateLinkFailed"));
+      }
+      queryClient.removeQueries({ queryKey: unlinkedKey, exact: true });
+      return pageId;
     },
     onSuccess: async () => {
       toast.success(t("templateCreated"));
@@ -185,6 +178,31 @@ function PolicyFields({ kind, canEdit }: { kind: PolicyKind; canEdit: boolean })
       ]);
     },
   });
+  /** Creates the draft page from the template; the store's facts fill it. */
+  async function createTemplatePage(): Promise<string> {
+    // The store's name and contact, and its shipping zones, fill the text; missing ones keep placeholders.
+    const [store, storefront, zones] = await Promise.all([
+      queryClient.ensureQueryData(businessQuery).catch(() => null),
+      queryClient.ensureQueryData(storefrontUrlQueryOptions()).catch(() => null),
+      kind === "shipping" && canViewShipping
+        ? queryClient.fetchQuery({ ...deliveryZonesQuery, staleTime: 0 }).catch(() => null)
+        : null,
+    ]);
+    const template = policyTemplate(
+      kind,
+      {
+        companyName: store?.companyName ?? "",
+        email: store?.email ?? "",
+        phone: store?.phone ?? "",
+        addressLine1: store?.addressLine1 ?? "",
+        city: store?.city ?? "",
+        storefrontUrl: (storefront as { storefrontUrl?: string } | null)?.storefrontUrl ?? "",
+      },
+      zones ? { zones, currencySymbol: symbol } : null,
+    );
+    const page = await createPolicyPage({ ...template, metaTitle: null, metaDescription: null, canonicalPath: null, isPublished: false });
+    return page.id;
+  }
   const linked = values[kind];
   const linkedPage = useQuery({ ...pageQueryOptions(linked ?? ""), enabled: Boolean(linked) && canViewPages });
   return (
