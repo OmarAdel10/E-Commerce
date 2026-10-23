@@ -5,6 +5,7 @@
 // Sans Bengali for Bangla; per-mille of the em, read from the shipped font
 // files). Shaping (Bangla conjuncts, kerning) only makes real text narrower.
 import type { ColumnDef, TableRowData } from "./table-config";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table";
 import { ACTIONS_COLUMN, SELECT_COLUMN, fitWithStandIns, type LayoutColumn, type StandInColumn } from "./column-layout";
 
 // Inter, U+0020 to U+007E.
@@ -72,7 +73,7 @@ function layoutOf<TData extends TableRowData>(column: ColumnDef<TData, unknown>)
   return {
     id,
     priority: locked ? Number.POSITIVE_INFINITY : meta?.priority ?? 50,
-    minWidth: meta?.minWidth ?? (id === SELECT_COLUMN ? 40 : id === ACTIONS_COLUMN ? 48 : 120),
+    minWidth: meta?.minWidth ?? (id === SELECT_COLUMN ? PINNED_SELECT_WIDTH : id === ACTIONS_COLUMN ? 48 : 120),
     locked,
   };
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getLocale } from "~/i18n";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table";
 import type { Column, Table, TableRowData } from "./table-config";
 
 /**
@@ -161,7 +162,7 @@ export function layoutColumnOf<TData extends TableRowData>(column: Column<TData,
     id: column.id,
     priority: locked ? Number.POSITIVE_INFINITY : meta?.priority ?? 50,
     // The row menu is a 28px button with the cell's 6px and the table's 12px edge.
-    minWidth: meta?.minWidth ?? (column.id === SELECT_COLUMN ? 40 : column.id === ACTIONS_COLUMN ? 48 : isPrimaryColumn(column) ? 200 : 120),
+    minWidth: meta?.minWidth ?? (column.id === SELECT_COLUMN ? PINNED_SELECT_WIDTH : column.id === ACTIONS_COLUMN ? 48 : isPrimaryColumn(column) ? 200 : 120),
     locked,
   };
 }

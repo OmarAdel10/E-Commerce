@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { Column, ColumnDef, Row, ServerColumnMeta, TableRowData } from "../table-config";
 import { Checkbox } from "~/components/ui/checkbox";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table";
 import { translate } from "~/i18n";
 import { resourceMessages } from "~/i18n/resource";
 import { localeWidth } from "../column-layout";
@@ -85,7 +86,7 @@ export function createSelectColumn<T extends TableRowData>(
     ),
     enableSorting: false,
     enableHiding: false,
-    size: 40,
+    size: PINNED_SELECT_WIDTH,
   };
 }
 

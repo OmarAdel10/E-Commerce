@@ -238,7 +238,8 @@ export function VariantsTab({ filters, onFiltersChange, onSelectionChange }: Var
     {
       accessorKey: "productName",
       header: sortHeader(t("product")),
-      meta: { primary: true, minWidth: 220 },
+      // A long name truncates (whole on hover) instead of pushing stock off the screen.
+      meta: { primary: true, minWidth: 220, maxWidth: 420 },
       cell: ({ row }) => <VariantCell variant={row.original} />,
     },
     {
