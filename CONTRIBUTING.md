@@ -37,7 +37,6 @@ pnpm --filter @scalius/database check:migrations
 pnpm generate:sdk      # commit any change in packages/api-client
 pnpm lint
 pnpm typecheck
-pnpm test:ci
 pnpm build
 pnpm run deploy:api -- --dry-run
 pnpm check:dist-secrets
@@ -45,6 +44,8 @@ pnpm check:build-canaries
 ```
 
 CI also runs `pnpm audit --audit-level moderate` and fails when the working tree is dirty after these steps.
+
+The test suite is kept by the maintainers outside this repository. They run it on every change before it lands here, and tests contributed with a pull request join it.
 
 Generated files (listed in `.gitattributes`) merge themselves: run `node scripts/regen-after-merge.mjs --install` once per clone, and after a merge or rebase run `node scripts/regen-after-merge.mjs` and commit what it rebuilds. While you work, `pnpm test:affected` runs only the tests your change can break.
 
