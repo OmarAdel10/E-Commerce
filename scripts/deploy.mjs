@@ -42,7 +42,7 @@
  */
 
 import { execSync } from "child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { delimiter, dirname, join, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -1407,10 +1407,17 @@ export async function main() {
     );
 
     if (!requestedTarget || requestedTarget === "api") {
-      run(
-        `${pnpm} exec vitest run apps/api/src/runtime/route-family-parity.test.ts --maxWorkers=1`,
-        "Verify every API contract route is mounted in the production runtime",
-      );
+      // A maintainers' consistency proof that runs on every private change; the
+      // public export ships without test files, so its deploys rely on that run.
+      const routeParityTest = "apps/api/src/runtime/route-family-parity.test.ts";
+      if (existsSync(join(root, routeParityTest))) {
+        run(
+          `${pnpm} exec vitest run ${routeParityTest} --maxWorkers=1`,
+          "Verify every API contract route is mounted in the production runtime",
+        );
+      } else {
+        console.log("\nℹ Route mount check skipped: the maintainers' test suite is not in this copy (it runs before every release).");
+      }
     }
 
     if (requestedTarget) {
