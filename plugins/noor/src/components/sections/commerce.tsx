@@ -141,16 +141,28 @@ export interface LookSettings {
   spacing: string;
 }
 
+/**
+ * Where a point's card opens, from the point's place on the photo (left and
+ * top in percent of the photo itself, so they never mirror): from a point
+ * near the left or right edge the card runs inwards, from one in the lower
+ * half it opens above, so the card and its link stay over the photo.
+ */
+export function spotPlacement(x: number, y: number): string[] {
+  return [x < 34 ? "at-left" : x > 66 ? "at-right" : null, y > 50 ? "at-bottom" : null].filter((name): name is string => name !== null);
+}
+
 export function ShopTheLook({ settings, context }: SectionProps<LookSettings>) {
   if (!settings.image) return null;
-  const spots = settings.hotspots.filter((spot) => text(spot.title));
+  const spots = settings.hotspots.filter((spot) => text(spot.title)).map((spot) => ({
+    ...spot, x: Math.max(4, Math.min(96, spot.x ?? 50)), y: Math.max(4, Math.min(96, spot.y ?? 50)),
+  }));
   return (
     <Section name="look" tone={settings.tone} space={settings.spacing}>
       <div class={cx("noor-split is-look", settings.image_side === "end" && "is-flipped")}>
         <div class="noor-split-media noor-look-media">
           <Image image={settings.image} sizes="(min-width: 768px) 50vw, 100vw" class="noor-cover" />
           {spots.map((spot, index) => (
-            <details class="noor-spot" style={{ left: `${Math.max(4, Math.min(96, spot.x ?? 50))}%`, top: `${Math.max(4, Math.min(96, spot.y ?? 50))}%` }}>
+            <details class={cx("noor-spot", ...spotPlacement(spot.x, spot.y))} style={{ left: `${spot.x}%`, top: `${spot.y}%` }}>
               <summary aria-label={spot.title!}><span aria-hidden="true">{index + 1}</span></summary>
               <div class="noor-spot-card">
                 <strong>{spot.title}</strong>

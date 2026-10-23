@@ -964,12 +964,20 @@ a.noor-split-media:hover .noor-cover:only-of-type { transform: scale(1.03); }
 .noor-split.is-look { align-items: start; }
 .noor-look-side { align-content: start; }
 .noor-look-side .noor-products.is-grid { inline-size: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* The points' cards open past the photo's rounded box rather than being cut by it: the photo clips itself. */
+.noor-look-media { overflow: visible; }
+.noor-look-media .noor-cover { border-radius: inherit; }
 .noor-spot { position: absolute; z-index: 2; transform: translate(-50%, -50%); }
+.noor-spot[open] { z-index: 4; }
 .noor-spot summary { display: grid; place-items: center; inline-size: 2rem; block-size: 2rem; border-radius: 999px; background: #fff; color: #15120f; font-size: 0.75rem; font-weight: 700; cursor: pointer; list-style: none; box-shadow: 0 0 0 6px rgb(255 255 255 / 0.35); animation: noor-pulse 2.4s var(--n-ease) infinite; }
 .noor-spot summary::-webkit-details-marker { display: none; }
 .noor-spot[open] summary { animation: none; background: var(--n-ink); color: var(--n-bg); }
-.noor-spot-card { position: absolute; inset-block-start: calc(100% + 0.5rem); inset-inline-start: 50%; z-index: 3; display: grid; gap: 0.25rem; inline-size: max-content; max-inline-size: 14rem; padding: 0.75rem 0.875rem; border-radius: var(--n-radius-lg); background: var(--n-surface); color: var(--n-ink); font-size: 0.8125rem; box-shadow: var(--n-shadow); transform: translateX(-50%); }
-[dir="rtl"] .noor-spot-card { transform: translateX(50%); }
+/* A point sits at a place on the photo, which never mirrors, so its card is placed by physical sides:
+   centred under the point, run inwards from a point near the left or right edge, above one in the lower half. */
+.noor-spot-card { position: absolute; inset-block-start: calc(100% + 0.5rem); left: 50%; z-index: 3; display: grid; gap: 0.25rem; inline-size: max-content; max-inline-size: min(14rem, calc(100vw - 2.5rem)); padding: 0.75rem 0.875rem; border-radius: var(--n-radius-lg); background: var(--n-surface); color: var(--n-ink); font-size: 0.8125rem; box-shadow: var(--n-shadow); translate: -50% 0; }
+.noor-spot.at-left .noor-spot-card { left: 0; translate: none; }
+.noor-spot.at-right .noor-spot-card { left: auto; right: 0; translate: none; }
+.noor-spot.at-bottom .noor-spot-card { inset-block: auto calc(100% + 0.5rem); }
 .noor-spot-card p { color: var(--n-muted); }
 .noor-spot-card .noor-more { min-block-size: 1.75rem; }
 @keyframes noor-pulse { 50% { box-shadow: 0 0 0 10px rgb(255 255 255 / 0.12); } }

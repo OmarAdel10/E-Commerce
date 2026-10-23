@@ -680,6 +680,15 @@ function noorEntries(): GalleryEntry[] {
     ["deal_block", "noor_sale"], ["usp_strip", "noor_promises"], ["editorial", "noor_story"], ["seo_text", "noor_text"], ["faq", "noor_faq"], ["newsletter", "noor_signup"], ["specifications", "noor_specifications"],
   ] as const).map(([type, skin]) => ({ ...contentSection(type, `skin-${type}`), skin: { app: `scalius.noor/${skin}`, values: {} } }) as StorefrontSection);
   entries.push({ id: "noor-section-skins", family: "integration:noor", title: "Noor skins of the store's own sections", page: "home", theme: skinned, focus: WHOLE_PAGE, scenario: { noor: "active", menu: "compact" } });
+  // Noor's lookbook with points at every edge of its photo and long words: each card must show whole, with its link.
+  const edgeSpot = (x: number, y: number) => ({ x, y, title: `Handwoven jamdani saree with a long name (${x}, ${y})`, text: "Soft cotton, woven by hand in Narayanganj over three weeks.", link: "/products/jamdani-saree" });
+  const edges = clone(base);
+  edges.pages.home = [{ ...contentSection("lookbook", "look-edges"), skin: { app: "scalius.noor/noor_look", values: {
+    hotspots: [edgeSpot(4, 50), edgeSpot(96, 50), edgeSpot(50, 96), edgeSpot(4, 4), edgeSpot(96, 96)],
+  } } } as StorefrontSection];
+  for (const locale of [null, "ar"] as const) {
+    entries.push({ id: locale ? "noor-look-edges-rtl" : "noor-look-edges", family: "integration:noor", title: `Noor lookbook points at the photo's edges, ${locale ? "RTL" : "LTR"}`, page: "home", theme: edges, focus: { include: [".noor-look-media"] }, scenario: { noor: "active", menu: "compact", ...(locale ? { locale } : {}) } });
+  }
   const slideshow = { ...homeEntry, id: "noor-home-slideshow", title: "Noor transparent header over the first slideshow", theme: clone(home) };
   slideshow.theme.pages.home[0] = { id: "noor-slideshow", type: "hero", version: 1, skin: { app: "scalius.noor/noor_hero", values: { autoplay: false } }, settings: {
     layout: "full-bleed",
