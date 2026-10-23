@@ -40,6 +40,8 @@ import {
 } from "@scalius/core/modules/payments/browser";
 import { assertNoActiveShipmentClaim } from "@scalius/core/modules/order-kernel";
 import { normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
+import type { FulfillmentType } from "@scalius/shared/fulfilment";
+import { orderLineTypesSql, parseOrderLineTypes } from "@scalius/core/modules/orders";
 import {
   assertPaymentSessionOrderPayable,
   resolvePaymentSessionPolicy,
@@ -170,6 +172,8 @@ type PaymentSessionOrderRow = {
   deletedAt: Date | null;
   shipmentClaimId: string | null;
   shipmentClaimExpiresAt: Date | null;
+  /** The distinct types of the order's lines (whether it may take a deposit plan). */
+  fulfillmentTypes: FulfillmentType[];
 };
 
 function resolveAuthoritativeOrderCurrency(
@@ -208,6 +212,7 @@ export type CustomerPaymentSessionRecoveryOrder = Pick<
   | "deletedAt"
   | "shipmentClaimId"
   | "shipmentClaimExpiresAt"
+  | "fulfillmentTypes"
 >;
 
 async function loadCurrentCurrencyCode(db: Database): Promise<string> {
@@ -536,6 +541,8 @@ async function loadPaymentSessionOrder(
       deletedAt: orders.deletedAt,
       shipmentClaimId: orders.shipmentClaimId,
       shipmentClaimExpiresAt: orders.shipmentClaimExpiresAt,
+      // The order's line types, in the same statement.
+      lineTypes: orderLineTypesSql(),
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -545,7 +552,8 @@ async function loadPaymentSessionOrder(
     throw new NotFoundError("Order not found");
   }
 
-  return order;
+  const { lineTypes, ...row } = order;
+  return { ...row, fulfillmentTypes: parseOrderLineTypes(lineTypes) };
 }
 
 function assertOrderCanReachGatewayReadinessCheck(

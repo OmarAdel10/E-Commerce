@@ -383,16 +383,17 @@ function assertGatewayPrecommitReadiness(
   checkoutSettings: CheckoutSettingsSnapshot,
   amountDueMinor: number,
   currencyCode: string,
-  giftCardsApplied: boolean,
-  /** The order is in a market's own currency (MARKETS-DESIGN step 6). */
-  foreignCurrency = false,
+  /**
+   * The order takes the deposit plan (prepare's `depositPlan`): never with
+   * gift cards, in a market's own currency, or with a download or gift card.
+   */
+  depositPlan: boolean,
 ): void {
   const issue = providers.precommitIssue({
     paymentMethod,
     currencyCode,
     totalAmountMinor: amountDueMinor,
-    // A deposit is a shop-currency amount: an order in another currency pays in full.
-    partialPaymentEnabled: checkoutSettings.partialPaymentEnabled && !giftCardsApplied && !foreignCurrency,
+    partialPaymentEnabled: depositPlan,
     partialPaymentAmount: checkoutSettings.partialPaymentAmount,
   });
   if (issue) throw new ValidationError(issue);
@@ -707,8 +708,7 @@ app.openapi(createOrderRoute, async (c) => {
       checkoutSettings,
       result.giftCardTender.amountDueMinor,
       result.taxQuote.currencyCode,
-      result.giftCardTender.appliedTotalMinor > 0,
-      orderCurrencyCode !== currency.currencyCode,
+      result.depositPlan,
     );
     diagnostics?.mark("prepare");
 

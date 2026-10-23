@@ -33,7 +33,7 @@ export function createHostedGatewayHandler(gateway: string): GatewayHandler {
         if (!ctx.orderId) ctx.onOrderCreated?.(orderId, gateway);
         paymentRequest = ctx.paymentType
           ? resolveExplicitCheckoutPaymentRequest(ctx.paymentType, ctx.depositAmount)
-          : resolveCheckoutPaymentRequest(ctx.config, createdOrder.totalAmount ?? ctx.totalAmount);
+          : resolveCheckoutPaymentRequest(ctx.config, createdOrder.totalAmount ?? ctx.totalAmount, ctx.lineTypes ?? []);
 
         let gatewayUrl = createdOrder.initialPaymentSession?.gateway === gateway
           ? createdOrder.initialPaymentSession.gatewayUrl

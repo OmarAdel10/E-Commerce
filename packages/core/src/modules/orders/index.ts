@@ -36,3 +36,4 @@ export * from "./status/claim";
 export * from "./invoices/printable-artifact";
 export * from "./fulfilment-reads";
 export * from "./holds";
+export * from "./line-types";

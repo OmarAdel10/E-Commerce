@@ -15,6 +15,7 @@ import {
     type OrderCurrencySnapshot,
 } from "@scalius/core/modules/payments/browser";
 import { normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
+import { allowsCashOnDelivery, type FulfillmentType } from "@scalius/shared/fulfilment";
 import { fromMinor, toMinor } from "@scalius/shared/money";
 import { ValidationError } from "../../utils/api-error";
 import type { CheckoutFlowSettings } from "./payment-method-allowlist";
@@ -32,6 +33,12 @@ export interface PaymentSessionOrder {
   paidAmountMinor: number;
   balanceDueMinor: number;
   deletedAt?: unknown | null;
+  /**
+   * The order's line types. A deposit plan's rest is cash on delivery, so a
+   * plan-less order takes the store's deposit only when cash fits every line
+   * (`allowsCashOnDelivery`): one with a download or a gift card pays in full.
+   */
+  fulfillmentTypes: readonly FulfillmentType[];
 }
 
 export interface RequestedPaymentSession {
@@ -146,6 +153,8 @@ export async function resolvePaymentSessionPolicy(
   const getConfiguredDepositMinor = async (): Promise<{ enabled: boolean; amountMinor: number }> => {
     const settings = await getPaymentSettings();
     if (!settings?.partialPaymentEnabled) return { enabled: false, amountMinor: 0 };
+    // Checkout made no deposit plan for an order cash can't settle: it pays in full.
+    if (!allowsCashOnDelivery(order.fulfillmentTypes)) return { enabled: false, amountMinor: 0 };
 
     const rawAmount = Number(settings.partialPaymentAmount ?? 0);
     if (!Number.isFinite(rawAmount) || rawAmount < 0) {

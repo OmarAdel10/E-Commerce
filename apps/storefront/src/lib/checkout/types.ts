@@ -1,6 +1,7 @@
 import type { CheckoutLanguageData } from "@scalius/shared/checkout-language";
 import type { CustomerIdentitySettings } from "@scalius/shared/customer-auth-policy";
 import type { Readiness } from "@scalius/shared/readiness";
+import type { FulfillmentType } from "@scalius/shared/fulfilment";
 import type { CartValidationIssue } from "../api/orders";
 import type { CheckoutOrderRefusal } from "./tax-quote-error-contract";
 
@@ -12,6 +13,11 @@ export interface PaymentContext {
   orderId: string;
   totalAmount: number;
   advanceAmount: number;
+  /**
+   * The reviewed quote's line types (whether the deposit plan applies to a
+   * new order); absent for an existing order paid with an explicit type.
+   */
+  lineTypes?: ReadonlyArray<FulfillmentType | null>;
   currencySymbol: string;
   paymentType?: "full" | "deposit" | "balance";
   depositAmount?: number;

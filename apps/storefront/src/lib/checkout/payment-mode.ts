@@ -1,5 +1,6 @@
 import { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
 export { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
+import type { FulfillmentType } from "@scalius/shared/fulfilment";
 import type { CheckoutConfig } from "./types";
 import { CheckoutCopyError } from "./error-messages";
 
@@ -22,9 +23,11 @@ export function resolveExplicitCheckoutPaymentRequest(
 export function resolveCheckoutPaymentRequest(
   config: Pick<CheckoutConfig, "partialPaymentEnabled" | "partialPaymentAmount">,
   totalAmount: number,
+  /** The quoted lines' types: a download or a gift card is paid in full (no deposit plan). */
+  lineTypes: readonly (FulfillmentType | null)[],
 ): CheckoutPaymentRequest {
   const configuredDeposit = Number(config.partialPaymentAmount);
-  if (isDepositPaymentRequired(config, totalAmount)) {
+  if (isDepositPaymentRequired(config, totalAmount, lineTypes)) {
     return { paymentType: "deposit", depositAmount: configuredDeposit };
   }
 

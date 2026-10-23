@@ -40,10 +40,11 @@ export function checkoutContactNeeds(input: CheckoutContactNeedInput): OrderCont
     isGiftCard: false,
   }));
   // The one line rule: cash only when every line is handed over in person.
-  const cashPossible = input.cashEnabled && allowsCashOnDelivery(lines.map((line) => resolveLineFulfillmentType(line, null)));
+  // The deposit plan's rest is cash too, so it follows the same rule.
+  const cashFits = allowsCashOnDelivery(lines.map((line) => resolveLineFulfillmentType(line, null)));
   const payment: OrderPaymentKind = input.deferredEnabled === true
     ? "deferred"
-    : cashPossible ? "cod" : input.partialPaymentEnabled ? "partial" : "online";
+    : cashFits && input.cashEnabled ? "cod" : cashFits && input.partialPaymentEnabled ? "partial" : "online";
   return orderContactNeeds(input.identity, { lines, payment, countryCode: input.countryCode });
 }
 

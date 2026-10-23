@@ -29,6 +29,7 @@ import { getCurrentPublicMediaUrl } from "../../integrations/storage";
 import { publishedMediaObjectKey } from "../media-references";
 import { customerAddressFromRow, paidSpendAmount, paidSpendProjection } from "../customers";
 import { orderShippingAddressSelection } from "./shipping-address";
+import { orderLineTypesSql, parseOrderLineTypes } from "./line-types";
 import type { OrderShippingAddressFields } from "./types";
 import { listOrderRefundAttempts, summarizeActiveRefundOperation } from "../payments";
 import { CUSTOMER_REQUEST_ACTION_COPY, getCustomerRequestPolicy } from "../settings";
@@ -764,6 +765,8 @@ export async function getCustomerOwnedOrderForDetail(
             attributes: orders.attributes,
             createdAt: sql<number>`CAST(${orders.createdAt} AS INTEGER)`,
             updatedAt: sql<number>`CAST(${orders.updatedAt} AS INTEGER)`,
+            // Whether the order may take a deposit plan (payment recovery), in this statement.
+            lineTypes: orderLineTypesSql(),
         })
         .from(orders)
         .where(and(
@@ -795,6 +798,7 @@ export function getCustomerPaymentSessionOrderForDetail(order: CustomerOwnedOrde
         paymentMethod: order.paymentMethod,
         shipmentClaimId: order.shipmentClaimId,
         shipmentClaimExpiresAt: order.shipmentClaimExpiresAt,
+        fulfillmentTypes: parseOrderLineTypes(order.lineTypes),
     };
 }
 

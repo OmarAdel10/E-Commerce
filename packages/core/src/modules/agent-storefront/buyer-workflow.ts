@@ -575,9 +575,8 @@ export async function submitAgentStorefrontCheckout(
     paymentMethod: input.paymentMethod,
     currencyCode: prepared.taxQuote.currencyCode,
     totalAmountMinor: prepared.taxQuote.totalMinor,
-    // A deposit is a shop-currency amount: an order in a market's own currency pays in full.
-    partialPaymentEnabled: checkoutSettings.partialPaymentEnabled
-      && authority.cartValidation.money.currencyCode === authority.cartValidation.money.shopCurrencyCode,
+    // The order's own deposit decision (never in a market's own currency, nor with a download).
+    partialPaymentEnabled: prepared.depositPlan,
     partialPaymentAmount: checkoutSettings.partialPaymentAmount,
   });
   if (gatewayAmountIssue) throw new ValidationError(gatewayAmountIssue);

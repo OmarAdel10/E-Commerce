@@ -462,6 +462,11 @@ function hasGiftCardTender(quote: CheckoutTaxQuote): boolean {
  * What the buyer pays now and how. With gift cards there is no deposit plan
  * (the API refuses the combination): the remainder is one balance payment.
  */
+/** The quoted lines' types: the deposit plan applies only where cash fits every line. */
+function quoteLineTypes(quote: CheckoutTaxQuote) {
+  return quote.items.map((item) => item.fulfillmentType);
+}
+
 function checkoutPaymentRequestFor(
   config: CheckoutConfig,
   quote: CheckoutTaxQuote,
@@ -469,7 +474,7 @@ function checkoutPaymentRequestFor(
   if (hasGiftCardTender(quote)) {
     return { request: { paymentType: "balance" }, payableAmount: quoteAmountDue(quote).amountDue };
   }
-  const request = resolveCheckoutPaymentRequest(config, quote.totalAmount);
+  const request = resolveCheckoutPaymentRequest(config, quote.totalAmount, quoteLineTypes(quote));
   return {
     request,
     payableAmount: request.paymentType === "deposit" ? request.depositAmount : quote.totalAmount,
@@ -890,7 +895,7 @@ export function renderOrderSummaryDetails(
       currencyFmt(quoteAmountDue(quote).amountDue, quote),
       "flex justify-between rounded-lg border border-primary/20 bg-primary/10 p-2 font-semibold text-primary-ink",
     );
-  } else if (isDepositPaymentRequired(config, quote.totalAmount)) {
+  } else if (isDepositPaymentRequired(config, quote.totalAmount, quoteLineTypes(quote))) {
     const advance = config.partialPaymentAmount;
     const balance = quote.totalAmount - advance;
     appendSummaryRow(
@@ -1311,6 +1316,7 @@ async function processPayment(): Promise<void> {
       orderId: stripeRetry?.orderId ?? "",
       totalAmount,
       advanceAmount,
+      lineTypes: quoteLineTypes(authoritativeTaxQuote),
       // Gift cards paid part: the gateway collects the balance, never a deposit.
       paymentType: stripeRetry?.paymentRequest.paymentType ?? (giftCardsPaidPart ? "balance" : undefined),
       depositAmount: stripeRetry?.paymentRequest.paymentType === "deposit"

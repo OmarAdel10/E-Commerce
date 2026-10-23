@@ -987,7 +987,10 @@ export async function createStorefrontOrder(
     if (deferred && !isPaymentTermsDays(paymentTermsDays)) {
         throw new ValidationError(PAYMENT_TERMS_UNAVAILABLE_MESSAGE, { reason: PAYMENT_METHOD_UNAVAILABLE_REASON });
     }
-    const depositApplies = isPartialEnabled && !deferred;
+    // The deposit plan's balance is cash on delivery: it applies only where
+    // cash fits every line, so a download or a gift card is paid in full
+    // online and delivered at once (isDepositPaymentRequired).
+    const depositApplies = isPartialEnabled && !deferred && allowsCashOnDelivery;
     if (paymentMethod === PaymentMethod.COD) {
         // Cash on delivery collects cash amounts (whole taka in BDT): an
         // amount due it cannot collect exactly is refused before the commit.
@@ -1004,7 +1007,7 @@ export async function createStorefrontOrder(
     const requiresCashCollection = paymentMethod === PaymentMethod.COD || (!giftCardsApplied && isDepositPaymentRequired({
         partialPaymentEnabled: depositApplies,
         partialPaymentAmount: toMinor(checkoutPolicySnapshot?.partialPaymentAmount ?? fallbackSettings?.partialPaymentAmount ?? 0, taxQuote.decimalPlaces),
-    }, taxQuote.totalMinor));
+    }, taxQuote.totalMinor, lineTypes));
     if (deliveryPreflight.rateToken && deliveryPreflight.rateCod !== requiresCashCollection) {
         throw new ValidationError("The payment choice changed the delivery requirements. Review delivery again.", {
             reason: DELIVERY_RATE_UNAVAILABLE_REASON,
@@ -1161,6 +1164,7 @@ export async function createStorefrontOrder(
         taxQuote,
         commitPayload,
         requiresShipping,
+        depositPlan: depositApplies && !giftCardsApplied,
         linePropertiesHashes: await storefrontLinePropertiesHashes(cartValidation),
         giftCardTender,
         shippingMethod,

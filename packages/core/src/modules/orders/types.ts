@@ -528,6 +528,12 @@ export interface CreateStorefrontOrderResult {
     commitPayload: StorefrontOrderCommitPayload;
     /** Some line ships: the order carries an address. */
     requiresShipping: boolean;
+    /**
+     * The order takes the store's deposit plan (an advance online, the rest in
+     * cash on delivery): advances are on, no gift card or market currency, not
+     * deferred, and cash fits every line (`isDepositPaymentRequired`).
+     */
+    depositPlan: boolean;
     /** `propertiesHash` per line, in cart order, for the quote fingerprint. */
     linePropertiesHashes: string[];
     /** The gift-card tender; no handles means none (amount due = total). */
