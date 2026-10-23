@@ -43,8 +43,8 @@ overrides:
   h3: ">=1.15.9"
   diff: ">=5.2.2"
   lodash: ">=4.17.23"
-  undici: "8.11.2"
-  fast-uri: "3.1.8"
+  undici: "8.12.3"
+  fast-uri: "3.1.9"
   svgo: "4.1.0"
   wrangler: "4.150.0"
   # Astro's dev runtime must support the same compatibility date as Wrangler.

@@ -60,7 +60,7 @@
     "@scalius/tsconfig": "workspace:*",
     "@types/pg": "8.23.1",
     "drizzle-kit": "^0.31.11",
-    "undici": "^8.11.2"
+    "undici": "^8.12.3"
   },
   "license": "AGPL-3.0-only"
 }
