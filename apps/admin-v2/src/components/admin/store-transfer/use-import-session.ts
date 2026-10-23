@@ -70,6 +70,8 @@ export interface RunState {
   error: string | null;
 }
 
+const EMPTY_PREVIEW: PreviewState = { checking: null, results: [], references: { brands: 0, categories: 0, attributes: 0 }, error: null };
+
 const IDLE_RUN: RunState = {
   status: "idle", phase: "items", done: 0, total: 0, results: [], imageAttached: 0, imageFailures: [], stopping: false, stopped: false, error: null,
 };
@@ -109,7 +111,15 @@ const BATCH_SIZE: Record<Plannable["kind"], number> = {
   inventory: INVENTORY_IMPORT_BATCH_DEFAULT,
 };
 
-/** `priceIncrementMinor`: the store's (Settings → Store details); imported prices are multiples of it. */
+/**
+ * `priceIncrementMinor`: the store's (Settings → Store details); imported prices are multiples of it.
+ *
+ * The session owns one current file at a time. Every asynchronous step works
+ * for the file it started with: choosing another file, or closing the
+ * dialog, aborts the read, the dry run and any run of the file before, and a
+ * step whose file is no longer current changes nothing. What belongs to a
+ * file (its rounding choice, its preview) starts over with each new file.
+ */
 export function useImportSession(kind: ImportKind, currencyCode: string, priceIncrementMinor: number) {
   const [fileState, setFileState] = useState<FileState>({ status: "empty" });
   const [options, setOptions] = useState<Omit<PlanOptions, "kind" | "currency">>({
@@ -120,8 +130,10 @@ export function useImportSession(kind: ImportKind, currencyCode: string, priceIn
     roundPrices: false,
     categorySource: "auto",
   });
-  const [preview, setPreview] = useState<PreviewState>({ checking: null, results: [], references: { brands: 0, categories: 0, attributes: 0 }, error: null });
+  const [preview, setPreview] = useState<PreviewState>(EMPTY_PREVIEW);
   const [run, setRun] = useState<RunState>(IDLE_RUN);
+  /** The current file's read: replaced (and aborted) by the next file or a reset. */
+  const fileRead = useRef<AbortController | null>(null);
   const previewAbort = useRef<AbortController | null>(null);
   const runAbort = useRef<AbortController | null>(null);
   const runId = useRef(newImportRunId());
@@ -135,44 +147,62 @@ export function useImportSession(kind: ImportKind, currencyCode: string, priceIn
     return planImport(fileState.file, { ...options, kind, currency });
   }, [fileState, options, kind, currency]);
 
-  // Prices with paisa in a taka store. Counted while rounding is off and kept
-  // while it is on, so the checkbox that turned it on stays visible.
-  const fractionalNow = plan && "issues" in plan
-    ? plan.issues.filter((issue) => issue.code === "price_not_whole_taka" || issue.code === "price_too_precise").length
-    : 0;
-  const [fractionalPrices, setFractionalPrices] = useState(0);
-  useEffect(() => {
-    if (!options.roundPrices) setFractionalPrices(fractionalNow);
-  }, [fractionalNow, options.roundPrices]);
+  // Prices with paisa in a taka store: a fact of the file, counted whether or
+  // not they are being rounded, so the choice stays visible while it is on.
+  const fractionalPrices = plan?.kind === "products" ? plan.stats.impreciseAmounts : 0;
+
+  /** Ends whatever the current file started: nothing it still has in flight may land. */
+  const abandonFile = useCallback(() => {
+    fileRead.current?.abort();
+    fileRead.current = null;
+    previewAbort.current?.abort();
+    runAbort.current?.abort();
+  }, []);
+
+  /** Rounding is decided per file, after seeing its prices. */
+  const forgetFileChoices = useCallback(() => {
+    setOptions((current) => (current.roundPrices ? { ...current, roundPrices: false } : current));
+  }, []);
 
   const readFile = useCallback(async (file: File) => {
-    previewAbort.current?.abort();
+    abandonFile();
+    const read = new AbortController();
+    fileRead.current = read;
     setRun(IDLE_RUN);
+    setPreview(EMPTY_PREVIEW);
+    forgetFileChoices();
     setFileState({ status: "reading", name: file.name, bytes: 0, size: file.size });
     try {
       const parsed = await readImportFile(file, {
-        onProgress: (bytes) => setFileState((current) => current.status === "reading" ? { ...current, bytes } : current),
+        signal: read.signal,
+        onProgress: (bytes) => {
+          if (!read.signal.aborted) setFileState((current) => current.status === "reading" ? { ...current, bytes } : current);
+        },
       });
+      if (read.signal.aborted) return;
       runId.current = newImportRunId();
       setFileState({ status: "ready", name: file.name, file: parsed });
     } catch (error) {
+      if (read.signal.aborted) return;
       setFileState({ status: "error", name: file.name, ...fileErrorKey(error) });
+    } finally {
+      if (fileRead.current === read) fileRead.current = null;
     }
-  }, []);
+  }, [abandonFile, forgetFileChoices]);
 
   const reset = useCallback(() => {
-    previewAbort.current?.abort();
-    runAbort.current?.abort();
+    abandonFile();
+    forgetFileChoices();
     setFileState({ status: "empty" });
     setRun(IDLE_RUN);
-    setPreview({ checking: null, results: [], references: { brands: 0, categories: 0, attributes: 0 }, error: null });
-  }, []);
+    setPreview(EMPTY_PREVIEW);
+  }, [abandonFile, forgetFileChoices]);
 
   // The server dry run, again whenever the plan changes (an option was chosen).
   useEffect(() => {
     previewAbort.current?.abort();
     if (!plan || plan.kind === "unknown" || plan.kind === "mismatch" || plan.items.length === 0) {
-      setPreview({ checking: null, results: [], references: { brands: 0, categories: 0, attributes: 0 }, error: null });
+      setPreview(EMPTY_PREVIEW);
       return;
     }
     const controller = new AbortController();

@@ -45,6 +45,12 @@ export interface ProductMappingStats {
   failedProducts: number;
   /** Products with a third option (before the chosen strategy). */
   productsWithExtraOptions: number;
+  /**
+   * Prices finer than the store's price increment (paisa in a whole-taka
+   * store), counted the same whether `roundPrices` rounds them or not: a
+   * fact of the file, so the choice to round can be offered and kept honest.
+   */
+  impreciseAmounts: number;
 }
 
 export interface ProductMappingResult {
@@ -87,6 +93,7 @@ export class MappingContext {
   readonly skuOwners = new Map<string, string>();
   failedProducts = 0;
   productsWithExtraOptions = 0;
+  impreciseAmounts = 0;
 
   constructor(readonly options: ProductMappingOptions) {}
 
@@ -110,6 +117,7 @@ export class MappingContext {
         images: this.items.reduce((sum, item) => sum + item.images.length, 0),
         failedProducts: this.failedProducts,
         productsWithExtraOptions: this.productsWithExtraOptions,
+        impreciseAmounts: this.impreciseAmounts,
       },
       variantLines: this.variantLines,
     };
@@ -298,6 +306,7 @@ export function finalizeDraft(context: MappingContext, draft: DraftProduct): voi
     let item = parsed.data;
     const currencyIssues = productItemCurrencyIssues(item, context.options.currency, variantLines);
     if (currencyIssues.length > 0) {
+      context.impreciseAmounts += currencyIssues.length;
       if (context.options.roundPrices) {
         item = roundItemPrices(item, context.options.currency);
       } else {
