@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { MoreHorizontal } from "lucide-react";
 import { formatPhoneForDisplay } from "@scalius/shared/phone-input";
 import { getStoreRegion } from "~/lib/store-time-zone";
-import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
+import { adminPhoneError, toE164Phone } from "~/lib/admin-phone-schema";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -61,15 +61,6 @@ type CustomerAddress = CustomerDto["addresses"][number];
 
 /** The address book's dialog target: a new address, or the one being edited. */
 type Editing = { kind: "new" } | { kind: "edit"; address: CustomerAddress };
-
-function isPhone(value: string): boolean {
-  try {
-    validateAndFormatPhone(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export function CustomerAddressesCard({ customerId, addresses, canEdit }: {
   customerId: string;
@@ -215,7 +206,7 @@ function AddressDialog({ customerId, editing, isOnlyAddress, onOpenChange, onSav
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const errors = useAddressErrors(problems, draft.countryCode);
-  const phoneError = phone.trim() && !isPhone(phone) ? t("addressPhoneInvalid") : undefined;
+  const phoneError = adminPhoneError(phone) ?? undefined;
 
   // Start from the saved address (or an empty one) each time the dialog opens.
   useEffect(() => {
@@ -235,7 +226,7 @@ function AddressDialog({ customerId, editing, isOnlyAddress, onOpenChange, onSav
     setFailure(null);
     const body = {
       ...addressDraftInput(draft),
-      phone: phone.trim() ? validateAndFormatPhone(phone) : null,
+      phone: phone.trim() ? toE164Phone(phone) : null,
       ...(makeDefault ? { isDefault: true } : {}),
       ...(skipValidation ? { skipValidation: true } : {}),
     };

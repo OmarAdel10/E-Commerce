@@ -4,7 +4,7 @@ import {
   deliveryHierarchyLevel,
   type DeliveryHierarchyField,
 } from "@scalius/shared/place-fields";
-import { toE164Phone } from "./types";
+import { toE164Phone } from "~/lib/admin-phone-schema";
 
 /** A place as the delivery-locations API returns it (the canonical `level`, not a type name). */
 export interface PlaceRecord {
