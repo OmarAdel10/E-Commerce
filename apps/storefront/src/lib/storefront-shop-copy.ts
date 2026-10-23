@@ -52,6 +52,13 @@ export interface ShopCopy {
     showSummary: string;
     hideSummary: string;
   };
+  /** A landing page's order form when it cannot take this order (buyers get the product's page instead). */
+  orderForm: {
+    unavailable: string;
+    /** The product itself is gone from the storefront: no page to send the buyer to. */
+    productUnavailable: string;
+    viewProduct: string;
+  };
 }
 
 const EN: ShopCopy = {
@@ -91,6 +98,11 @@ const EN: ShopCopy = {
     showSummary: "Show order summary",
     hideSummary: "Hide order summary",
   },
+  orderForm: {
+    unavailable: "This product can't be ordered on this page right now. Its page has all its options and details.",
+    productUnavailable: "This product isn't available right now.",
+    viewProduct: "View product and options",
+  },
 };
 
 const BN: ShopCopy = {
@@ -129,6 +141,11 @@ const BN: ShopCopy = {
     clearCart: "কার্ট খালি করুন",
     showSummary: "অর্ডারের সারাংশ দেখুন",
     hideSummary: "অর্ডারের সারাংশ লুকান",
+  },
+  orderForm: {
+    unavailable: "এই পণ্যটি এখন এই পেজ থেকে অর্ডার করা যাচ্ছে না। পণ্যের পেজে এর সব অপশন ও বিস্তারিত আছে।",
+    productUnavailable: "এই পণ্যটি এখন পাওয়া যাচ্ছে না।",
+    viewProduct: "পণ্য ও অপশন দেখুন",
   },
 };
 

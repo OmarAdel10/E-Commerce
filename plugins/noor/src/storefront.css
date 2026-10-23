@@ -1296,6 +1296,9 @@ a.noor-split-media:hover .noor-cover:only-of-type { transform: scale(1.03); }
 .noor-order-form .scalius-order-form { position: relative; }
 .noor-order-form .scalius-order-form-submit { min-block-size: 3.5rem; border-radius: var(--n-btn-radius); background: var(--n-brand); color: var(--n-brand-ink); font-size: 1.0625rem; }
 .noor-order-form .scalius-order-form-submit:hover { background: color-mix(in oklab, var(--n-brand) 86%, #000); }
+/* When the form cannot take this order: the store's explanation above its link to the product. */
+.noor-order-form .scalius-order-form-unavailable { gap: 1rem; }
+.noor-order-form .scalius-order-form-unavailable-text { color: var(--n-muted); font-size: 0.9375rem; line-height: 1.6; }
 
 /* The phone order bar */
 .noor-bar { position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 35; display: none; padding: 0.625rem var(--n-gutter) calc(0.625rem + env(safe-area-inset-bottom)); background: color-mix(in oklab, var(--n-surface) 94%, transparent); border-block-start: 1px solid var(--n-line); box-shadow: 0 -8px 24px -16px rgb(20 16 12 / 0.4); backdrop-filter: blur(8px); transition: transform var(--n-base) var(--n-ease); }

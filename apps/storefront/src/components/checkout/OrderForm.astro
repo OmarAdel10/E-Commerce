@@ -16,6 +16,8 @@ import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 import { formatMoney } from "@/lib/currency";
 import { ORDER_FORM_MAX_QUANTITY, orderFormOptionName, orderFormOptions } from "@/lib/checkout/order-form";
 import { QUICK_CHECKOUT_PATH } from "@/lib/checkout/quick-checkout";
+import { shopCopy } from "@/lib/storefront-shop-copy";
+import { currentRequestTheme } from "@/lib/storefront-theme-context";
 import LocationFields from "./LocationFields.astro";
 import BuyerField from "../apps/BuyerField.astro";
 
@@ -41,6 +43,7 @@ const [data, layoutData, languageResponse, checkoutConfig, citiesResponse] = awa
   getCities(),
 ]);
 const copy = languageResponse?.languageData ?? ENGLISH_CHECKOUT_LANGUAGE_DATA;
+const fallbackWords = shopCopy((await currentRequestTheme(Astro.locals)).language).orderForm;
 const currency = { symbol: layoutData?.currency?.symbol ?? DEFAULT_CURRENCY.symbol, code: layoutData?.currency?.code ?? DEFAULT_CURRENCY.code };
 const options = data ? orderFormOptions(data, currency.code) : [];
 const cod = checkoutConfig.unavailable !== true && checkoutConfig.gateways.some((gateway) => gateway.flow === "cod" || gateway.id === "cod");
@@ -56,8 +59,9 @@ const samePrice = options.every((option) => option.price === options[0]?.price);
 const optionName = data ? orderFormOptionName(data) ?? data.product.name : "";
 // Short labels (sizes) sit side by side; longer ones (Red / XL, names) stack.
 const compact = options.every((option) => option.label.length <= 6);
-// Why the form is not here, for the merchant in the theme editor's preview
-// (buyers get a link to the product's page instead).
+// Why the form is not here, for the merchant in the theme editor's preview;
+// buyers are told it cannot take the order here and get the product's page
+// (its options, and whether and how it sells), never a promise of a form.
 const missing = !data
   ? "This product is not available on the storefront. Pick another one in the section's settings."
   : options.length === 0
@@ -126,8 +130,9 @@ const missing = !data
 ) : (
   <div class="scalius-order-form-unavailable">
     {preview && missing && <p class="scalius-order-form-notice" role="note">{missing}</p>}
+    <p class="scalius-order-form-unavailable-text">{productHref ? fallbackWords.unavailable : fallbackWords.productUnavailable}</p>
     {productHref && (
-      <a class="scalius-order-form-submit" href={productHref}>{data!.product.name}<span aria-hidden="true"> →</span></a>
+      <a class="scalius-order-form-submit" href={productHref}>{fallbackWords.viewProduct}<span class="scalius-order-form-arrow" aria-hidden="true">→</span></a>
     )}
   </div>
 )}
@@ -246,7 +251,10 @@ const missing = !data
   }
   :where(.scalius-order-form-submit):hover { background: color-mix(in oklab, var(--primary) 88%, #000); }
   :where(.scalius-order-form-unavailable) { display: grid; gap: 0.75rem; margin: 0; }
-  :where(.scalius-order-form-unavailable) :where(.scalius-order-form-submit) { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+  :where(.scalius-order-form-unavailable) :where(.scalius-order-form-submit) { display: flex; align-items: center; justify-content: center; gap: 0.375rem; text-decoration: none; }
+  :where(.scalius-order-form-unavailable-text) { margin: 0; color: var(--muted-foreground); line-height: 1.5; }
+  /* The arrow points along the line of text. */
+  :where(:dir(rtl) .scalius-order-form-arrow) { display: inline-block; transform: scaleX(-1); }
   :where(.scalius-order-form-notice) {
     margin: 0;
     padding: 0.75rem 0.875rem;
