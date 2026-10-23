@@ -53,7 +53,7 @@ Never commit secrets, `.dev.vars`, `.env*` files, or real buyer data.
 
 ## License
 
-The project is licensed under the [GNU Affero General Public License v3.0](LICENSE). The one exception is the storefront (`apps/storefront/`), which is MIT-licensed ([apps/storefront/LICENSE](apps/storefront/LICENSE)). The storefront is part of this repository: use the same issue forms, branch, and `pnpm` commands for it.
+The project is licensed under the [GNU Affero General Public License v3.0](LICENSE). The exceptions are the storefront (`apps/storefront/`), which is MIT-licensed ([apps/storefront/LICENSE](apps/storefront/LICENSE)), and the plugin SDK and API client (`packages/plugin-sdk`, `packages/api-client`), which are AGPL with the Scalius Plugin Exception so that apps built on them can use their own terms (`PLUGIN-EXCEPTION` in each package). The storefront is part of this repository: use the same issue forms, branch, and `pnpm` commands for it.
 
 ## Security
 

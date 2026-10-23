@@ -73,7 +73,7 @@ packages/
   plugin-sdk/   Plugin authoring kit (bundled and sandboxed installs)
   shared/       Pure utilities shared by the Workers and the dashboard
   tsconfig/     Shared TypeScript configs
-plugins/        Reference plugins: bkash, bulk-discount, hello, loyalty, nagad, order-tagger, wishlist
+plugins/        Bundled plugins: bangladesh (bKash, Nagad, SSLCommerz, couriers, places), noor (editorial theme)
 scripts/        Dev tooling, deploy pipeline, release and ops checks
 docs/           Architecture, plan profile, database portability, performance, providers
 tests/          Cross-package unit tests (tests/README.md)
@@ -184,10 +184,10 @@ A deployment has two installed secrets, no Wrangler `vars`, and every other sett
 
 At entry, each Worker derives every per-purpose secret (session, JWT, service token, agent token pepper, customer session hash key and three opt-in automation keys) from `SCALIUS_SECRET` with HKDF-SHA256 (`packages/shared/src/runtime-secrets.ts`). Derived values are never installed, stored, or logged.
 
-Without `SCALIUS_SECRET`, the API answers every request with `503 RUNTIME_SECRET_MISSING`, except `/api/v1/health`, `/api/v1/readyz`, and `/api/v1/meta`.
+Without `SCALIUS_SECRET`, the API answers every request with `503 runtime_secret_missing`, except `/api/v1/health`, `/api/v1/readyz`, and `/api/v1/meta`.
 
 - Rotating `SCALIUS_SECRET` rotates every derived secret. Admins sign out, service tokens stop verifying, and agent credentials need reissue. Data encrypted with `CREDENTIAL_ENCRYPTION_KEY` survives.
-- Rotating `CREDENTIAL_ENCRYPTION_KEY` makes everything encrypted with it unreadable. Re-enter every provider credential in the dashboard.
+- Rotating `CREDENTIAL_ENCRYPTION_KEY` makes everything encrypted with it unreadable. Re-enter every provider credential in the dashboard. Staff password hashes are keyed with this key too, so staff cannot sign in with their passwords afterwards: send each one a password reset.
 
 ### Platform settings
 
@@ -204,7 +204,7 @@ Public origins are database-backed settings, not environment variables. The API 
 | Setup key for the first admin | Same | Gates `POST /api/v1/setup` behind a derived token |
 | Single sign-on | Same | Identity handoff (issuer, audience, JWKS URL, password sign-in lock) |
 
-The setup key and single sign-on are opt-in contracts ([docs/AUTOMATED-DEPLOYMENTS.md](docs/AUTOMATED-DEPLOYMENTS.md)). Leave them off for a hand-installed store. `GET /api/v1/platform` returns the four origins and the two opt-in flags (`Cache-Control: no-store`). `GET /api/v1/readyz` reports a `platform_config` problem until all four origins are set.
+Single sign-on is an opt-in contract ([docs/AUTOMATED-DEPLOYMENTS.md](docs/AUTOMATED-DEPLOYMENTS.md)); leave it off for a hand-installed store. The first-admin setup key is on for a new store everywhere but local development, so nobody else can claim it first. `GET /api/v1/platform` returns the four origins and the two opt-in flags (`Cache-Control: no-store`). `GET /api/v1/readyz` reports a `platform_config` problem until all four origins are set.
 
 Provider and integration settings live in the dashboard under Settings > Payments, Shipping and delivery, Notifications and Integrations.
 
@@ -256,9 +256,9 @@ pnpm run deploy --api-url https://api.example.com --storefront-url https://shop.
 
 The pipeline runs these steps in order:
 
-1. Typecheck all workspaces, one at a time.
+1. Typecheck (`scripts/typecheck.mjs`: one TypeScript project-reference build, then the storefront's Astro check).
 2. Build all workspaces (the dashboard first, because it is the API Worker's static assets), then run the dist secret and build canary checks.
-3. Apply D1 migrations. For TursoDB or PostgreSQL, run a read-only schema check instead (pass `--database-target-host`).
+3. Apply D1 migrations. For TursoDB or PostgreSQL, run a read-only schema check instead: deploy with `--only api --wrangler-config <path>` (that config sets `vars.DATABASE_PROVIDER`) and `--database-target-host <host>` ([docs/DATABASE-PORTABILITY.md](docs/DATABASE-PORTABILITY.md)).
 4. Deploy the API Worker, then the storefront Worker, and verify each one live.
 
 | Option | Effect |
@@ -275,7 +275,7 @@ The Wrangler configs carry no `vars`, so the script learns your origins from its
 | API | `--api-url` or `SCALIUS_API_URL` |
 | Storefront | `--storefront-url` or `SCALIUS_STOREFRONT_URL`, then the `custom_domain` route in `apps/storefront/wrangler.jsonc`, then the Platform `storefrontUrl` read from the API |
 
-Without an API origin, the deploy succeeds but skips live `/health` and `/readyz` verification and cache warming. The script warns when the deploy target and the Platform `storefrontUrl` differ.
+Without an API origin, the deploy succeeds but skips live `/health` and `/readyz` verification and warms only the static storefront paths, not the product and category paths read from the API. The script warns when the deploy target and the Platform `storefrontUrl` differ.
 
 ### 4. Complete Platform settings
 
@@ -303,7 +303,7 @@ pnpm release:check --api-base-url https://api.example.com --storefront-url https
 | Forgot the local admin password | `pnpm dev:admin:reset` |
 | Local sign-in loops | `pnpm dev:admin:reset`, then `pnpm dev:setup --env-only` (add `--force` when the shared local secrets differ) |
 | Local D1 errors | `pnpm dev:reset` |
-| `503 RUNTIME_SECRET_MISSING` | `SCALIUS_SECRET` is missing or shorter than 32 characters. Run `wrangler secret put SCALIUS_SECRET`, or `pnpm dev:setup --env-only` locally |
+| `503 runtime_secret_missing` | `SCALIUS_SECRET` is missing or shorter than 32 characters. Run `wrangler secret put SCALIUS_SECRET`, or `pnpm dev:setup --env-only` locally |
 | `/api/v1/readyz` reports `platform_config` | Set the missing origins in Settings > Store details |
 | Cart or sign-in fails with CORS or cookie errors | The Platform origins are wrong or unset |
 | Provider credentials do not decrypt | `CREDENTIAL_ENCRYPTION_KEY` changed. Re-enter the credentials in the dashboard |
@@ -323,7 +323,7 @@ pnpm release:check --api-base-url https://api.example.com --storefront-url https
 | [packages/shared/src/storefront-theme.md](packages/shared/src/storefront-theme.md) | Storefront theme document and the online store builder |
 | [docs/delivery-providers/README.md](docs/delivery-providers/README.md) | Pathao and Steadfast contracts |
 | [docs/PLACES.md](docs/PLACES.md) | The place directory, its datasets and their import |
-| [docs/MARKETS-DESIGN.md](docs/MARKETS-DESIGN.md) | Markets design (not built) |
+| [docs/MARKETS-DESIGN.md](docs/MARKETS-DESIGN.md) | Markets design and implementation record |
 | [apps/admin-v2/README.md](apps/admin-v2/README.md), [apps/admin-v2/DESIGN.md](apps/admin-v2/DESIGN.md) | Dashboard app and design rules |
 | [apps/storefront/README.md](apps/storefront/README.md) | Storefront app |
 | [packages/plugin-sdk/README.md](packages/plugin-sdk/README.md) | Plugin authoring |
