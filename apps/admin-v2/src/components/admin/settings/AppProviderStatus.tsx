@@ -3,6 +3,7 @@
 // checks, the link to its setup on its feature's page in the app (its own fields, kept
 // encrypted with the app), and the app's connection test.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { postApiV1AdminSettingsProvidersByIdTest } from "@scalius/api-client/sdk";
 import { AppIcon } from "~/components/admin/apps/AppIcon";
 import { ProvidedByChip } from "~/components/admin/apps/ProvidedByChip";
@@ -87,7 +88,8 @@ export function AppProviderStatus({ provider, onTested }: { provider: AppProvide
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-body font-medium">{providerLabel(provider.name)}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={STATE_VARIANT[state]}>{t(STATE_LABEL[state])}</Badge>
+            {/* A test can take the provider's whole deadline: say it is running, not the stale state. */}
+            {test.isPending ? <Badge variant="info">{t("testing")}</Badge> : <Badge variant={STATE_VARIANT[state]}>{t(STATE_LABEL[state])}</Badge>}
             <ProvidedByChip pluginId={provider.pluginId} appName={provider.appName} />
           </div>
         </div>
@@ -96,14 +98,17 @@ export function AppProviderStatus({ provider, onTested }: { provider: AppProvide
       <div className="flex flex-wrap items-center gap-2">
         <AppProviderSetupButton provider={provider} />
         {provider.canTestConnection && canManage ? (
-          <Button type="button" variant="outline" loading={test.isPending} disabled={!usable} onClick={() => test.mutate()}>
-            {t("testConnection")}
+          // Stays in place, labelled, while the test runs (not a bare spinner).
+          <Button type="button" variant="outline" disabled={!usable || test.isPending} aria-busy={test.isPending || undefined} onClick={() => test.mutate()}>
+            {test.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+            {t(test.isPending ? "testing" : "testConnection")}
           </Button>
         ) : null}
       </div>
       <AppProviderConnectionNote
         provider={provider}
-        answer={test.data ?? (test.isError ? "error" : null)}
+        testing={test.isPending}
+        answer={test.isPending ? null : test.data ?? (test.isError ? "error" : null)}
       />
     </div>
   );
@@ -114,15 +119,21 @@ export function AppProviderStatus({ provider, onTested }: { provider: AppProvide
  * settings dialog, a payment method row): the answer of a test just run, else
  * the stored outcome. A failed test's answer (the app's own, merchant-safe) is
  * kept across reloads until a test passes or its settings change, with what to
- * do next and when it was last tested.
+ * do next (nothing to fix when no answer came back in time) and when it was
+ * last tested.
  */
-export function AppProviderConnectionNote({ provider, answer }: {
+export function AppProviderConnectionNote({ provider, answer, testing = false }: {
   provider: Pick<AppProvider, "name" | "connection" | "canTestConnection"> & { readiness: { usable: boolean } };
   /** A test run on this page: its answer, or "error" when it couldn't run. */
-  answer: { ok: boolean; message: string } | "error" | null;
+  answer: { ok: boolean; message: string; timedOut?: boolean } | "error" | null;
+  /** A test is running now: only that is said. */
+  testing?: boolean;
 }) {
   const t = useMessages(appProvidersMessages);
   const state = appProviderState(provider);
+  if (testing) return <p role="status" className="text-body text-muted-foreground">{t("testingHelp", { name: providerLabel(provider.name) })}</p>;
+  // The answer just given decides, else the stored one.
+  const timedOut = answer && answer !== "error" ? !answer.ok && answer.timedOut === true : provider.connection.timedOut === true;
   const testedAt = provider.connection.testedAt
     ? formatDateTime(new Date(provider.connection.testedAt), { dateStyle: "medium", timeStyle: "short" })
     : null;
@@ -137,7 +148,7 @@ export function AppProviderConnectionNote({ provider, answer }: {
       ) : state === "testFailed" ? (
         <p className="text-body text-destructive wrap-anywhere">{provider.connection.message ?? t("connectionFailed")}</p>
       ) : null}
-      {state === "testFailed" ? <p className="text-body text-muted-foreground">{t("testFailedHelp", { name: providerLabel(provider.name) })}</p> : null}
+      {state === "testFailed" ? <p className="text-body text-muted-foreground">{t(timedOut ? "timedOutHelp" : "testFailedHelp", { name: providerLabel(provider.name) })}</p> : null}
       {testedAt && (state === "ready" || state === "testFailed") ? (
         <p className="text-body text-muted-foreground">{t("lastTested", { time: testedAt })}</p>
       ) : null}

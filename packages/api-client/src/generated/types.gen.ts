@@ -4753,6 +4753,10 @@ export type AppProviderConnection = {
      * The provider's answer when the last test failed.
      */
     message: string | null;
+    /**
+     * True when the last test failed because the provider gave no answer in time.
+     */
+    timedOut?: boolean;
 };
 
 export type WarrantyClaim = {
@@ -55200,6 +55204,10 @@ export type PostApiV1AdminSettingsProvidersByIdTestResponses = {
         data: {
             ok: boolean;
             message: string;
+            /**
+             * True when the provider gave no answer in time (nothing in the answer to fix).
+             */
+            timedOut?: boolean;
         };
     };
 };

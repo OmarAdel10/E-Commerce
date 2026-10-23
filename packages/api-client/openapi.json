@@ -22371,6 +22371,10 @@
             "type": "string",
             "nullable": true,
             "description": "The provider's answer when the last test failed."
+          },
+          "timedOut": {
+            "type": "boolean",
+            "description": "True when the last test failed because the provider gave no answer in time."
           }
         },
         "required": [
@@ -195648,6 +195652,10 @@
                         },
                         "message": {
                           "type": "string"
+                        },
+                        "timedOut": {
+                          "type": "boolean",
+                          "description": "True when the provider gave no answer in time (nothing in the answer to fix)."
                         }
                       },
                       "required": [

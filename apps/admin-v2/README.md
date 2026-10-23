@@ -67,7 +67,7 @@ SDK call (@scalius/api-client/sdk) unwrapped once by apiData() in src/lib/api.ts
 
 ## Navigation performance
 
-- Links use `preload="intent"`. The router runs loaders on every preload (`defaultPreloadStaleTime: 0`) and React Query decides freshness. The router keeps the current page mounted while it navigates, and `AdminNavigationProgress` shows a progress bar only after 180 ms.
+- Links use `preload="intent"`. The router runs loaders on every preload (`defaultPreloadStaleTime: 0`), every visit waits for its loader (`defaultStaleReloadMode: "blocking"`, `src/lib/router-loading.ts`), and React Query decides freshness. A background reload would mount an editor on its cached record before the loader's fresh read (CONTENT-004). The router keeps the current page mounted while it navigates, and `AdminNavigationProgress` shows a progress bar only after 180 ms.
 - After the first page settles, `useWarmEverydayRouteCode()` downloads only the route code of orders, products, customers and inventory. It runs no loaders and skips Save Data and 2G connections. `useServerTable()` skips only the duplicate fetch within 5 s of an intent preload (`INTENT_PREFETCH_MOUNT_GRACE_MS`).
 - Do not warm adjacent Orders or Customers pages. Do not bulk-sync protected data. Read [docs/PERFORMANCE-RELEASE.md](../../docs/PERFORMANCE-RELEASE.md) before you change pending behavior, add virtualization or widen preloading.
 

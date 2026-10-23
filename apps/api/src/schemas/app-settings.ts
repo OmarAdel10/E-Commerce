@@ -84,4 +84,5 @@ export const providerConnectionSchema = z.object({
   status: z.enum(["none", "untested", "passed", "failed"]).openapi({ description: "none: it offers no test; untested: not tested with its current settings." }),
   testedAt: z.string().nullable(),
   message: z.string().nullable().openapi({ description: "The provider's answer when the last test failed." }),
+  timedOut: z.boolean().optional().openapi({ description: "True when the last test failed because the provider gave no answer in time." }),
 }).openapi("AppProviderConnection");
