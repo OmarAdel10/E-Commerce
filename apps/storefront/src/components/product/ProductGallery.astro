@@ -17,6 +17,7 @@ import { mediaImageUrl } from "@scalius/shared/media-variants";
 import VideoFacade from "./VideoFacade.astro";
 import { currentRequestTheme } from "@/lib/storefront-theme-context";
 import { catalogCopy } from "@/lib/catalog-copy";
+import { shopCopy } from "@/lib/storefront-shop-copy";
 import { formatPageNumber } from "@/lib/store-time-zone";
 
 interface Props {
@@ -44,6 +45,10 @@ interface Props {
   positionLabel?: (position: number | string, total: number | string) => string;
 }
 
+const { language } = await currentRequestTheme(Astro.locals);
+const words = catalogCopy(language).product;
+// Every system word defaults to the page's language (lib/storefront-shop-copy.ts).
+const photoWords = shopCopy(language).product;
 const {
   product,
   media,
@@ -51,16 +56,16 @@ const {
   variants = [],
   layout = { gallery: "beside", thumbnails: "beside", stageRatio: 1, thumbnailSize: null },
   playVideoLabel = "Play video: {title}",
-  zoomLabel = "Zoom photo",
-  zoomOfLabel = (position: number | string, total: number | string) => `Zoom photo ${position} of ${total}`,
-  showAllLabel = (count: number) => `Show all photos (${count})`,
-  stepLabels = { previous: "Previous photo", next: "Next photo" },
-  positionLabel = (position: number | string, total: number | string) => `Photo ${position} of ${total}`,
+  zoomLabel = photoWords.zoomPhoto,
+  zoomOfLabel = photoWords.zoomPhotoOf,
+  showAllLabel = photoWords.showAllPhotos,
+  stepLabels = { previous: photoWords.previousPhoto, next: photoWords.nextPhoto },
+  positionLabel = photoWords.photoOf,
 } = Astro.props;
-const { language } = await currentRequestTheme(Astro.locals);
-const words = catalogCopy(language).product;
 // Positions in the page's digits (Bangla digits on a Bangla page).
 const count = (value: number) => formatPageNumber(value, language);
+// A video's length ("1:05") in the page's digits, digit by digit.
+const clock = (duration: string) => duration.replace(/\d/g, (digit) => count(Number(digit)));
 const thumbnails = layout.thumbnails;
 const desktopThumb = GALLERY_CONFIG.thumbnails.desktop;
 const mobileThumb = GALLERY_CONFIG.thumbnails.mobile;
@@ -92,6 +97,9 @@ const galleryItems = galleryMedia.map((item) => {
     thumbs: thumbSource ? productImageSources(thumbSource, thumbnailSlot) : null,
   };
 });
+// A thumbnail's name: its kind and position in the page's words, then the merchant's words for it.
+const thumbnailLabel = (item: (typeof galleryItems)[number], index: number) =>
+  (item.item.kind === "video" ? words.playVideo : words.viewImage)(count(index + 1), item.altText);
 const galleryImages = galleryItems.filter(({ item }) => item.kind === "image");
 // Phones swipe between the photos of every gallery (the strip stays for
 // direct picks), with the position shown on the photo and read out.
@@ -310,7 +318,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                 type="button"
                 data-scroll-control="mobile-up"
                 class="pointer-events-none absolute -top-1 inset-s-0 inset-e-0 z-10 flex h-11 items-start justify-center opacity-0 transition-opacity duration-300 focus-visible:outline-2 focus-visible:outline-foreground motion-reduce:transition-none"
-                aria-label="Scroll product media up"
+                aria-label={words.scrollMediaUp}
                 tabindex="-1"
               >
                 <span class="rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-xs">
@@ -321,7 +329,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
               <div
                 data-thumbnail-rail="mobile"
                 class="scrollbar-hide absolute inset-0 overflow-y-auto pb-2 snap-y snap-mandatory touch-pan-y"
-                aria-label="Product media"
+                aria-label={words.media}
               >
                 <div class="flex flex-col gap-2 pt-0.5">
                   {galleryItems.map((itemData, index) => (
@@ -336,11 +344,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                       data-poster-url={itemData.posterUrl ?? undefined}
                       data-video-duration={itemData.duration ?? undefined}
                       data-alt-text={itemData.altText}
-                      aria-label={
-                        itemData.item.kind === "video"
-                          ? `Play video ${index + 1}: ${itemData.altText}`
-                          : `View image ${index + 1}: ${itemData.altText}`
-                      }
+                      aria-label={thumbnailLabel(itemData, index)}
                       aria-current={
                         itemData.item.id === featuredMedia?.id
                           ? "true"
@@ -380,8 +384,8 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                             </span>
                           </span>
                           <span class="absolute bottom-1 inset-s-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-semibold leading-none text-white">
-                            Video
-                            {itemData.duration ? ` · ${itemData.duration}` : ""}
+                            {words.video}
+                            {itemData.duration ? ` · ${clock(itemData.duration)}` : ""}
                           </span>
                         </>
                       )}
@@ -403,7 +407,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                 type="button"
                 data-scroll-control="mobile-down"
                 class="pointer-events-none absolute bottom-0 inset-s-0 inset-e-0 z-10 flex h-11 items-end justify-center pb-1 opacity-0 transition-opacity duration-300 focus-visible:outline-2 focus-visible:outline-foreground motion-reduce:transition-none"
-                aria-label="Scroll product media down"
+                aria-label={words.scrollMediaDown}
                 tabindex="-1"
               >
                 <span class="rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-xs">
@@ -423,7 +427,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
             type="button"
             data-scroll-control="desktop-up"
             class="pointer-events-none absolute -top-1 inset-s-0 inset-e-0 z-10 flex h-11 items-start justify-center opacity-0 transition-opacity duration-300 focus-visible:outline-2 focus-visible:outline-foreground motion-reduce:transition-none"
-            aria-label="Scroll product media up"
+            aria-label={words.scrollMediaUp}
             tabindex="-1"
           >
             <span class="rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-xs">
@@ -434,7 +438,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
           <div
             data-thumbnail-rail="desktop"
             class="custom-scrollbar absolute inset-0 flex flex-col gap-3 overflow-y-auto scroll-smooth pe-1 pb-4 snap-y snap-mandatory motion-reduce:scroll-auto"
-            aria-label="Product media"
+            aria-label={words.media}
           >
             {galleryItems.map((itemData, index) => (
               <button
@@ -448,11 +452,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                 data-poster-url={itemData.posterUrl ?? undefined}
                 data-video-duration={itemData.duration ?? undefined}
                 data-alt-text={itemData.altText}
-                aria-label={
-                  itemData.item.kind === "video"
-                    ? `Play video ${index + 1}: ${itemData.altText}`
-                    : `View image ${index + 1}: ${itemData.altText}`
-                }
+                aria-label={thumbnailLabel(itemData, index)}
                 aria-current={
                   itemData.item.id === featuredMedia?.id ? "true" : "false"
                 }
@@ -490,7 +490,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
                       </span>
                     </span>
                     <span class="absolute bottom-1 inset-s-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                      Video{itemData.duration ? ` · ${itemData.duration}` : ""}
+                      {words.video}{itemData.duration ? ` · ${clock(itemData.duration)}` : ""}
                     </span>
                   </>
                 )}
@@ -510,7 +510,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
             type="button"
             data-scroll-control="desktop-down"
             class="pointer-events-none absolute bottom-0 inset-s-0 inset-e-0 z-10 flex h-11 items-end justify-center pb-1 opacity-0 transition-opacity duration-300 focus-visible:outline-2 focus-visible:outline-foreground motion-reduce:transition-none"
-            aria-label="Scroll product media down"
+            aria-label={words.scrollMediaDown}
             tabindex="-1"
           >
             <span class="rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-xs">
@@ -526,7 +526,7 @@ const listHidden = Math.max(0, listMedia.length - LIST_VISIBLE);
     <input type="checkbox" id="gallery-show-all" class="gallery-show-all peer sr-only" aria-label={showAllLabel(listMedia.length)} />
   )}
   {listMedia.length > 0 && (
-    <ul class="gallery-list hidden gap-2 lg:grid" aria-label="Product media">
+    <ul class="gallery-list hidden gap-2 lg:grid" aria-label={words.media}>
       {/* Stacked: each photo in its own (bounded) ratio, as Dawn stacks them;
           the two-across grid keeps one ratio so its rows line up. */}
       {listMedia.map((entry, index) => {

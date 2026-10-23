@@ -160,6 +160,15 @@ export interface CatalogCopy {
     imageZoom: string;
     closeZoom: string;
     zoomHint: string;
+    /** The gallery's thumbnail rails and photo list. */
+    media: string;
+    scrollMediaUp: string;
+    scrollMediaDown: string;
+    /** A thumbnail: its position (in the page's digits) and the merchant's words for the photo. */
+    viewImage: (position: string, name: string) => string;
+    playVideo: (position: string, name: string) => string;
+    /** A video thumbnail's badge. */
+    video: string;
     sections: string;
     description: string;
     details: string;
@@ -345,6 +354,12 @@ const EN: CatalogCopy = {
     imageZoom: "Product image zoom",
     closeZoom: "Close image zoom",
     zoomHint: "Double tap to zoom • Drag to pan",
+    media: "Product media",
+    scrollMediaUp: "Scroll product media up",
+    scrollMediaDown: "Scroll product media down",
+    viewImage: (position, name) => `View image ${position}: ${name}`,
+    playVideo: (position, name) => `Play video ${position}: ${name}`,
+    video: "Video",
     optionValue: (option, value) => `${option}: ${value}`,
     optionSoldOut: (option, value) => `${option}: ${value}. Sold out.`,
     optionUnavailable: (option, value) => `${option}: ${value}. Not available with the current selection.`,
@@ -526,6 +541,12 @@ const BN: CatalogCopy = {
     imageZoom: "পণ্যের ছবি বড় করে দেখা",
     closeZoom: "বড় ছবি বন্ধ করুন",
     zoomHint: "বড় করতে দুবার ট্যাপ করুন • সরাতে টানুন",
+    media: "পণ্যের ছবি ও ভিডিও",
+    scrollMediaUp: "পণ্যের ছবিগুলো ওপরে সরান",
+    scrollMediaDown: "পণ্যের ছবিগুলো নিচে সরান",
+    viewImage: (position, name) => `${position} নম্বর ছবি দেখুন: ${name}`,
+    playVideo: (position, name) => `${position} নম্বর ভিডিও চালান: ${name}`,
+    video: "ভিডিও",
     optionValue: (option, value) => `${option}: ${value}`,
     optionSoldOut: (option, value) => `${option}: ${value}। স্টক শেষ।`,
     optionUnavailable: (option, value) => `${option}: ${value}। এই বাছাইয়ের সাথে পাওয়া যাচ্ছে না।`,

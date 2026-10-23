@@ -206,7 +206,8 @@ function itemFromButton(button: HTMLButtonElement): GalleryItem | null {
     mediaId: optional(button.dataset.mediaId),
     url,
     posterUrl: optional(button.dataset.posterUrl),
-    altText: button.dataset.altText?.trim() || "Product media",
+    // The gallery always writes the photo's words; else the product's own (never invented English).
+    altText: button.dataset.altText?.trim() || button.closest<HTMLElement>("[data-product-gallery]")?.dataset.fallbackAlt || "",
     source: "gallery",
     thumbnail: button,
   };
