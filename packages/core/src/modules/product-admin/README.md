@@ -54,7 +54,7 @@ Mounted at `/api/v1/admin/products` by `apps/api/src/routes/admin/products.ts`. 
 
 - `GET /` takes `page` (reaches the first 1,000 rows, 10,000 on a Paid plan profile) or `after` and `before` cursors. A text search ranks by relevance, pages by position and also matches an exact SKU barcode, case-insensitively.
 - Tax classification routes live in `admin/taxes.ts`: `GET /api/v1/admin/taxes/classifications` (`taxes.view`) and `PUT /api/v1/admin/taxes/classifications/{kind}/{id}` (`taxes.manage`). The write needs `expectedVersion` and `expectedAggregateRevision`.
-- Setting a cost per item (`cost`, `skuCosts`) needs `products.view_costs` (`apps/api/src/routes/admin/cost-access.ts`).
+- Setting a cost per item (`cost`, `skuCosts`) needs `products.view_costs` (`apps/api/src/routes/admin/cost-access.ts`). Quantity-bearing product, variant and matrix writes (starting stock, quantity edits) also need `products.adjust_stock`, checked separately from `products.edit` (`apps/api/src/routes/admin/stock-access.ts`).
 
 ## Rules
 

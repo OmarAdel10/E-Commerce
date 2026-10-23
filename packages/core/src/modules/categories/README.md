@@ -5,7 +5,7 @@ Category records, their publication rules, revision-guarded admin writes and the
 ## Entries and layer
 
 - `browser.ts` exports `categories.validation.ts` (create, update, status, move and revision-claim schemas, `CATEGORY_BATCH_LIMIT` 90). `index.ts` exports everything in `browser.ts`, plus `categories.service.ts`, `categories.storefront.ts`, `categories.publication.ts`, `categories.revision.ts` and `categories.tree.ts`.
-- Layer L4. The domain imports `custom-fields`, `media-references` and `products`. `catalog`, `navigation`, `storefront` and `store-transfer` import `categories`.
+- Layer L4. The domain imports `custom-fields`, `media-references`, `products` and `translations` (public category text and handles). `catalog`, `navigation`, `storefront` and `store-transfer` import `categories`.
 
 ## Owns
 
@@ -41,7 +41,7 @@ Public routes are in `apps/api/src/routes/categories.ts` under `/api/v1/categori
 - **Slugs.** A typed taken slug is a conflict (trash counts). An omitted slug derives from the name and gets `-2`, `-3` until free.
 - **Canonical path** is `/categories/<current slug>` or blank.
 - **Publishing** needs no products. `getCategoryPublishReadiness` returns a blocker when no buyer-resolvable product exists and warnings for a missing image or descriptions; it only informs.
-- **Reverse-reference guards.** A status other than `published`, and trash, are refused while an active dynamic collection uses the category. A category with assigned products cannot be trashed. A permanent delete bumps each affected product's `aggregate_revision` and strips the id from every collection `config` in the same batch.
+- **Reverse-reference guards.** A status other than `published`, and trash, are refused while an active dynamic collection uses the category. A category with live assigned products (`deleted_at` is NULL) cannot be trashed; products already in the trash do not block it. A permanent delete bumps each affected product's `aggregate_revision` and strips the id from every collection `config` in the same batch.
 - **Media.** A create or edit that references a file in deleting state is refused (`media-references` guard).
 - **`listing_template`** is a listing template id from the theme document or NULL (the theme's default). Collections and brands carry the same field.
 

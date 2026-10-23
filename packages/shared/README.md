@@ -30,16 +30,15 @@ import { buildStorefrontPath } from "@scalius/shared/storefront-url";
 import { escapeHtml } from "@scalius/shared/html-escape";
 import { sanitizeHtml } from "@scalius/shared/html-sanitize";
 import { parseShortcodes } from "@scalius/shared/shortcodes";
-import { toISOString, unixToDate, formatDate } from "@scalius/shared/timestamps";
-import { getStatusBadgeClass } from "@scalius/shared/status-badges";
+import { toISOString, unixToDate } from "@scalius/shared/timestamps";
+import { formatDateTime, formatNumber } from "@scalius/shared/locale-format";
 ```
 
 ## Files
 
 | File | Purpose | Key Exports |
 |------|---------|-------------|
-| `utils.ts` | Tailwind class merging (re-exports date/badge utils for backward compat) | `cn()`, re-exports `unixToDate`, `formatDate`, `getStatusBadgeClass` |
-| `status-badges.ts` | Tailwind CSS badge styling for all 11 order statuses (pending, processing, confirmed, shipped, delivered, completed, cancelled, returned, refunded, partially_refunded, incomplete) | `getStatusBadgeClass()` |
+| `utils.ts` | Tailwind class merging (re-exports `unixToDate` for backward compat) | `cn()`, re-exports `unixToDate` |
 | `currency-policy.ts` | One row per supported currency: ISO exponent, CLDR cash increment, display digits (CLF and UYW excluded); the price increment and COD cash increment policies | `SUPPORTED_CURRENCY_CODES`, `EXCLUDED_CURRENCY_CODES`, `currencyPolicy()`, `currencyExponent()`, `defaultPriceIncrementMinor()`, `priceIncrementChoices()`, `resolvePriceIncrementMinor()`, `PricingCurrency`, `cashOnDeliveryIncrementMinor()` |
 | `currency.ts` | ISO 4217 currency formatting with `currency.js` precision | `CurrencyConfig`, `DEFAULT_CURRENCY`, `getDecimalPlaces()`, `getPriceIncrementMinor()`, `getCurrencySymbol()`, `getCurrencyCode()`, `formatPrice()`, `formatPriceShort()` |
 | `money.ts` | Integer minor-unit money: the one decimal/minor boundary pair, price-increment rounding and exact catalog discount rounding | `toMinor()`, `fromMinor()`, `toIncrementMinor()`, `roundToIncrementMinor()`, `percentOfMinor()`, `PriceIncrementError`, `percentToBps()`, `bpsToPercent()`, `discountedPriceMinor()` |
@@ -58,7 +57,8 @@ import { getStatusBadgeClass } from "@scalius/shared/status-badges";
 | `html-escape.ts` | HTML entity escaping for user values in templates | `escapeHtml()` -- escapes `&`, `<`, `>`, `"`, `'` |
 | `html-sanitize.ts` | Defense-in-depth XSS sanitizer for merchant-authored rich HTML | `sanitizeHtml()` -- strips executable/embedded tags, `on*` handlers, and dangerous URL schemes while preserving safe content structure |
 | `shortcodes.ts` | CMS shortcode parsing shared by storefront rendering and API cache invalidation | `parseShortcodes()`, `normalizeShortcodeAttributeQuotes()`, `ShortcodeMatch` |
-| `timestamps.ts` | Unix epoch seconds utilities, date formatting for display | `toISOString()`, `unixToDate()`, `formatDate()`, `formatDateShort()`, `formatRelativeDate()`, `formatDateVerbose()` |
+| `timestamps.ts` | Unix epoch seconds utilities | `toISOString()`, `unixToDate()` |
+| `locale-format.ts` | Locale-aware number and date-time formatting (cached `Intl` formatters), region and language locales, text direction | `numberLocale()`, `dateLocale()`, `formatNumber()`, `formatDateTime()`, `textDirection()` |
 | `storefront-url.ts` | Storefront URL path construction | `buildStorefrontPath()` |
 
 ## Dependencies

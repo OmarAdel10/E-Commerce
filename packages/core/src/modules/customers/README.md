@@ -120,7 +120,7 @@ The default is `{ email: optional, whatsapp: off, channels: [email], phoneOption
 | Item | Rules |
 | --- | --- |
 | Tags (`customer_tag_links`) | Normalised: NFC, lower-case, spaces collapsed, no commas, 1 to 40 characters. At most 50 per customer, 10 per bulk request, 500 customers per bulk request. Bulk writes bind ids and tags as one JSON value (`json_each`). |
-| Segments (`customer_segments`) | A saved filter, evaluated live as one `WHERE` over `customers` and `customer_order_stats`. At most 12 conditions (36 bound values), 200 live segments, name 1 to 80 characters unique ignoring case. Updates need `expectedRevision` (409 when stale). Soft delete only, refused while a live promotion uses it. Match `all` or `any`. Counts stop at 100,000 (`capped`). |
+| Segments (`customer_segments`) | A saved filter, evaluated live as one `WHERE` over `customers` and `customer_order_stats`. At most 12 conditions (36 bound values), 200 live segments, name 1 to 80 characters unique ignoring case. Updates need `expectedRevision` (409 when stale). Soft delete only, refused while a live promotion uses it or any price list (even a non-active one) prices the segment; delete that price list first. Match `all` or `any`. Counts stop at 100,000 (`capped`). |
 | CSV export | Live customers of a filter, a segment or up to 100 chosen ids. Keyset pages of 200, at most 10,000 rows and 16 MiB. Spreadsheet-safe cells. Header `X-Export-Limited` says when it stopped early. |
 
 Segment fields and limits are in `packages/shared/src/customer-marketing.ts`. Money in segment definitions is decimal major units at the HTTP edge and minor units in storage.

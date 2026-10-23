@@ -1,12 +1,12 @@
 # Notifications
 
-The notifications domain sends buyer and staff messages over email, SMS, WhatsApp and admin push. It owns the outbox, the delivery receipts, the channel rules, the message templates and the provider pause markers. This document is for contributors and operators.
+The notifications domain sends buyer and staff messages over email, SMS, WhatsApp and push (Web Push and legacy Firebase). It owns the outbox, the delivery receipts, the channel rules, the message templates and the provider pause markers. This document is for contributors and operators.
 
 ## Where it fits
 
 - Layer L6. Imports from other domains: `order-kernel`, `platform`, `settings` (`scripts/core-domain-graph.allow.json`).
 - `index.ts` is the server API. `browser.ts` is the closed browser entry: `notification-types.ts`, `message-copy.ts` and `notification-templates.ts` (pure, no database).
-- Provider clients live in `packages/core/src/integrations/` (`email`, `sms`, `whatsapp.ts`, `firebase`, `provider-port.ts`).
+- Provider clients live in `packages/core/src/integrations/` (`email`, `sms`, `whatsapp.ts`, `firebase`, `web-push`, `provider-port.ts`).
 - The API resolves message content from the digital, gift-cards and reviews domains at send time (`apps/api/src/notification-content/*`).
 - OTP codes and challenges belong to the customers domain ([README](../customers/README.md)). This domain supplies only the message copy and the provider pause markers.
 
@@ -17,9 +17,9 @@ The notifications domain sends buyer and staff messages over email, SMS, WhatsAp
 | Email | buyer, staff | Cloudflare Email Service (default, `EMAIL` binding), Resend, or an app provider | `email` | `getEmailProviderReadiness` |
 | SMS | buyer | an app provider (the Bangladesh gateways are the Bangladesh pack's) | `sms` | `getSmsProviderReadiness` |
 | WhatsApp | buyer | Meta Cloud API template message | `whatsapp` | `isWhatsAppCloudApiConfigured` |
-| Push | staff | Firebase Cloud Messaging | `firebase` | `getFirebaseServiceAccountReadiness` |
+| Push | staff, buyers | Web Push (built in; VAPID keys derive from `SCALIUS_SECRET`) reaches staff dashboard browsers and signed-in buyers' account browsers. Legacy Firebase Cloud Messaging still reaches staff devices that registered a token. An app push provider can send buyer push instead. | `firebase` (FCM only); Web Push needs none, only an https dashboard address | `getFirebaseServiceAccountReadiness` (FCM) |
 
-- Email and SMS are provider ports. A saved choice `<plugin id>:<provider id>` names an app provider. Core asks the API's `AppProviders` lookup only for that case (`provider-port.ts`, [Plugins](../plugins/README.md)). Without a lookup, an app choice is not ready and nothing is sent. WhatsApp and push are not ports.
+- Email and SMS are provider ports. A saved choice `<plugin id>:<provider id>` names an app provider. Core asks the API's `AppProviders` lookup only for that case (`provider-port.ts`, [Plugins](../plugins/README.md)). Without a lookup, an app choice is not ready and nothing is sent. WhatsApp is not a port. Buyer push is a port only when `notifications.pushProvider` names an app provider; Web Push and FCM are not.
 - An app answer `retryable: false` ends the receipt as skipped. An uncertain retryable failure is retried only when the message has an idempotency key (`apps/api/src/plugins/providers/messaging.ts`).
 - Credentials use strict reads with `CREDENTIAL_ENCRYPTION_KEY`. Never fall back to a JWT secret. Unreadable ciphertext counts as not configured. SMS and WhatsApp also treat placeholder values (`dummy`, `example`, `changeme`, `your-token-here`, repeated digits) as not configured.
 - Setup docs: [email](../../integrations/email/README.md), [Firebase](../../integrations/firebase/README.md), [WhatsApp and Meta](../../integrations/meta/README.md).
@@ -30,7 +30,7 @@ The notifications domain sends buyer and staff messages over email, SMS, WhatsAp
 
 | Group | Types | Buyer channels | Staff channels |
 |---|---|---|---|
-| Order (`ORDER_NOTIFICATION_TYPES`, 16) | `order_created` through `order_partially_refunded`, `payment_balance_paid`, `support_request_submitted`, `support_request_status_updated` | email, sms, whatsapp | push |
+| Order (`ORDER_NOTIFICATION_TYPES`, 19) | `order_created` through `order_partially_refunded` (including `order_updated`, `return_approved` and `return_received`), `payment_balance_paid`, `support_request_submitted`, `support_request_status_updated` | email, sms, whatsapp, push (Web Push to subscribed account browsers or the app push provider) | push |
 | Conversation | `conversation_reply` (to the buyer), `conversation_message` (to staff) | reply: email, sms | message: push, email |
 | Resolved (4) | `order_digital_delivered`, `gift_card_issued`, `gift_card_sent`, `review_request` | email, sms | none |
 | Staff alert | `review_pending`, `digital_keys_exhausted` | none | push, email |
@@ -112,7 +112,7 @@ fact commits
 
 ## Message content
 
-- **Templates.** The 20 templated types (16 order, 4 resolved) use merchant templates. Defaults are in the store's checkout language: Bangla when the active language's base code is `bn`, otherwise English. A changed template is sent as typed. Copy equal to the default is not stored.
+- **Templates.** The templated types (`TEMPLATED_NOTIFICATION_TYPES`: the order types and the 4 resolved types) use merchant templates. Defaults are in the store's checkout language: Bangla when the active language's base code is `bn`, otherwise English. A changed template is sent as typed. Copy equal to the default is not stored.
 - **Limits.** Subject 200, email body 10,000, SMS body 1,000 characters. A save rejects variables the event cannot fill (`variablesForEvent()` in `notification-templates.ts` lists them per event).
 - **Rendering.** In an email body or SMS, a line whose variables are all empty is left out. Elsewhere an empty variable is left blank and the text closes up. A subject or message that renders empty uses the event default.
 - **Email frame.** `renderOrderEmail()` wraps the merchant message: the header logo (absolute URL) or the store name, the items and totals (each discount by promotion name and code), the payment state, the delivery address and method, the support contact and one order link. The link is `/account/orders/<id>` for account orders and `/track-order?order=<number>` for guests. Phone and email never enter URLs.

@@ -11,7 +11,7 @@ The orchestrator for the public storefront reads: the homepage, landing pages, t
 - `app-render.ts`: `planPluginRenderStoreFacts`, `readPluginBlockContext`.
 - `homepage-sections.ts`: `readThemeBrandAssets`, `readThemeMedia`, `HomeMediaAsset`.
 
-Layer L10. The domain imports `analytics`, `catalog`, `categories`, `collections`, `markets`, `navigation`, `pages`, `platform`, `plugins` and `settings`. Nothing in core imports `storefront`; only API routes call it (`apps/api/src/routes/storefront.ts`, `routes/admin/settings/site.ts`, `plugins/storefront-render.ts`).
+Layer L10. The domain imports `analytics`, `catalog`, `categories`, `collections`, `markets`, `navigation`, `objects`, `pages`, `platform`, `plugins`, `price-lists`, `settings` and `translations`. Nothing in core imports `storefront`; only API routes call it (`apps/api/src/routes/storefront.ts`, `routes/admin/settings/site.ts`). App components are drawn by the storefront extension host (`apps/storefront/src/lib/extensions/host.ts`), not in core.
 
 ## Owns
 
@@ -25,7 +25,7 @@ All routes are in `apps/api/src/routes/storefront.ts` under `/api/v1/storefront`
 
 | Method and path | Note |
 |-----------------|------|
-| `GET /homepage` | `getHomepageData`. Takes no query string |
+| `GET /homepage` | `getHomepageData`. Takes no query parameter other than the page's presence |
 | `GET /landing/{slug}` | A theme landing page's sections |
 | `GET /pages/slug/{slug}` | `getPageRenderData` |
 | `GET /layout` | `getLayoutData`, plus the public Platform origins |
@@ -47,5 +47,5 @@ How a page renders from one batch, the per-page API and D1 budgets and `pnpm per
 - **Navigation failure is local.** A corrupt placement or menu logs a warning and renders without that navigation. It does not fail the page.
 - **Analytics.** The layout drops scripts that are not publicly injectable and applies `shouldUsePartytown` and `processAnalyticsScript` from `analytics`.
 - **Meta CAPI.** `metaCapi.browserEventsEnabled` is true only for an enabled pixel with a readable access token. The token is decrypted (with `credentialEncryptionKey`) only when the stored document turns the pixel on.
-- **Apps.** App sections draw beside batch 2. A failed draw returns no section and sets `deps.validUntil` 60 seconds ahead, so the page retries.
+- **Apps.** The API plans app section data beside batch 2: `renderApps` (`homeAppRenderer` in `apps/api/src/routes/storefront.ts`) returns each section's component data (its images, products and objects), not markup. If that read fails, the page goes out without the app sections and `deps.validUntil` is set `PLUGIN_RENDER_RETRY_SECONDS` ahead, so the page retries. The storefront extension host draws the components; a late or failed draw there marks the page degraded and the page cache never stores it.
 - **Store shape.** `selectStoreShapeCounts` is one statement that joins the layout batch. Counts read at most 1,000 rows and existence checks stop at the first match. Category facts count only what a buyer can reach: a published category with all ancestors published and a public product (`product_buyer_state.is_public`).

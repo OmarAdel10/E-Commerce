@@ -38,7 +38,7 @@ None of these tables is buyer-visible, so no DVC dependency applies.
 - A pool needs a live, tracked, digital SKU. A variant has at most one pool and at most 10 files.
 - No manual path changes a digital SKU's stock (`products/digital-stock-rules.ts`). A SKU turns digital only without stock, leaves digital only without unused keys, and one with a ready pool keeps tracking.
 - Delivery happens after settlement, or after staff confirmation when `checkout.autoFulfilMode` is `after_confirmation` ([`fulfilment`](../fulfilment/README.md)).
-- A key is assigned at most once. When a pool has too few keys, the whole batch rolls back and nothing is delivered. A `digital_keys_exhausted` staff alert is recorded (deduped per variant per day). The 15-minute sweep retries after an import.
+- A key is assigned at most once. When a pool has too few keys, the whole batch rolls back and nothing is delivered. A `digital_keys_exhausted` staff alert is recorded (deduped per variant per day). The auto-fulfil sweep (`auto_fulfil_sweep`, one job of the `MAINTENANCE_SWEEPS` rotation) retries after an import: it comes round every 15 minutes on Paid and once per rotation (one job a minute) on Free.
 - `digitalDeliverableSql` is 1 when the variant has a ready file (product-wide or its own) or a ready pool, and no ready pool is empty. Otherwise cart validation answers `fulfilment_unavailable`.
 - Uploads use fixed 50 MiB parts (the last may be shorter), at most 40 parts. The largest file is 2,097,152,000 bytes. Replacing a file moves `current_r2_key`, so earlier buyers get the new file.
 - A cancelled, refunded or returned order ends access. Downloads and key reveals stop, and lists show the access as ended.

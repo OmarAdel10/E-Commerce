@@ -80,16 +80,18 @@ places: the live row (`theme_settings`), one shared draft
   Restore puts a published version in the draft (never live); discard puts
   the live document back in the draft at a new revision.
 - **Publish** writes the live row, its version row (what changed since the
-  previous live document, at most 30 structured changes plus a count, and an
+  previous live document, at most 20 structured changes (`THEME_VERSION_CHANGES_MAX`) plus a count, and an
   optional 500-character note), prunes history to the newest **20 versions**
   and rebases the draft onto the new live revision, all in one batch.
 - A version row stores `{"meta": {changes, moreChanges, note}, "theme": …}`;
   the history list reads only `meta` (`json_extract`) and the publisher's
-  name (joined from `user`), ten versions a page. Rows from before history
+  name (joined from `user`), five versions a page (`THEME_VERSION_PAGE_LIMIT`). Rows from before history
   metadata hold the bare document and list with no changes.
-- Reads and writes accept only the current version, at most 512 KiB; an
-  older document reads as unreadable (a shape change resets the rows in a
-  migration).
+- Writes accept only the current document version (`STOREFRONT_THEME_DOCUMENT_VERSION`),
+  at most 512 KiB. Stored reads (`parseStoredStorefrontThemeDocument`) upgrade
+  readable older versions (the oldest is `STOREFRONT_THEME_OLDEST_READABLE_VERSION`);
+  a document older than that, or invalid, reads as unreadable. A shape change
+  that cannot be upgraded resets the rows in a migration.
 
 Previews: a draft preview follows saved edits; a version preview shows that
 version. The 52-character bearer is `tpc_`/`tpv_` plus `D` and 47 random
@@ -113,8 +115,10 @@ DB failure resolves the empty configuration so callers fail closed).
 only for local development) and writes the mirror through.
 
 Admin API: `GET`/`PUT /api/v1/admin/settings/platform` (adds `readiness` and
-`effective`). Public API: `GET /api/v1/platform` returns only the four origins
-with a 60s `Cache-Control`; the storefront gets them in the `platform` block of
+`effective`). Public API: `GET /api/v1/platform` returns the public origins (and
+the setup-token and identity-handoff flags) read from the current settings, with
+`Cache-Control` and `Cloudflare-CDN-Cache-Control` both `no-store`; the Worker
+entry keeps a separate per-colo mirror up to 60 s old. The storefront gets them in the `platform` block of
 `GET /api/v1/storefront/layout`.
 
 ## Currency
@@ -145,9 +149,9 @@ documents (`notifications/documents.ts`) and their rules
 (`notifications/channel-settings.ts`): `getNotificationChannels` /
 `updateNotificationChannels` and the admin equivalents read and write the
 `notifications` document. Customer channels are
-limited to implemented delivery paths (`email`, `sms`, `whatsapp`); SMS and
+limited to implemented delivery paths (`email`, `sms`, `whatsapp`, and `push` for ordinary order types to browsers a signed-in buyer subscribed; conversation replies and resolved messages stay email/SMS); SMS and
 WhatsApp saves require a ready provider that is not paused by
-`notification_provider_health`. Every order event defaults to `["email"]`.
+`notification_provider_health`. Every order event defaults to `["email"]`, except pickup-ready, digital-delivery and gift-card-issued messages, which default to email plus SMS.
 
 ## Admin routes (`apps/api/src/routes/admin/settings/`)
 

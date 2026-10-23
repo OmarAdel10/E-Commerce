@@ -17,7 +17,7 @@ RedX joins when RedX publishes API documentation that can be read (its developer
 ## Install
 
 - **Bundled (Workers Free, and the demo).** `pnpm plugin add plugins/bangladesh`, then deploy. The pack shows in Apps as installed. `scalius.plugins.json` lists it, so a deployment of this repository has it.
-- **Sandboxed (Workers Paid).** `pnpm plugin build` writes `dist/plugin.js` (about 2.4 MiB with the places) and `dist/assets/`. There is no install from the dashboard until the registry exists.
+- **Sandboxed (Workers Paid).** `pnpm plugin build` writes `dist/plugin.js` (about 2.4 MiB with the places) and `dist/assets/`. A Paid store can install it from the dashboard by uploading the built package ZIP (Apps > upload), or from a registry the merchant adds. The official registry is not configured yet (`OFFICIAL_PLUGIN_REGISTRY` has no index URL or keys), so the pack is not listed there.
 
 A store that picks Bangladesh in the new-store setup (`/admin/welcome`) sees the pack next. It offers **Activate** when the pack is in this deployment, and the `pnpm plugin add` command when it is not.
 
@@ -147,5 +147,5 @@ pnpm exec vitest run plugins/bangladesh apps/api/src/plugins/bangladesh-pack.e2e
 - `src/*.test.ts` run the app over the SDK harness with scripted gateway and service answers. The cases script the gateway and service answers.
 - `bangladesh-pack.e2e.test.ts` runs the bundled pack on the migrated schema. It covers activation with only the places, BDBulkSMS and FraudBD features on (only their ports and jobs are registered; an off feature's provider says which switch turns it on), the 11,550-place seed, a sign-in code sent from its references, a fraud check, a second activation and an uninstall.
 - `bangladesh-couriers.e2e.test.ts` covers the couriers' fail-closed state before activation, the webhook URLs, Pathao's place ids and once-only bulk booking. `bangladesh-couriers.outcome.d1.test.ts` runs core's booking-outcome cases (lost answers, refusals, Steadfast's lookup) through the pack.
-- `bangladesh-bkash.e2e.test.ts` takes an order through checkout, a bKash session, the return and the queue with only the bKash feature on.
+- `bangladesh-bkash.e2e.test.ts` takes an order through checkout, a bKash session, the return and the payment-event row (`webhook_events`: applied at once, retried by the scheduled drain) with only the bKash feature on.
 - `bangladesh-sslcommerz.e2e.test.ts` covers SSLCommerz's fail-closed state before activation, a validated IPN credited once, a tampered IPN, a cancel return, and a refund.

@@ -12,6 +12,7 @@ The store's languages and the translation of its buyer text (docs/MARKETS-DESIGN
 - `resolveTranslatedRecord()` and `translationChain()` in `@scalius/shared/translations` are the one fallback: the page's locale in its market, the page's locale, the default locale in the market, the default locale, then the source value. An empty field falls through.
 - A translation records the digest of each field's source (`source_digest`). A source edit marks the field Outdated; outdated text is still served (Shopify).
 - A root read folds no translation and keeps its bytes. A presence read folds its translations into a statement it already runs (`translationColumns`, `productTranslationRowsSql`), or, for rows from code or another read (delivery rates, payment methods), reads them in one statement (`readTranslationChains`).
+- Theme text is translated on presence reads: the layout, homepage, landing and template reads translate the stored theme (`storefrontThemeTextOf`, `translateStorefrontTheme`) and app component settings through the same context. Text without a translation serves the source. A theme preview keeps its draft's own words.
 - A handle lookup tries the source handle, then a localized one (the page's language first, else any): a buyer who switches language on a localized URL still reaches the page.
 
 ## Files
@@ -31,4 +32,4 @@ The store's languages and the translation of its buyer text (docs/MARKETS-DESIGN
 
 ## Deferred
 
-Search matches and sorts by source text. Attribute names and values, theme text, the SEO document, email, SMS and invoice templates, and agent product sections serve the source text. The platform has no machine translation provider; an app provides one through the `translation` port.
+Search matches and sorts by source text. Attribute names and values, the SEO document, email, SMS and invoice templates, and agent product sections serve the source text. The platform has no machine translation provider; an app provides one through the `translation` port.

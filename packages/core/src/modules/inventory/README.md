@@ -73,7 +73,7 @@ Types: `reserved`, `preorder_reserved`, `released`, `deducted`, `preorder_deduct
 - For every SKU, `sum(inventory_levels.on_hand) = product_variants.stock`. A SKU inserted with stock books it at the default location. Reservations and releases carry no location.
 - Manual adjustments, stocktakes and scanner writes take an optional `locationId` (default when omitted), which is part of the operation request hash. A stocktake counts that location.
 - Product-editor stock edits and licence-key pools move stock at the default location. `assertSimpleConversionStockAtDefaultLocation()` (`product-admin`) blocks turning a simple product into an optioned one while its SKU holds units elsewhere.
-- Archive a location only when it is not the default, holds no units, has no open order set to ship from it, and has no open purchase order or transfer.
+- Archive a location only when it is not the default, holds no units, has no open order set to ship from it, has no open purchase order or transfer, and is not the last active location of a sales channel (refused as `location_sells_channel`; the database holds the same rule against concurrent writes, migration 0183).
 - A new location without a country takes the store's (the backup market's). Migration 0122 gave the untouched default location the store's country.
 - Sales channels sell the on-hand of their linked locations (`sales_channel_locations`, MARKETS-DESIGN D6). A new location is linked to every channel. A regular reservation with `salesChannelId` (checkout) also needs `stock - reserved_stock` minus the SKU's levels at the channel's unlinked locations to cover the quantity; reservations themselves stay location-free.
 
@@ -99,7 +99,7 @@ Types: `reserved`, `preorder_reserved`, `released`, `deducted`, `preorder_deduct
 
 **Cost visibility.** Unit costs, margins, valuation and purchase-order money need `products.view_costs`. Reads leave them out otherwise (`cost-visibility.ts`).
 
-**Unit cost.** `product_variants.cost_minor` is the SKU cost in minor units (null = none). Buyers never see it. `setSkuCosts()` sets up to 100 SKUs in one batch, optionally guarded by the cost the merchant saw. The trigger `order_items_unit_cost_snapshot` copies the cost to `order_items.unit_cost_minor` when a line is created. That value never changes.
+**Unit cost.** `product_variants.cost_minor` is the SKU cost in minor units (null = none). Buyers never see it. `setSkuCosts()` sets up to 100 SKUs in one batch, optionally guarded by the cost the merchant saw. The trigger `order_items_line_snapshot` copies the cost to `order_items.unit_cost_minor`, and the SKU code to `order_items.sku`, when a line is created. Those values never change.
 
 **Stock commands** (`stock-commands.ts`). A purchase-order receipt or a transfer ship, receive or cancel commits as one batch of at most 100 SKUs:
 
@@ -129,8 +129,10 @@ Mounted under `/api/v1/admin/inventory` (`apps/api/src/routes/admin/inventory.ts
 
 | Paths | Permission |
 |-------|------------|
-| `GET /` (sections `variants`, `movements`, `alerts`), `GET /levels`, `GET /{variantId}/levels`, `POST /labels/preview`, `POST /labels/artifact`, `POST /movements/export`, `GET /alerts`, `GET /scanner/lookup` | `products.view` |
-| `POST /{variantId}/adjust`, `POST /stock-adjust`, `POST /stock-set`, `PATCH /alerts`, `PUT /{variantId}/alert-level`, `PUT /default-alert-level` | `products.edit` |
+| `GET /` (sections `variants`, `movements`, `alerts`), `POST /labels/preview`, `POST /labels/artifact`, `POST /movements/export`, `GET /alerts`, `GET /scanner/lookup` | `products.view` |
+| `GET /levels`, `GET /{variantId}/levels` | `products.view` or `inventory.view` |
+| `POST /{variantId}/adjust`, `POST /stock-adjust`, `POST /stock-set` | `products.adjust_stock` |
+| `PATCH /alerts`, `PUT /{variantId}/alert-level`, `PUT /default-alert-level` | `products.edit` |
 | `GET /valuation`, `PUT /costs` (`PUT` also needs `products.edit`) | `products.view_costs` |
 | `GET`, `POST /locations`; `PATCH /locations/{id}`; `POST /locations/{id}/archive`, `unarchive`, `default` | read: `products.view`, `inventory.view` or `settings.general.view`; write: `inventory.manage` or `settings.general.edit` |
 | `/suppliers`: `GET`, `POST`, `GET`/`PATCH /{id}`, `POST /{id}/archive`, `unarchive` | read `inventory.view`; write `inventory.manage` |

@@ -7,7 +7,7 @@ No checkout, order or payment code calls this domain. An installed app that must
 ## Entries and layer
 
 - `index.ts` exports the service functions and the port type `FraudProvider`.
-- Layer L0: the domain imports no other domain (`scripts/core-domain-graph.allow.json`). It uses `packages/core/src/integrations/provider-port.ts` for the app lookup and `integrations/retired-providers.ts` for checkers saved before the move.
+- Layer L0: the domain imports no other domain (`scripts/core-domain-graph.allow.json`). It uses `packages/core/src/integrations/provider-port.ts` for the app lookup. A stored row whose `providerType` is not a qualified app provider id is dropped on read (`toProvider()` in `fraud-checker.service.ts`).
 
 ## Checkers are apps
 

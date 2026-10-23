@@ -17,7 +17,7 @@ Main files:
 
 ## Layer and imports
 
-- Layer L8. Imports `attributes`, `brands`, `categories`, `customer-marketing`, `inventory`, `markets`, `product-admin`, `products` and `settings`.
+- Layer L8. Imports `attributes`, `brands`, `categories`, `customer-marketing`, `customers` (canonical address resolution in customer import), `inventory`, `markets`, `product-admin`, `products` and `settings`.
 - Nothing imports it except the API routes.
 
 ## Flow
@@ -45,7 +45,7 @@ A batch may stop early when its time budget runs out or D1's per-invocation quer
 
 - Remote media get the id `media_u<sha256(url)[:24]>_<suffix>`. One URL downloads once per store. An image already on the product is left alone. This store's own media URLs (a re-imported export) are reused.
 - New images append in one aggregate-revision write. The first becomes featured when the product has none. A SKU without an image gets the one the file named.
-- Downloads use the guarded media URL import that the API injects (public HTTPS, bounded size, signature checked). The scheduled backfill renders their renditions.
+- Downloads use the guarded media URL import that the API injects (public HTTPS, bounded size, signature checked). No Worker renders their renditions: an open dashboard renders them in the browser in the background (`PendingRenditionsLoader`, `pending-renditions-runner.ts`; see the [media README](../media/README.md)).
 
 ### Customers
 
@@ -71,10 +71,10 @@ Mounted at `/api/v1/admin/import` and `/api/v1/admin/export` by `apps/api/src/ro
 
 | Method and path | Batch limit | Permission |
 |-----------------|-------------|------------|
-| `POST /import/products` | 50 items | `products.create` or `products.edit` (`create` needs create, `upsert` needs both, `price` needs edit) |
+| `POST /import/products` | 50 items | `products.create` or `products.edit` (`create` needs create, `upsert` needs both, `price` needs edit). A file with costs also needs `products.view_costs`; a file with positive starting stock (outside `price` mode) also needs `products.adjust_stock` |
 | `POST /import/product-images` | 20 products, 250 images per product | `products.edit` and `media.upload` |
 | `POST /import/customers` | 100 items | `customers.create` or `customers.edit` (`upsert` needs both) |
-| `POST /import/inventory` | 100 items | `products.edit` |
+| `POST /import/inventory` | 100 items | `products.adjust_stock` |
 | `GET /export/products`, `GET /export/inventory` | page | `products.view` |
 
 The demo-store seed bundle (`pnpm demo:store --export`) is a separate tool that shares no code with this domain (see [`scripts/demo-store/README.md`](../../../../../scripts/demo-store/README.md)).

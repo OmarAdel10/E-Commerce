@@ -118,9 +118,10 @@ The report catalog (ids, columns, types, default sorts) is `packages/shared/src/
 
 ### Which orders count
 
-- **Sales orders:** not deleted, placed in the range on the store calendar, presented and reported in the store currency (`currency_code` and `shop_currency`), and not `incomplete` or `cancelled`. An `incomplete` order is a hosted payment the buyer never finished. Every sales figure, rate and breakdown reads these orders.
+- **Sales orders:** not deleted, placed in the range on the store calendar, booked in the report (store) currency (`shop_currency`), and not `incomplete` or `cancelled`. An `incomplete` order is a hosted payment the buyer never finished. Every sales figure, rate and breakdown reads these orders.
 - **Cancelled orders** count only in the cancellation rate. Most COD cancellations never shipped, so counting them would inflate gross sales and returns alike.
-- **Other currencies:** the store is single-currency. Orders in another currency count in `otherCurrencyOrders` and are never summed or converted. Report measures are presentment line amounts; they move to shop amounts before a second currency is enabled (Markets step 6).
+- **Presentment currencies:** an order placed in another market currency (`currency_code` differs from `shop_currency`) is a sales order. Its monetary measures convert to shop currency at the order's locked FX rate (`shopMinorSql`).
+- **Other store currencies:** an order whose `shop_currency` is not the report currency counts only in `otherCurrencyOrders`, never summed or converted.
 - **Test orders:** the schema has no test-order marker. Sandbox gateway orders count as real ones.
 
 ### Metric definitions
@@ -131,14 +132,14 @@ Per line of a sales order:
 |---|---|
 | Gross sales | `line_subtotal_minor`, less the line's included tax when prices include tax. Gift-card lines are excluded everywhere. |
 | Discounts | The line's discount allocation. Shipping discounts reduce shipping instead. |
-| Returns | A reversed order (`returned` or `refunded`): all of gross - discounts. Otherwise the share of gross - discounts for units in accepted return cases (`approved`, `receiving`, `completed`; `approved_quantity`, capped at the line quantity), floored to the minor unit. |
+| Returns | A reversed order (`returned` or `refunded`): all of gross - discounts. Otherwise the share of gross - discounts for units in accepted return cases (`approved`, `receiving`, `completed`; `approved_quantity`, capped at the line quantity), floored to the minor unit. When an order's confirmed money refund is smaller than that item-return value (a return refunded in part, a fee kept), the order's returns are capped to the refund converted to shop currency. |
 | Net sales | Gross - discounts - returns |
 | Taxes | Line tax less its returned share, plus shipping tax (order tax - every line's tax). None on a reversed order. |
 | Shipping | Shipping charged - shipping discount (order discount - every line's discount) - included shipping tax. Zero on a reversed order. |
 | Total sales | Net sales + shipping + taxes |
 | Net items sold | Quantity - returned quantity |
 | Average order value | (Gross - discounts) / orders, rounded to the minor unit |
-| Refunded | Confirmed refunds (`order_payments` with `payment_type = 'refund'` and `status = 'refunded'`) on the period's sales orders. A money refund is not itemised, so it does not change returns (which count units). |
+| Refunded | Confirmed refunds (`order_payments` with `payment_type = 'refund'` and `status = 'refunded'`) on the period's sales orders. A money refund is not itemised, so it does not change returns (which count units), except the partial-refund cap in Returns above. |
 
 Customers (identity is the customer record; an order without one is its own customer):
 

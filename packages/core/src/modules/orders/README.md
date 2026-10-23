@@ -37,7 +37,7 @@ Public entries: `index.ts` (the server API) and `browser.ts` (types, the archive
 
 ## Order Channel
 
-`orders.channel` says which surface created the order and never changes after insert (trigger `orders_channel_immutable`): the storefront checkout commit writes `online_store`, or `agent` when the commit carries a buyer agent's storefront context; `createOrder()` writes `admin`. `orders.channel_source` is an optional lowercase slug inside the channel: the dashboard's Sales channel picker sends a preset (`facebook`, `instagram`, `whatsapp`, `phone`, `walk_in`) or free text, which `normalizeOrderChannelSource()` (`@scalius/shared/order-channel`) stores as a slug of at most 64 characters, and which is part of the manual-order request hash. List and detail return both, `listOrders()` filters on `channel` (index `orders_list_channel_idx`) and `channelSource`, and the CSV export ends its order columns with Channel and Source. Migration `0103_order_channel_event_outbox` adds both columns and the trigger. `orders.sales_channel_id` (0122, MARKETS-DESIGN D6) is the sales channel the order sold from: checkout writes `sc_online_store` or, for a buyer agent, `sc_agents`; `createOrder()` takes an active channel staff pick (`salesChannelId`, the online store by default, part of the request hash). It never changes (`orders_sales_channel_immutable`); list and detail return it.
+`orders.channel` says which surface created the order and never changes after insert (trigger `orders_channel_immutable`): the storefront checkout commit writes `online_store`, or `agent` when the commit carries a buyer agent's storefront context; `createOrder()` writes `data.channel`, defaulting to `admin` (the stable resource create route supplies `app` for an app principal). `orders.channel_source` is an optional lowercase slug inside the channel: the dashboard's Sales channel picker sends a preset (`facebook`, `instagram`, `whatsapp`, `phone`, `walk_in`) or free text, which `normalizeOrderChannelSource()` (`@scalius/shared/order-channel`) stores as a slug of at most 64 characters, and which is part of the manual-order request hash. List and detail return both, `listOrders()` filters on `channel` (index `orders_list_channel_idx`) and `channelSource`, and the CSV export ends its order columns with Channel and Source. Migration `0103_order_channel_event_outbox` adds both columns and the trigger. `orders.sales_channel_id` (0122, MARKETS-DESIGN D6) is the sales channel the order sold from: checkout writes `sc_online_store` or, for a buyer agent, `sc_agents`; `createOrder()` takes an active channel staff pick (`salesChannelId`, the online store by default, part of the request hash). It never changes (`orders_sales_channel_immutable`); list and detail return it.
 
 ## Order State Machine
 
@@ -71,12 +71,13 @@ A partial refund is a payment fact, not a lifecycle state: the order keeps its s
 ```
 unpaid  --> partial, paid, failed
 partial --> paid, unpaid, refunded, failed
-paid    --> partial, refunded
+paid    --> partially_refunded, refunded
+partially_refunded --> refunded
 refunded --> (terminal)
 failed  --> unpaid, partial, paid
 ```
 
-5 states: `unpaid`, `partial`, `paid`, `refunded`, `failed`.
+6 states: `unpaid`, `partial`, `paid`, `partially_refunded`, `refunded`, `failed`.
 
 ### Fulfillment Status Transitions
 
@@ -117,10 +118,10 @@ See [checkout](../checkout/README.md#storefront-order-creation-synchronous-idemp
 
 ### Order money
 
-All order money is integer minor units. `currency_code` is the presentment currency: what the buyer sees and pays. The money chain (migration 0111, MARKETS-DESIGN D3) records the conversion into the shop currency: `shop_currency`, `fx_rate` (a decimal string, shop units per presentment unit), `fx_source`, `fx_as_of`, `fx_locked_until`, and the shop totals `subtotal_shop_minor`, `shipping_shop_minor`, `discount_shop_minor`, `tax_shop_minor` and `total_shop_minor`. Every order is same-currency today: rate "1", source `same_currency`, no quote times, and shop amounts equal to the presentment amounts.
+All order money is integer minor units. `currency_code` is the presentment currency: what the buyer sees and pays. The money chain (migration 0111, MARKETS-DESIGN D3) records the conversion into the shop currency: `shop_currency`, `fx_rate` (a decimal string, shop units per presentment unit), `fx_source`, `fx_as_of`, `fx_locked_until`, and the shop totals `subtotal_shop_minor`, `shipping_shop_minor`, `discount_shop_minor`, `tax_shop_minor` and `total_shop_minor`. A same-currency order has rate "1", source `same_currency`, no quote times, and shop amounts equal to the presentment amounts. A market-presentment order carries the FX snapshot checkout prepared (`presentmentFx()` in `prepare.ts`): `commitOrder()` persists the supplied locked rate, source and quote times with the converted shop totals.
 
 - The checkout commit and `createOrder()` write the chain in the order insert (`orderMoneyChainColumns()`, `@scalius/shared/money-chain`). An amendment rewrites the shop amounts at the order's own rate (`orderShopAmounts()`).
-- Dashboard revenue sums `total_shop_minor`. Reports read only orders whose presentment and shop currency are the report currency.
+- Dashboard revenue sums `total_shop_minor`. Reports read the orders whose `shop_currency` is the report currency and convert foreign-presentment amounts at each order's saved rate ([analytics README](../analytics/README.md)).
 - `customer_order_stats` and order lines still hold presentment amounts only. They move to shop amounts before a second currency is enabled (Markets step 6).
 - Staff amounts (delivery charge, discount) are on the store's price increment (`toStoreMinor()`). A staff order is cash on delivery, so `prepareManualOrderQuote()` refuses a total that COD cannot collect exactly (`details.reason = "cash_on_delivery_amount"`). The quote, the create and the amendment all run it.
 
@@ -207,7 +208,7 @@ Payment events (one handler for every gateway) call `processPaymentConfirmed()` 
 | Method | Path | Handler | Purpose |
 |--------|------|---------|---------|
 | GET | `/` | `listOrders()` | Paginated list with text-index search, status/channel/date filters, shipment summary |
-| POST | `/` | `createOrder()` | Manual order creation with reserve-then-deduct inventory |
+| POST | `/` | `createOrder()` | Manual order creation: tracked items are reserved on create (`inventoryAction` `reserved`) and deducted when fulfilment ships or delivers |
 | GET | `/:id` | `getOrderDetails()` | Full order with items, variant info, images |
 | PUT | `/:id/details` | `updateOrderDetails()` | Customer and delivery details before shipment |
 | GET/POST | `/:id/timeline` | `listOrderTimelinePage()` / `addOrderComment()` | 50 newest-first events per cursor page; `nextCursor` continues history and “Order placed” appears only at its end. Comment retries return the exact original event. |
@@ -224,11 +225,10 @@ Payment events (one handler for every gateway) call `processPaymentConfirmed()` 
 | POST | `/:id/cod` | `processCodAction()` | COD collected/failed/returned |
 | POST | `/:id/fulfillments` | `recordOrderFulfilment()` | Hand lines over: own-rider parcel, picked up, service done |
 | POST | `/:id/fulfillments/:fulfillmentId/void` | `voidOrderFulfilment()` | A parcel came back: its units are unsent again |
-| GET | `/:id/shipments` | `DeliveryService.getShipments()` | Delivery shipments with provider names |
-| POST | `/:id/shipments` | `DeliveryService.createShipment()` | Create delivery shipment |
-| GET | `/:id/shipments/:shipmentId` | `DeliveryService.getShipment()` | Single shipment detail |
-| DELETE | `/:id/shipments/:shipmentId` | `DeliveryService.deleteShipment()` | Delete shipment |
-| POST | `/:id/shipments/:shipmentId/status` | shared check + sync helper | Check provider status, sync order/inventory/cache/notifications |
+| GET | `/:id/shipments` | `getShipments()` | Delivery shipments with provider names |
+| POST | `/:id/shipments` | `bookOrderShipment()` (fulfilment booking handler, `routes/admin/orders-status.ts`) | Create delivery shipment |
+| GET | `/:id/shipments/:shipmentId` | `getShipment()` | Single shipment detail |
+| DELETE | `/:id/shipments/:shipmentId` | `deleteShipmentRecord()` | Delete shipment |
 | POST | `/:id/shipments/:shipmentId/refresh` | shared check + sync helper | Refresh provider status, sync order/inventory/cache/notifications |
 | POST | `/:id/shipments/:shipmentId/reconcile` | `reconcileOrderShipment()` | Repair `reconcile_required` shipment/order/inventory state without calling the provider again |
 | GET/POST | `/:id/returns` | `listOrderReturns()` / `createOrderReturn()` | Read or request item-level returns; request does not change stock |
@@ -248,19 +248,14 @@ Admin hosted-payment recovery link issuance is intentionally narrow. `POST /api/
 
 Cross-browser guest hosted-payment recovery is buyer-verified, not bearer-link based. `/api/v1/orders/payment-recovery/send-otp` creates an order-owned `order_payment_recovery_challenges` row with hashed contact/code state and reuses the sign-in code delivery with `purpose: "order_payment_recovery"`. The delivery carries only `challengeKey` and `deliveryKey`; `apps/api/src/background/otp.ts` derives the OTP at send time, so a raw OTP code is never stored or passed on. `/api/v1/orders/payment-recovery/verify-otp` is service-JWT protected for the storefront server proxy; successful OTP proof rechecks eligibility, consumes the challenge, records an `order_receipts` hash with `source = "guest_payment_recovery"`, and returns raw proof only to the trusted storefront proxy so it can set the existing per-order HttpOnly receipt cookie. Public/browser responses must stay no-store and must not expose receipt tokens, token hashes, raw contacts, OTP codes, provider payloads, or receipt PII.
 
-### Admin Shipments (`/api/v1/admin/shipments`)
+### Shipments
 
-| Method | Path | Handler | Purpose |
-|--------|------|---------|---------|
-| GET | `/:id` | `DeliveryService.getShipment()` | Get shipment by ID |
-| DELETE | `/:id` | `DeliveryService.deleteShipment()` | Delete shipment |
-| POST | `/:id/check-status` | shared check + sync helper | Check provider status, sync order/inventory/cache/notifications |
+No `/api/v1/admin/shipments` router is mounted. Shipment routes are nested under `/api/v1/admin/orders/{id}/shipments` (the table above). The stable resource read is `GET /api/v1/admin/resources/shipments/{id}` (and `/orders/{id}/shipments` for an order's list).
 
 ### Storefront (`/api/v1/orders`)
 
 | Method | Path | Handler | Purpose |
 |--------|------|---------|---------|
-| GET | `/:id` | direct query | Order with items, shipments, delivery providers |
 | GET | `/receipt/:id` | receipt-token validation + support-request state | Buyer-safe private receipt detail with support request history/actions |
 | POST | `/receipt/:id/support-requests` | `createReceiptOrderSupportRequest()` | Receipt-token cancellation, return, or refund request creation; writes the support-request ledger and records the merchant/admin notification only after proof validation |
 | POST | `/payment-recovery/send-otp` | `sendOrderPaymentRecoveryOtp()` | Public, generic response for buyer OTP delivery against an eligible hosted-payment recovery order |
@@ -270,10 +265,10 @@ Cross-browser guest hosted-payment recovery is buyer-verified, not bearer-link b
 
 ## Dependencies
 
-- `@scalius/database` -- `orders`, `orderItems`, `orderSupportRequests`, `customers`, `customerHistory`, `products`, `productVariants`, `productMedia`, `media`, `deliveryShipments`, `deliveryProviders`, `deliveryLocations`, `orderDiscountAllocations`, `promotionRedemptions`, `codTracking`
+- `@scalius/database` -- `orders`, `orderItems`, `orderSupportRequests`, `customers`, `customerHistory`, `products`, `productVariants`, `productMedia`, `media`, `deliveryShipments`, `deliveryProviders`, `places`, `orderDiscountAllocations`, `promotionRedemptions`, `codTracking`
 - `inventory` module -- reservation, deduction, release, transitions
 - `payments` module -- COD collection/return, refund service
-- `delivery` module -- `DeliveryService`, `ShipmentTracker`
+- `delivery` module -- the standalone shipment functions (`getShipments`, `getShipment`, `createShipment`, `deleteShipmentRecord`, `checkShipmentStatus`) and `updateOrderStatusFromShipment`
 - `notifications` module -- `sendOrderNotificationEmail()`, `sendOrderNotification()` (FCM push)
 - `@scalius/core/search` -- the text index for order search
 - `@scalius/core/errors` -- `NotFoundError`, `ValidationError`, `ConflictError`
