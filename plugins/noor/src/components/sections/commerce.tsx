@@ -18,7 +18,7 @@ import {
   type StorefrontProductCard,
 } from "@scalius/plugin-sdk/storefront";
 import { Icon } from "../icons";
-import { Button, Products, Rail, Section, SectionHead, Stars, cardActionWords, choice, cx, percent, ratingLabel, ratingValue, reviewCount, text, type Context } from "../ui";
+import { Button, Products, Rail, Section, SectionHead, Stars, cardActionWords, choice, cx, ratingLabel, ratingValue, reviewCount, saleBadge, text, type Context } from "../ui";
 
 // ── Products with tabs ───────────────────────────────────────────────────
 
@@ -97,7 +97,7 @@ export function FeaturedProduct({ settings, context }: SectionProps<FeaturedSett
         <a class="noor-split-media noor-feature-media" href={product.url} tabindex="-1" aria-hidden="true">
           {photo ? <Image image={photo} sizes="(min-width: 768px) 50vw, 100vw" alt="" class="noor-cover" /> : null}
           {product.hoverImage && !settings.image ? <Image image={product.hoverImage} sizes="(min-width: 768px) 50vw, 100vw" alt="" class="noor-cover is-alt" /> : null}
-          {product.percentOff ? <span class="noor-badge is-sale">−{percent(context, product.percentOff)}</span> : null}
+          {product.percentOff ? saleBadge(context, product.percentOff) : null}
         </a>
         <div class="noor-split-copy">
           {text(settings.eyebrow) ? <p class="noor-eyebrow" {...editable(context, "eyebrow")}>{settings.eyebrow}</p> : null}

@@ -146,6 +146,11 @@ export function percent(context: Context, value: number): string {
   return formatNumber(context, value / 100, { style: "percent" });
 }
 
+/** The one sale badge ("−20%"): a left-to-right run, so a right-to-left page never reads it "20%−". */
+export function saleBadge(context: Context, percentOff: number, size?: "large") {
+  return <span class={size === "large" ? "noor-badge is-sale is-large" : "noor-badge is-sale"}><bdi dir="ltr">−{percent(context, percentOff)}</bdi></span>;
+}
+
 export function ratingLabel(context: Context, average: number, count?: number): string {
   const value = ratingValue(context, average);
   const five = formatNumber(context, 5);
@@ -209,7 +214,7 @@ export function ProductCard({ product, context, options = {} }: { product: Store
         </a>
         {product.soldOut
           ? <span class="noor-badge is-muted">{t(context, { en: "Sold out", bn: "স্টক শেষ" })}</span>
-          : product.percentOff ? <span class="noor-badge is-sale">−{percent(context, product.percentOff)}</span> : null}
+          : product.percentOff ? saleBadge(context, product.percentOff) : null}
         {options.slots ? <div class="noor-card-apps"><Slot name="product_card.badges" /></div> : null}
         {canAdd && action === "bar" ? (
           <a class="noor-card-bar" {...quickAdd(product)} aria-label={addLabel}>

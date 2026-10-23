@@ -60,7 +60,7 @@ export type PluginHtmlResult =
 // ── Elements ──────────────────────────────────────────────────────────────
 
 const CONTENT_TAGS = new Set([
-  "a", "abbr", "article", "aside", "b", "blockquote", "br", "button", "caption", "code", "dd", "del", "details",
+  "a", "abbr", "article", "aside", "b", "bdi", "blockquote", "br", "button", "caption", "code", "dd", "del", "details",
   "div", "dl", "dt", "em", "figcaption", "figure", "footer", "form", "h2", "h3", "h4", "h5", "h6", "header", "hr",
   "i", "img", "input", "ins", "label", "li", "mark", "nav", "ol", "optgroup", "option", "p", "picture", "pre", "q",
   "s", "section", "select", "small", "source", "span", "strong", "sub", "summary", "sup", "table", "tbody", "td",

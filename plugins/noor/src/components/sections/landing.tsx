@@ -20,7 +20,7 @@ import {
   type StorefrontProductCard,
 } from "@scalius/plugin-sdk/storefront";
 import { ICON_NAMES, Icon, type IconName } from "../icons";
-import { Section, SectionHead, Stars, choice, cx, percent, ratingLabel, ratingValue, reviewCount, text, type Context } from "../ui";
+import { Section, SectionHead, Stars, choice, cx, percent, ratingLabel, ratingValue, reviewCount, saleBadge, text, type Context } from "../ui";
 import { Countdown, countdownEnd } from "./commerce";
 
 function iconOf(value: unknown): IconName {
@@ -89,7 +89,7 @@ export function LandingHero({ settings, context, instanceId }: SectionProps<Land
               </li>
             ))}
           </ul>
-          {product.percentOff ? <span class="noor-badge is-sale is-large">−{percent(context, product.percentOff)}</span> : null}
+          {product.percentOff ? saleBadge(context, product.percentOff, "large") : null}
           {photos.length > 1 ? (
             <ol class="noor-thumbs" data-controls hidden>
               {photos.map((photo, index) => (
