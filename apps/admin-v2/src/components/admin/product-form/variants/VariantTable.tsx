@@ -634,7 +634,8 @@ const VariantRow = React.memo(function VariantRow({
   const stockError = errorOf("stock");
   const photoError = errorOf("photo");
   // Quantities need "Adjust stock"; the rest of the row follows products.edit.
-  const quantityReadOnly = readOnly || !usePermissions().hasPermission(PERMISSIONS.PRODUCTS_ADJUST_STOCK);
+  const canAdjustStock = usePermissions().hasPermission(PERMISSIONS.PRODUCTS_ADJUST_STOCK);
+  const quantityReadOnly = readOnly || !canAdjustStock;
   const compareAt = !errorOf("discount") ? variant.compareAt : null;
   const change = (patch: Partial<DraftVariant>) => onChange(variant.id, patch);
   // Profit and margin of what the customer pays: the price itself.
@@ -800,7 +801,8 @@ const GroupRow = React.memo(function GroupRow({ readOnly, group, open, repeated,
   const kindRules = useProductKindRules();
   // Digital rows' stock is their keys or files: a group quantity never writes it.
   const tracked = group.variants.filter((variant) => variant.trackInventory && !isDigitalSku(kindRules, variant));
-  const quantityReadOnly = readOnly || !usePermissions().hasPermission(PERMISSIONS.PRODUCTS_ADJUST_STOCK);
+  const canAdjustStock = usePermissions().hasPermission(PERMISSIONS.PRODUCTS_ADJUST_STOCK);
+  const quantityReadOnly = readOnly || !canAdjustStock;
   const allDigital = group.variants.every((variant) => isDigitalSku(kindRules, variant));
   const same = <T,>(values: T[]): T | undefined => (values.every((value) => value === values[0]) ? values[0] : undefined);
   const prices = group.variants.map((variant) => variant.price).filter(Number.isFinite);
