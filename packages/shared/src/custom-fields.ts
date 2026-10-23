@@ -231,12 +231,20 @@ export interface CustomFieldIssue {
   readonly index?: number;
   /** The bound that was crossed, as the wire shows it. */
   readonly limit?: string | number;
+  /**
+   * For `invalid_validation`: the setting that is wrong (`range` = the minimum
+   * is above the maximum), so an editor can say so beside that control.
+   */
+  readonly validation?: CustomFieldValidationSetting;
 }
+
+/** A validation setting an `invalid_validation` issue can be about. */
+export type CustomFieldValidationSetting = "to" | "min" | "max" | "range" | "regex" | "choices" | "validations";
 
 export type CustomFieldResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly issue: CustomFieldIssue };
 
 const ok = <T>(value: T): CustomFieldResult<T> => ({ ok: true, value });
-const fail = (code: CustomFieldIssueCode, message: string, extra: { index?: number; limit?: string | number } = {}): CustomFieldResult<never> =>
+const fail = (code: CustomFieldIssueCode, message: string, extra: { index?: number; limit?: string | number; validation?: CustomFieldValidationSetting } = {}): CustomFieldResult<never> =>
   ({ ok: false, issue: { code, message, ...extra } });
 
 /** The store currency, needed only by money. */
@@ -629,7 +637,7 @@ export function parseCustomFieldValidations(
   input: unknown,
   context: CustomFieldCodecContext,
 ): CustomFieldResult<CustomFieldValidations> {
-  const invalid = (message: string) => fail("invalid_validation", message);
+  const invalid = (message: string, validation: CustomFieldValidationSetting = "validations") => fail("invalid_validation", message, { validation });
   if (input === undefined || input === null) input = {};
   if (typeof input !== "object" || Array.isArray(input)) return invalid("Validations must be an object.");
   const raw = input as Record<string, unknown>;
@@ -639,55 +647,55 @@ export function parseCustomFieldValidations(
   const boundKind = customFieldBoundKind(type);
   const result: { min?: string; max?: string; regex?: string; choices?: string[]; to?: string } = {};
   if (item === "object_reference") {
-    if (!isCustomFieldObjectTarget(raw.to)) return invalid("Choose a qualified object type for this reference.");
+    if (!isCustomFieldObjectTarget(raw.to)) return invalid("Choose a qualified object type for this reference.", "to");
     result.to = raw.to;
-  } else if (!isBlank(raw.to)) return invalid("Only object reference fields declare a target type.");
+  } else if (!isBlank(raw.to)) return invalid("Only object reference fields declare a target type.", "to");
 
   for (const side of ["min", "max"] as const) {
     if (isBlank(raw[side])) continue;
-    if (boundKind === null) return invalid(`This type takes no ${side === "min" ? "minimum" : "maximum"}.`);
+    if (boundKind === null) return invalid(`This type takes no ${side === "min" ? "minimum" : "maximum"}.`, side);
     if (boundKind === "length") {
       const count = canonicalInteger(raw[side]);
       const max = TEXT_MAX_LENGTH[item]!;
       if (count === null || Number(count) < 0 || Number(count) > max) {
-        return invalid(`The ${side === "min" ? "minimum" : "maximum"} length is a whole number from 0 to ${max}.`);
+        return invalid(`The ${side === "min" ? "minimum" : "maximum"} length is a whole number from 0 to ${max}.`, side);
       }
       result[side] = count;
     } else if (item === "money") {
       const minor = canonicalInteger(raw[side]);
       if (minor === null || minor.startsWith("-") || Number(minor) > MAX_MINOR_AMOUNT) {
-        return invalid(`The ${side === "min" ? "minimum" : "maximum"} is a whole number of minor units of the store currency.`);
+        return invalid(`The ${side === "min" ? "minimum" : "maximum"} is a whole number of minor units of the store currency.`, side);
       }
       result[side] = minor;
     } else {
       const bound = canonicalItem(item, raw[side], context);
-      if (!bound.ok) return invalid(`The ${side === "min" ? "minimum" : "maximum"} must be ${TYPE_LABEL[item]}.`);
+      if (!bound.ok) return invalid(`The ${side === "min" ? "minimum" : "maximum"} must be ${TYPE_LABEL[item]}.`, side);
       result[side] = bound.value;
     }
   }
   if (result.min !== undefined && result.max !== undefined) {
     const order = boundKind === "length" ? Math.sign(Number(result.min) - Number(result.max)) : compareItems(item, result.min, result.max);
-    if (order > 0) return invalid("The minimum is above the maximum.");
+    if (order > 0) return invalid("The minimum is above the maximum.", "range");
   }
 
   if (!isBlank(raw.regex)) {
-    if (!customFieldSupportsRegex(type)) return invalid("Only text fields take a pattern.");
+    if (!customFieldSupportsRegex(type)) return invalid("Only text fields take a pattern.", "regex");
     if (typeof raw.regex !== "string" || raw.regex.length > CUSTOM_FIELD_REGEX_MAX_LENGTH || compileRegex(raw.regex) === null) {
-      return invalid(`The pattern must be a valid regular expression of at most ${CUSTOM_FIELD_REGEX_MAX_LENGTH} characters.`);
+      return invalid(`The pattern must be a valid regular expression of at most ${CUSTOM_FIELD_REGEX_MAX_LENGTH} characters.`, "regex");
     }
     result.regex = raw.regex;
   }
 
   if (raw.choices !== undefined && raw.choices !== null && !(Array.isArray(raw.choices) && raw.choices.length === 0)) {
-    if (!customFieldSupportsChoices(type)) return invalid("Only single-line text fields take choices.");
+    if (!customFieldSupportsChoices(type)) return invalid("Only single-line text fields take choices.", "choices");
     if (!Array.isArray(raw.choices) || raw.choices.length > CUSTOM_FIELD_CHOICES_MAX) {
-      return invalid(`Give at most ${CUSTOM_FIELD_CHOICES_MAX} choices.`);
+      return invalid(`Give at most ${CUSTOM_FIELD_CHOICES_MAX} choices.`, "choices");
     }
     const choices: string[] = [];
     for (const choice of raw.choices) {
       const parsed = canonicalItem("single_line_text", choice, context);
-      if (!parsed.ok || parsed.value === "") return invalid("Every choice is a single line of text.");
-      if (choices.includes(parsed.value)) return invalid(`The choice "${parsed.value}" is listed twice.`);
+      if (!parsed.ok || parsed.value === "") return invalid("Every choice is a single line of text.", "choices");
+      if (choices.includes(parsed.value)) return invalid(`The choice "${parsed.value}" is listed twice.`, "choices");
       choices.push(parsed.value);
     }
     result.choices = choices;
