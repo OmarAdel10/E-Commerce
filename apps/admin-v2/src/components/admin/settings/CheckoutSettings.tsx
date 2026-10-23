@@ -90,6 +90,49 @@ export const GIFT_CARD_TEXT_FIELDS = [
 ] as const;
 /** Apps at checkout: an app the store relies on can't answer (checkout pauses), or an app's offer changed. */
 export const APP_TEXT_FIELDS = ["checkoutAppUnavailableText", "checkoutAppOfferChangedText"] as const;
+/** The card form and the card payment: what a buyer reads when the form fails, a field is wrong or the bank says no (never the card processor's own words). */
+export const CARD_TEXT_FIELDS = [
+  "cardFormFailedText",
+  "cardFormLoadingText",
+  "cardDetailsIncompleteText",
+  "cardNumberInvalidText",
+  "cardExpiryInvalidText",
+  "cardCvcInvalidText",
+  "cardPostalCodeInvalidText",
+  "cardDeclinedText",
+  "cardAuthenticationFailedText",
+  "cardPaymentFailedText",
+] as const;
+/** Starting a payment: it couldn't start, is still being prepared, or the browser blocked storage. */
+export const PAYMENT_START_TEXT_FIELDS = [
+  "paymentStartFailedText",
+  "paymentPreparingText",
+  "checkoutStorageBlockedText",
+] as const;
+/** The address app's suggestions, read out by screen readers. */
+export const ADDRESS_SUGGESTION_TEXT_FIELDS = [
+  "addressSuggestionText",
+  "addressSuggestionsText",
+  "addressFilledText",
+] as const;
+/** The sentence groups after the apps group: each key has a label and a help line. */
+const TEXT_GROUPS = [
+  { id: "card", title: "cardTextTitle", help: "cardTextHelp", keys: CARD_TEXT_FIELDS },
+  { id: "payment-start", title: "paymentStartTextTitle", help: "paymentStartTextHelp", keys: PAYMENT_START_TEXT_FIELDS },
+  { id: "address-suggestions", title: "addressSuggestionGroupTitle", help: "addressSuggestionGroupHelp", keys: ADDRESS_SUGGESTION_TEXT_FIELDS },
+] as const;
+/** Every checkout-language key this editor lists. */
+export const EDITABLE_CHECKOUT_TEXT_KEYS: ReadonlySet<string> = new Set<string>([
+  ...TEXT_FIELDS,
+  "termsText",
+  "termsLinkText",
+  "privacyLinkText",
+  ...GIFT_CARD_TEXT_FIELDS,
+  ...APP_TEXT_FIELDS,
+  ...CARD_TEXT_FIELDS,
+  ...PAYMENT_START_TEXT_FIELDS,
+  ...ADDRESS_SUGGESTION_TEXT_FIELDS,
+]);
 /** The agreement line's link placeholders; the storefront links each to its policy page. */
 const TERMS_TOKENS = ["{terms}", "{privacy}"] as const;
 
@@ -359,6 +402,19 @@ function LanguageForm({ language }: { language: Language | null }) {
           </SettingsField>
         ))}
       </section>
+      {TEXT_GROUPS.map((group) => (
+        <section key={group.id} aria-labelledby={`language-${group.id}`} className="space-y-4 border-t border-border pt-4">
+          <div className="space-y-1">
+            <h3 id={`language-${group.id}`} className="text-heading-sm">{t(group.title)}</h3>
+            <p className="text-body text-muted-foreground">{t(group.help)}</p>
+          </div>
+          {group.keys.map((key) => (
+            <SettingsField key={key} id={`language-${key}`} label={t(key)} help={t(`${key}Help`)}>
+              <Textarea id={`language-${key}`} rows={2} value={draft.languageData[key] ?? ""} onChange={(event) => setText(key, event.target.value)} />
+            </SettingsField>
+          ))}
+        </section>
+      ))}
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
