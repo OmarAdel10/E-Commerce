@@ -157,11 +157,9 @@ export interface AccountCopy {
     confirmCard: string;
     cardNotReady: string;
     confirming: string;
-    cardFailed: string;
     notCompleted: string;
     submitted: string;
     updating: string;
-    couldNotComplete: string;
     preparing: string;
     retryingIn: (message: string, seconds: string) => string;
     couldNotStart: string;
@@ -383,11 +381,9 @@ const EN: AccountCopy = {
     confirmCard: "Confirm card payment",
     cardNotReady: "The card form is not ready yet.",
     confirming: "Confirming…",
-    cardFailed: "Card payment failed.",
     notCompleted: "Payment was not completed.",
     submitted: "Payment submitted. Updating the order…",
     updating: "Updating…",
-    couldNotComplete: "Payment could not be completed.",
     preparing: "Preparing payment…",
     retryingIn: (message, seconds) => `${message} Retrying in ${seconds}s…`,
     couldNotStart: "Payment could not start. Try again.",
@@ -609,11 +605,9 @@ const BN: AccountCopy = {
     confirmCard: "কার্ডে পেমেন্ট নিশ্চিত করুন",
     cardNotReady: "কার্ডের ফর্মটি এখনো তৈরি হয়নি।",
     confirming: "নিশ্চিত করা হচ্ছে…",
-    cardFailed: "কার্ডে পেমেন্ট হয়নি।",
     notCompleted: "পেমেন্ট সম্পন্ন হয়নি।",
     submitted: "পেমেন্ট জমা হয়েছে। অর্ডারটি আপডেট করা হচ্ছে…",
     updating: "আপডেট হচ্ছে…",
-    couldNotComplete: "পেমেন্ট সম্পন্ন করা যায়নি।",
     preparing: "পেমেন্ট তৈরি হচ্ছে…",
     retryingIn: (message, seconds) => `${message} ${seconds} সেকেন্ড পরে আবার চেষ্টা করা হবে…`,
     couldNotStart: "পেমেন্ট শুরু করা যায়নি। আবার চেষ্টা করুন।",

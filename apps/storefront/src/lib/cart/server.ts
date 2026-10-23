@@ -1,6 +1,7 @@
 // src/lib/cart/server.ts
 
 import { MAX_LINE_QUANTITY } from "@scalius/shared/order-limits";
+import { formatCheckoutLanguageText, type CheckoutLanguageData } from "@scalius/shared/checkout-language";
 import {
   createOrder,
   type CreateOrderPayload,
@@ -13,7 +14,8 @@ import {
 } from "@/lib/api/orders";
 import { CART_RULES_REASON } from "@/lib/checkout/tax-quote-error-contract";
 import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
-import { isLocationCountry, readForeignAddressFields, shippingCountryOf } from "@/lib/checkout/shipping-country";
+import { CheckoutBuyerMessage, CheckoutCopyError, checkoutFailureText } from "@/lib/checkout/error-messages";
+import { isLocationCountry, readForeignAddressFields, shippingCountryName, shippingCountryOf } from "@/lib/checkout/shipping-country";
 import { readDiscountCodes } from "@/lib/checkout/tax-quote-client";
 import { BILLING_ADDRESS_FIELDS, checkoutBillingFields } from "@/lib/checkout/billing-address";
 import { marketingConsentOrderField } from "@/lib/checkout/marketing-consent";
@@ -31,6 +33,13 @@ import {
 } from "./item-options";
 
 type ProcessOrderOptions = {
+  /**
+   * The page's checkout language (the store's, with the merchant's wording):
+   * every refusal the buyer reads is its copy, never English written here.
+   */
+  copy: CheckoutLanguageData;
+  /** The page's language code, for the country's name in a refusal. */
+  languageCode?: string;
   customerSessionToken?: string | null;
   waitUntil?: (promise: Promise<unknown>) => void;
   /** Settings → Checkout: every order asks for a full billing address. */
@@ -61,39 +70,39 @@ interface ValidatedCartItem {
 
 function parseCartItems(raw: unknown): ValidatedCartItem[] {
   if (raw === null || typeof raw !== "object") {
-    throw new Error("Cart data must be a non-null object.");
+    throw new CheckoutCopyError("checkoutDetailsUnreadableText", "Cart data must be a non-null object.");
   }
 
   const entries = Object.entries(raw as Record<string, unknown>);
   if (entries.length === 0) {
-    throw new Error("Cart is empty.");
+    throw new CheckoutCopyError("cartEmptyErrorText", "Cart is empty.");
   }
 
   return entries.map(([cartKey, entry], idx) => {
     if (entry === null || typeof entry !== "object") {
-      throw new Error(`Cart item at index ${idx} is not an object.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item at index ${idx} is not an object.`);
     }
 
     const item = entry as Record<string, unknown>;
 
     // Required string fields
     if (typeof item.id !== "string" || item.id.length === 0) {
-      throw new Error(`Cart item at index ${idx} has an invalid or missing id.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item at index ${idx} has an invalid or missing id.`);
     }
     if (typeof item.name !== "string" || item.name.length === 0) {
-      throw new Error(`Cart item at index ${idx} has an invalid or missing name.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item at index ${idx} has an invalid or missing name.`);
     }
     if (
       typeof item.variantId !== "string" ||
       item.variantId.trim() === "" ||
       item.variantId.trim() === "default"
     ) {
-      throw new Error(`Cart item "${item.name}" has an invalid or missing saved variant.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item "${item.name}" has an invalid or missing saved variant.`);
     }
 
     // Required numeric fields
     if (typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) {
-      throw new Error(`Cart item "${item.name || idx}" has an invalid price.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item "${item.name || idx}" has an invalid price.`);
     }
     if (
       typeof item.quantity !== "number" ||
@@ -101,7 +110,8 @@ function parseCartItems(raw: unknown): ValidatedCartItem[] {
       item.quantity < 1 ||
       item.quantity > MAX_LINE_QUANTITY
     ) {
-      throw new Error(
+      throw new CheckoutCopyError(
+        "checkoutDetailsUnreadableText",
         `Cart item "${item.name || idx}" has an invalid quantity. Must be a whole number from 1 to ${MAX_LINE_QUANTITY}.`,
       );
     }
@@ -110,7 +120,7 @@ function parseCartItems(raw: unknown): ValidatedCartItem[] {
     const optionalStr = (key: string): string | undefined => {
       if (item[key] === undefined || item[key] === null || item[key] === "") return undefined;
       if (typeof item[key] !== "string") {
-        throw new Error(`Cart item "${item.name}" has an invalid ${key} (expected string).`);
+        throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item "${item.name}" has an invalid ${key} (expected string).`);
       }
       return item[key] as string;
     };
@@ -126,12 +136,12 @@ function parseCartItems(raw: unknown): ValidatedCartItem[] {
           : item.properties,
       );
     } catch {
-      throw new Error(`Cart item "${item.name}" has invalid details.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item "${item.name}" has invalid details.`);
     }
     // A cart line keeps `{ id, title }`; a malformed one is refused, never bought one-time.
     const purchaseOption = cartLinePurchaseOptionId(item.purchaseOption);
     if (item.purchaseOption !== undefined && item.purchaseOption !== null && !purchaseOption) {
-      throw new Error(`Cart item "${item.name}" has invalid details.`);
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", `Cart item "${item.name}" has invalid details.`);
     }
 
     return {
@@ -207,8 +217,9 @@ function readForeignDestination(formData: FormData): { shippingAdminArea?: strin
 
 export async function processOrder(
   formData: FormData,
-  options: ProcessOrderOptions = {},
+  options: ProcessOrderOptions,
 ) {
+  const { copy } = options;
   try {
     const customerName = formData.get("customerName") as string;
     const rawPhone = (formData.get("customerPhone") as string)?.trim();
@@ -222,7 +233,7 @@ export async function processOrder(
     } catch {
       return {
         success: false,
-        error: { message: "Please enter a valid phone number" },
+        error: { message: shippingCountryCode === "BD" ? copy.phoneInvalidText : copy.phoneIntlInvalidText },
       };
     }
     const customerEmail = (formData.get("customerEmail") as string) || null;
@@ -247,13 +258,18 @@ export async function processOrder(
     )?.trim();
 
     if (!checkoutRequestId) {
-      throw new Error("Checkout session expired. Please refresh checkout and try again.");
+      throw new CheckoutCopyError("checkoutAttemptExpiredText", "missing checkout id");
     }
     if (!expectedQuoteFingerprint) {
-      throw new Error("Your order total is no longer verified. Refresh the checkout total and try again.");
+      throw new CheckoutCopyError("totalChangedReviewText", "missing quote fingerprint");
     }
 
-    const cartItems = JSON.parse(cartItemsJson);
+    let cartItems: unknown;
+    try {
+      cartItems = JSON.parse(cartItemsJson);
+    } catch {
+      throw new CheckoutCopyError("checkoutDetailsUnreadableText", "cart items are not JSON");
+    }
     // Validate cart item shape and value ranges (defense against crafted form data)
     const cartItemsArray = parseCartItems(cartItems);
 
@@ -261,9 +277,7 @@ export async function processOrder(
     // orders only, and the shared contact rule (orderContactNeeds) always
     // needs a phone for them. The rest depends on the path below.
     if (!customerName || !customerPhone || cartItemsArray.length === 0) {
-      throw new Error(
-        "Please fill in all required fields and add items to your cart.",
-      );
+      throw new CheckoutCopyError("checkoutFieldsMissingText", "name, phone or cart missing");
     }
 
     // The buyer's Delivery/Pickup choice only decides what is sent: the API
@@ -300,7 +314,7 @@ export async function processOrder(
 
     if (!cartValidation.success) {
       return failedOrder(
-        cartValidation.error || "We couldn't check your cart. Try again.",
+        cartValidation.error || copy.cartAvailabilityFailedText,
         itemIssuesFromDetails(cartValidation.details),
       );
     }
@@ -310,7 +324,7 @@ export async function processOrder(
       return failedOrder(
         firstIssue?.message ||
           ruleErrors[0]?.message ||
-          "Some items in your cart need attention before checkout.",
+          copy.cartRulesBlockedText,
         cartValidation.data.issues,
         ruleErrors,
       );
@@ -332,18 +346,21 @@ export async function processOrder(
       shippingMethod: shippingLocationId,
     }, shippingCountryCode);
     if (missing.length > 0) {
-      throw new Error("Please fill in all required fields and add items to your cart.");
+      throw new CheckoutCopyError("checkoutFieldsMissingText", `missing: ${missing.join(", ")}`);
     }
     if (mode !== "none" && !delivery) {
-      throw new Error("Delivery information is no longer available. Please refresh checkout and try again.");
+      throw new CheckoutCopyError("checkoutDeliveryChangedText", "no delivery in the validated cart");
     }
     // This form places cash-on-delivery orders only; a cart that can't be
     // paid in cash (nothing handed over in person, or a delivery to a
     // country cash on delivery doesn't serve) is refused before commit.
     if (Array.isArray(validated.allowedPaymentMethods) && !validated.allowedPaymentMethods.includes("cod")) {
-      throw new Error(mode === "delivery" && foreignAddress
-        ? "Cash on delivery isn't available for this delivery country."
-        : "This order can't be paid with cash on delivery.");
+      if (mode === "delivery" && foreignAddress) {
+        throw new CheckoutBuyerMessage(formatCheckoutLanguageText(copy.cashOnDeliveryCountryUnavailableText, {
+          country: shippingCountryName(shippingCountryCode, options.languageCode),
+        }));
+      }
+      throw new CheckoutCopyError("cashOnDeliveryUnavailableText", "cash on delivery is not allowed for this cart");
     }
 
     const inputsByCartKey = new Map(cartItemsArray.map((item) => [item.cartKey, item.properties]));
@@ -429,10 +446,8 @@ export async function processOrder(
     console.error("Order processing failed:", error);
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? { message: error.message }
-          : { message: "An unexpected error occurred" },
+      // The buyer's words only: a developer's message stays in the log above.
+      error: { message: checkoutFailureText(error, copy, "unexpectedErrorText") },
     };
   }
 }

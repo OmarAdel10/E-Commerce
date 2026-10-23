@@ -21,6 +21,7 @@ import {
 } from "@/lib/checkout/shipping-country";
 import { marketingConsentCheckbox } from "@/lib/checkout/marketing-consent";
 import { processOrder } from "@/lib/cart/server";
+import { CheckoutCopyError, checkoutFailureText } from "@/lib/checkout/error-messages";
 import { checkoutAttemptRecoveryHref } from "@/lib/checkout/attempt-recovery";
 import {
   getCities,
@@ -184,12 +185,12 @@ if (Astro.request.method === "POST" && codOnly) {
       // Check if cart is empty
       const cartItems = formData.get("cartItems") as string;
       if (!cartItems || cartItems === "{}" || cartItems === "[]") {
-        throw new Error(
-          copy.cartEmptyErrorText,
-        );
+        throw new CheckoutCopyError("cartEmptyErrorText");
       }
 
       const result = await processOrder(formData, {
+        copy,
+        languageCode: checkoutLanguageBaseCode(lang.code),
         customerSessionToken: getCustomerSessionTokenFromCookie(
           Astro.request.headers.get("cookie"),
         ),
@@ -296,8 +297,8 @@ if (Astro.request.method === "POST" && codOnly) {
     }
   } catch (error: unknown) {
     console.error("Order creation failed:", error);
-    errorMessage =
-      error instanceof Error ? error.message : copy.unexpectedErrorText;
+    // The buyer's words only: a developer's message stays in the log above.
+    errorMessage = checkoutFailureText(error, copy, "unexpectedErrorText");
   } finally {
     isProcessing = false;
   }

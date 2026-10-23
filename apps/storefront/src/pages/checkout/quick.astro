@@ -273,6 +273,8 @@ if (!codAvailable) {
     const result = await processOrder(
       quickCheckoutOrderForm(form, mode, rateId, quote),
       {
+        copy,
+        languageCode: checkoutLanguageBaseCode(lang.code),
         customerSessionToken,
         waitUntil: (promise) => Astro.locals.cfContext.waitUntil(promise),
         requireFullBillingAddress: checkoutConfig.requireFullBillingAddress === true,
