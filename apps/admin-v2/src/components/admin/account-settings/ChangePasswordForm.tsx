@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "~/components/ui/input";
 import { Field } from "~/components/ui/field";
 import { UnsavedChangesGuard } from "~/components/admin/shared/UnsavedChangesGuard";
+import { OWN_SAVE_ATTRIBUTE } from "~/components/admin/shared/SaveBar";
 import { useHydrated } from "~/hooks/use-hydrated";
 import { apiData } from "~/lib/api";
 import { useMessages } from "~/i18n";
@@ -85,7 +86,7 @@ export function ChangePasswordForm() {
   };
 
   return (
-    <Card id="password" className="scroll-mt-4">
+    <Card id="password" className="scroll-mt-4" {...{ [OWN_SAVE_ATTRIBUTE]: "" }}>
       <UnsavedChangesGuard
         isDirty={Boolean(values.current || values.next || values.confirm)}
         isSubmitting={saving}
