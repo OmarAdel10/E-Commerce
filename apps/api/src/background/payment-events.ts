@@ -9,9 +9,11 @@
 import type { Database } from "@scalius/database/client";
 import { runWithReadObserver } from "@scalius/database/read-observer";
 import {
+  LOCAL_REFUND_IN_PROGRESS_REASON,
   processPaymentAuthorized,
   processPaymentConfirmed,
   processPaymentFailed,
+  verifyObservedRefund,
   type PaymentEvent,
 } from "@scalius/core/modules/payments";
 import { processExistingMetaPurchaseOutboxForOrder } from "@scalius/core/integrations/meta/purchase-outbox";
@@ -32,6 +34,7 @@ import {
 import { createEventWriteObserver } from "../middleware/event-dispatch";
 import { notificationSender } from "./notification-sender";
 import { runOrderAutoFulfil } from "./auto-fulfil";
+import { appPaymentProvidersLoader } from "../plugins/providers/payment";
 
 /** What a claimed payment event's row stores as its payload. */
 export interface PaymentEventPayload {
@@ -124,6 +127,8 @@ async function applyPaymentEvent(
         settlement: event.settlement,
         // A kept method is saved for the order's account customer with the payment.
         savedPaymentMethod: event.savedPaymentMethod ?? null,
+        // A payment the provider flagged is held for staff review with it.
+        review: event.review ?? null,
       });
       if (!result.success) {
         if (result.retryable === false) {
@@ -174,8 +179,8 @@ async function applyPaymentEvent(
         console.warn(`[payments] ${provider} payment confirmed for order ${event.orderId}, but its released stock could not be reserved again`);
         return { status: "manual_reconciliation", result: { ...refs, outcome: "confirmed_stock_unavailable" } };
       }
-      console.log(`[payments] ${provider} payment confirmed for order ${event.orderId}`);
-      return { status: "processed", result: { ...refs, outcome: "confirmed" } };
+      console.log(`[payments] ${provider} payment confirmed for order ${event.orderId}${event.review ? " (held for review)" : ""}`);
+      return { status: "processed", result: { ...refs, outcome: "confirmed", ...(event.review ? { heldForReview: true } : {}) } };
     }
     case "authorized": {
       // Money held, not captured: recorded as an authorization, counted as
@@ -192,6 +197,7 @@ async function applyPaymentEvent(
         secondaryRef: event.secondaryRef,
         metadata: { ...event.details },
         savedPaymentMethod: event.savedPaymentMethod ?? null,
+        review: event.review ?? null,
       });
       if (!result.success) {
         if (result.retryable === false) {
@@ -228,9 +234,32 @@ async function applyPaymentEvent(
       console.log(`[payments] ${provider} payment ${outcome} for order ${event.orderId}`);
       return { status: "processed", result: { ...refs, outcome, ...event.details } };
     }
-    case "refund_observed":
-      // Refunds made in the provider dashboard stay audit-only here; scheduled
-      // reconciliation imports provider-confirmed refunds into the ledger.
-      return { status: "manual_reconciliation", result: { ...refs, outcome: "external_refund_observed", ...event.details } };
+    case "refund_observed": {
+      // The provider reports the transaction's refunds. The order's own
+      // refund (sent from the dashboard) is already recorded: checked now, it
+      // is done. Anything else waits for the scheduled reconciliation, which
+      // imports refunds made in the provider dashboard; nothing is imported here.
+      const verdict = await verifyObservedRefund(db, {
+        provider,
+        orderId: event.orderId,
+        providerRef: event.providerRef,
+        secondaryRef: event.secondaryRef,
+      }, {
+        encryptionKey: getCredentialEncryptionKey(env as unknown as Record<string, unknown>),
+        providers: appPaymentProvidersLoader(env, db, ctx),
+      });
+      if (verdict === "represented") {
+        return { status: "processed", result: { ...refs, outcome: "refund_represented", ...event.details } };
+      }
+      return {
+        status: "manual_reconciliation",
+        result: {
+          ...refs,
+          outcome: "external_refund_observed",
+          ...(verdict === "own_refund_in_progress" ? { reason: LOCAL_REFUND_IN_PROGRESS_REASON } : {}),
+          ...event.details,
+        },
+      };
+    }
   }
 }

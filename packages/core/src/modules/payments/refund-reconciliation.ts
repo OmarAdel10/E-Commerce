@@ -26,6 +26,7 @@ import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import type { GatewayProviderRefund, GatewayRefundProbe } from "./gateways/port";
 import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus } from "./refund-service";
 import type { RefundNotificationFact } from "./refund-service";
+import { ACTIVE_REFUND_ATTEMPT_STATUSES } from "../order-kernel";
 
 const REFUND_RECONCILIATION_LEASE_SECONDS = 5 * 60;
 const REFUND_RECONCILIATION_RETRY_SECONDS = 15 * 60;
@@ -34,6 +35,12 @@ const MAX_REFUND_RECONCILIATION_ERROR_LENGTH = 500;
 /** webhook_events.event_type of a provider-reported refund awaiting import. */
 export const REFUND_OBSERVED_EVENT_TYPE = "refund.observed";
 const EXTERNAL_REFUND_SOURCE = "external_refund_webhook";
+/**
+ * Why a provider-reported refund still waits: one of the order's own refunds
+ * is in flight (its provider refund id not yet recorded). Not a merchant
+ * issue: the next check matches it, and nothing is imported meanwhile.
+ */
+export const LOCAL_REFUND_IN_PROGRESS_REASON = "local_refund_in_progress";
 
 const RECOVERABLE_REFUND_ATTEMPT_STATUSES = [
   "pending",
@@ -663,6 +670,12 @@ async function reconcileExternalRefundWebhookEvent(
   if (succeededRefunds.length === 0) {
     return defer({ reason: "no_succeeded_provider_refunds", providerRefundCount: providerRefunds.length });
   }
+  // A refund this order sent is still settling: the provider already lists
+  // it, but its id is not recorded here yet. Importing now would count it twice.
+  if (await unrecordedProviderRefunds(db, row.provider, succeededRefunds).then((unrecorded) => unrecorded.length > 0)
+    && await hasActiveLocalRefundAttempt(db, sourcePayment.orderId)) {
+    return defer({ reason: LOCAL_REFUND_IN_PROGRESS_REASON });
+  }
 
   let imported = 0;
   let finalized = 0;
@@ -735,6 +748,65 @@ async function reconcileExternalRefundWebhookEvent(
     finalizedOrderIds: [...finalizedOrderIds],
     refundNotifications,
   };
+}
+
+/** The provider refunds no local attempt records yet, or records but has not finished. */
+async function unrecordedProviderRefunds(
+  db: Database,
+  provider: string,
+  refunds: readonly GatewayProviderRefund[],
+): Promise<GatewayProviderRefund[]> {
+  const unrecorded: GatewayProviderRefund[] = [];
+  for (const refund of refunds) {
+    const existing = await getExistingRefundAttemptByProviderRefundId(db, provider, refund.id);
+    if (existing?.status !== "refunded") unrecorded.push(refund);
+  }
+  return unrecorded;
+}
+
+async function hasActiveLocalRefundAttempt(db: Database, orderId: string): Promise<boolean> {
+  const active = await db.select({ id: refundAttempts.id }).from(refundAttempts)
+    .where(and(eq(refundAttempts.orderId, orderId), inArray(refundAttempts.status, [...ACTIVE_REFUND_ATTEMPT_STATUSES])))
+    .limit(1)
+    .get();
+  return Boolean(active);
+}
+
+/**
+ * What a provider-reported refund (`refund_observed`) is, checked the moment
+ * it arrives: `represented` when every refund the provider lists for the
+ * transaction is already recorded here (the merchant's own refund from the
+ * dashboard), `own_refund_in_progress` while one of the order's refunds is
+ * still settling, `unrepresented` for a refund made outside Scalius (the
+ * scheduled reconciliation imports it), `unverified` when the provider could
+ * not be asked. Reads only: it never imports or changes money.
+ */
+export type ObservedRefundVerdict = "represented" | "own_refund_in_progress" | "unrepresented" | "unverified";
+
+export async function verifyObservedRefund(
+  db: Database,
+  observed: { provider: string; orderId: string; providerRef?: string; secondaryRef?: string },
+  options: Pick<ExternalRefundWebhookReconciliationOptions, "encryptionKey" | "providers"> = {},
+): Promise<ObservedRefundVerdict> {
+  try {
+    const gateway = (await paymentProvidersFor(options.providers, observed.provider)).get(observed.provider);
+    if (!gateway?.listRefunds || !observed.secondaryRef) return "unverified";
+    const sourcePayment = await findSourcePayment(db, observed.provider, {
+      providerRef: observed.providerRef,
+      secondaryRef: observed.secondaryRef,
+      eventOrderId: observed.orderId,
+    });
+    if (!sourcePayment) return "unverified";
+    const settings = await gateway.loadSettings(db, options.encryptionKey);
+    if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) return "unverified";
+    const succeeded = (await gateway.listRefunds({ sourceRef: observed.secondaryRef }, { settings, signal: new AbortController().signal }))
+      .filter((refund) => refund.sourceRef === observed.secondaryRef && refund.succeeded && refund.amountMinor > 0);
+    if (succeeded.length === 0) return "unverified";
+    if ((await unrecordedProviderRefunds(db, observed.provider, succeeded)).length === 0) return "represented";
+    return await hasActiveLocalRefundAttempt(db, sourcePayment.orderId) ? "own_refund_in_progress" : "unrepresented";
+  } catch {
+    return "unverified";
+  }
 }
 
 export async function reconcileExternalRefundWebhooks(

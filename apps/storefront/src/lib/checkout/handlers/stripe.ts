@@ -35,13 +35,114 @@ interface StripeCardElement {
     event: "change",
     handler: (e: { complete?: boolean; error?: { message: string } }) => void,
   ): void;
+  /** The frame rendered and is usable (https://docs.stripe.com/js/element/events/on_ready). */
+  on(event: "ready", handler: () => void): void;
+  /** The frame failed to load (https://docs.stripe.com/js/element/events/on_loaderror). */
+  on(event: "loaderror", handler: (e: { error?: { message?: string } }) => void): void;
 }
+
+/**
+ * How long Stripe.js, then the card frame, may take before the form gives up
+ * and offers Retry (a frame that never answers otherwise leaves Pay disabled
+ * with no explanation).
+ */
+export const STRIPE_FORM_DEADLINE_MS = 15_000;
+const STRIPE_FORM_FAILED = "The card form didn't load. Check your connection and try again.";
 
 let stripeInstance: StripeInstance | null = null;
 let stripeCard: StripeCardElement | null = null;
 let publishableKey: string | null = null;
 let stripeCardComplete = false;
 let stripeScriptPromise: Promise<void> | null = null;
+/** The current card form's load: resolved once its frame is ready; a failure resets it, so Retry starts fresh. */
+let stripeCardLoading: Promise<void> | null = null;
+/** The current card form's frame answered `ready`. */
+let stripeCardReady = false;
+
+/**
+ * Stripe.js, within the deadline. Concurrent callers share one pending load;
+ * a settled one is forgotten (Stripe is then on the window, or a retry asks again).
+ */
+function loadStripeScript(): Promise<void> {
+  if (window.Stripe) return Promise.resolve();
+  stripeScriptPromise ??= new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    const fail = (message: string) => {
+      clearTimeout(deadline);
+      script.remove();
+      reject(new Error(message));
+    };
+    const deadline = setTimeout(() => fail("Stripe.js did not load in time"), STRIPE_FORM_DEADLINE_MS);
+    script.src = "https://js.stripe.com/v3/";
+    script.onload = () => {
+      clearTimeout(deadline);
+      if (window.Stripe) resolve();
+      else fail("Stripe.js loaded without Stripe");
+    };
+    script.onerror = () => fail("Failed to load Stripe.js");
+    document.head.appendChild(script);
+  }).finally(() => {
+    stripeScriptPromise = null;
+  });
+  return stripeScriptPromise;
+}
+
+/** Mounts the card form and waits for its frame: `ready`, else `loaderror` or the deadline refuses it. */
+async function mountStripeCard(container: HTMLElement, key: string): Promise<void> {
+  await loadStripeScript();
+  // Another store key took over while Stripe.js loaded: that selection mounts its own form.
+  if (publishableKey !== key) throw new Error("Stripe key changed while loading");
+  stripeInstance = window.Stripe!(key);
+  const elements = stripeInstance.elements();
+  const cardStyle = getComputedStyle(document.getElementById("stripeCardElement") ?? container);
+  const foreground = cardStyle.color;
+  const placeholder = cardStyle.getPropertyValue("--muted-foreground").trim() || foreground;
+  const card = elements.create("card", {
+    style: {
+      base: {
+        fontSize: "16px",
+        color: foreground,
+        fontFamily: "sans-serif",
+        iconColor: foreground,
+        "::placeholder": { color: placeholder },
+      },
+      invalid: { color: foreground, iconColor: foreground },
+    },
+  });
+  stripeCard = card;
+  await new Promise<void>((resolve, reject) => {
+    const deadline = setTimeout(() => reject(new Error("Stripe card frame did not become ready")), STRIPE_FORM_DEADLINE_MS);
+    card.on("ready", () => {
+      clearTimeout(deadline);
+      resolve();
+    });
+    card.on("loaderror", () => {
+      clearTimeout(deadline);
+      reject(new Error("Stripe card frame failed to load"));
+    });
+    card.on("change", (event) => {
+      if (stripeCard !== card) return;
+      stripeCardComplete = event.complete === true;
+      const errEl = document.getElementById("stripeError");
+      if (event.error) {
+        if (errEl) {
+          errEl.textContent = event.error.message;
+          errEl.classList.remove("hidden");
+        }
+      } else {
+        errEl?.classList.add("hidden");
+      }
+      syncPayButtonReadiness();
+    });
+    try {
+      card.mount("#stripeCardElement");
+    } catch (error) {
+      clearTimeout(deadline);
+      reject(error);
+    }
+  });
+  if (stripeCard === card) stripeCardReady = true;
+}
 
 export function resetStripePaymentElement(): void {
   try {
@@ -51,6 +152,8 @@ export function resetStripePaymentElement(): void {
     // The prior element may already be detached by browser history restore.
   }
   stripeCard = null;
+  stripeCardLoading = null;
+  stripeCardReady = false;
   stripeCardComplete = false;
   const error = document.getElementById("stripeError");
   if (error) {
@@ -93,58 +196,18 @@ export const stripeHandler: GatewayHandler = {
       publishableKey = key;
     }
 
-    if (stripeCard || !publishableKey) return;
+    if (!publishableKey || (stripeCard && stripeCardReady)) return;
 
+    // One load at a time (concurrent selections share it). A frame that
+    // fails or never answers is destroyed, so Retry mounts a fresh one.
+    const loading = stripeCardLoading ??= mountStripeCard(container, publishableKey).catch((error: unknown) => {
+      if (stripeCardLoading === loading) resetStripePaymentElement();
+      throw error;
+    });
     try {
-      // Dynamically load Stripe.js if not already loaded
-      if (!window.Stripe) {
-        stripeScriptPromise ??= new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://js.stripe.com/v3/";
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error("Failed to load Stripe.js"));
-          document.head.appendChild(script);
-        }).catch((error) => {
-          stripeScriptPromise = null;
-          throw error;
-        });
-        await stripeScriptPromise;
-      }
-
-      if (stripeCard) return;
-      stripeInstance = window.Stripe!(publishableKey);
-      const elements = stripeInstance.elements();
-      const cardStyle = getComputedStyle(document.getElementById("stripeCardElement") ?? container);
-      const foreground = cardStyle.color;
-      const placeholder = cardStyle.getPropertyValue("--muted-foreground").trim() || foreground;
-      stripeCard = elements.create("card", {
-        style: {
-          base: {
-            fontSize: "16px",
-            color: foreground,
-            fontFamily: "sans-serif",
-            iconColor: foreground,
-            "::placeholder": { color: placeholder },
-          },
-          invalid: { color: foreground, iconColor: foreground },
-        },
-      });
-      stripeCard.mount("#stripeCardElement");
-      stripeCard.on("change", (event) => {
-        stripeCardComplete = event.complete === true;
-        const errEl = document.getElementById("stripeError");
-        if (event.error) {
-          if (errEl) {
-            errEl.textContent = event.error.message;
-            errEl.classList.remove("hidden");
-          }
-        } else {
-          errEl?.classList.add("hidden");
-        }
-        syncPayButtonReadiness();
-      });
+      await loading;
     } catch {
-      throw new Error("Failed to load payment form. Please refresh and try again.");
+      throw new Error(STRIPE_FORM_FAILED);
     }
   },
 

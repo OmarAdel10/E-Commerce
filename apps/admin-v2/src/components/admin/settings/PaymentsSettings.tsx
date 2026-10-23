@@ -42,6 +42,7 @@ import { appPaymentProvidersQuery } from "~/lib/api-query-options/payment-provid
 import { queryKeys } from "~/lib/query-keys";
 import { marketCurrenciesQueryOptions } from "~/lib/api-query-options/markets";
 import { formatList } from "@scalius/shared/locale-words";
+import { STRIPE_API_VERSION, STRIPE_WEBHOOK_EVENTS, STRIPE_WEBHOOK_PAYLOAD_STYLE } from "@scalius/shared/stripe-webhook";
 import { formatNumber, getLocale, useMessages } from "~/i18n";
 import { settingsMessages } from "~/i18n/settings";
 import { paymentsMessages } from "~/i18n/settings-payments";
@@ -312,7 +313,14 @@ function GatewayFields({
       </SettingsField>
       {secret("stripe-webhook", "webhookSecret", t("webhookSecret"))}
       {platform.data?.apiUrl ? (
-        <p className="text-body text-muted-foreground">{t("webhookHelp", { url: `${platform.data.apiUrl}/api/v1/webhooks/stripe` })}</p>
+        <div className="space-y-1 text-body text-muted-foreground" data-testid="stripe-webhook-setup">
+          <p className="break-all">{t("webhookHelp", { url: `${platform.data.apiUrl}/api/v1/webhooks/stripe` })}</p>
+          <p>{t("webhookSetup", { payload: STRIPE_WEBHOOK_PAYLOAD_STYLE, version: STRIPE_API_VERSION })}</p>
+          <ul className="list-disc ps-5">
+            {STRIPE_WEBHOOK_EVENTS.map((event) => <li key={event}><code>{event}</code></li>)}
+          </ul>
+          <p>{t("webhookSecretHelp")}</p>
+        </div>
       ) : null}
       {remove}
     </>

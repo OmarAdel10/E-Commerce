@@ -29,6 +29,8 @@ import { RefundSettlementField, refundSettlementBody, type RefundSettlement } fr
 import { clampQuantity, getOrderItemName } from "./order-returns/shared";
 import { receivedReturnLineQuantities, refundLinesBody, refundableLines } from "./refund-lines";
 import type { Order } from "./types";
+import type { OrderPaymentsPayload } from "~/lib/api-query-options/orders";
+import { refundSettlementTotals } from "@scalius/shared/refund-sources";
 
 const REFUND_REASONS = ["requested_by_customer", "returned_items", "duplicate", "fraudulent", "out_of_stock"] as const;
 
@@ -38,12 +40,27 @@ export function initialRefundAmount(order: Pick<Order, "refundDue" | "paidAmount
   return owed > 0 ? owed : null;
 }
 
+type RefundSource = OrderPaymentsPayload["refundSources"][number];
+
+/**
+ * How much of a refund staff pay back by hand (cash on delivery, a recorded
+ * bank transfer), in minor units: the split `processRefund()` allocates,
+ * previewed from the payments read's ordered sources.
+ */
+export function manualRefundShareMinor(sources: readonly RefundSource[], amountMinor: number, decimalPlaces: number): number {
+  const scale = 10 ** decimalPlaces;
+  return refundSettlementTotals(
+    sources.map((source) => ({ settlement: source.settlement, refundableMinor: Math.round(source.refundable * scale) })),
+    amountMinor,
+  ).manual;
+}
+
 /**
  * Mounted fresh for each opening (the card changes its `key`), so every
  * refund starts from what is owed and carries its own request key: a repeated
  * submit replays the first refund.
  */
-export default function RefundDialog({ order, open, onOpenChange, paid, money, locked, hasCashPayment }: {
+export default function RefundDialog({ order, open, onOpenChange, paid, money, locked, refundSources }: {
   order: Order;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -52,8 +69,8 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
   money: (major: number) => string;
   /** A refund is already running at the provider. */
   locked: boolean;
-  /** Cash changed hands (cash on delivery): an original-method refund is recorded, not sent. */
-  hasCashPayment: boolean;
+  /** Where an original-method refund draws from, in refund order (the order's payments read). */
+  refundSources: readonly RefundSource[];
 }) {
   const t = useMessages(orderPaymentDialogMessages);
   const r = useMessages(resourceMessages);
@@ -63,7 +80,8 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
   const [amountError, setAmountError] = useState<string | null>(null);
   const [reason, setReason] = useState<string>(owed === null ? "requested_by_customer" : "returned_items");
   const [settlement, setSettlement] = useState<RefundSettlement>("original");
-  const [manualConfirmed, setManualConfirmed] = useState(false);
+  // The manual share (minor units) the merchant confirmed paying back: a changed share asks again.
+  const [confirmedManualMinor, setConfirmedManualMinor] = useState<number | null>(null);
   const queryClient = useQueryClient();
   // A refund of what came back starts with the returned lines named (read from the returns card's data).
   const [lineQuantities, setLineQuantities] = useState<Record<string, number>>(() => owed === null
@@ -77,17 +95,27 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
   const requestKey = useRef(crypto.randomUUID());
   const mutation = useRefundOrder();
 
-  // Store credit hands over a gift card, not cash: nothing to confirm.
-  const manual = hasCashPayment && settlement === "original";
   const value = amount ?? Number.NaN;
   const valid = Number.isFinite(value) && value > 0 && value <= paid;
+  const decimalPlaces = order.currencyDecimalPlaces ?? 2;
+  const toMinor = (major: number) => Math.round(major * 10 ** decimalPlaces);
+  // What the split is previewed for: the typed amount, else everything refundable.
+  const previewMinor = toMinor(valid ? value : paid);
+  // Store credit hands over a gift card, not money: nothing to confirm. An
+  // original-method refund's cash or transfer share is paid back by hand.
+  const manualMinor = settlement === "original" ? manualRefundShareMinor(refundSources, previewMinor, decimalPlaces) : 0;
+  const manual = manualMinor > 0;
+  // Every unit of it goes back by hand: the refund is recorded, not sent.
+  const recordOnly = manual && manualMinor >= previewMinor;
+  const manualConfirmed = manual && confirmedManualMinor === manualMinor;
+  const manualAmount = money(manualMinor / 10 ** decimalPlaces);
   const problem = (): string | null => (valid ? null : t("refund.amountInvalid", { amount: money(paid) }));
   // The confirm button echoes the live amount, e.g. "Record ৳500 cash refund", only while it is valid.
   const confirmLabel = settlement === "store_credit"
     ? valid ? g("refundTo.issueAmount", { amount: money(value) }) : g("refundTo.issue")
     : valid
-      ? t(manual ? "refund.recordCashAmount" : "refund.issueAmount", { amount: money(value) })
-      : t(manual ? "refund.recordCash" : "refund.issue");
+      ? t(recordOnly ? "refund.recordManualAmount" : "refund.issueAmount", { amount: money(value) })
+      : t(recordOnly ? "refund.recordManual" : "refund.issue");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -116,9 +144,15 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
     <Dialog open={open} onOpenChange={(next) => !mutation.isPending && onOpenChange(next)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t(manual ? "refund.recordCash" : "refund.issue")}</DialogTitle>
+          <DialogTitle>{t(recordOnly ? "refund.recordManual" : "refund.issue")}</DialogTitle>
           <DialogDescription>
-            {settlement === "store_credit" ? g("refundTo.description") : t(manual ? "refund.manualHelp" : "refund.help")}
+            {settlement === "store_credit"
+              ? g("refundTo.description")
+              : recordOnly
+                ? t("refund.manualHelp")
+                : manual
+                  ? t("refund.mixedHelp", { manual: manualAmount, other: money((previewMinor - manualMinor) / 10 ** decimalPlaces) })
+                  : t("refund.help")}
           </DialogDescription>
         </DialogHeader>
         <form id="order-refund" method="post" className="space-y-4" onSubmit={submit} noValidate>
@@ -185,8 +219,14 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
           {manual ? (
             <ChoiceField
               id="manualSettlementConfirmed"
-              label={t("refund.manualConfirm")}
-              control={<Checkbox id="manualSettlementConfirmed" checked={manualConfirmed} onCheckedChange={(checked) => setManualConfirmed(checked === true)} />}
+              label={t("refund.manualConfirm", { amount: manualAmount })}
+              control={(
+                <Checkbox
+                  id="manualSettlementConfirmed"
+                  checked={manualConfirmed}
+                  onCheckedChange={(checked) => setConfirmedManualMinor(checked === true ? manualMinor : null)}
+                />
+              )}
             />
           ) : null}
         </form>

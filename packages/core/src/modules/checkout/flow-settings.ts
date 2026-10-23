@@ -41,16 +41,18 @@ export async function saveCheckoutFlowSettingsDocument(
         throw new ValidationError("A non-negative checkout settings revision is required.");
     }
 
+    const storeCurrency = await readStoreCurrency(db);
     const issues = getCheckoutFlowValidationIssues({
         checkoutMode: input.checkoutMode,
         partialPaymentEnabled: input.partialPaymentEnabled,
         partialPaymentAmount: input.partialPaymentAmount,
         availablePaymentMethods: input.availablePaymentMethods,
         paymentProviders: input.paymentProviders,
+        currencyCode: storeCurrency.code,
     });
     if (issues.length > 0) throw new ValidationError(issues.join(" "));
     // The advance a buyer pays online is money like any other: whole taka in BDT.
-    if (input.partialPaymentEnabled) toStoreMinor(input.partialPaymentAmount, await readStoreCurrency(db));
+    if (input.partialPaymentEnabled) toStoreMinor(input.partialPaymentAmount, storeCurrency);
 
     const { value, revision } = await checkoutDocument.write(db, {
         guestCheckoutEnabled: input.guestCheckoutEnabled,

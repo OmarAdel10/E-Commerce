@@ -62,6 +62,26 @@ const url = (group: Group, key: string, label: string, fallback: string, help = 
 const choice = (group: Group, key: string, label: string, options: Array<[string, string]>, fallback: string) =>
   ({ key, label, type: "select" as const, options: options.map(([value, text]) => ({ value, label: text })), default: fallback, group });
 
+/**
+ * Where SSLCommerz's API credentials come from: the email it sends when a
+ * store is registered. The store password is that API password, not the
+ * merchant panel login, and the panel does not show it.
+ */
+const SSLCOMMERZ_HELP = {
+  storeId: "From the API credentials email SSLCommerz sent when your store was registered (sandbox and live stores each have their own).",
+  storePassword: "The API store password from that same email, not your merchant panel login. The panel doesn't show it: if it's lost, ask SSLCommerz support to send it again.",
+};
+const SSLCOMMERZ_SETTINGS_BN = {
+  sslcommerz_store_id: {
+    label: "স্টোর আইডি",
+    help: "স্টোর রেজিস্টার করার সময় SSLCommerz যে এপিআই ক্রেডেনশিয়াল ইমেইল পাঠিয়েছে, সেখান থেকে (স্যান্ডবক্স ও লাইভ স্টোরের আলাদা)।",
+  },
+  sslcommerz_store_password: {
+    label: "স্টোর পাসওয়ার্ড",
+    help: "একই ইমেইলের এপিআই স্টোর পাসওয়ার্ড, মার্চেন্ট প্যানেলের লগইন পাসওয়ার্ড নয়। প্যানেলে এটি দেখা যায় না: হারিয়ে গেলে SSLCommerz সাপোর্টকে আবার পাঠাতে বলুন।",
+  },
+};
+
 const SETTINGS = [
   secret("smsnetbd", "smsnetbd_api_key", "API key"),
   text("smsnetbd", "smsnetbd_sender_id", "Sender ID", 128, "Only when SMS.net.bd approved a sender ID for you."),
@@ -94,7 +114,7 @@ const SETTINGS = [
   text("pathao", "pathao_store_id", "Store ID", 100, "The pickup store in your Pathao merchant account."),
   choice("pathao", "pathao_delivery_type", "Delivery type", [["48", "Regular"], ["12", "Express"]], "48"),
   choice("pathao", "pathao_item_type", "Item type", [["2", "Parcel"], ["1", "Document"]], "2"),
-  { key: "pathao_item_weight", label: "Default weight (kg)", type: "number" as const, default: 0.5, min: 0.1, max: 50, group: "pathao" as const, help: "Used when a booking does not give a weight." },
+  { key: "pathao_item_weight", label: "Default weight (kg)", type: "number" as const, default: 0.5, min: 0.1, max: 50, group: "pathao" as const, help: "Used when a parcel has no weight. Pathao quotes and books at least 0.5 kg and carries up to 10 kg." },
   secret("pathao", "pathao_webhook_secret", "Webhook secret", "A long random text. Enter the same in Pathao's webhook settings, with the URL from Settings → Shipping → Couriers."),
   url("steadfast", "steadfast_base_url", "API address", "https://portal.packzy.com/api/v1"),
   secret("steadfast", "steadfast_api_key", "API key"),
@@ -110,8 +130,8 @@ const SETTINGS = [
     group: "sslcommerz" as const,
     help: "Sandbox uses SSLCommerz's test system. Switch to Live together with your live store ID and password.",
   },
-  text("sslcommerz", "sslcommerz_store_id", "Store ID", 200, "From the store credentials SSLCommerz sent you."),
-  secret("sslcommerz", "sslcommerz_store_password", "Store password"),
+  text("sslcommerz", "sslcommerz_store_id", "Store ID", 200, SSLCOMMERZ_HELP.storeId),
+  secret("sslcommerz", "sslcommerz_store_password", "Store password", SSLCOMMERZ_HELP.storePassword),
   ...BKASH_SETTINGS,
   ...NAGAD_SETTINGS,
 ];
@@ -245,7 +265,7 @@ const feature = (id: keyof typeof FEATURES, parts: Omit<PluginFeatureInput, "id"
 export const manifest = {
   id: "scalius.bangladesh",
   name: "Bangladesh pack",
-  version: "2.1.0",
+  version: "2.1.1",
   apiVersion: PLUGIN_API_VERSION,
   description: "Everything a store in Bangladesh needs in one app, each service turned on by itself: take payments with bKash, Nagad or SSLCommerz (cards, wallets and internet banking); book, track and follow deliveries with Pathao and Steadfast; send order messages and sign-in codes through SMS.net.bd, BDBulkSMS, MIM SMS or GenNet; check a buyer's courier history with FraudBD, FraudGuard, eCourier or FraudChecker from the order page; and load the City, Thana and Area list for addresses and shipping zones.",
   author: { name: "Scalius" },
@@ -382,6 +402,7 @@ export const manifest = {
       settings: {
         ...Object.fromEntries(SETTINGS.flatMap((field) => (BN_LABELS[field.label] ? [[field.key, { label: BN_LABELS[field.label] }]] : []))),
         ...NAGAD_SETTINGS_BN,
+        ...SSLCOMMERZ_SETTINGS_BN,
       },
     },
   },

@@ -99,6 +99,13 @@ export interface PaymentGateway<S extends GatewaySettings = GatewaySettings> ext
    */
   readonly countries?: ProviderCountries;
   readonly amountLimits?: GatewayAmountLimits;
+  /**
+   * A provider whose limits depend on the charge currency (Stripe's
+   * per-currency minimums): the limits for one currency, null where none is
+   * known. Read through `gatewayAmountLimits()`, which falls back to
+   * `amountLimits`.
+   */
+  readonly amountLimitsFor?: (currency: string) => GatewayAmountLimits | null;
   /** Per-currency wire forms (`encodeProviderAmount`); absent: ISO minor units as they are. */
   readonly amountCodecs?: ProviderAmountCodecs;
   readonly supportsRefund: boolean;

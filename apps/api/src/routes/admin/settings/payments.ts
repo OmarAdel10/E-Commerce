@@ -67,6 +67,7 @@ async function assertDisablingGatewayKeepsCheckoutFlow(
         partialPaymentAmount: checkoutSettings.partialPaymentAmount,
         availablePaymentMethods: nextPaymentMethods,
         paymentProviders: providers,
+        currencyCode: currencySettings.currencyCode,
     });
 
     if (checkoutFlowIssues.length > 0) {
@@ -323,17 +324,21 @@ app.openapi(getPaymentMethodsRoute, async (c) => {
         revision,
         activeMethods: flowActiveMethods,
         ...(flowDefaultMethod ? { activeDefaultMethod: flowDefaultMethod } : {}),
-        gateways: providers.gateways.map((gateway) => ({
-            id: gateway.id,
-            label: gateway.label,
-            checkoutName: gateway.checkoutName,
-            flow: gateway.flow,
-            pluginId: parseQualifiedProviderId(gateway.id)?.pluginId ?? null,
-            supportsRefund: gateway.supportsRefund,
-            chargeCurrencies: gateway.chargeCurrencies === "any" ? "any" as const : [...gateway.chargeCurrencies],
-            countries: providers.countries(gateway.id) === "any" ? "any" as const : [...providers.countries(gateway.id) as readonly string[]],
-            ...(publicAmountLimits(gateway) ? { amountLimits: publicAmountLimits(gateway) } : {}),
-        })),
+        gateways: providers.gateways.map((gateway) => {
+            // In the store's currency where the provider's limits depend on it (Stripe), else its declared ones.
+            const amountLimits = publicAmountLimits(gateway, currencySettings.currencyCode) ?? publicAmountLimits(gateway);
+            return {
+                id: gateway.id,
+                label: gateway.label,
+                checkoutName: gateway.checkoutName,
+                flow: gateway.flow,
+                pluginId: parseQualifiedProviderId(gateway.id)?.pluginId ?? null,
+                supportsRefund: gateway.supportsRefund,
+                chargeCurrencies: gateway.chargeCurrencies === "any" ? "any" as const : [...gateway.chargeCurrencies],
+                countries: providers.countries(gateway.id) === "any" ? "any" as const : [...providers.countries(gateway.id) as readonly string[]],
+                ...(amountLimits ? { amountLimits } : {}),
+            };
+        }),
         gatewayStatus,
     });
 });
@@ -406,6 +411,7 @@ app.openapi(savePaymentMethodsRoute, async (c) => {
         partialPaymentAmount: checkoutSettings.partialPaymentAmount,
         availablePaymentMethods: usableMethods,
         paymentProviders: providers,
+        currencyCode: currencySettings.currencyCode,
     });
     if (checkoutFlowIssues.length > 0) {
         throw new ValidationError(checkoutFlowIssues.join(" "));

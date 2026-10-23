@@ -6,6 +6,7 @@ import { ValidationError } from "@scalius/core/errors";
 import { getStripeCredentialEnvironment } from "@scalius/shared/payment-gateway-environment";
 import type { ProviderAmountCodecs } from "@scalius/shared/plugins/providers";
 import { decodeProviderAmount } from "@scalius/shared/plugins/providers/amount";
+import { STRIPE_API_VERSION as PINNED_STRIPE_API_VERSION } from "@scalius/shared/stripe-webhook";
 import {
   getStripeCheckoutReadiness,
   getStripeSettings,
@@ -14,6 +15,7 @@ import {
 import {
   PaymentProviderError,
   isProviderTimeoutError,
+  type GatewayAmountLimits,
   type GatewayProviderRefund,
   type GatewayRefundProbe,
   type PaymentEvent,
@@ -38,6 +40,26 @@ export const STRIPE_AMOUNT_CODECS: ProviderAmountCodecs = {
 };
 
 /**
+ * Stripe's published minimum charge per currency (ISO minor units), from
+ * https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts.
+ * Another currency's minimum is the equivalent of 0.50 USD in the account's
+ * settlement currency, which Scalius cannot know before the call, so none is
+ * claimed for it.
+ */
+const STRIPE_MINIMUM_CHARGE_MINOR: Readonly<Record<string, number>> = {
+  USD: 50, AED: 200, AUD: 50, BGN: 100, BRL: 50, CAD: 50, CHF: 50, CZK: 1_500, DKK: 250, EUR: 50,
+  GBP: 30, HKD: 400, HUF: 17_500, INR: 50, JPY: 50, MXN: 1_000, MYR: 200, NOK: 300, NZD: 50, PLN: 200,
+  RON: 200, SEK: 300, SGD: 50, THB: 1_000,
+};
+/** Stripe takes amounts of at most eight digits in the currency's smallest unit. */
+const STRIPE_MAXIMUM_CHARGE_MINOR = 99_999_999;
+
+function stripeAmountLimits(currency: string): GatewayAmountLimits | null {
+  const minMinor = STRIPE_MINIMUM_CHARGE_MINOR[currency];
+  return minMinor === undefined ? null : { currency, minMinor, maxMinor: STRIPE_MAXIMUM_CHARGE_MINOR };
+}
+
+/**
  * A Stripe amount back in ISO minor units. NaN when it is not a value the
  * codec could have sent: the kernel refuses it (never a wrong amount).
  */
@@ -46,12 +68,12 @@ function isoMinor(wireMinor: number, currency: string): number {
 }
 
 /**
- * The Stripe API version every request carries. A new `stripe` package must not
- * move it silently: change it here, after reading the version's changelog.
- * The package's types describe its own latest version (`2026-09-30.endive` in
- * stripe 23); this is the version the payment flows were built and tested on.
+ * The Stripe API version every request carries (`@scalius/shared/stripe-webhook`,
+ * where the dashboard's webhook setup help reads it too). The package's types
+ * describe its own latest version (`2026-09-30.endive` in stripe 23); this is
+ * the version the payment flows were built and tested on.
  */
-const STRIPE_API_VERSION = "2026-08-26.dahlia" as Stripe.LatestApiVersion;
+const STRIPE_API_VERSION = PINNED_STRIPE_API_VERSION as Stripe.LatestApiVersion;
 
 function stripeClient(secretKey: string): Stripe {
   // The client holds credentials and transport state: keep it per request.
@@ -90,6 +112,7 @@ function confirmedEvent(intent: Stripe.PaymentIntent, eventType: string, eventId
   };
 }
 
+/** The events applied (`STRIPE_WEBHOOK_EVENTS`, the list setup help names); any other is ignored. */
 function toEvent(event: Stripe.Event): PaymentEvent | null {
   switch (event.type) {
     case "payment_intent.succeeded":
@@ -153,6 +176,7 @@ export const stripeGateway: PaymentGateway<StripeSettings> = {
   checkoutName: "Card Payment",
   flow: "card",
   chargeCurrencies: "any",
+  amountLimitsFor: stripeAmountLimits,
   amountCodecs: STRIPE_AMOUNT_CODECS,
   supportsRefund: true,
 

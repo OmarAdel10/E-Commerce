@@ -27,6 +27,13 @@ import {
   prepareOrderReReservation,
 } from "../inventory";
 import type { PaymentType, ProcessPaymentParams } from "./types";
+import { buildPaymentReviewHoldInsert, PAYMENT_REVIEW_METADATA_KEY } from "./payment-review";
+
+/** A payment row's metadata: the caller's facts, plus the provider's review when it flagged the payment. */
+function paymentMetadataJson(params: Pick<ProcessPaymentParams, "metadata" | "review">): string | null {
+  const metadata = params.review ? { ...(params.metadata ?? {}), [PAYMENT_REVIEW_METADATA_KEY]: params.review } : params.metadata;
+  return metadata ? JSON.stringify(metadata) : null;
+}
 import { GIFT_CARD_TENDER_METHOD, isOnlinePaymentMethod, NET_TERMS_PAYMENT_METHOD } from "./gateways/registry";
 import { buildSavedPaymentMethodUpsert, readSavedPaymentMethodOwner } from "./saved-payment-methods";
 import {
@@ -537,7 +544,7 @@ export async function processPaymentConfirmed(
           status: PaymentRecordStatus.PENDING,
           providerRef: params.providerRef,
           providerSecondaryRef: params.secondaryRef ?? null,
-          metadata: params.metadata ? JSON.stringify(params.metadata) : null,
+          metadata: paymentMetadataJson(params),
           createdAt: sql`unixepoch()`,
           updatedAt: sql`unixepoch()`,
         });
@@ -663,7 +670,7 @@ export async function processPaymentConfirmed(
           paymentType,
           status: PaymentRecordStatus.SUCCEEDED,
           providerSecondaryRef: params.secondaryRef ?? null,
-          metadata: params.metadata ? JSON.stringify(params.metadata) : null,
+          metadata: paymentMetadataJson(params),
           updatedAt: sql`unixepoch()`,
         }).where(and(
           eq(orderPayments.id, paymentId),
@@ -767,6 +774,23 @@ export async function processPaymentConfirmed(
             WHERE landed_order.id = ${params.orderId} AND landed_order.version = ${nextVersion}
           )`,
         }));
+      }
+
+      // A payment the provider flagged is held for staff review, only once it landed.
+      if (params.review) {
+        batchStatements.push((await buildPaymentReviewHoldInsert(db, {
+          orderId: params.orderId,
+          paymentId: paymentId!,
+          provider: params.provider,
+          review: params.review,
+          landed: sql`EXISTS (
+            SELECT 1 FROM order_payments
+            WHERE id = ${paymentId} AND order_id = ${params.orderId} AND status = ${PaymentRecordStatus.SUCCEEDED}
+          ) AND EXISTS (
+            SELECT 1 FROM orders AS landed_order
+            WHERE landed_order.id = ${params.orderId} AND landed_order.version = ${nextVersion}
+          )`,
+        })).statement);
       }
 
       // An open order whose stock was released (before payment events were
@@ -1222,7 +1246,7 @@ export async function processPaymentAuthorized(
     const newStatus = placed ? OrderStatus.PENDING : order.status;
     validateTransition("order", order.status, newStatus);
     const nextVersion = order.version + 1;
-    const metadata = JSON.stringify({ currency: currency.code, ...(params.metadata ?? {}) });
+    const metadata = paymentMetadataJson({ ...params, metadata: { currency: currency.code, ...(params.metadata ?? {}) } });
 
     const statements: SQLiteBatchItem[] = [
       db.update(orders).set({
@@ -1290,6 +1314,19 @@ export async function processPaymentAuthorized(
           WHERE id = ${paymentId} AND order_id = ${params.orderId} AND status = ${PaymentRecordStatus.AUTHORIZED}
         )`,
       }));
+    }
+    // A hold the provider flagged waits for staff before any capture is handed over.
+    if (params.review) {
+      statements.push((await buildPaymentReviewHoldInsert(db, {
+        orderId: params.orderId,
+        paymentId,
+        provider: params.provider,
+        review: params.review,
+        landed: sql`EXISTS (
+          SELECT 1 FROM order_payments
+          WHERE id = ${paymentId} AND order_id = ${params.orderId} AND status = ${PaymentRecordStatus.AUTHORIZED}
+        )`,
+      })).statement);
     }
     try {
       await safeBatch(db, statements);

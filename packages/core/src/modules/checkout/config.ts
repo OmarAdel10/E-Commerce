@@ -216,7 +216,7 @@ export async function getCheckoutConfig(
             ? await gateway.loadSettings(db, encryptionKey)
             : null);
         if (!gateway || !settings || !gateway.readiness(settings).usable) continue;
-        const amountLimits = publicAmountLimits(gateway);
+        const amountLimits = publicAmountLimits(gateway, localCurrencyCode);
         gateways.push({
             id: gateway.id,
             name: gateway.checkoutName,

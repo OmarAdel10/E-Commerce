@@ -88,8 +88,11 @@ export type {
   ComputePaymentStateInput,
 } from "./payment-state";
 
+// --- Provider review (a payment its provider flagged) ---
+export { paymentReviewFromMetadata, paymentReviewHoldReason } from "./payment-review";
+
 // --- Refund service ---
-export { finalizeAcceptedRefundAttemptIds, processRefund, STORE_CREDIT_NEEDS_STAFF_REASON } from "./refund-service";
+export { finalizeAcceptedRefundAttemptIds, listRefundSources, processRefund, STORE_CREDIT_NEEDS_STAFF_REASON } from "./refund-service";
 export type {
   FinalizeAcceptedRefundAttemptsResult,
   RefundCaller,
@@ -97,10 +100,13 @@ export type {
   RefundNotificationFact,
   RefundRequest,
   RefundResult as RefundServiceResult,
+  RefundSource,
 } from "./refund-service";
 export {
   reconcileDueRefundAttempts,
   reconcileExternalRefundWebhooks,
+  verifyObservedRefund,
+  LOCAL_REFUND_IN_PROGRESS_REASON,
   reconcileRefundAttemptForOrder,
   reconcileRefundAttemptById,
 } from "./refund-reconciliation";
@@ -143,7 +149,7 @@ export {
   resolveAppPaymentUsability,
 } from "./gateway-settings";
 export type { AppPaymentUsability, GatewaySettingsStoredRow } from "./gateway-settings";
-export { COD_COUNTRIES, COD_LABEL, getGatewayAmountIssue, publicAmountLimits } from "./gateways/registry";
+export { COD_COUNTRIES, COD_LABEL, gatewayAmountLimits, getGatewayAmountIssue, publicAmountLimits } from "./gateways/registry";
 export { REFUND_OBSERVED_EVENT_TYPE } from "./refund-reconciliation";
 export { reconcileHostedPaymentReturn } from "./hosted-payment-return";
 export type { HostedPaymentReturnResult } from "./hosted-payment-return";

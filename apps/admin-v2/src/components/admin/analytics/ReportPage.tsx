@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { hasAppPaymentMethod, useAppPaymentMethodNames } from "~/hooks/use-app-payment-method-names";
 import { Download, Info, Printer } from "lucide-react";
 import { toast } from "~/lib/toast";
 import { cn } from "@scalius/shared/utils";
@@ -68,6 +69,11 @@ export function ReportPage({
   const report = useQuery(analyticsReportQueryOptions(reportId, query));
   // A different report's last page is never shown in place of this one.
   const data = report.data?.report.id === reportId ? report.data : undefined;
+  // App payment methods read as their installed provider's name, as on the overview.
+  const methodColumns = (data?.report.columns ?? []).filter((column) => column.type === "enum" && column.enum === "paymentMethod");
+  const paymentMethodNames = useAppPaymentMethodNames(hasAppPaymentMethod(
+    methodColumns.flatMap((column) => (data?.rows ?? []).map((row) => String(row.values[column.key] ?? ""))),
+  ));
   const title = t(`report.${reportId}` as AnalyticsMessageKey);
 
   const exportCsv = async () => {
@@ -151,6 +157,7 @@ export function ReportPage({
             money={fmt}
             onSort={(sort, direction) => onView({ sort, direction, page: 1 })}
             onPage={(page) => onView({ ...view, page })}
+            paymentMethodNames={paymentMethodNames}
           />
         </div>
       )}

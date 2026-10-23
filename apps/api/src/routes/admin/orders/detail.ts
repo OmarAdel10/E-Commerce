@@ -81,6 +81,8 @@ import {
 import {
     listOrderPaymentSessionAttempts,
     listOrderRefundAttempts,
+    listRefundSources,
+    paymentReviewFromMetadata,
     summarizeActiveRefundOperation,
 } from "@scalius/core/modules/payments";
 import {
@@ -159,6 +161,9 @@ const orderPaymentSchema = z.object({
         storeCredit: z.boolean(),
     }).nullable().openapi({
         description: "The gift card this row moved money on (last 4 only): a tender, a refund to that card, or (storeCredit) the card a store-credit refund issued.",
+    }),
+    review: z.object({ reason: z.string() }).nullable().openapi({
+        description: "The provider flagged this payment for review (its own words): the money counts as paid and the order is held until staff release it.",
     }),
 });
 
@@ -702,6 +707,14 @@ app.openapi(getItemsRoute, async (c) => {
 
 // ─── GET /:id/payments ───────────────────────────────────────────────────────
 
+const refundSourceSchema = z.object({
+    paymentId: z.string(),
+    paymentMethod: z.string(),
+    /** provider: its gateway sends it; manual: staff pay it back by hand and confirm; gift_card: back onto the card. */
+    settlement: z.enum(["provider", "manual", "gift_card"]),
+    refundable: z.number(),
+});
+
 const getPaymentsRoute = createRoute({
     operationId: "dashboard.orders.payments",
     method: "get",
@@ -723,6 +736,8 @@ const getPaymentsRoute = createRoute({
                         activeRefundOperation: activeRefundOperationSchema.nullable(),
                         paymentWebhookIssues: z.array(paymentWebhookIssueSchema),
                         paymentSessionAttempts: z.array(paymentSessionAttemptSchema),
+                        // Where an original-method refund draws from, in refund order (`listRefundSources`).
+                        refundSources: z.array(refundSourceSchema),
                     })),
                 },
             },
@@ -752,6 +767,7 @@ app.openapi(getPaymentsRoute, (async (c: AdminRouteContext<typeof getPaymentsRou
             codReceiptUrl: orderPayments.codReceiptUrl,
             createdAt: orderPayments.createdAt,
             updatedAt: orderPayments.updatedAt,
+            metadata: orderPayments.metadata,
         }).from(orderPayments).where(eq(orderPayments.orderId, orderId)).all(),
         db.select().from(paymentPlans).where(eq(paymentPlans.orderId, orderId)).get(),
         listOrderRefundAttempts(db, orderId, { audience: "admin" }),
@@ -763,10 +779,11 @@ app.openapi(getPaymentsRoute, (async (c: AdminRouteContext<typeof getPaymentsRou
     // After the parallel reads, so the handler never holds more than six D1 connections.
     const giftCardLinks = await listGiftCardPaymentLinks(db, orderId, payments);
     return ok(c, {
-        payments: payments.map(({ amountMinor, ...payment }) => ({
+        payments: payments.map(({ amountMinor, metadata, ...payment }) => ({
             ...payment,
             amount: amount(amountMinor),
             giftCard: giftCardLinks.get(payment.id) ?? null,
+            review: paymentReviewFromMetadata(metadata),
         })),
         plan: plan
             ? (({ totalAmountMinor, depositAmountMinor, balanceDueMinor, ...facts }) => ({
@@ -780,6 +797,10 @@ app.openapi(getPaymentsRoute, (async (c: AdminRouteContext<typeof getPaymentsRou
         activeRefundOperation: summarizeActiveRefundOperation(refundAttemptViews, "admin"),
         paymentWebhookIssues,
         paymentSessionAttempts: paymentSessionAttemptViews,
+        refundSources: listRefundSources(payments).map(({ refundableMinor, ...source }) => ({
+            ...source,
+            refundable: amount(refundableMinor),
+        })),
     });
 }) as unknown as AdminRouteHandler<typeof getPaymentsRoute>);
 

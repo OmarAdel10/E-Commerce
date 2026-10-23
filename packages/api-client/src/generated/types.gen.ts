@@ -59860,6 +59860,12 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                     last4: string;
                     storeCredit: boolean;
                 } | null;
+                /**
+                 * The provider flagged this payment for review (its own words): the money counts as paid and the order is held until staff release it.
+                 */
+                review: {
+                    reason: string;
+                } | null;
             }>;
             plan: {
                 id: string;
@@ -59930,7 +59936,7 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 provider: string;
                 eventType: string;
                 status: 'failed' | 'manual_reconciliation';
-                reason: 'manual_reconciliation' | 'dead_letter' | 'failed';
+                reason: 'manual_reconciliation' | 'dead_letter' | 'failed' | 'external_refund';
                 message: string;
                 error: string | null;
                 processedAt: string | number;
@@ -59952,6 +59958,12 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 updatedAt: string | number;
                 activeProcessing: boolean;
                 staleProcessing: boolean;
+            }>;
+            refundSources: Array<{
+                paymentId: string;
+                paymentMethod: string;
+                settlement: 'provider' | 'manual' | 'gift_card';
+                refundable: number;
             }>;
         };
     };

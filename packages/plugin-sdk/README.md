@@ -426,6 +426,7 @@ A hosted provider must declare `verifyReturn` and `queryPayment`. A provider tha
    - A confirmed event carries the provider-authenticated `amountMinor` and `currency`.
    - A webhook and a return for the same capture must give the same `eventType` and `eventId`, so the platform applies it once.
    - Failed and cancelled events carry `correlationId`, so the platform releases the right attempt.
+   - A confirmed or authorized payment your provider flagged (a fraud or risk screen) carries `review: { reason }`, in the provider's own words. The money still counts as paid; the store holds the order for staff review and shows them the reason.
 3. **`queryPayment`** answers "did it go through?" for a buyer or a staff reconcile: `{ providerStatus, event? }`.
 4. **`refund`** runs at most once per `input.idempotencyKey`. Store what you sent. If the answer is lost, raise `retryable` with `uncertain`: the platform then asks `refundStatus` instead of refunding twice.
 

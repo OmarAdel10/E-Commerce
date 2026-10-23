@@ -61,6 +61,7 @@ import {
 } from "../gift-cards";
 import { buildBatchGuard, isBatchGuardError } from "@scalius/database/client";
 import { sha256Hex } from "@scalius/shared/hash";
+import { allocateRefundAcrossSources, type RefundSourceSettlement } from "@scalius/shared/refund-sources";
 
 export interface RefundRequest {
     orderId: string;
@@ -498,8 +499,8 @@ function buildReconciledRefundNotificationDedupeKey(
 }
 
 function computeRefundedBySourcePayment(
-    capturedPayments: CapturedPayment[],
-    refundRows: Array<Pick<OrderPayment, "amountMinor" | "metadata">>,
+    capturedPayments: ReadonlyArray<Pick<OrderPayment, "id" | "amountMinor">>,
+    refundRows: ReadonlyArray<Pick<OrderPayment, "amountMinor" | "metadata">>,
 ): Map<string, number> {
     const refundedBySource = new Map<string, number>();
     let unattributedRefundAmount = 0;
@@ -533,6 +534,65 @@ function computeRefundedBySourcePayment(
     return refundedBySource;
 }
 
+/** How a captured payment's money goes back on an original-method refund. */
+function sourceSettlement(paymentMethod: string): RefundSourceSettlement {
+    if (paymentMethod === GIFT_CARD_PAYMENT_METHOD) return "gift_card";
+    return isManualSettlementMethod(paymentMethod) ? "manual" : "provider";
+}
+
+type RefundLedgerRow = Pick<OrderPayment, "id" | "amountMinor" | "metadata" | "paymentMethod" | "paymentType" | "status">;
+
+/**
+ * Captured payments in refund order, each with what is still refundable:
+ * cash or gateway money goes back first, gift-card tenders last (the buyer
+ * gets their money back before their card balance, §14 decision 16). The
+ * sort is stable, so each group keeps the newest-first ledger order.
+ */
+function orderedRefundSources<T extends Pick<OrderPayment, "id" | "amountMinor" | "paymentMethod">>(
+    capturedPayments: readonly T[],
+    refundRows: ReadonlyArray<Pick<OrderPayment, "amountMinor" | "metadata">>,
+): Array<{ payment: T; settlement: RefundSourceSettlement; refundableMinor: number }> {
+    const refundedBySource = computeRefundedBySourcePayment(capturedPayments, refundRows);
+    return [...capturedPayments]
+        .sort((left, right) =>
+            Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD))
+        .map((payment) => ({
+            payment,
+            settlement: sourceSettlement(payment.paymentMethod),
+            refundableMinor: Math.max(0, payment.amountMinor - (refundedBySource.get(payment.id) ?? 0)),
+        }));
+}
+
+export interface RefundSource {
+    paymentId: string;
+    paymentMethod: string;
+    settlement: RefundSourceSettlement;
+    refundableMinor: number;
+}
+
+/**
+ * The sources an original-method refund draws from, in the order
+ * `processRefund()` allocates it (`allocateRefundAcrossSources`). The
+ * dashboard previews a refund's split from them: which part staff pay back by
+ * hand and confirm, which part a gateway sends. `ledgerRows` is the order's
+ * whole payment ledger, in any order: it is read newest first, id breaking a
+ * same-second tie, as `processRefund()` reads it.
+ */
+export function listRefundSources(ledgerRows: ReadonlyArray<RefundLedgerRow & Pick<OrderPayment, "createdAt">>): RefundSource[] {
+    const newestFirst = [...ledgerRows].sort((left, right) =>
+        right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : left.id > right.id ? -1 : 0));
+    const captured = newestFirst.filter(isCapturedPaymentRow);
+    const refunds = newestFirst.filter(isRefundedPaymentRow);
+    return orderedRefundSources(captured, refunds)
+        .filter((source) => source.refundableMinor > 0)
+        .map(({ payment, settlement, refundableMinor }) => ({
+            paymentId: payment.id,
+            paymentMethod: payment.paymentMethod,
+            settlement,
+            refundableMinor,
+        }));
+}
+
 function buildRefundAllocations(params: {
     orderId: string;
     claimVersion: number;
@@ -541,49 +601,30 @@ function buildRefundAllocations(params: {
     refundRows: Array<Pick<OrderPayment, "amountMinor" | "metadata">>;
     currency: OrderCurrencySnapshot;
 }): RefundAllocation[] {
-    const refundedBySource = computeRefundedBySourcePayment(
-        params.capturedPayments,
-        params.refundRows,
+    const { shares, unallocatedMinor } = allocateRefundAcrossSources(
+        orderedRefundSources(params.capturedPayments, params.refundRows),
+        params.refundAmountMinor,
     );
-    let remainingRefundAmount = params.refundAmountMinor;
-    const allocations: RefundAllocation[] = [];
-    // Cash or gateway money goes back first, gift-card tenders last: the
-    // buyer gets their money back before their card balance (§14 decision 16).
-    // The sort is stable, so each group keeps the newest-first ledger order.
-    const allocationOrder = [...params.capturedPayments].sort((left, right) =>
-        Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD));
 
-    for (const sourcePayment of allocationOrder) {
-        if (remainingRefundAmount <= 0) break;
-        const alreadyRefunded = refundedBySource.get(sourcePayment.id) ?? 0;
-        const refundableAmount = Math.max(0, sourcePayment.amountMinor - alreadyRefunded);
-        if (refundableAmount <= 0) continue;
-
-        const amountMinor = Math.min(refundableAmount, remainingRefundAmount);
-        const index = allocations.length;
-        allocations.push({
-            id: getRefundClaimId(params.orderId, params.claimVersion - 1, index),
-            sourcePayment,
-            amountMinor,
-            idempotencyKey: buildRefundIdempotencyKey(params.orderId, sourcePayment.id, params.claimVersion),
-            refundReference: buildRefundReference(params.orderId, sourcePayment.id, params.claimVersion, index),
-            index,
-        });
-        remainingRefundAmount -= amountMinor;
-    }
-
-    if (remainingRefundAmount > 0) {
+    if (unallocatedMinor > 0) {
         throw new ValidationError("Refund amount exceeds refundable captured payment balance", {
             requestedAmount: fromMinor(params.refundAmountMinor, params.currency.decimalPlaces),
-            remainingUnallocatedAmount: fromMinor(remainingRefundAmount, params.currency.decimalPlaces),
+            remainingUnallocatedAmount: fromMinor(unallocatedMinor, params.currency.decimalPlaces),
         });
     }
 
-    if (allocations.length === 0) {
+    if (shares.length === 0) {
         throw new NotFoundError("No refundable payment record found for this order");
     }
 
-    return allocations;
+    return shares.map(({ source: { payment: sourcePayment }, amountMinor }, index) => ({
+        id: getRefundClaimId(params.orderId, params.claimVersion - 1, index),
+        sourcePayment,
+        amountMinor,
+        idempotencyKey: buildRefundIdempotencyKey(params.orderId, sourcePayment.id, params.claimVersion),
+        refundReference: buildRefundReference(params.orderId, sourcePayment.id, params.claimVersion, index),
+        index,
+    }));
 }
 
 function getResultGateway(allocations: RefundAllocation[]): string {
@@ -1531,7 +1572,8 @@ export async function processRefund(
         .select()
         .from(orderPayments)
         .where(eq(orderPayments.orderId, params.orderId))
-        .orderBy(desc(orderPayments.createdAt));
+        // Newest first, id breaking a same-second tie: the refund order `listRefundSources()` previews.
+        .orderBy(desc(orderPayments.createdAt), desc(orderPayments.id));
     for (const payment of paymentLedgerRows) {
         assertOrderPaymentCurrency(payment.currency, currency, "Order payment ledger");
     }

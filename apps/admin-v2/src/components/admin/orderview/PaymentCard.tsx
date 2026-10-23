@@ -5,7 +5,7 @@ import { InlineError } from "~/components/admin/states/InlineError";
 import { pollWhileOffline } from "~/lib/admin-query-client";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "~/lib/toast";
-import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -149,6 +149,10 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const payments = paymentsResult?.payments ?? [];
   const sessionAttempts = paymentsResult?.paymentSessionAttempts ?? [];
   const webhookIssues = paymentsResult?.paymentWebhookIssues ?? [];
+  // A refund the provider reports that the order doesn't record yet is being
+  // reconciled, not a failed update: its own words, apart from the failures.
+  const externalRefundIssues = webhookIssues.filter((issue) => issue.reason === "external_refund");
+  const failedWebhookIssues = webhookIssues.filter((issue) => issue.reason !== "external_refund");
   const refundAttempts: OrderRefundAttempt[] = paymentsResult?.refundAttempts ?? order.refundAttempts ?? [];
   const activeRefund = paymentsResult?.activeRefundOperation ?? order.activeRefundOperation ?? null;
   // An app's method reads as its provider's name (orders store `<plugin id>:<provider id>`).
@@ -186,8 +190,13 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const methodPaidMinor = Math.max(0, Math.round(grossPaid * 10 ** paidDecimalPlaces) - giftCardHeldMinor);
   const methodPaid = methodPaidMinor / 10 ** paidDecimalPlaces;
 
-  const hasCashPayment = isCOD || payments.some((payment) =>
-    payment.paymentMethod === "cod" && payment.paymentType !== "refund" && payment.status === "succeeded");
+  // Payments the provider took but flagged for review: paid, and the order is held until staff look.
+  const flaggedPayments = payments.filter((payment) =>
+    payment.review && payment.paymentType !== "refund" && (payment.status === "succeeded" || payment.status === "authorized"));
+  // Where a refund draws from (the API's refund order); unknown until the payments read lands.
+  const refundSources = paymentsResult?.refundSources ?? null;
+  // Every refundable unit was paid by hand (cash, a recorded transfer): a refund is recorded, not sent.
+  const refundIsRecordOnly = Boolean(refundSources?.length) && refundSources!.every((source) => source.settlement === "manual");
   const hasCashBalanceDueOnDelivery = plan?.status === "deposit_paid"
     && order.paymentStatus === "partial"
     && Number(order.balanceDue ?? 0) > 0;
@@ -290,6 +299,17 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
             <AlertDescription>{t("payment.appInactive", { app: providerLabel(inactiveApp), method: methodLabel(order.paymentMethod ?? "") })}</AlertDescription>
           </Alert>
         ) : null}
+        {flaggedPayments.length > 0 ? (
+          <Alert variant="warning" data-testid="payment-review">
+            <AlertTitle>{t("review.title")}</AlertTitle>
+            <AlertDescription>
+              {flaggedPayments.map((payment) => (
+                <p key={payment.id}>{t("review.reason", { method: methodLabel(payment.paymentMethod), reason: payment.review!.reason })}</p>
+              ))}
+              <p>{t("review.help")}</p>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         {activeRefundCopy && activeRefund ? (
           <div role="status" className="space-y-1">
             <p className="font-medium">{activeRefundCopy.label} · {formatCurrencyAmount(activeRefund.amount, activeRefund.currency)}</p>
@@ -386,7 +406,27 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
           </div>
         ) : null}
 
-        {webhookIssues.length > 0 ? (
+        {externalRefundIssues.length > 0 ? (
+          <section role="status" className="space-y-2" data-testid="external-refunds">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{t("webhook.externalTitle")}</p>
+                <p className="text-muted-foreground">{t("webhook.externalHelp")}</p>
+              </div>
+              {refreshButton}
+            </div>
+            <ul className="divide-y text-muted-foreground">
+              {externalRefundIssues.map((issue) => (
+                <li key={issue.id} className="py-2">
+                  <p>{[methodLabel(issue.provider), time(issue.processedAt)].filter(Boolean).join(" · ")}</p>
+                  <p>{t("webhook.reason.external_refund", { gateway: methodLabel(issue.provider) })}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {failedWebhookIssues.length > 0 ? (
           <section role="status" className="space-y-2">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -396,7 +436,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
               {refreshButton}
             </div>
             <ul className="divide-y text-muted-foreground">
-              {webhookIssues.map((issue) => (
+              {failedWebhookIssues.map((issue) => (
                 <li key={issue.id} className="py-2">
                   <p>{[methodLabel(issue.provider), time(issue.processedAt)].filter(Boolean).join(" · ")}</p>
                   <p>{t(`webhook.reason.${issue.reason}`, { gateway: methodLabel(issue.provider) })}</p>
@@ -558,8 +598,8 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
         ) : null}
 
         {canRefund && paid > 0 && order.paymentStatus !== "refunded" ? (
-          <Button variant="outline" size="sm" disabled={isRefundLocked} onClick={openRefund}>
-            {t(hasCashPayment ? "refund.recordCash" : "refund.issue")}
+          <Button variant="outline" size="sm" disabled={isRefundLocked || !refundSources} onClick={openRefund}>
+            {t(refundIsRecordOnly ? "refund.recordManual" : "refund.issue")}
           </Button>
         ) : null}
       </CardContent>
@@ -601,7 +641,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
           />
         </Suspense>
       ) : null}
-      {refundLoaded ? (
+      {refundLoaded && refundSources ? (
         <Suspense fallback={null}>
           <RefundDialog
             key={refundSession}
@@ -611,7 +651,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
             paid={paid}
             money={money}
             locked={isRefundLocked}
-            hasCashPayment={hasCashPayment}
+            refundSources={refundSources}
           />
         </Suspense>
       ) : null}

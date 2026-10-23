@@ -212667,6 +212667,19 @@
                                   "storeCredit"
                                 ],
                                 "description": "The gift card this row moved money on (last 4 only): a tender, a refund to that card, or (storeCredit) the card a store-credit refund issued."
+                              },
+                              "review": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "reason": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "reason"
+                                ],
+                                "description": "The provider flagged this payment for review (its own words): the money counts as paid and the order is held until staff release it."
                               }
                             },
                             "required": [
@@ -212684,7 +212697,8 @@
                               "codReceiptUrl",
                               "createdAt",
                               "updatedAt",
-                              "giftCard"
+                              "giftCard",
+                              "review"
                             ]
                           }
                         },
@@ -213013,7 +213027,8 @@
                                 "enum": [
                                   "manual_reconciliation",
                                   "dead_letter",
-                                  "failed"
+                                  "failed",
+                                  "external_refund"
                                 ]
                               },
                               "message": {
@@ -213136,6 +213151,37 @@
                               "staleProcessing"
                             ]
                           }
+                        },
+                        "refundSources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "paymentId": {
+                                "type": "string"
+                              },
+                              "paymentMethod": {
+                                "type": "string"
+                              },
+                              "settlement": {
+                                "type": "string",
+                                "enum": [
+                                  "provider",
+                                  "manual",
+                                  "gift_card"
+                                ]
+                              },
+                              "refundable": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "paymentId",
+                              "paymentMethod",
+                              "settlement",
+                              "refundable"
+                            ]
+                          }
                         }
                       },
                       "required": [
@@ -213144,7 +213190,8 @@
                         "refundAttempts",
                         "activeRefundOperation",
                         "paymentWebhookIssues",
-                        "paymentSessionAttempts"
+                        "paymentSessionAttempts",
+                        "refundSources"
                       ]
                     }
                   },

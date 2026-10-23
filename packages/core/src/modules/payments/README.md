@@ -134,8 +134,38 @@ again first; when the units are gone the payment is still recorded and the
 event goes to manual reconciliation (`confirmed_stock_unavailable`, no
 automatic fulfilment).
 
+A `refund_observed` event is checked when it arrives (`verifyObservedRefund`,
+read-only): when every refund the provider lists is already recorded (the
+merchant's own refund) it is processed at once; otherwise it waits for
+`reconcileExternalRefundWebhooks`, which imports refunds made in the provider
+dashboard but never while one of the order's own refunds is still settling
+(`local_refund_in_progress`). The order page lists only a refund made outside
+Scalius (`external_refund`), never the order's own.
+
+A confirmed or authorized event the provider flagged (`review: { reason }`,
+e.g. SSLCommerz `risk_level` 1) still counts as paid. `payment-review.ts`
+keeps the reason in the payment's metadata and writes a platform hold on the
+order in the payment's own batch, so nothing ships or is handed over until
+staff release it; the dashboard payments read returns `review` per payment.
+
 COD is not a gateway: collection is recorded in `cod.ts` and COD refunds are
 confirmed manual settlements.
+
+A gateway's charge limits come from `gatewayAmountLimits(gateway, currency)`:
+an app provider's single-currency `amountLimits`, or a built-in's
+per-currency `amountLimitsFor` (Stripe's published minimums and its
+eight-digit maximum; a currency Stripe publishes no minimum for has none).
+Precommit, session creation, saved-method charges, the advance-payment
+setting and the public checkout config all read the same limits, so a charge
+Stripe would refuse is refused before the order commits.
+
+A refund fills the order's captures in one order (newest first, gift-card
+tenders last; `allocateRefundAcrossSources`, `@scalius/shared/refund-sources`).
+`listRefundSources()` returns those sources with what each still refunds and
+how it settles (`provider`, `manual`, `gift_card`); the dashboard payments
+read carries them so the refund dialog asks staff to confirm exactly the share
+paid back by hand (COD and recorded transfers), never guessing from the
+order's method.
 
 ## Saved methods, off-session charges, authorizations
 

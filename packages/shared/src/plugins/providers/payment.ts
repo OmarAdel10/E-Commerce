@@ -166,6 +166,17 @@ export type SavedPaymentMethod = z.infer<typeof savedPaymentMethodSchema>;
 export const PAYMENT_EVENT_KINDS = ["confirmed", "authorized", "failed", "cancelled", "refund_observed"] as const;
 export type PaymentEventKind = (typeof PAYMENT_EVENT_KINDS)[number];
 
+/**
+ * A payment the provider took but flagged for the merchant to check before
+ * anything is handed over (its fraud or risk screen). The money still counts
+ * as paid; the platform holds the order for staff review, who release it.
+ */
+export const paymentReviewSchema = z.object({
+  /** The provider's own words for why, for staff (never buyer data), e.g. "High risk transaction". */
+  reason: z.string().trim().min(1).max(300),
+}).strict();
+export type PaymentReview = z.infer<typeof paymentReviewSchema>;
+
 export const paymentEventSchema = z.object({
   kind: z.enum(PAYMENT_EVENT_KINDS),
   eventType: z.string().min(1).max(128),
@@ -189,6 +200,8 @@ export const paymentEventSchema = z.object({
   /** Confirmed and authorized events of a session that asked to keep the method (`savePaymentMethod`). */
   savedPaymentMethod: savedPaymentMethodSchema.optional(),
   details: providerDetailsSchema.optional(),
+  /** Confirmed and authorized events the provider flagged for review (`paymentReviewSchema`); absent for an ordinary payment. */
+  review: paymentReviewSchema.optional(),
 }).strict().superRefine((event, context) => {
   const holdsMoney = event.kind === "confirmed" || event.kind === "authorized";
   if (holdsMoney && (event.amountMinor === undefined || event.currency === undefined)) {
@@ -196,6 +209,9 @@ export const paymentEventSchema = z.object({
   }
   if (!holdsMoney && event.savedPaymentMethod !== undefined) {
     context.addIssue({ code: "custom", path: ["savedPaymentMethod"], message: "Only a confirmed or authorized payment names a saved payment method." });
+  }
+  if (!holdsMoney && event.review !== undefined) {
+    context.addIssue({ code: "custom", path: ["review"], message: "Only a confirmed or authorized payment is flagged for review." });
   }
 });
 export type PaymentEvent = z.infer<typeof paymentEventSchema>;
