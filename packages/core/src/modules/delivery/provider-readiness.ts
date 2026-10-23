@@ -17,11 +17,27 @@ export type DeliveryProviderActivationBlocker = DeliveryProviderActivationRequir
 /**
  * Where a provider sits on the setup path. This is a lifecycle position, not a
  * readiness verdict -- the verdict is the shared `status` on the summary below.
+ * `configured`: set up but no connection test passed with these settings;
+ * `tested`: a test passed; `active`: on and set up.
  */
 export type DeliveryProviderLifecycle = "draft" | "configured" | "tested" | "active" | "blocked";
 
 export type DeliveryProviderReadinessBlocker = ReadinessIssue & {
-  code: "inactive" | "unconfigured" | "unreadable";
+  code: "inactive" | "unconfigured" | "unreadable" | "untested" | "test_failed";
+};
+
+/**
+ * The courier's last connection test, as its app keeps it: `none` when it
+ * offers no test, `untested` when no test ran with its current settings (a
+ * settings change resets it), else the outcome with the app's merchant-safe
+ * answer. A test is a probe, never a gate: it decides what the merchant is
+ * told, not whether a booking may be tried (an outage during a test must not
+ * switch a courier off).
+ */
+export type DeliveryProviderConnection = {
+  status: "none" | "untested" | "passed" | "failed";
+  testedAt: string | null;
+  message: string | null;
 };
 
 /**
@@ -32,9 +48,11 @@ export type DeliveryProviderReadinessSummary = Readiness & {
   issues: DeliveryProviderReadinessBlocker[];
   lifecycle: DeliveryProviderLifecycle;
   configured: boolean;
+  /** A connection test passed with the current settings. */
   tested: boolean;
   active: boolean;
   activationBlockers: DeliveryProviderActivationBlocker[];
+  connection: DeliveryProviderConnection;
   lastTestAttemptAt?: Date | number | string | null;
   lastTestSuccessAt?: Date | number | string | null;
   lastTestFailureAt?: Date | number | string | null;
@@ -50,10 +68,14 @@ type DeliveryProviderSummaryInput = {
    */
   activationBlockers?: DeliveryProviderActivationBlocker[];
   isActive?: boolean | null;
+  /** The courier's stored connection test. Absent: nothing is known (`untested`). */
+  connection?: DeliveryProviderConnection;
   lastTestAttemptAt?: Date | number | string | null;
   lastTestSuccessAt?: Date | number | string | null;
   lastTestFailureAt?: Date | number | string | null;
 };
+
+const UNTESTED: DeliveryProviderConnection = { status: "untested", testedAt: null, message: null };
 
 export function getDeliveryProviderReadinessSummary(
   input: DeliveryProviderSummaryInput,
@@ -73,9 +95,10 @@ export function getDeliveryProviderReadinessSummary(
       message: `Unsupported delivery provider type: ${input.type}`,
     }];
   const configured = activationBlockers.length === 0;
-  // A courier's setup is tested through its app (the app's own connection test): no proof on the row.
-  const tested = configured;
-  const active = Boolean(input.isActive) && tested;
+  const connection = input.connection ?? UNTESTED;
+  // Only a passing test proves a setup: configured is not tested.
+  const tested = configured && connection.status === "passed";
+  const active = Boolean(input.isActive) && configured;
 
   const blockers: DeliveryProviderReadinessBlocker[] = [];
   if (!input.isActive) {
@@ -95,26 +118,39 @@ export function getDeliveryProviderReadinessSummary(
         // The courier's own reason ("Activate Bangladesh pack in Apps to use it.").
         : activationBlockers[0]?.message ?? "Delivery provider setup is incomplete or unreadable.",
     });
+  } else if (connection.status === "failed") {
+    blockers.push({
+      code: "test_failed",
+      // The app's own answer: what failed and what to check, never a value.
+      message: connection.message ?? "The last connection test failed.",
+      fix: "Check the courier's settings in its app, then test the connection again.",
+    });
+  } else if (connection.status === "untested") {
+    blockers.push({
+      code: "untested",
+      message: "Not tested with its current settings.",
+      fix: "Test the connection to check that its settings work.",
+    });
   }
 
   let lifecycle: DeliveryProviderLifecycle;
   if (active) {
     lifecycle = "active";
-  } else if (input.isActive && blockers.length > 0) {
+  } else if (input.isActive && !configured) {
     lifecycle = "blocked";
   } else if (!configured) {
-    lifecycle = activationBlockers.length > 0 && activationBlockers.some((blocker) => blocker.key === "type")
-      ? "blocked"
-      : "draft";
+    lifecycle = activationBlockers.some((blocker) => blocker.key === "type") ? "blocked" : "draft";
   } else {
-    lifecycle = "tested";
+    lifecycle = tested ? "tested" : "configured";
   }
 
-  // Unreadable credentials are a platform failure, not merchant setup left undone.
-  const status: ReadinessStatus = active
-    ? "ready"
-    : blockers.some((blocker) => blocker.code === "unreadable")
-      ? "error"
+  // Ready: on, set up, and proven by a passing test where the courier offers
+  // one. A failed test is evidence it does not work, like unreadable secrets:
+  // an error, not setup left undone.
+  const status: ReadinessStatus = blockers.some((blocker) => blocker.code === "unreadable" || blocker.code === "test_failed")
+    ? "error"
+    : active && (connection.status === "passed" || connection.status === "none")
+      ? "ready"
       : "incomplete";
   return {
     status,
@@ -124,8 +160,18 @@ export function getDeliveryProviderReadinessSummary(
     tested,
     active,
     activationBlockers,
-    lastTestAttemptAt: input.lastTestAttemptAt,
-    lastTestSuccessAt: input.lastTestSuccessAt,
-    lastTestFailureAt: input.lastTestFailureAt,
+    connection,
+    // A courier's stored test is the one record of when it passed or failed.
+    ...(input.connection
+      ? {
+          lastTestAttemptAt: connection.testedAt ?? input.lastTestAttemptAt,
+          lastTestSuccessAt: connection.status === "passed" ? connection.testedAt : null,
+          lastTestFailureAt: connection.status === "failed" ? connection.testedAt : null,
+        }
+      : {
+          lastTestAttemptAt: input.lastTestAttemptAt,
+          lastTestSuccessAt: input.lastTestSuccessAt,
+          lastTestFailureAt: input.lastTestFailureAt,
+        }),
   };
 }

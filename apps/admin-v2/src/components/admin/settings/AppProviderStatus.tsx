@@ -16,7 +16,7 @@ import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { useProviderPortAccess } from "~/lib/provider-port-access";
 import { apiData } from "~/lib/api";
 import type { AppProvider } from "~/lib/api-query-options/settings-screens";
-import { useMessages } from "~/i18n";
+import { formatDateTime, useMessages } from "~/i18n";
 import { appProvidersMessages } from "~/i18n/settings-app-providers";
 import { providerLabel, providerSetupReason } from "~/i18n/provider-copy";
 import { queryKeys } from "~/lib/query-keys";
@@ -61,18 +61,28 @@ export function appProviderState(provider: Pick<AppProvider, "readiness" | "conn
 const STATE_VARIANT = { ready: "success", untested: "attention", testFailed: "destructive", notReady: "warning" } as const;
 const STATE_LABEL = { ready: "ready", untested: "untested", testFailed: "connectionFailed", notReady: "notReady" } as const;
 
-export function AppProviderStatus({ provider }: { provider: AppProvider }) {
+/**
+ * `onTested`: what else reads this provider's stored test (the couriers list
+ * reads it into each courier's readiness) and must refetch after a test.
+ */
+export function AppProviderStatus({ provider, onTested }: { provider: AppProvider; onTested?: () => Promise<unknown> | void }) {
   const t = useMessages(appProvidersMessages);
   const queryClient = useQueryClient();
   // Tested with whatever tests the port's built-in providers.
   const { canManage } = useProviderPortAccess(provider.kind);
   const test = useMutation({
     mutationFn: () => apiData(postApiV1AdminSettingsProvidersByIdTest({ path: { id: provider.id } })),
-    // The outcome is kept: the list reads it back for the status.
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.settings.appProviders(provider.kind) }),
+    // The outcome is kept, passed or failed: every list that reads it refetches.
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings.appProviders(provider.kind) }),
+      onTested?.(),
+    ]),
   });
   const usable = provider.readiness.usable;
   const state = appProviderState(provider);
+  const testedAt = provider.connection.testedAt
+    ? formatDateTime(new Date(provider.connection.testedAt), { dateStyle: "medium", timeStyle: "short" })
+    : null;
   return (
     <div className="space-y-3">
       <div className="flex items-start gap-3">
@@ -100,8 +110,13 @@ export function AppProviderStatus({ provider }: { provider: AppProvider }) {
         <p role="status" className="text-body text-destructive">{t("testFailed")}</p>
       ) : state === "untested" && provider.canTestConnection ? (
         <p className="text-body text-muted-foreground">{t("untestedHelp")}</p>
-      ) : state === "testFailed" && provider.connection.message ? (
-        <p className="text-body text-destructive wrap-anywhere">{provider.connection.message}</p>
+      ) : state === "testFailed" ? (
+        // The app's own answer (merchant-safe), kept across reloads until a test passes or its settings change.
+        <p className="text-body text-destructive wrap-anywhere">{provider.connection.message ?? t("connectionFailed")}</p>
+      ) : null}
+      {state === "testFailed" ? <p className="text-body text-muted-foreground">{t("testFailedHelp", { name: providerLabel(provider.name) })}</p> : null}
+      {testedAt && (state === "ready" || state === "testFailed") ? (
+        <p className="text-body text-muted-foreground">{t("lastTested", { time: testedAt })}</p>
       ) : null}
     </div>
   );

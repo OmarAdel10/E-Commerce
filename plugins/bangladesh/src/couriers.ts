@@ -194,11 +194,45 @@ async function pathaoToken(ctx: PluginContext, account: PathaoAccount): Promise<
       password: account.password,
     }),
   });
-  if (!response.ok) throw new Error(`Failed to get access token: HTTP ${response.status}`);
+  if (!response.ok) throw new CourierHttpError(response.status, `Failed to get access token: HTTP ${response.status}`);
   const data = await response.json<{ access_token?: unknown }>();
-  if (typeof data.access_token !== "string" || !data.access_token) throw new Error("Failed to get access token");
+  if (typeof data.access_token !== "string" || !data.access_token) throw new UnexpectedAnswer("Failed to get access token");
   return data.access_token;
 }
+
+/** A courier answered a setup call with an HTTP error: its status is the diagnosis. */
+class CourierHttpError extends Error {
+  constructor(readonly status: number, message = `HTTP ${status}`) {
+    super(message);
+  }
+}
+
+/**
+ * A failed connection test the merchant can act on, never naming a value.
+ * The courier refusing the saved credentials is told apart from the courier
+ * not answering: an outage is never reported as wrong credentials, and
+ * nothing the merchant saved changes either way.
+ */
+export function connectionTestFailure(courier: string, credentials: string, failure: unknown): { ok: false; message: string } {
+  const unchanged = "Your saved settings are unchanged.";
+  if (failure instanceof CourierHttpError) {
+    const { status } = failure;
+    if (status === 400 || status === 401 || status === 403 || status === 422) {
+      return { ok: false, message: `${courier} refused the saved ${credentials} (HTTP ${status}). Check them, and that the API address is the same environment (sandbox or live) as the account, then test again.` };
+    }
+    if (status === 429) return { ok: false, message: `${courier} is limiting requests (HTTP 429). ${unchanged} Test again in a few minutes.` };
+    if (status >= 500) return { ok: false, message: `${courier} didn't answer (HTTP ${status}). This is on ${courier}'s side. ${unchanged} Test again later.` };
+    return { ok: false, message: `${courier} answered HTTP ${status} at the saved API address. Check the API address setting, then test again.` };
+  }
+  // An answer that isn't the JSON the API documents (a parking page, an HTML error).
+  if (failure instanceof UnexpectedAnswer || failure instanceof SyntaxError) {
+    return { ok: false, message: `${courier} answered in a form the app doesn't recognise. Check that the API address points at ${courier}'s API, then test again.` };
+  }
+  return { ok: false, message: `${courier} couldn't be reached at the saved API address. Check the API address, or test again later if ${courier} is down. ${unchanged}` };
+}
+
+/** A courier answered a setup call successfully but not in the shape its API documents. */
+class UnexpectedAnswer extends Error {}
 
 /** Pathao quotes its fee in taka: minor units, or null when it is not a usable amount. */
 function feeMinor(fee: unknown, decimalPlaces: number): number | null {
@@ -247,6 +281,7 @@ const pathao = defineCourierProvider({
   },
 
   async testConnection(_input, ctx) {
+    const credentials = "client ID, client secret, username or password";
     try {
       const account = pathaoAccount(ctx);
       const storeId = optionalText(ctx, "pathao_store_id");
@@ -258,31 +293,33 @@ const pathao = defineCourierProvider({
           method: "GET",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         });
-        if (!response.ok) return { ok: false, message: "Connection failed" };
+        if (!response.ok) throw new CourierHttpError(response.status);
         const data = await response.json();
-        if (!OBJECT(data) || !OBJECT(data.data)) return { ok: false, message: "Connection failed" };
+        if (!OBJECT(data) || !OBJECT(data.data)) throw new UnexpectedAnswer();
         const { current_page: currentPage, last_page: lastPage, data: stores } = data.data;
         if (
           typeof currentPage !== "number" || !Number.isInteger(currentPage) || currentPage !== page
           || typeof lastPage !== "number" || !Number.isInteger(lastPage) || lastPage < page
           || !Array.isArray(stores) || !stores.every(OBJECT)
         ) {
-          return { ok: false, message: "Connection failed" };
+          throw new UnexpectedAnswer();
         }
         if (expectedLastPage === null) expectedLastPage = lastPage;
-        else if (lastPage !== expectedLastPage) return { ok: false, message: "Connection failed" };
+        else if (lastPage !== expectedLastPage) throw new UnexpectedAnswer();
         const configured = stores.find((store) =>
           (typeof store.store_id === "string" || typeof store.store_id === "number") && String(store.store_id) === storeId);
         if (configured) {
           if (configured.is_active === 1) return { ok: true, message: "Connection successful" };
           if (configured.is_active === 0) return { ok: false, message: "Selected Pathao store is inactive. Choose an active store and test again." };
-          return { ok: false, message: "Connection failed" };
+          throw new UnexpectedAnswer();
         }
-        if (page === lastPage) return { ok: false, message: "Connection failed" };
+        if (page === lastPage) {
+          return { ok: false, message: "The credentials work, but the saved store ID isn't one of this Pathao account's stores. Copy the store ID from the Pathao merchant panel, then test again." };
+        }
       }
-      return { ok: false, message: "Connection failed" };
-    } catch {
-      return { ok: false, message: "Connection failed" };
+      return { ok: false, message: `The credentials work, but the saved store ID wasn't in the first ${MAX_PATHAO_STORE_PAGES} pages of this account's Pathao stores. Check the store ID in the Pathao merchant panel.` };
+    } catch (error) {
+      return connectionTestFailure("Pathao", credentials, error);
     }
   },
 
@@ -475,11 +512,14 @@ const steadfast = defineCourierProvider({
     try {
       const { baseUrl, headers } = steadfastHeaders(ctx);
       const response = await ctx.http.fetch(`${baseUrl}/get_balance`, { method: "GET", headers });
-      if (!response.ok) return { ok: false, message: "Connection failed" };
+      if (!response.ok) throw new CourierHttpError(response.status);
       const data = await response.json();
-      return OBJECT(data) && data.status === 200 ? { ok: true, message: "Connection successful" } : { ok: false, message: "Connection failed" };
-    } catch {
-      return { ok: false, message: "Connection failed" };
+      if (!OBJECT(data)) throw new UnexpectedAnswer();
+      if (data.status === 200) return { ok: true, message: "Connection successful" };
+      // Steadfast reports a refused key in the body's status.
+      throw typeof data.status === "number" && data.status >= 400 ? new CourierHttpError(data.status) : new UnexpectedAnswer();
+    } catch (error) {
+      return connectionTestFailure("Steadfast", "API key or secret key", error);
     }
   },
 

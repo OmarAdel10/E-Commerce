@@ -30,7 +30,10 @@ import {
   type CourierProviders,
   type CourierProvidersSource,
   type DeliveryProviderActivationBlocker,
+  type DeliveryProviderConnection,
 } from "@scalius/core/modules/delivery";
+import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
+import { providerConnections, recordProviderConnectionTest } from "../provider-connection";
 import { listActiveProviderPlugins, type PluginInstallation } from "@scalius/core/modules/plugins";
 import {
   declaredCourierBookingOptions,
@@ -172,6 +175,14 @@ export function appCourier(
     }
     return read;
   };
+  // The app's stored connection test (one system_kv read per request): the one truth
+  // every test path records and every readiness reads.
+  let connection: Promise<DeliveryProviderConnection> | undefined;
+  const readConnection = () => {
+    connection ??= providerConnections(runtime.db, installation, [declaration])
+      .then((connections) => connections.get(qualifiedProviderId(installation.pluginId, declaration.id))!);
+    return connection;
+  };
   const invoke = async <M extends ProviderOperation<"courier">>(
     operation: M,
     input: ProviderOperationInput<"courier", M>,
@@ -192,11 +203,12 @@ export function appCourier(
 
     // Read once per request and key: readiness, settings pages and every call share it.
     async setup(provider, encryptionKey) {
-      const settings = await readSettings(encryptionKey);
+      const [settings, tested] = await Promise.all([readSettings(encryptionKey), readConnection()]);
       const readiness = getDeliveryProviderReadinessSummary({
         type: provider.type,
         activationBlockers: appSetupBlockers(installation.manifest.name, settings),
         isActive: provider.isActive,
+        connection: tested,
         lastTestAttemptAt: provider.lastTestAttemptAt,
         lastTestSuccessAt: provider.lastTestSuccessAt,
         lastTestFailureAt: provider.lastTestFailureAt,
@@ -248,7 +260,21 @@ export function appCourier(
   };
   if (operations.has("verifyWebhook")) courier.verifyWebhook = (input, { signal }) => invoke("verifyWebhook", input, signal);
   if (operations.has("reconcileCod")) courier.reconcileCod = (input, { signal }) => invoke("reconcileCod", input, signal);
-  if (operations.has("testConnection")) courier.testConnection = (input, { signal }) => invoke("testConnection", input, signal);
+  if (operations.has("testConnection")) {
+    // Every test is kept, whichever screen or agent ran it: the courier's status reads it back.
+    courier.testConnection = async (input, { signal, db }) => {
+      connection = undefined;
+      try {
+        const result = await invoke("testConnection", input, signal);
+        await recordProviderConnectionTest(db, installation, declaration, result);
+        return result;
+      } catch (error) {
+        const failure = providerErrorOf(error);
+        if (failure) await recordProviderConnectionTest(db, installation, declaration, { ok: false, message: failure.message });
+        throw error;
+      }
+    };
+  }
   const trackingPage = declaration.trackingUrl;
   if (trackingPage) courier.trackingUrl = (trackingId) => trackingPage.split("{trackingId}").join(encodeURIComponent(trackingId));
   return courier;

@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "~/lib/toast";
 import {
   deleteApiV1AdminSettingsDeliveryProvidersById,
-  postApiV1AdminSettingsProvidersByIdTest,
   putApiV1AdminSettingsDeliveryProviders,
 } from "@scalius/api-client/sdk";
 import { Button } from "~/components/ui/button";
@@ -15,6 +14,7 @@ import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { useProviderPortAccess } from "~/lib/provider-port-access";
 import { apiData } from "~/lib/api";
 import type { DeliveryProviderRecord } from "~/lib/api-query-options/delivery";
+import type { DeliveryProviderReadiness } from "../delivery-providers/provider-readiness";
 import {
   appProvidersQuery,
   areaCountsQuery,
@@ -31,7 +31,7 @@ import { resolveProviderReadiness } from "../delivery-providers/provider-readine
 import { AppIcon } from "../apps/AppIcon";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { useSaveBar } from "../shared/SaveBar";
-import { AppProviderSetupButton, ProvidedByChip } from "./AppProviderStatus";
+import { AppProviderStatus } from "./AppProviderStatus";
 import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { SettingsCard, SettingsDialog, SettingsField, SettingsRow, SettingsCardLoading } from "./SettingsPage";
 import { SettingsCheckbox } from "./SettingsCheckbox";
@@ -81,10 +81,9 @@ export function DeliveryAreasCard() {
 
 type ShippingCopy = ReturnType<typeof useMessages<keyof typeof shippingMessages.en>>;
 
-/** Why an app courier can or can't book, in the merchant's language. */
-function appCourierStatus(t: ShippingCopy, app: AppProvider): string {
+/** Why an app courier can't book, in the merchant's language. */
+function appCourierBlockedReason(t: ShippingCopy, app: AppProvider): string {
   const vars = { app: app.appName };
-  if (app.readiness.usable) return t("appCourierReady", vars);
   if (app.readiness.credentialErrors.length > 0) return t("appCourierUnreadable", vars);
   if (app.readiness.missingFields.length > 0) {
     return t("appCourierMissing", { ...vars, fields: app.readiness.missingFields.join(", ") });
@@ -126,7 +125,6 @@ function CourierForm({ courier }: { courier: DeliveryProviderRecord | null }) {
   const common = useMessages(settingsMessages);
   const queryClient = useQueryClient();
   const apiUrl = useQuery(platformQuery).data?.apiUrl ?? "";
-  const { canManage: canTestApps } = useProviderPortAccess("courier");
   const appCouriers = useAppCouriers();
   const [saved] = useState(() => ({
     id: courier?.id ?? crypto.randomUUID(),
@@ -149,15 +147,6 @@ function CourierForm({ courier }: { courier: DeliveryProviderRecord | null }) {
       body: { id: draft.id, name: draft.name.trim(), type: draft.type, isActive: draft.isActive },
     })),
     onSuccess: refresh,
-  });
-  const test = useMutation({
-    mutationFn: async () => apiData(postApiV1AdminSettingsProvidersByIdTest({ path: { id: draft.type } })),
-    onSuccess: (result) => {
-      if (result.ok) toast.success(t("testOk"));
-      // The app's own answer is merchant-facing.
-      else toast.error(t("appTestFailed", { app: app?.appName ?? courierLabel }), { description: result.message });
-    },
-    onError: () => toast.error(t("testFailed")),
   });
   const remove = useMutation({
     mutationFn: () => apiData(deleteApiV1AdminSettingsDeliveryProvidersById({ path: { id: draft.id } })),
@@ -202,24 +191,14 @@ function CourierForm({ courier }: { courier: DeliveryProviderRecord | null }) {
       <SettingsCheckbox
         id="courier-active"
         label={t("courierOn")}
-        help={blocked ? (app ? appCourierStatus(t, app) : t("appCourierInactive", { app: courierLabel })) : undefined}
+        help={blocked ? (app ? appCourierBlockedReason(t, app) : t("appCourierInactive", { app: courierLabel })) : undefined}
         checked={draft.isActive}
         disabled={!draft.isActive && blocked}
         onCheckedChange={(isActive) => setDraft({ ...draft, isActive })}
       />
-      {app ? <AppCourierFields app={app} apiUrl={apiUrl} courierLabel={courierLabel} /> : null}
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          loading={test.isPending}
-          disabled={!app?.canTestConnection || !canTestApps}
-          onClick={() => test.mutate()}
-        >
-          {t("test")}
-        </Button>
-        {app && !app.canTestConnection ? <p className="text-body text-muted-foreground">{t("appCourierNoTest", { app: app.appName })}</p> : null}
-        {courier ? (
+      {app ? <AppCourierFields app={app} apiUrl={apiUrl} courierLabel={courierLabel} onTested={refresh} /> : null}
+      {courier ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
           <>
             <Button type="button" variant="ghost" onClick={() => setConfirmDelete(true)}>
               {t("deleteCourier")}
@@ -235,26 +214,24 @@ function CourierForm({ courier }: { courier: DeliveryProviderRecord | null }) {
               onConfirm={() => remove.mutate()}
             />
           </>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </>
   );
 }
 
-/** A courier app's keys: whether it can book, the button that opens its setup sheet, and its update link. */
-function AppCourierFields({ app, apiUrl, courierLabel }: { app: AppProvider; apiUrl: string; courierLabel: string }) {
+/**
+ * A courier app's keys: the shared app-provider status (Ready only after a
+ * passing test with its current keys; a failed test and its answer kept
+ * across reloads), its setup and connection test, and its update link.
+ */
+function AppCourierFields({ app, apiUrl, courierLabel, onTested }: { app: AppProvider; apiUrl: string; courierLabel: string; onTested: () => Promise<unknown> }) {
   const t = useMessages(shippingMessages);
   return (
     <>
       <div className="space-y-3 border-t border-border pt-4">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-body">{t("appCourierSetup")}</p>
-            <ProvidedByChip pluginId={app.pluginId} appName={app.appName} />
-          </div>
-          <p className="text-body text-muted-foreground">{appCourierStatus(t, app)}</p>
-        </div>
-        <AppProviderSetupButton provider={app} size="sm" />
+        <p className="text-body text-muted-foreground">{t("appCourierSetup")}</p>
+        <AppProviderStatus provider={app} onTested={onTested} />
       </div>
       {app.operations.includes("verifyWebhook") ? (
         <div className="space-y-3 border-t border-border pt-4">
@@ -265,6 +242,22 @@ function AppCourierFields({ app, apiUrl, courierLabel }: { app: AppProvider; api
       ) : null}
     </>
   );
+}
+
+/**
+ * A courier's state in one word, from the server's readiness: "Ready" only
+ * when it can book and its last connection test (where its app offers one)
+ * passed with the current keys. A failed test and an untested setup stay
+ * distinct after a reload: the app keeps the outcome.
+ */
+export function courierRowState(
+  readiness: Pick<DeliveryProviderReadiness, "canCreateShipment" | "connection">,
+  isActive: boolean,
+): "courierReady" | "courierOff" | "courierNeedsSetup" | "courierTestFailed" | "courierUntested" {
+  if (!readiness.canCreateShipment) return isActive ? "courierNeedsSetup" : "courierOff";
+  const status = readiness.connection?.status ?? "untested";
+  if (status === "failed") return "courierTestFailed";
+  return status === "untested" ? "courierUntested" : "courierReady";
 }
 
 export function CouriersCard() {
@@ -298,7 +291,7 @@ export function CouriersCard() {
                   {courier.name}
                 </span>
               }
-              value={readiness.canCreateShipment ? t("courierReady") : courier.isActive ? t("courierNeedsSetup") : t("courierOff")}
+              value={t(courierRowState(readiness, courier.isActive))}
             />
           }>
             <CourierForm courier={courier} />
