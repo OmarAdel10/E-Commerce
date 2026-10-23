@@ -16285,6 +16285,9 @@
                 "damagedQuantity": {
                   "type": "integer"
                 },
+                "untrackedQuantity": {
+                  "type": "integer"
+                },
                 "rejectedQuantity": {
                   "type": "integer"
                 }
@@ -16298,6 +16301,7 @@
                 "receivedQuantity",
                 "restockQuantity",
                 "damagedQuantity",
+                "untrackedQuantity",
                 "rejectedQuantity"
               ]
             }
@@ -201404,6 +201408,10 @@
                                     "damagedQuantity": {
                                       "type": "integer"
                                     },
+                                    "untrackedQuantity": {
+                                      "type": "integer",
+                                      "description": "Received units of an item whose stock isn't tracked: neither restocked nor damaged."
+                                    },
                                     "actorType": {
                                       "type": "string"
                                     },
@@ -201436,6 +201444,7 @@
                                     "receivedQuantity",
                                     "restockQuantity",
                                     "damagedQuantity",
+                                    "untrackedQuantity",
                                     "actorType",
                                     "actorId",
                                     "inventoryMovementId",
@@ -201478,6 +201487,10 @@
                                     "damagedQuantity": {
                                       "type": "integer"
                                     },
+                                    "untrackedQuantity": {
+                                      "type": "integer",
+                                      "description": "Received units of an item whose stock isn't tracked: neither restocked nor damaged."
+                                    },
                                     "rejectedQuantity": {
                                       "type": "integer"
                                     },
@@ -201504,6 +201517,7 @@
                                     "receivedQuantity",
                                     "restockQuantity",
                                     "damagedQuantity",
+                                    "untrackedQuantity",
                                     "rejectedQuantity",
                                     "remainingReturnableQuantity",
                                     "reason",
@@ -202073,6 +202087,10 @@
                                   "damagedQuantity": {
                                     "type": "integer"
                                   },
+                                  "untrackedQuantity": {
+                                    "type": "integer",
+                                    "description": "Received units of an item whose stock isn't tracked: neither restocked nor damaged."
+                                  },
                                   "actorType": {
                                     "type": "string"
                                   },
@@ -202105,6 +202123,7 @@
                                   "receivedQuantity",
                                   "restockQuantity",
                                   "damagedQuantity",
+                                  "untrackedQuantity",
                                   "actorType",
                                   "actorId",
                                   "inventoryMovementId",
@@ -202147,6 +202166,10 @@
                                   "damagedQuantity": {
                                     "type": "integer"
                                   },
+                                  "untrackedQuantity": {
+                                    "type": "integer",
+                                    "description": "Received units of an item whose stock isn't tracked: neither restocked nor damaged."
+                                  },
                                   "rejectedQuantity": {
                                     "type": "integer"
                                   },
@@ -202173,6 +202196,7 @@
                                   "receivedQuantity",
                                   "restockQuantity",
                                   "damagedQuantity",
+                                  "untrackedQuantity",
                                   "rejectedQuantity",
                                   "remainingReturnableQuantity",
                                   "reason",
@@ -272187,8 +272211,7 @@
                               "metadata",
                               "isActive",
                               "sortOrder"
-                            ],
-                            "additionalProperties": {}
+                            ]
                           }
                         },
                         "pagination": {
@@ -272486,8 +272509,7 @@
                             "metadata",
                             "isActive",
                             "sortOrder"
-                          ],
-                          "additionalProperties": {}
+                          ]
                         }
                       },
                       "required": [
@@ -273480,8 +273502,7 @@
                         "metadata",
                         "isActive",
                         "sortOrder"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "required": [
@@ -273738,8 +273759,7 @@
                         "metadata",
                         "isActive",
                         "sortOrder"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "required": [

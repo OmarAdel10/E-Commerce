@@ -3143,6 +3143,7 @@ export type ReturnResource = {
         receivedQuantity: number;
         restockQuantity: number;
         damagedQuantity: number;
+        untrackedQuantity: number;
         rejectedQuantity: number;
     }>;
     createdAt: string;
@@ -56770,6 +56771,10 @@ export type GetApiV1AdminOrdersByIdReturnsResponses = {
                     receivedQuantity: number;
                     restockQuantity: number;
                     damagedQuantity: number;
+                    /**
+                     * Received units of an item whose stock isn't tracked: neither restocked nor damaged.
+                     */
+                    untrackedQuantity: number;
                     actorType: string;
                     actorId: string | null;
                     inventoryMovementId: string | null;
@@ -56790,6 +56795,10 @@ export type GetApiV1AdminOrdersByIdReturnsResponses = {
                     receivedQuantity: number;
                     restockQuantity: number;
                     damagedQuantity: number;
+                    /**
+                     * Received units of an item whose stock isn't tracked: neither restocked nor damaged.
+                     */
+                    untrackedQuantity: number;
                     rejectedQuantity: number;
                     remainingReturnableQuantity: number;
                     reason: string | null;
@@ -56951,6 +56960,10 @@ export type GetApiV1AdminOrdersByIdReturnsByReturnIdResponses = {
                     receivedQuantity: number;
                     restockQuantity: number;
                     damagedQuantity: number;
+                    /**
+                     * Received units of an item whose stock isn't tracked: neither restocked nor damaged.
+                     */
+                    untrackedQuantity: number;
                     actorType: string;
                     actorId: string | null;
                     inventoryMovementId: string | null;
@@ -56971,6 +56984,10 @@ export type GetApiV1AdminOrdersByIdReturnsByReturnIdResponses = {
                     receivedQuantity: number;
                     restockQuantity: number;
                     damagedQuantity: number;
+                    /**
+                     * Received units of an item whose stock isn't tracked: neither restocked nor damaged.
+                     */
+                    untrackedQuantity: number;
                     rejectedQuantity: number;
                     remainingReturnableQuantity: number;
                     reason: string | null;
@@ -77902,7 +77919,6 @@ export type GetApiV1AdminSettingsDeliveryLocationsResponses = {
                 descendants?: {
                     [key: string]: number;
                 };
-                [key: string]: unknown;
             }>;
             pagination: {
                 page: number;
@@ -77993,7 +78009,6 @@ export type PostApiV1AdminSettingsDeliveryLocationsResponses = {
                 descendants?: {
                     [key: string]: number;
                 };
-                [key: string]: unknown;
             };
         };
     };
@@ -78313,7 +78328,6 @@ export type GetApiV1AdminSettingsDeliveryLocationsByIdResponses = {
             descendants?: {
                 [key: string]: number;
             };
-            [key: string]: unknown;
         };
     };
 };
@@ -78396,7 +78410,6 @@ export type PutApiV1AdminSettingsDeliveryLocationsByIdResponses = {
             descendants?: {
                 [key: string]: number;
             };
-            [key: string]: unknown;
         };
     };
 };
