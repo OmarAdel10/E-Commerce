@@ -54,6 +54,7 @@ export const translationsMessages = defineMessages({
     machineTitle: "Machine translation",
     machineDescription: "An app can translate your text in the editor for you to check. Scalius has no built-in translation service.",
     machineEmpty: "No app offers machine translation yet. Install a translation app from Apps.",
+    machineLoadFailed: "Couldn't load the translation apps.",
     browseApps: "Browse apps",
 
     // Translate & adapt
@@ -183,6 +184,7 @@ export const translationsMessages = defineMessages({
     machineTitle: "মেশিন অনুবাদ",
     machineDescription: "একটি অ্যাপ এডিটরে আপনার লেখা অনুবাদ করে দিতে পারে, আপনি দেখে নেবেন। Scalius-এ নিজস্ব অনুবাদ সেবা নেই।",
     machineEmpty: "এখনো কোনো অ্যাপ মেশিন অনুবাদ দেয় না। অ্যাপস থেকে একটি অনুবাদ অ্যাপ ইনস্টল করুন।",
+    machineLoadFailed: "অনুবাদ অ্যাপগুলো লোড করা যায়নি।",
     browseApps: "অ্যাপস দেখুন",
 
     translateTitle: "অনুবাদ ও মানিয়ে নেওয়া",

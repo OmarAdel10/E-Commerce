@@ -34,6 +34,7 @@ import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useLocale, useMessages } from "~/i18n";
 import { translationsMessages } from "~/i18n/translations";
+import { resourceMessages } from "~/i18n/resource";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { getServerFnError } from "~/lib/api-helpers";
 import { toast } from "~/lib/toast";
@@ -220,6 +221,7 @@ export function LanguagesSettings() {
 /** Settings › Languages › Machine translation: the translation providers of installed apps (none is built in). */
 function MachineTranslationCard() {
   const t = useMessages(translationsMessages);
+  const r = useMessages(resourceMessages);
   const providers = useQuery(appProvidersQuery("translation"));
   return (
     <SettingsCard id="machineTranslation" title={t("machineTitle")} description={t("machineDescription")}>
@@ -227,7 +229,13 @@ function MachineTranslationCard() {
         <div className="flex flex-col gap-4">
           {providers.data.map((provider) => <AppProviderStatus key={provider.id} provider={provider} />)}
         </div>
-      ) : providers.isPending ? null : (
+      ) : providers.isPending ? null : providers.isError ? (
+        // A failed read is not "no app": an installed one may be there.
+        <div role="alert" className="flex flex-wrap items-center gap-3">
+          <p className="text-body">{t("machineLoadFailed")}</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => void providers.refetch()}>{r("retry")}</Button>
+        </div>
+      ) : (
         <p className="text-body text-muted-foreground">
           {t("machineEmpty")} <Link to="/admin/apps" className="text-link hover:underline">{t("browseApps")}</Link>
         </p>
@@ -247,6 +255,9 @@ function AddLanguageDialog({ open, onOpenChange, taken }: { open: boolean; onOpe
     .map((code) => ({ value: code, label: languageName(code, uiLocale), description: nativeLanguageName(code), keywords: [code] }))
     .sort((left, right) => left.label.localeCompare(right.label, uiLocale));
   const close = (next: boolean) => {
+    // An add on its way finishes in this dialog: closing early would let its
+    // answer close (and clear) a newer choice made after reopening.
+    if (!next && add.isPending) return;
     onOpenChange(next);
     if (!next) {
       setLocale("");
@@ -278,14 +289,16 @@ function AddLanguageDialog({ open, onOpenChange, taken }: { open: boolean; onOpe
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => close(false)}>{t("cancel")}</Button>
+          <Button type="button" variant="outline" disabled={add.isPending} onClick={() => close(false)}>{t("cancel")}</Button>
           <Button
             type="button"
             disabled={!locale}
             loading={add.isPending}
             onClick={() => add.mutate({ locale, published: publish }, {
               onSuccess: () => {
-                close(false);
+                onOpenChange(false);
+                setLocale("");
+                setPublish(false);
                 toast.success(t("languageAdded"));
               },
               onError: (error) => toast.error(getServerFnError(error, t("updateFailed"))),
