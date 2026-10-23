@@ -39,7 +39,6 @@ import type { PolicyKind } from "~/components/admin/settings/policy-templates";
 import { apiClient, apiData, type ApiResult } from "../api";
 import { queryKeys } from "../query-keys";
 import { addressPlaceQuery, deliveryProvidersQueryOptions } from "./delivery";
-import { pagesQueryOptions } from "./pages";
 import { getAdminUsers, getRbacRoles } from "./rbac";
 
 // ── Store ────────────────────────────────────────────────────────────────
@@ -204,9 +203,6 @@ export const policiesQuery = {
   queryKey: ["settings", "policies"] as const,
   queryFn: () => apiData(apiClient.get<{ 200: { success: boolean; data: PoliciesPayload } }>({ url: POLICIES_URL })),
 };
-
-/** The store's content pages (drafts too), for linking a policy to one. */
-export const storePagesQuery = pagesQueryOptions({ page: 1, limit: 100, contentType: "page", sort: "title", order: "asc" });
 
 // ── Notifications ────────────────────────────────────────────────────────
 

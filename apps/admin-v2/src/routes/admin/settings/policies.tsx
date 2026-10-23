@@ -17,7 +17,7 @@ import { settingsHead } from "~/components/admin/settings/settings-nav";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useSettingsForm } from "~/hooks/use-settings-form";
 import { apiData } from "~/lib/api";
-import { policiesQuery, storePagesQuery } from "~/lib/api-query-options/settings-screens";
+import { policiesQuery } from "~/lib/api-query-options/settings-screens";
 import { queryKeys } from "~/lib/query-keys";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { useMessages } from "~/i18n";
@@ -41,7 +41,6 @@ export const Route = createFileRoute("/admin/settings/policies")({
     Promise.allSettled([
       queryClient.ensureQueryData(returnPolicyQuery),
       queryClient.ensureQueryData(policiesQuery),
-      queryClient.ensureQueryData(storePagesQuery),
     ]),
   head: () => settingsHead("policies"),
   errorComponent: RouteErrorComponent,
@@ -157,6 +156,7 @@ function ReturnPolicyCard({ canEdit }: { canEdit: boolean }) {
           <StorePagePicker
             id="return-url"
             value={values.policyUrl}
+            selectedLabel={values.policyUrl}
             valueOf={(page) => `/${page.slug}`}
             disabled={!canEdit}
             onChange={(path) => setValue("policyUrl", path)}

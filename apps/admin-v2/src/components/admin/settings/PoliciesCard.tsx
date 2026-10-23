@@ -1,9 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useRef } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "~/lib/toast";
-import { postApiV1AdminPages } from "@scalius/api-client/sdk";
+import { getApiV1AdminPages, postApiV1AdminPages } from "@scalius/api-client/sdk";
 import { Button } from "~/components/ui/button";
-import { SearchableSelect } from "~/components/ui/searchable-select";
+import { SearchableSelect, type SearchableSelectLoader } from "~/components/ui/searchable-select";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useCurrency } from "~/hooks/use-currency";
 import { useSettingsForm } from "~/hooks/use-settings-form";
@@ -15,10 +16,10 @@ import {
   businessQuery,
   deliveryZonesQuery,
   policiesQuery,
-  storePagesQuery,
   type PoliciesPayload,
 } from "~/lib/api-query-options/settings-screens";
 import { storefrontUrlQueryOptions } from "~/lib/api-query-options/storefront-url";
+import { pageQueryOptions } from "~/lib/api-query-options/pages";
 import { queryKeys } from "~/lib/query-keys";
 import { useMessages } from "~/i18n";
 import { settingsMessages } from "~/i18n/settings";
@@ -50,26 +51,53 @@ async function createPolicyPage(body: NewPage) {
   }
 }
 
+const PAGE_PICKER_SIZE = 25;
+
+/** A page as the picker and the summary name it: its title, marked when it is a draft. */
+function pageLabel(page: { title: string; isPublished: boolean }, t: (key: "draftPage", vars: { title: string }) => string): string {
+  return page.isPublished ? page.title : t("draftPage", { title: page.title });
+}
+
 /**
  * Pick one of the store's own pages; never a typed address. `valueOf` picks
- * what is stored. Staff who can't view pages keep the current link, read-only.
+ * what is stored. Pages are searched on the server and paged, so every page
+ * can be found however many the store has; `selectedLabel` names the linked
+ * one before its page of results loads. Staff who can't view pages keep the
+ * current link, read-only.
  */
 export function StorePagePicker({
   id,
   value,
   valueOf,
+  selectedLabel,
   disabled,
   onChange,
 }: {
   id: string;
   value: string;
   valueOf: (page: { id: string; slug: string }) => string;
+  selectedLabel?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   const t = useMessages(policiesMessages);
   const canViewPages = useHasPermission(ADMIN_PERMISSIONS.PAGES_VIEW);
-  const pages = useQuery({ ...storePagesQuery, enabled: canViewPages });
+  const valueOfRef = useRef(valueOf);
+  valueOfRef.current = valueOf;
+  const load = useCallback<SearchableSelectLoader>(async ({ search, page, signal }) => {
+    const result = await apiData(getApiV1AdminPages({
+      query: { page, limit: PAGE_PICKER_SIZE, contentType: "page", sort: "title", order: "asc", ...(search ? { search } : {}) },
+      signal,
+    }));
+    return {
+      options: result.pages.map((item) => ({
+        value: valueOfRef.current(item),
+        label: pageLabel(item, t),
+        description: `/${item.slug}`,
+      })),
+      hasMore: page < result.pagination.totalPages,
+    };
+  }, [t]);
   if (!canViewPages) {
     return (
       <>
@@ -85,20 +113,15 @@ export function StorePagePicker({
       </>
     );
   }
-  const options = [
-    { value: "", label: t("noPage") },
-    ...(pages.data?.pages ?? []).map((page) => ({
-      value: valueOf(page),
-      label: page.isPublished ? page.title : t("draftPage", { title: page.title }),
-      keywords: [page.slug],
-    })),
-  ];
   return (
     <SearchableSelect
       id={id}
       value={value}
-      options={options}
-      disabled={disabled || !pages.data}
+      load={load}
+      queryKey={[...queryKeys.pages.all, "picker", id]}
+      selectedLabel={value ? selectedLabel ?? t("linkedPage") : undefined}
+      clearable
+      disabled={disabled}
       placeholder={t("choosePage")}
       searchPlaceholder={t("searchPages")}
       emptyMessage={t("noPages")}
@@ -163,12 +186,14 @@ function PolicyFields({ kind, canEdit }: { kind: PolicyKind; canEdit: boolean })
     },
   });
   const linked = values[kind];
+  const linkedPage = useQuery({ ...pageQueryOptions(linked ?? ""), enabled: Boolean(linked) && canViewPages });
   return (
     <>
       <SettingsField id={`policy-${kind}`} label={t("page")} help={t("pageHelp")}>
         <StorePagePicker
           id={`policy-${kind}`}
           value={linked ?? ""}
+          selectedLabel={linkedPage.data ? pageLabel(linkedPage.data, t) : undefined}
           valueOf={(page) => page.id}
           disabled={!canEdit}
           onChange={(pageId) => setValue(kind, pageId || null)}
@@ -203,15 +228,16 @@ export function PoliciesCard({ canEdit }: { canEdit: boolean }) {
   const t = useMessages(policiesMessages);
   const canViewPages = useHasPermission(ADMIN_PERMISSIONS.PAGES_VIEW);
   const policies = useQuery(policiesQuery);
-  const pages = useQuery({ ...storePagesQuery, enabled: canViewPages });
+  // Each linked page by its id: a store's pages are many, and a list page would miss some.
+  const linkedIds = canViewPages ? [...new Set(POLICY_KINDS.map((kind) => policies.data?.[kind]).filter((id): id is string => Boolean(id)))] : [];
+  const linkedPages = useQueries({ queries: linkedIds.map((id) => pageQueryOptions(id)) });
   if (policies.isError) return <SettingsLoadFailure title={t("policiesTitle")} onRetry={policies.refetch} />;
   if (!policies.data) return <SettingsCardLoading />;
   const summary = (kind: PolicyKind) => {
     const pageId = policies.data[kind];
     if (!pageId) return t("notSet");
-    const page = pages.data?.pages.find((item) => item.id === pageId);
-    if (!page) return t("linkedPage");
-    return page.isPublished ? page.title : t("draftPage", { title: page.title });
+    const page = linkedPages[linkedIds.indexOf(pageId)]?.data;
+    return page ? pageLabel(page, t) : t("linkedPage");
   };
   return (
     <SettingsCard
