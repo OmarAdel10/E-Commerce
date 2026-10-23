@@ -11,7 +11,8 @@ import {
   canonicalizeLineProperties,
   CUSTOMIZATION_SCHEMA_VERSION,
   LINE_PROPERTY_INPUT_LIMITS,
-  normalizePropertyText,
+  lineInputIssues,
+  lineInputLength,
   resolveLineProperties,
   type CanonicalLineProperty,
   type CustomizationField,
@@ -106,11 +107,9 @@ function safeMinor(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : 0;
 }
 
-/** Unicode characters of the NFC text, as the server counts them. */
+/** Unicode characters of the NFC text (the shared count the dashboard's preview shows too). */
 export function characterCount(value: string): number {
-  let count = 0;
-  for (const _character of value.normalize("NFC")) count += 1;
-  return count;
+  return lineInputLength(value);
 }
 
 /** The "{count}/{max}" counter under a text field. */
@@ -206,26 +205,16 @@ export function validateBuyerInputs(
   copy: BuyerInputCopy,
 ): BuyerInputsValidation {
   if (!schema) return { ok: true, canonical: [], properties: [], propertiesPriceMinor: 0 };
-  const byKey = new Map<string, string>();
-  for (const entry of values) if (!byKey.has(entry.key)) byKey.set(entry.key, entry.value);
-
-  const errors: BuyerInputError[] = [];
-  for (const field of schema.fields) {
-    const raw = byKey.get(field.key) ?? "";
-    const value = field.type === "checkbox"
-      ? (normalizePropertyText(raw) === "true" ? "true" : "")
-      : normalizePropertyText(raw);
-    if (!value) {
-      if (field.required) errors.push({ key: field.key, message: requiredMessage(field, copy) });
-      continue;
-    }
-    if ((field.type === "text" || field.type === "textarea") && characterCount(value) > field.maxLength) {
-      errors.push({
-        key: field.key,
-        message: formatCheckoutLanguageText(copy.customizationTooLongText, { max: field.maxLength }),
-      });
-    }
-  }
+  // The shared per-field rule (`lineInputIssues`): the dashboard's preview shows the same.
+  const errors: BuyerInputError[] = lineInputIssues(schema, values).map(({ key, problem }) => {
+    const field = schema.fields.find((candidate) => candidate.key === key)!;
+    return {
+      key,
+      message: problem.kind === "too_long"
+        ? formatCheckoutLanguageText(copy.customizationTooLongText, { max: problem.maxLength })
+        : requiredMessage(field, copy),
+    };
+  });
   if (errors.length > 0) return { ok: false, errors };
 
   const canonical = canonicalizeLineProperties(schema, values);

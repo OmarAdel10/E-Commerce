@@ -318,6 +318,7 @@ export function ResourceListPage<T extends { id: string }>(props: ResourceListPa
   const { table, error, isFetching, isLoading, refetch, selectedRows, clearSelection, pagination, pageInfo } = useServerTable<T>({
     columns,
     queryOptions: props.query,
+    rowScope: trashed ? "trash" : "live",
     dataSelector,
     currentPage: cursorPaging ? 1 : search.page,
     currentLimit: search.limit,

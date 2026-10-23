@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { PINNED_SELECT_WIDTH } from "~/components/ui/table-pins";
 import { ACTIONS_COLUMN, SELECT_COLUMN, isPrimaryColumn } from "./column-layout";
 import type { Column, TableRowData } from "./table-config";
 
@@ -40,12 +41,27 @@ export function columnAttributes<TData extends TableRowData>(
   const pin =
     column.id === SELECT_COLUMN ? "select" : column.id === ACTIONS_COLUMN ? "actions" : isPrimaryColumn(column) ? "primary" : undefined;
   const maxWidth = column.columnDef.meta?.maxWidth;
+  const style = { ...pinGeometry(pin, hasSelect), ...(maxWidth ? { "--column-max": `${maxWidth}px` } : {}) } as CSSProperties;
   return {
     className: INDEX_CELL,
     ...(isNumericColumn(column) ? { "data-numeric": "" as const } : {}),
     ...(pin ? { "data-pin": pin } : {}),
     ...(pin === "primary" && hasSelect ? { "data-after-select": "" as const } : {}),
     ...(isNumericColumn(previous) && !isNumericColumn(column) && pin !== "actions" ? { "data-after-numeric": "" as const } : {}),
-    ...(maxWidth ? { "data-capped": "" as const, style: { "--column-max": `${maxWidth}px` } as CSSProperties } : {}),
+    ...(maxWidth ? { "data-capped": "" as const } : {}),
+    ...(Object.keys(style).length > 0 ? { style } : {}),
   };
+}
+
+/**
+ * Where the left-pinned columns sit, from one number: the checkbox column is
+ * never narrower than `PINNED_SELECT_WIDTH` (an overflowing auto table would
+ * shrink it to its 28px content) and the title column sticks exactly that far
+ * in, so it never covers the column after it. Applies while the table
+ * scrolls sideways, as `--pin-min` and `--pin-start` that `ui/table.tsx` reads.
+ */
+export function pinGeometry(pin: ColumnAttributes["data-pin"], hasSelect: boolean): { "--pin-min"?: string; "--pin-start"?: string } {
+  if (pin === "select") return { "--pin-min": `${PINNED_SELECT_WIDTH}px` };
+  if (pin === "primary") return { "--pin-start": `${hasSelect ? PINNED_SELECT_WIDTH : 0}px` };
+  return {};
 }

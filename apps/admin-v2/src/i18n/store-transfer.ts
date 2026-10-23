@@ -72,7 +72,7 @@ export const storeTransferMessages = defineMessages({
     option3Fold: "Make one product per value",
     option3FoldHelp: "For example “Jamdani Saree - Silk” and “Jamdani Saree - Cotton”.",
     roundPrices: "Round prices to whole taka",
-    roundPricesHelp: "{count} prices have paisa. Taka prices are whole numbers.",
+    roundPricesHelp: "{count, plural, one {# price has paisa} other {# prices have paisa}}. Taka prices are whole numbers.",
     categorySource: "Category from",
     categoryAuto: "Type, else Product Category",
     categoryType: "Type",

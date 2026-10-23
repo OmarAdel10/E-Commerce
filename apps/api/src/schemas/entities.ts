@@ -59,6 +59,7 @@ export const productSummarySchema = z.object({
   category: z.object({ name: z.string().openapi({ description: "The category name; empty when the product has none." }) }),
   variantCount: z.number(),
   onHand: z.number().nullable().openapi({ description: "Tracked on-hand units across live SKUs; null when no SKU tracks quantity." }),
+  available: z.number().nullable().openapi({ description: "Units tracked SKUs can still sell: on hand minus open orders, never below 0 per SKU; null when no SKU tracks quantity." }),
   hasVariantDiscount: z.boolean().openapi({ description: "Some SKUs carry their own discount." }),
   hasStockHistory: z.boolean().openapi({ description: "Trash lists only: stock history blocks permanent delete." }),
   mediaCount: z.number(),

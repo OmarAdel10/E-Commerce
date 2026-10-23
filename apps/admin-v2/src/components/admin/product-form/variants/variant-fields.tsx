@@ -98,6 +98,22 @@ export function InventoryQuantityInput({ readOnly = false, value, committed, onC
   );
 }
 
+/**
+ * The photo a variant without its own shows (`null` = the product's main
+ * photo, as the storefront falls back); none for a mixed group (`undefined`)
+ * or a product without a main photo.
+ */
+export function inheritedMainPhoto(value: string | null | undefined, images: readonly ProductSkuImageChoice[]): ProductSkuImageChoice | undefined {
+  return value === null ? images.find((image) => image.isPrimary) : undefined;
+}
+
+/** "Main photo", muted beside the SKU: the visible half of a muted inherited thumbnail. */
+export function InheritedPhotoNote({ value, images, className }: { value: string | null | undefined; images: readonly ProductSkuImageChoice[]; className?: string }) {
+  const t = useMessages(productVariantMessages);
+  if (!inheritedMainPhoto(value, images)) return null;
+  return <span aria-hidden="true" data-inherited-photo-note="" className={cn("shrink-0", className)}>{t("mainPhoto")}</span>;
+}
+
 // Variant photo = an exact product image, or null to use the product's main photo.
 export function VariantImagePicker({ readOnly = false, value, images, onChange, label, allowNoChange = false, invalid = false }: {
   readOnly?: boolean;
@@ -126,9 +142,11 @@ export function VariantImagePicker({ readOnly = false, value, images, onChange, 
       ? t("mainPhoto")
       : photoName(selectedIndex);
   const triggerLabel = `${label ?? t("variantPhoto")}: ${state}`;
+  // No photo of its own: buyers see the product's main photo, so the cell shows it, muted.
+  const inherited = inheritedMainPhoto(value, images);
   if (readOnly) {
     // Only an exact SKU image or the explicit primary fallback; mixed groups have no image.
-    const image = selected ?? (value === null ? images.find((entry) => entry.isPrimary) : undefined);
+    const image = selected ?? inherited;
     const description = value === undefined ? t("mixedValues") : value !== null && !selected ? t("savedValueUnavailable") : state;
     return (
       <span role="img" aria-label={`${label ?? t("variantPhoto")}: ${description}`} className="flex size-11 items-center justify-center overflow-hidden rounded border sm:size-9">
@@ -146,7 +164,14 @@ export function VariantImagePicker({ readOnly = false, value, images, onChange, 
                 alt=""
                 className="h-full w-full object-contain object-center"
               />
-            : <ImageIcon className="h-4 w-4 text-muted-foreground" />}
+            : inherited
+              ? <img
+                  src={mediaImageUrl(inherited.url, 80)}
+                  alt=""
+                  data-inherited-photo=""
+                  className="h-full w-full object-contain object-center opacity-50"
+                />
+              : <ImageIcon className="h-4 w-4 text-muted-foreground" />}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2">

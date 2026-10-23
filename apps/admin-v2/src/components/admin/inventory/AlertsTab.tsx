@@ -183,7 +183,8 @@ export function AlertsTab({ filters, onFiltersChange, onReview }: AlertsTabProps
     {
       id: "product",
       header: t("product"),
-      meta: { primary: true, minWidth: 220 },
+      // A long name truncates (whole on hover) instead of pushing stock off the screen.
+      meta: { primary: true, minWidth: 220, maxWidth: 420 },
       cell: ({ row }) => name(row.original),
     },
     {

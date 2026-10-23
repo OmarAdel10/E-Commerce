@@ -481,6 +481,82 @@ function invalid(key: string | null, reason: string): ResolveLinePropertiesResul
   return { ok: false, code: "properties_invalid", key, reason };
 }
 
+/** Why a field's value is refused, by kind: `too_long` carries the field's limit. */
+export type LineInputProblem =
+  | { kind: "required" }
+  | { kind: "too_long"; maxLength: number }
+  | { kind: "invalid" };
+
+/**
+ * The one rule for a filled, normalized value of one field: within its
+ * limit, one line for text, "true" for a ticked box, one of the choices.
+ * `resolveLineProperties` (the server, the checkout, the order form) and
+ * `lineInputIssues` (every form that shows the buyer's fields) share it.
+ */
+function fieldValueProblem(
+  field: CustomizationField,
+  value: string,
+): (Exclude<LineInputProblem, { kind: "required" }> & { reason: string }) | null {
+  switch (field.type) {
+    case "text":
+    case "textarea":
+      if (characterLength(value) > field.maxLength) {
+        return { kind: "too_long", maxLength: field.maxLength, reason: `at most ${field.maxLength} characters` };
+      }
+      if (hasControlCharacter(value) || (field.type === "text" && LINE_BREAKS.test(value))) {
+        return { kind: "invalid", reason: "contains characters that are not allowed" };
+      }
+      return null;
+    case "checkbox":
+      return value === CHECKBOX_TICKED ? null : { kind: "invalid", reason: "a ticked box sends \"true\"" };
+    case "select":
+      return field.options.some((option) => option.value === value) ? null : { kind: "invalid", reason: "not one of the choices" };
+  }
+}
+
+/** One field's problem, for a message under that field. */
+export interface LineInputIssue {
+  key: string;
+  problem: LineInputProblem;
+}
+
+/**
+ * Every field the buyer must fix, in schema order (so the first is focused):
+ * a missing required value, a value over its limit, or one the field does
+ * not accept. Values are read as forms hold them (`""` or absent: empty; a
+ * checkbox: "true" when ticked). Exactly what `resolveLineProperties`
+ * refuses, field by field: the storefront's buyer-inputs block, the product
+ * editor's preview and the order form all show these.
+ */
+export function lineInputIssues(
+  schema: CustomizationSchema | null,
+  values: readonly LinePropertyInput[],
+): LineInputIssue[] {
+  if (!schema) return [];
+  const byKey = new Map<string, string>();
+  for (const entry of values) if (!byKey.has(entry.key)) byKey.set(entry.key, entry.value);
+  const issues: LineInputIssue[] = [];
+  for (const field of schema.fields) {
+    const value = normalizePropertyText(byKey.get(field.key) ?? "");
+    if (!value) {
+      if (field.required) issues.push({ key: field.key, problem: { kind: "required" } });
+      continue;
+    }
+    const problem = fieldValueProblem(field, value);
+    if (problem) issues.push({ key: field.key, problem: problem.kind === "too_long" ? { kind: "too_long", maxLength: problem.maxLength } : { kind: problem.kind } });
+  }
+  return issues;
+}
+
+/**
+ * The count under a text field, as typed: Unicode characters of the NFC text
+ * (the limit itself is checked on the trimmed text). The storefront and the
+ * dashboard show the same number.
+ */
+export function lineInputLength(value: string): number {
+  return characterLength(value.normalize("NFC"));
+}
+
 /**
  * Validate a line's properties against the product schema and price them
  * (§3.3). Runs in cart validation and again in the commit, against the
@@ -511,25 +587,8 @@ export function resolveLineProperties(
     }
     const value = normalizePropertyText(entry.value);
     if (!value) continue;
-    switch (field.type) {
-      case "text":
-      case "textarea":
-        if (characterLength(value) > field.maxLength) {
-          return invalid(entry.key, `at most ${field.maxLength} characters`);
-        }
-        if (hasControlCharacter(value) || (field.type === "text" && LINE_BREAKS.test(value))) {
-          return invalid(entry.key, "contains characters that are not allowed");
-        }
-        break;
-      case "checkbox":
-        if (value !== CHECKBOX_TICKED) return invalid(entry.key, "a ticked box sends \"true\"");
-        break;
-      case "select":
-        if (!field.options.some((option) => option.value === value)) {
-          return invalid(entry.key, "not one of the choices");
-        }
-        break;
-    }
+    const problem = fieldValueProblem(field, value);
+    if (problem) return invalid(entry.key, problem.reason);
     values.set(entry.key, value);
   }
 

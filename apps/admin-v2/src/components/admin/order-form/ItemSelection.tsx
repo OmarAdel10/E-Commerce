@@ -8,6 +8,7 @@ import { useOrderForm } from "./OrderFormContext";
 import { useCurrency } from "~/hooks/use-currency";
 import { useMessages } from "~/i18n";
 import { orderFormMessages } from "~/i18n/order-form";
+import { availableStockText, availableUnits } from "~/lib/stock-availability";
 import { OrderItemQuantityInput } from "./OrderItemQuantityInput";
 import { LinePropertyFields } from "./LinePropertyFields";
 import { discountedUnitPrice, orderItemVariantLabel } from "./order-item-presentation";
@@ -83,7 +84,7 @@ export function ItemSelection({
             description: `${
               option.trackInventory === false
                 ? t("noStockLimit")
-                : t("inStock", { count: (option.stock ?? 0) - (option.reservedStock ?? 0) })
+                : availableStockText(availableUnits(option.stock ?? 0, option.reservedStock ?? 0))
             } · ${fmt(discountedUnitPrice(selectedProduct, option))}`,
           }))}
         />

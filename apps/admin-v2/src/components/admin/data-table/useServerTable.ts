@@ -14,7 +14,6 @@ import {
 } from "./table-config";
 import {
   hashKey,
-  keepPreviousData,
   useQuery,
   type UseQueryOptions,
 } from "@tanstack/react-query";
@@ -56,6 +55,11 @@ export function shouldRefetchServerTableOnMount(query: {
     : false;
 }
 
+/** The previous rows may stand in for the next ones only within one row scope (`rowScope`). */
+export function keepRowsAcross(previousScope: unknown, nextScope: string | undefined): boolean {
+  return (previousScope ?? undefined) === nextScope;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyQueryOptions = UseQueryOptions<any, any, any, any>;
 
@@ -76,6 +80,14 @@ export interface UseServerTableOptions<TData extends TableRowData> {
   onPaginationChange: (page: number, limit: number) => void;
   /** `sort` is undefined for the list's default order. */
   onSortingChange: (sort: string | undefined, order: "asc" | "desc" | undefined) => void;
+  /**
+   * What the rows are, when a view changes it: a Trash or Archived view's rows
+   * are not live records, and the columns and row actions follow the view.
+   * While the next rows load, the rows on screen stay only if they belong to
+   * the same scope; rows of another scope give way to the loading state, so
+   * a live record is never shown, or acted on, as if it were in the trash.
+   */
+  rowScope?: string;
   // Options
   enableRowSelection?: boolean | ((row: Row<TData>) => boolean);
   enableSorting?: boolean;
@@ -110,6 +122,7 @@ export function useServerTable<TData extends TableRowData>({
   currentOrder,
   onPaginationChange,
   onSortingChange,
+  rowScope,
   enableRowSelection = true,
   enableSorting = true,
   defaultPageSize = 10,
@@ -127,7 +140,9 @@ export function useServerTable<TData extends TableRowData>({
     refetch,
   } = useQuery({
     ...qOpts,
-    placeholderData: keepPreviousData,
+    meta: { ...qOpts.meta, rowScope },
+    placeholderData: (previous: unknown, previousQuery?: { meta?: Record<string, unknown> }) =>
+      keepRowsAcross(previousQuery?.meta?.rowScope, rowScope) ? previous : undefined,
     refetchOnMount: shouldRefetchServerTableOnMount,
   });
 

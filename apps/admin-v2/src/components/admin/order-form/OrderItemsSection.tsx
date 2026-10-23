@@ -17,7 +17,7 @@ import {
   type CustomizationView,
   type LinePropertiesCheck,
 } from "./order-line-properties";
-import { linePropertyFieldId } from "./LinePropertyFields";
+import { linePropertyErrors, linePropertyFieldId, type LinePropertyError } from "./LinePropertyFields";
 import { orderCatalogProductsQueryOptions } from "@/lib/api-query-options/orders";
 import type { ApiResult } from "@/lib/api";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -100,7 +100,7 @@ export function OrderItemsSection() {
   const minorFactor = 10 ** getDecimalPlaces(code);
   // The buyer inputs typed for the product being added, and why the last Add was refused.
   const [propertyValues, setPropertyValues] = React.useState<Record<string, string>>({});
-  const [propertyError, setPropertyError] = React.useState<{ key: string | null; message: string } | null>(null);
+  const [propertyErrors, setPropertyErrors] = React.useState<LinePropertyError[]>([]);
 
   const [searchTerm, setSearchTerm] = React.useState("");
   const debouncedSearch = useDebounce(
@@ -149,7 +149,7 @@ export function OrderItemsSection() {
     setIsLoadingVariants(false);
     setSelectedProduct(null);
     setPropertyValues({});
-    setPropertyError(null);
+    setPropertyErrors([]);
     setSelectedVariant("");
     setQuantity(1);
     refs.productSearchInputRef.current?.focus();
@@ -212,7 +212,7 @@ export function OrderItemsSection() {
     setSelectedProduct({ ...product, variants, variantCount: variants.length });
     setSelectedVariant(variants.length === 1 ? variants[0]!.id : "");
     setPropertyValues({});
-    setPropertyError(null);
+    setPropertyErrors([]);
     setQuantity(1);
     setTimeout(() => document.getElementById("variant-select-trigger")?.focus(), 0);
   };
@@ -254,18 +254,21 @@ export function OrderItemsSection() {
       setPickerMessage(t("chooseVariantFirst"));
       return;
     }
-    // The server's own check (shared): required inputs filled, choices from the list.
-    const inputs = checkLineProperties(selectedProduct.customization ?? null, propertyValues);
-    if (!inputs.ok) {
-      const field = selectedProduct.customization?.fields.find((candidate) => candidate.key === inputs.key);
-      setPropertyError({
-        key: inputs.key,
-        message: t(inputs.reason === "required" ? "inputRequired" : "inputInvalid", { label: field?.label ?? "" }),
-      });
-      if (inputs.key) document.getElementById(linePropertyFieldId(inputs.key))?.focus();
+    // The buyer's own check (shared `lineInputIssues`): a message under every field to fix.
+    const schema = selectedProduct.customization ?? null;
+    const errors = schema ? linePropertyErrors(schema, propertyValues, t) : [];
+    // The server's strict check stays the last gate (the same rule, as one answer).
+    const inputs = checkLineProperties(schema, propertyValues);
+    if (errors.length === 0 && !inputs.ok) {
+      const field = schema?.fields.find((candidate) => candidate.key === inputs.key) ?? schema?.fields[0];
+      errors.push({ key: field?.key ?? "", message: t("inputInvalid", { label: field?.label ?? "" }) });
+    }
+    if (!inputs.ok || errors.length > 0) {
+      setPropertyErrors(errors);
+      if (errors[0]) document.getElementById(linePropertyFieldId(errors[0].key))?.focus();
       return;
     }
-    setPropertyError(null);
+    setPropertyErrors([]);
     if (addLine(selectedProduct, variant, quantity, inputs)) clearProductSelection();
   };
 
@@ -328,10 +331,10 @@ export function OrderItemsSection() {
                 buyerInputs={selectedProduct.customization ? {
                   schema: selectedProduct.customization,
                   values: propertyValues,
-                  error: propertyError,
+                  errors: propertyErrors,
                   onChange: (key, value) => {
                     setPropertyValues((current) => ({ ...current, [key]: value }));
-                    setPropertyError((current) => (current?.key === key ? null : current));
+                    setPropertyErrors((current) => current.filter((entry) => entry.key !== key));
                   },
                   surcharge: (priceMinor) => fmt(priceMinor / minorFactor),
                 } : null}

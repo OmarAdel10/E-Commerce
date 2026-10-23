@@ -12,6 +12,7 @@ import { orderFormMessages } from "@/i18n/order-form";
 import { resourceMessages } from "@/i18n/resource";
 import { discountedUnitPrice } from "./order-item-presentation";
 import { priceRangeText } from "@/lib/price-range";
+import { availableStockText } from "~/lib/stock-availability";
 
 export const PRODUCT_SEARCH_INPUT_ID = "order-product-search";
 
@@ -182,7 +183,7 @@ export function ProductSearch({
                         stock === 0 ? "text-destructive" : "text-muted-foreground",
                       )}
                     >
-                      {stock === null ? t("noStockLimit") : t("inStock", { count: stock })}
+                      {stock === null ? t("noStockLimit") : availableStockText(stock)}
                     </span>
                   )}
                 </li>
