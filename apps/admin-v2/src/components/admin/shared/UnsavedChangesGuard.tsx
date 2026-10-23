@@ -14,10 +14,21 @@ import { dispatchAdminNavigationCancelled } from "./admin-navigation-events";
 import { useMessages } from "~/i18n";
 import { saveBarMessages } from "~/i18n/save-bar";
 
+/** Where a navigation starts or ends, as the guard sees it. */
+export interface GuardedLocation {
+  pathname: string;
+  search: unknown;
+}
+
 interface UnsavedChangesGuardProps {
   isDirty: boolean;
   isSubmitting: boolean;
   allowSamePathStateNavigation?: boolean;
+  /**
+   * A navigation the page knows keeps its draft on screen (a workspace's list
+   * paging or search): it passes without asking. Every other one asks.
+   */
+  keepsDraft?: (current: GuardedLocation, next: GuardedLocation) => boolean;
 }
 
 /**
@@ -36,11 +47,13 @@ export function UnsavedChangesGuard({
   isDirty,
   isSubmitting,
   allowSamePathStateNavigation = false,
+  keepsDraft,
 }: UnsavedChangesGuardProps) {
   const t = useMessages(saveBarMessages);
   const { proceed, reset, status } = useBlocker({
     shouldBlockFn: ({ current, next }) => {
       if (!isDirty || isSubmitting) return false;
+      if (keepsDraft?.(current, next)) return false;
 
       // Some editors keep non-sensitive workspace state in the query string.
       // Moving between those states does not leave the form or discard it, so

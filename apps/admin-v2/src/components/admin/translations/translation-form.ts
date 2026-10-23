@@ -170,3 +170,47 @@ export function isDirty(view: ResourceTranslationsView, draft: Record<string, st
   for (const key of keys) if ((saved[key] ?? "").trim() !== (draft[key] ?? "").trim()) return true;
   return (view.resource.slug ?? "") !== (slug ?? "");
 }
+
+/** What the merchant edits: each field's translation (by `draftKey`) and the translated web address. */
+export interface TranslationDraft {
+  fields: Record<string, string>;
+  slug: string;
+}
+
+/** The saved state of a view, as a draft. */
+export function translationDraftOf(view: ResourceTranslationsView): TranslationDraft {
+  return { fields: initialDraft(view), slug: view.resource.slug ?? "" };
+}
+
+/**
+ * Makes `saved` the editor's saved state without losing work: a field the
+ * merchant changed since `before` (the saved state they started from, or what
+ * a save sent while they kept typing) keeps the edit; every other field takes
+ * its saved value. An empty field and a missing one mean the same.
+ */
+export function rebaseTranslationDraft(before: TranslationDraft, current: TranslationDraft, saved: TranslationDraft): TranslationDraft {
+  const fields: Record<string, string> = {};
+  for (const key of new Set([...Object.keys(saved.fields), ...Object.keys(current.fields), ...Object.keys(before.fields)])) {
+    const edited = (current.fields[key] ?? "") !== (before.fields[key] ?? "");
+    const value = edited ? current.fields[key] ?? "" : saved.fields[key] ?? "";
+    if (value !== "") fields[key] = value;
+  }
+  return { fields, slug: current.slug !== before.slug ? current.slug : saved.slug };
+}
+
+/**
+ * Whether a Translate & adapt navigation keeps the open draft on screen: list
+ * paging and search do; another item, kind, language or market opens another
+ * draft, so leaving with edits asks first.
+ */
+export function translationNavigationKeepsDraft(
+  current: { pathname: string; search: unknown },
+  next: { pathname: string; search: unknown },
+): boolean {
+  if (current.pathname.replace(/\/+$/, "") !== next.pathname.replace(/\/+$/, "")) return false;
+  const editorOf = (search: unknown) => {
+    const value = (search ?? {}) as Record<string, unknown>;
+    return [value.type ?? "product", value.id ?? "", value.locale ?? "", value.market ?? ""].map(String).join("\u0000");
+  };
+  return editorOf(current.search) === editorOf(next.search);
+}

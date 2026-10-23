@@ -31,7 +31,8 @@ import {
 } from "~/lib/api-query-options/translations";
 import { isTranslationEditorType, type TranslationsSearch } from "~/lib/translation-types";
 import { cn } from "@scalius/shared/utils";
-import { STATUS_BADGE, TYPE_LABEL_KEYS, languageName } from "./translation-form";
+import { STATUS_BADGE, TYPE_LABEL_KEYS, languageName, translationNavigationKeepsDraft } from "./translation-form";
+import { SaveBarProvider } from "~/components/admin/shared/SaveBar";
 import { canEditTranslations } from "./translation-permissions";
 import { Field } from "~/components/ui/field";
 
@@ -131,6 +132,9 @@ export function TranslationsWorkspace({ search: rawSearch }: { search: Record<st
   const selected = search.id ?? null;
 
   return (
+    // The open item's draft is on the page's save bar: another item, kind,
+    // language or market (or another page) asks first; paging and search don't.
+    <SaveBarProvider keepsDraft={translationNavigationKeepsDraft} savedMessage={t("saved")}>
     <div className="pb-8">
       {header}
       <p className="mb-4 max-w-3xl text-body text-muted-foreground">{t("translateDescription")}</p>
@@ -242,5 +246,6 @@ export function TranslationsWorkspace({ search: rawSearch }: { search: Record<st
         </div>
       </div>
     </div>
+    </SaveBarProvider>
   );
 }

@@ -22,7 +22,7 @@ import { Button } from "~/components/ui/button";
 import { AdminApiResponseError, readSettingsRevisionConflict } from "~/lib/admin-api-error";
 import { readApiFieldIssues } from "~/lib/api-field-errors";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { UnsavedChangesGuard } from "./UnsavedChangesGuard";
+import { UnsavedChangesGuard, type GuardedLocation } from "./UnsavedChangesGuard";
 import { translate, useMessages } from "~/i18n";
 import { saveBarMessages } from "~/i18n/save-bar";
 import { resourceMessages } from "~/i18n/resource";
@@ -607,13 +607,16 @@ export function SaveBarProvider({
   children,
   unsavedLabel,
   savedMessage,
+  keepsDraft,
 }: {
   children: ReactNode;
   unsavedLabel?: string;
   savedMessage?: string;
+  /** A navigation that keeps the page's drafts on screen, so leaving doesn't ask (`UnsavedChangesGuard`). */
+  keepsDraft?: (current: GuardedLocation, next: GuardedLocation) => boolean;
 }) {
   return (
-    <SaveScope savedMessage={savedMessage} render={(state) => <SaveBar state={state} unsavedLabel={unsavedLabel} />}>
+    <SaveScope savedMessage={savedMessage} render={(state) => <SaveBar state={state} unsavedLabel={unsavedLabel} keepsDraft={keepsDraft} />}>
       {children}
     </SaveScope>
   );
@@ -629,7 +632,11 @@ const DISCARD_BUTTON =
 const SAVE_BUTTON =
   "relative inline-flex h-11 shrink-0 items-center rounded-lg bg-save-bar-primary px-3 text-body font-medium text-save-bar-primary-foreground hover:bg-save-bar-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-save-bar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-save-bar disabled:pointer-events-none disabled:opacity-50 md:h-8";
 
-function SaveBar({ state, unsavedLabel }: { state: SaveScopeState; unsavedLabel?: string }) {
+function SaveBar({ state, unsavedLabel, keepsDraft }: {
+  state: SaveScopeState;
+  unsavedLabel?: string;
+  keepsDraft?: (current: GuardedLocation, next: GuardedLocation) => boolean;
+}) {
   const t = useMessages(saveBarMessages);
   const { dirty, busy, invalid, failure, revealed } = state;
   const online = useOnlineStatus();
@@ -689,7 +696,7 @@ function SaveBar({ state, unsavedLabel }: { state: SaveScopeState; unsavedLabel?
   }, [dirty]);
   return (
     <>
-      <UnsavedChangesGuard isDirty={state.navigationDirty} isSubmitting={busy} />
+      <UnsavedChangesGuard isDirty={state.navigationDirty} isSubmitting={busy} keepsDraft={keepsDraft} />
       <ConfirmDialog
         open={confirmDiscard && dirty}
         onOpenChange={setConfirmDiscard}
