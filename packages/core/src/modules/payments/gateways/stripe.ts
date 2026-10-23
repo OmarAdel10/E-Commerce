@@ -6,6 +6,7 @@ import { ValidationError } from "@scalius/core/errors";
 import { getStripeCredentialEnvironment } from "@scalius/shared/payment-gateway-environment";
 import type { ProviderAmountCodecs } from "@scalius/shared/plugins/providers";
 import { decodeProviderAmount } from "@scalius/shared/plugins/providers/amount";
+import { STRIPE_API_VERSION as PINNED_STRIPE_API_VERSION } from "@scalius/shared/stripe-webhook";
 import {
   getStripeCheckoutReadiness,
   getStripeSettings,
@@ -67,12 +68,12 @@ function isoMinor(wireMinor: number, currency: string): number {
 }
 
 /**
- * The Stripe API version every request carries. A new `stripe` package must not
- * move it silently: change it here, after reading the version's changelog.
- * The package's types describe its own latest version (`2026-09-30.endive` in
- * stripe 23); this is the version the payment flows were built and tested on.
+ * The Stripe API version every request carries (`@scalius/shared/stripe-webhook`,
+ * where the dashboard's webhook setup help reads it too). The package's types
+ * describe its own latest version (`2026-09-30.endive` in stripe 23); this is
+ * the version the payment flows were built and tested on.
  */
-const STRIPE_API_VERSION = "2026-08-26.dahlia" as Stripe.LatestApiVersion;
+const STRIPE_API_VERSION = PINNED_STRIPE_API_VERSION as Stripe.LatestApiVersion;
 
 function stripeClient(secretKey: string): Stripe {
   // The client holds credentials and transport state: keep it per request.
@@ -111,6 +112,7 @@ function confirmedEvent(intent: Stripe.PaymentIntent, eventType: string, eventId
   };
 }
 
+/** The events applied (`STRIPE_WEBHOOK_EVENTS`, the list setup help names); any other is ignored. */
 function toEvent(event: Stripe.Event): PaymentEvent | null {
   switch (event.type) {
     case "payment_intent.succeeded":
