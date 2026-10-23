@@ -162,6 +162,8 @@ export const orderFormMessages = defineMessages({
     pickupAt: "Pickup at {address}",
     pickupNoAddress: "Picked up at your store: no address needed.",
     noDeliveryNoAddress: "Nothing in this order ships: no address needed.",
+    savedPlaceInactive: "{field} {name} in their saved address is switched off for delivery, so it wasn't filled in. Choose where to deliver.",
+    savedPlaceMissing: "The {field} in their saved address is no longer one of your delivery places, so it wasn't filled in. Choose it again.",
     noDeliveryForGoods: "This order has no delivery method, so it can't take items that ship. Create a new order for them.",
   },
   bn: {
@@ -323,6 +325,8 @@ export const orderFormMessages = defineMessages({
     pickupAt: "পিকআপ: {address}",
     pickupNoAddress: "দোকান থেকে নেবেন: ঠিকানা লাগবে না।",
     noDeliveryNoAddress: "এই অর্ডারে পাঠানোর কিছু নেই: ঠিকানা লাগবে না।",
+    savedPlaceInactive: "সংরক্ষিত ঠিকানার {field} {name}-এ ডেলিভারি বন্ধ আছে, তাই এটি বসানো হয়নি। কোথায় ডেলিভারি হবে বেছে নিন।",
+    savedPlaceMissing: "সংরক্ষিত ঠিকানার {field} এখন আপনার ডেলিভারির জায়গাগুলোর মধ্যে নেই, তাই এটি বসানো হয়নি। আবার বেছে নিন।",
     noDeliveryForGoods: "এই অর্ডারে ডেলিভারির ধরন নেই, তাই পাঠানোর মতো প্রোডাক্ট যোগ করা যাবে না। এগুলোর জন্য নতুন অর্ডার করুন।",
   },
 });

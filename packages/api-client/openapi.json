@@ -272140,8 +272140,7 @@
                               "metadata",
                               "isActive",
                               "sortOrder"
-                            ],
-                            "additionalProperties": {}
+                            ]
                           }
                         },
                         "pagination": {
@@ -272439,8 +272438,7 @@
                             "metadata",
                             "isActive",
                             "sortOrder"
-                          ],
-                          "additionalProperties": {}
+                          ]
                         }
                       },
                       "required": [
@@ -273433,8 +273431,7 @@
                         "metadata",
                         "isActive",
                         "sortOrder"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "required": [
@@ -273691,8 +273688,7 @@
                         "metadata",
                         "isActive",
                         "sortOrder"
-                      ],
-                      "additionalProperties": {}
+                      ]
                     }
                   },
                   "required": [

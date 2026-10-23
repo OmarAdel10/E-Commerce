@@ -77890,7 +77890,6 @@ export type GetApiV1AdminSettingsDeliveryLocationsResponses = {
                 descendants?: {
                     [key: string]: number;
                 };
-                [key: string]: unknown;
             }>;
             pagination: {
                 page: number;
@@ -77981,7 +77980,6 @@ export type PostApiV1AdminSettingsDeliveryLocationsResponses = {
                 descendants?: {
                     [key: string]: number;
                 };
-                [key: string]: unknown;
             };
         };
     };
@@ -78301,7 +78299,6 @@ export type GetApiV1AdminSettingsDeliveryLocationsByIdResponses = {
             descendants?: {
                 [key: string]: number;
             };
-            [key: string]: unknown;
         };
     };
 };
@@ -78384,7 +78381,6 @@ export type PutApiV1AdminSettingsDeliveryLocationsByIdResponses = {
             descendants?: {
                 [key: string]: number;
             };
-            [key: string]: unknown;
         };
     };
 };
