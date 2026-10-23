@@ -210,7 +210,11 @@ function providerActionFailureMessage(
   providerId: string,
   summary: DeliveryProviderReadinessSummary,
 ): string {
-  const blockerMessages = readinessMessages(summary);
+  // What keeps it from booking; a connection test's outcome advises, it never blocks.
+  const blockerMessages = readinessMessages({
+    ...summary,
+    issues: summary.issues.filter((issue) => issue.code !== "untested" && issue.code !== "test_failed"),
+  });
   return `Delivery provider ${providerId} is not ready for shipment creation: ${blockerMessages.join(" ")}`;
 }
 

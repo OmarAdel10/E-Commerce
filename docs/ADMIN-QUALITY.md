@@ -100,6 +100,60 @@ These rules of the polish bar are `harness` rules in DESIGN.md that the harness 
 - `scripts/admin-quality/allowlist.json`: `findings` (gating findings you accept: `entry` is a route glob, `rule` a rule glob, optional `widths` and `locales`, and a `reason`), `network` (expected 4xx/5xx by path glob and status) and `console` (messages to ignore, as regular expressions). Every item needs a `reason`.
 - `scripts/admin-quality/language-allowlist.json`: terms, phrases and regular expressions for `wrong-language`.
 
+## Coverage
+
+A green run proves less than "every button works". It loads each route of the 120-URL route tree that it can open (`FileRoutesByTo`; four of them are redirects or the sign-in layout) and opens the nine named surfaces below. It does not submit forms, so mutations, validation, dirty and revert, permission variants, conflicts, network failures and recovery are not covered. Those are named journeys: component tests that render the composed screen with its queries (`docs/UI-VERIFICATION.md`), and browser checks on a local stack.
+
+What a run leaves out:
+
+- **Routes skipped on purpose** (`SKIPPED_ROUTES` in `routes.mjs`): reset password, two-factor, set up two-factor, first-run setup, the three agent-access pages (authorize, continue, approve), an app's declared page, the scanner and the OAuth consent page.
+- **Routes skipped for data.** A route with a parameter opens with the first row the API lists (`params.mjs`). A store with no row of that kind skips it, and only that one row's state is seen (one product, one order).
+- **Named surfaces, English only.** Four product-list surfaces find their trigger by English text: `products-sort`, `products-columns`, `products-filters` and `products-import`.
+
+### Named surfaces
+
+| Surface | Route | Locales | Modal (Tab stays inside) |
+| --- | --- | --- | --- |
+| `shortcuts-help` | `/admin` | en, bn | yes |
+| `command-palette` | `/admin` | en, bn | yes |
+| `notifications` | `/admin` | en, bn | no |
+| `store-menu` | `/admin` | en, bn | no |
+| `products-sort` | `/admin/products` | en | no |
+| `products-columns` | `/admin/products` | en | no |
+| `products-filters` | `/admin/products` | en | no |
+| `products-row-menu` | `/admin/products` | en, bn | no |
+| `products-import` | `/admin/products` | en | yes |
+
+### Overlay journey matrix
+
+The overlays where a broken journey costs money, stock or data, and the tests that render each one (paths under `apps/admin-v2/src/components/admin/`). What each test asserts is in the test; "none" means only a manual or browser check covers it. This is a map of known coverage, not a claim that every state of every overlay is tested.
+
+| Overlay | Opened from | What it does | Tests that render it | Harness surface |
+| --- | --- | --- | --- | --- |
+| Refund | Order → Payment | partial, full, manual-settlement acknowledgment | `orderview/PaymentCard.test.tsx` | none |
+| Cancel order | Order, order list | cancel with restock, refused cancel | `order-list/CancelOrderDialog.test.tsx` | none |
+| Create, approve, receive, cancel return | Order → Returns | dispositions, restock, timeline facts | `orderview/order-returns/ReturnDialogs.test.tsx` | none |
+| Ship, recover a lost booking | Order → Shipment | courier readiness, location ids, recovery lock | `orderview/ShipmentCard-recovery.test.tsx` | none |
+| Bulk ship, bulk export | Order list | readiness per courier, capped selection | `order-list/BulkOrdersDialog.test.tsx`, `ExportOrdersDialog.test.tsx` | none |
+| Manual fulfillment | Order | quantities, location | `orderview/ManualFulfillmentDialog.test.tsx` | none |
+| Adjust stock, bulk cost | Inventory | ledger write, stale version | `inventory/AdjustStockDialog.test.tsx`, `BulkCostDialog.test.tsx` | none |
+| Receive a purchase order or transfer | Purchasing | partial receipt, over-receipt | `purchasing/PurchaseOrderReceive.test.tsx`, `ReceiveLines.test.tsx` | none |
+| Product revision conflict | Product edit | reload and keep edits | `product-form/ProductRevisionConflictDialog.test.tsx` | none |
+| Catalog import | Product list | preview, rounding, update-only | none | `products-import` (opens only) |
+| Collection product picker | Collection form | select, cancel, revert to clean | `collection-form/ProductPickerDialog.test.tsx` | none |
+| Courier setup and connection test | Settings → Shipping | untested, failed and passed stay distinct | `settings/ShippingSettings-couriers.test.tsx` | none |
+| Payment gateway setup, app provider | Settings → Payments | keys, connection test | `settings/payment-gateway-setup.test.tsx`, `payment-app-providers.test.tsx` | none |
+| Tax Try it | Settings → Taxes | Bangladesh place guidance, stale result | `taxes/tax-try-it.test.tsx` | none |
+| Location add and edit | Settings → Locations | country, code conflict, archive refusal | `settings/locations/locations-settings.test.tsx` | none |
+| Sales channel Manage | Settings → Sales channels | locations, a channel left without an active location | `settings/sales-channels/sales-channels-settings.test.tsx` | none |
+| Custom field definition | Settings → Custom data | key, range validation, cancel | `settings/custom-data/custom-data-settings.test.tsx` | none |
+| Notification template | Settings → Notifications | edit, preview, revert | `settings/notification-template-editor.test.tsx` | none |
+| Gift card issue and settings | Gift cards | issue, settings revision | `gift-cards/IssueGiftCardDialog.test.tsx`, `GiftCardSettingsDialog.test.tsx` | none |
+| Media picker | Every form with images | pick, upload, cancel | `media-manager/MediaManager.behavior.test.tsx` | none |
+| Global search, shortcuts, notifications, store menu | Shell | open, close, focus return | `layout/GlobalSearchDialog.test.tsx`, `./NotificationDropdown.test.tsx` | `command-palette`, `shortcuts-help`, `notifications`, `store-menu` |
+
+Add a row when an overlay gains a journey test, and a named surface when its opening can be scripted in both languages.
+
 ## Known limits
 
 - Timing depends on the machine and on the number of pages in flight. Use `--concurrency 1` for timing numbers you want to compare.

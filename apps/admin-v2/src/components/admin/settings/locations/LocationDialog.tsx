@@ -1,7 +1,11 @@
 // Add or edit one inventory location. An edit is guarded by the version the
 // dialog opened with; a stale save says so instead of overwriting.
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "~/lib/toast";
+import { addressCountriesQueryOptions } from "~/lib/api-query-options/address-rules";
+import { countryName } from "~/lib/country-name";
+import { getStoreRegion } from "~/lib/store-time-zone";
 import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
 import { useDirtyDialogClose } from "~/components/admin/shared/use-dirty-dialog-close";
 import { useSubmitOnce } from "~/components/admin/shared/use-submit-once";
@@ -33,12 +37,20 @@ interface Draft {
   addressLine2: string;
   city: string;
   postalCode: string;
+  /**
+   * Where the location is: authoritative (an order without an address is
+   * taxed in the default location's country). A saved location shows its own,
+   * including one the server inferred from the store; a new one starts at the
+   * store's country.
+   */
+  countryCode: string;
   phone: string;
 }
 
-type Errors = Partial<Record<"name" | "code", SettingsLocationsMessageKey>>;
+type Errors = Partial<Record<"name" | "code" | "countryCode", SettingsLocationsMessageKey>>;
+const CHECKED_FIELDS = ["name", "code", "countryCode"] as const;
 
-function draftOf(location: InventoryLocation | null): Draft {
+export function draftOf(location: InventoryLocation | null, storeCountry = getStoreRegion()): Draft {
   return {
     name: location?.name ?? "",
     code: location?.code ?? "",
@@ -47,6 +59,7 @@ function draftOf(location: InventoryLocation | null): Draft {
     addressLine2: location?.addressLine2 ?? "",
     city: location?.city ?? "",
     postalCode: location?.postalCode ?? "",
+    countryCode: location?.countryCode ?? storeCountry,
     phone: location?.phone ?? "",
   };
 }
@@ -59,6 +72,7 @@ export function locationBody(draft: Draft): { body: InventoryLocationBody } | { 
   if (!name) errors.name = "nameRequired";
   if (!code) errors.code = "codeRequired";
   else if (!CODE_PATTERN.test(code) || code.length > 24) errors.code = "codeInvalid";
+  if (!/^[A-Z]{2}$/.test(draft.countryCode)) errors.countryCode = "countryRequired";
   if (Object.keys(errors).length > 0) return { errors };
   const optional = (value: string) => value.trim() || null;
   return {
@@ -70,6 +84,7 @@ export function locationBody(draft: Draft): { body: InventoryLocationBody } | { 
       addressLine2: optional(draft.addressLine2),
       city: optional(draft.city),
       postalCode: optional(draft.postalCode),
+      countryCode: draft.countryCode,
       phone: optional(draft.phone),
     },
   };
@@ -107,7 +122,7 @@ export function LocationDialog({ location, open, onOpenChange }: {
     const result = locationBody(draft);
     if ("errors" in result) {
       setErrors(result.errors);
-      const first = (["name", "code"] as const).find((field) => result.errors[field]);
+      const first = CHECKED_FIELDS.find((field) => result.errors[field]);
       if (first) document.getElementById(`inventory-location-${first}`)?.focus();
       return;
     }
@@ -125,7 +140,15 @@ export function LocationDialog({ location, open, onOpenChange }: {
   const serverError = save.error && !codeTaken
     ? conflict ? t("conflict") : getServerFnError(save.error, t("saveFailed"))
     : null;
-  const text = (field: Exclude<keyof Draft, "kind">, label: SettingsLocationsMessageKey, options: { help?: string; maxLength: number; type?: string }) => {
+  const countries = useQuery(addressCountriesQueryOptions());
+  // Every country an address can be in, plus the saved one while the list loads.
+  const countryOptions = useMemo(
+    () => [...new Set([...(countries.data ?? []), ...(draft.countryCode ? [draft.countryCode] : [])])]
+      .map((code) => ({ value: code, label: countryName(code), keywords: [code] }))
+      .sort((left, right) => left.label.localeCompare(right.label)),
+    [countries.data, draft.countryCode],
+  );
+  const text = (field: Exclude<keyof Draft, "kind" | "countryCode">, label: SettingsLocationsMessageKey, options: { help?: string; maxLength: number; type?: string }) => {
     const error = field === "name"
       ? errors.name
       : field === "code" ? errors.code ?? (codeTaken && draft.code.trim() ? "codeTaken" : undefined) : undefined;
@@ -172,6 +195,23 @@ export function LocationDialog({ location, open, onOpenChange }: {
                   if (KINDS.includes(value as Kind)) set("kind", value as Kind);
                 }}
                 options={KINDS.map((kind) => ({ value: kind, label: t(`kind.${kind}`) }))}
+              />
+            </Field>
+            <Field
+              id="inventory-location-countryCode"
+              label={t("country")}
+              help={t("countryHelp")}
+              error={errors.countryCode ? t(errors.countryCode) : undefined}
+            >
+              <SearchableSelect
+                id="inventory-location-countryCode"
+                triggerClassName="w-full"
+                value={draft.countryCode}
+                onValueChange={(value) => set("countryCode", value)}
+                options={countryOptions}
+                placeholder={t("chooseCountry")}
+                searchPlaceholder={t("searchCountry")}
+                emptyMessage={t("noCountry")}
               />
             </Field>
             {text("addressLine1", "addressLine1", { maxLength: 200 })}

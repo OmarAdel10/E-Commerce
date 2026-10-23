@@ -33,10 +33,10 @@ The `delivery` domain owns the courier port, saved courier accounts (delivery pr
 
 ## Provider readiness
 
-`getDeliveryProviderReadinessSummary()` reports a lifecycle: `draft`, `tested`, `active` or `blocked`. `active` means on and set up.
+`getDeliveryProviderReadinessSummary()` reports a lifecycle: `draft`, `configured` (set up, no passing test), `tested`, `active` or `blocked`. `active` means on and set up.
 
 - The courier names what blocks it (`activationBlockers`): the app's missing, unreadable or placeholder settings, or the app not active. The first blocker is the issue the dashboard shows.
-- The app tests its own setup (`testConnection` through the app). The row records the last test; there is no proof on the row.
+- The app tests its own setup (`testConnection` through the app). Every test path (Shipping's status, `dashboard.delivery_providers.test`, `dashboard.settings_providers.test`) records the outcome in the app provider's one `system_kv` row (`apps/api/src/plugins/provider-connection.ts`, fingerprinted to the settings it ran with), and the courier's `setup()` reads it into `connection`. `status` is `ready` only when active and the test passed (or the courier offers none); a failed test is `error` with a `test_failed` issue carrying the app's answer; not tested is `incomplete`. A test never gates booking and never changes saved settings.
 - Shipment creation and status checks need an active provider.
 
 ## Shipment creation

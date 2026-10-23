@@ -22,6 +22,7 @@ import { requestCourierProviders } from "../../../plugins/providers/courier";
 import { ok, created } from "../../../utils/api-response";
 import { successEnvelope, errorResponses, serviceUnavailableResponse } from "../../../schemas/responses";
 import { readinessSchema } from "../../../schemas/readiness";
+import { providerConnectionSchema } from "../../../schemas/app-settings";
 const app = new OpenAPIHono<{ Bindings: Env }>();
 
 const PROVIDER_TYPE_MAX = 160;
@@ -87,7 +88,10 @@ async function serializeProviderForClient(
             issues: readiness.issues.slice(0, 20).map((issue) => ({
                 code: issue.code.slice(0, 100),
                 message: issue.message.slice(0, 500),
+                ...(issue.fix ? { fix: issue.fix.slice(0, 500) } : {}),
             })),
+            // The courier's last connection test, kept by its app: passed, failed or not tested with these settings.
+            connection: readiness.connection,
             activationBlockers: readiness.activationBlockers.slice(0, 20).map((blocker) => ({
                 source: blocker.source.slice(0, 100),
                 key: blocker.key.slice(0, 100),
@@ -121,6 +125,7 @@ const deliveryProviderSchema = z.object({
         tested: z.boolean(),
         active: z.boolean(),
         canCreateShipment: z.boolean(),
+        connection: providerConnectionSchema,
         activationBlockers: z.array(z.object({
             source: z.string(),
             key: z.string(),

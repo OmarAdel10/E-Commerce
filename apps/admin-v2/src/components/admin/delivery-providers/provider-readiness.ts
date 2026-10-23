@@ -27,6 +27,12 @@ export interface DeliveryProviderReadiness {
   tested?: boolean;
   active?: boolean;
   canCreateShipment: boolean;
+  /** The courier's last connection test, kept by its app (absent: not known, read as untested). */
+  connection?: {
+    status: "none" | "untested" | "passed" | "failed";
+    testedAt: string | null;
+    message: string | null;
+  };
   issues: DeliveryProviderReadinessIssue[];
   activationBlockers?: Array<{
     source: "credentials" | "config" | string;
@@ -78,6 +84,7 @@ export function resolveProviderReadiness(
       tested: provider.readiness.tested,
       active: provider.readiness.active,
       canCreateShipment,
+      ...(provider.readiness.connection ? { connection: provider.readiness.connection } : {}),
       issues: Array.isArray(provider.readiness.issues)
         ? provider.readiness.issues
         : [],
