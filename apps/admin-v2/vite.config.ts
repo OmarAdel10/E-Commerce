@@ -89,7 +89,9 @@ export default defineConfig(({ command }) => ({
         // Route boundaries stay lazy, while Rolldown folds the icon library
         // into a few payloads by the screens that use them: no route pays
         // dozens of tiny icon requests, nor every other screen's icons (a
-        // 24 KiB merge threshold made two bundles of all of them). One
+        // 24 KiB merge threshold made two bundles of all of them; 8 KiB still
+        // folded unrelated screens' icons into each route, 1–2 KiB a route,
+        // reshuffled by any new import; 2 KiB keeps groups per screen set). One
         // unsplit initial group keeps the router's strongly connected
         // runtime together.
         codeSplitting: {
@@ -100,7 +102,7 @@ export default defineConfig(({ command }) => ({
               test: /node_modules[\\/]lucide-react/,
               priority: 50,
               entriesAware: true,
-              entriesAwareMergeThreshold: 8 * 1024,
+              entriesAwareMergeThreshold: 2 * 1024,
               maxSize: 64 * 1024,
             },
           ],
