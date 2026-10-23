@@ -1,17 +1,14 @@
+import type { CheckoutLanguageData } from "@scalius/shared/checkout-language";
 import type { CustomerIdentitySettings } from "@scalius/shared/customer-auth-policy";
 import type { Readiness } from "@scalius/shared/readiness";
 import type { CartValidationIssue } from "../api/orders";
 import type { CheckoutOrderRefusal } from "./tax-quote-error-contract";
 
-export interface GatewayMeta {
-  label: string;
-  icon: string; // SVG HTML string
-  desc: string;
-}
-
 export interface PaymentContext {
   checkoutData: Record<string, unknown>;
   config: CheckoutConfig;
+  /** The page's checkout language (the merchant's edits included): every word a handler gives the buyer. */
+  copy: CheckoutLanguageData;
   orderId: string;
   totalAmount: number;
   advanceAmount: number;
@@ -25,6 +22,7 @@ export interface PaymentContext {
 export interface PaymentResult {
   success: boolean;
   redirectUrl?: string;
+  /** What the buyer reads, in the page's language: never a developer's or a provider's message. */
   error?: string;
   errorCode?: string;
   details?: unknown;
@@ -35,12 +33,15 @@ export interface PaymentResult {
   hostedPaymentRecoveryUrl?: string;
 }
 
+/**
+ * A payment method's checkout behaviour. Its name, description and button
+ * text are the page's (gateway-presentation.ts and the checkout language),
+ * never the handler's.
+ */
 export interface GatewayHandler {
   readonly id: string;
-  readonly meta: GatewayMeta;
-  getButtonText(isPartialPayment: boolean): string;
-  /** Called when user selects this gateway. For Stripe: mount card element */
-  onSelect?(container: HTMLElement): Promise<void>;
+  /** Called when user selects this gateway. For Stripe: mount card element. A failure is a `CheckoutCopyError`. */
+  onSelect?(container: HTMLElement, copy: CheckoutLanguageData): Promise<void>;
   /** Whether gateway-specific buyer input is complete enough to submit. */
   isReady?(): boolean;
   /** Called when user clicks pay. Handles the full payment flow. */

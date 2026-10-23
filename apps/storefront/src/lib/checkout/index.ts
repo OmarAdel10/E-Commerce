@@ -6,7 +6,6 @@ import { codHandler } from "./handlers/cod";
 import { resetStripePaymentElement, stripeHandler } from "./handlers/stripe";
 import { createHostedGatewayHandler } from "./handlers/hosted";
 import { createDeferredGatewayHandler } from "./handlers/deferred";
-import { NET_TERMS_PAYMENT_METHOD } from "@scalius/shared/payment-terms";
 import { formatPageNumber, formatStoreDateTime, pageLanguage } from "@/lib/store-time-zone";
 import { formatMoney, DEFAULT_CURRENCY } from "@/lib/currency";
 import { formatBdMobile } from "@scalius/shared/phone-input";
@@ -38,7 +37,7 @@ import {
 import type { CartRuleError, CartValidationIssue } from "../api/orders";
 import { trackStorefrontAddPaymentInfoOnce } from "../analytics";
 import { writeCartRepairState } from "../cart/repair-state";
-import { getCheckoutStatusErrorMessage } from "./error-messages";
+import { CheckoutBuyerMessage, CheckoutCopyError, checkoutFailureText } from "./error-messages";
 import {
   fetchAuthoritativeTaxQuote,
   TaxQuoteCartChangedError,
@@ -54,8 +53,6 @@ import { normalizeCheckoutRedirectUrl } from "./redirect-url";
 import {
   getGatewayPresentation,
   isAppGatewayId,
-  SSLCOMMERZ_GATEWAY_ID,
-  sslcommerzPresentation,
   type GatewayPresentation,
 } from "./gateway-presentation";
 import { isGatewayEligibleForPaymentAmount } from "./gateway-amount-eligibility";
@@ -95,7 +92,7 @@ function isHostedMethod(methodId: string): boolean {
 function providerLabelFor(methodId: string): string {
   const gateway = gateways.find((candidate) => candidate.id === methodId);
   const name = typeof gateway?.name === "string" ? gateway.name : methodId;
-  return getGatewayPresentation(methodId, name).providerLabel ?? name;
+  return getGatewayPresentation(methodId, name, checkoutCopy).providerLabel ?? name;
 }
 
 function isDeferredMethod(methodId: string): boolean {
@@ -106,9 +103,9 @@ function handlerFor(methodId: string) {
   const existing = getGateway(methodId);
   if (existing) return existing;
   const handler = isHostedMethod(methodId)
-    ? createHostedGatewayHandler(methodId, providerLabelFor(methodId))
+    ? createHostedGatewayHandler(methodId)
     : isDeferredMethod(methodId)
-    ? createDeferredGatewayHandler(methodId, providerLabelFor(methodId))
+    ? createDeferredGatewayHandler(methodId)
     : null;
   if (!handler) return undefined;
   registerGateway(handler);
@@ -132,7 +129,6 @@ function deferredPresentation(
   });
   return {
     ...presentation,
-    ...(gateway.id === NET_TERMS_PAYMENT_METHOD ? { buyerLabel: checkoutCopy.invoicePaymentText } : {}),
     description,
     markSrc: presentation.markSrc ?? "/payment-marks/invoice.svg",
     markKind: presentation.markSrc ? presentation.markKind : "icon",
@@ -181,12 +177,14 @@ function hideError(): void {
   el?.classList.add("hidden");
 }
 
+/** A handler's failure is already in the buyer's words (`handlers/failure.ts`). */
 function getPaymentResultErrorMessage(result: PaymentResult): string {
-  return getCheckoutStatusErrorMessage(
-    result.status,
-    result.error || checkoutCopy.paymentFailedText,
-    checkoutCopy,
-  );
+  return result.error || checkoutCopy.paymentFailedText;
+}
+
+/** The total could not be confirmed: the page says so in its own words, whatever the quote's failure was. */
+function quoteFailureText(error: unknown): string {
+  return checkoutFailureText(error, checkoutCopy, "totalVerificationFailedText");
 }
 
 function setPayButton(text: string, disabled = false): void {
@@ -423,15 +421,6 @@ function localizedGatewayPresentation(
   presentation: GatewayPresentation,
 ): GatewayPresentation {
   switch (gatewayId) {
-    case "stripe":
-      return {
-        ...presentation,
-        buyerLabel: checkoutCopy.creditDebitCardText,
-        description: checkoutCopy.paySecurelyByCardText,
-      };
-    case "sslcommerz":
-    case SSLCOMMERZ_GATEWAY_ID:
-      return sslcommerzPresentation(presentation, checkoutCopy);
     case "cod": {
       // Gift cards paid part: cash on delivery collects only what is left.
       const due = authoritativeTaxQuote && hasGiftCardTender(authoritativeTaxQuote)
@@ -1075,10 +1064,8 @@ async function renderGateways(): Promise<void> {
   }
 
   eligibleGateways.forEach((gw, index) => {
-    const handler = handlerFor(gw.id);
-    const fallbackLabel =
-      (gw as { name?: string }).name || handler?.meta.label || gw.id;
-    const known = getGatewayPresentation(gw.id, fallbackLabel);
+    const fallbackLabel = (gw as { name?: string }).name || gw.id;
+    const known = getGatewayPresentation(gw.id, fallbackLabel, checkoutCopy);
     const localized = gw.flow === "deferred"
       ? deferredPresentation(gw, known)
       : localizedGatewayPresentation(gw.id, known);
@@ -1218,11 +1205,11 @@ async function selectMethod(
       if (stripeContainer && gw.publishableKey) {
         stripeContainer.dataset.publishableKey = gw.publishableKey as string;
       }
-      await handler.onSelect(stripeContainer || document.body);
+      await handler.onSelect(stripeContainer || document.body, checkoutCopy);
       if (selectionId !== selectionVersion) return;
     } catch (err: unknown) {
       if (selectionId !== selectionVersion) return;
-      showError(err instanceof Error ? err.message : String(err));
+      showError(checkoutFailureText(err, checkoutCopy, "cardFormFailedText"));
       selectedMethod = null;
       retrySelection = { methodId, gateway: gw };
       setPayButton(checkoutCopy.retryPaymentFormText, false);
@@ -1320,6 +1307,7 @@ async function processPayment(): Promise<void> {
     const ctx: PaymentContext = {
       checkoutData: submittedCheckoutData,
       config: checkoutConfig,
+      copy: checkoutCopy,
       orderId: stripeRetry?.orderId ?? "",
       totalAmount,
       advanceAmount,
@@ -1356,7 +1344,7 @@ async function processPayment(): Promise<void> {
         window.location.origin,
       );
       if (!redirectUrl) {
-        throw new Error(checkoutCopy.unsafeRedirectText);
+        throw new CheckoutCopyError("unsafeRedirectText");
       }
       writeHostedPaymentRecoverySession(
         result.hostedPaymentRecoveryUrl ?? redirectUrl,
@@ -1428,7 +1416,7 @@ async function processPayment(): Promise<void> {
         } catch (error) {
           if (redirectForCartRefusal(error)) return;
           showReturnToCartAction();
-          throw error;
+          throw new CheckoutBuyerMessage(quoteFailureText(error));
         }
         adoptQuote(refreshed.quote);
         showGiftCardMessage(refreshed.notice);
@@ -1447,7 +1435,7 @@ async function processPayment(): Promise<void> {
         } catch (error) {
           if (redirectForCartRefusal(error)) return;
           showReturnToCartAction();
-          throw error;
+          throw new CheckoutBuyerMessage(quoteFailureText(error));
         }
         adoptQuote(refreshed.quote);
         showGiftCardMessage(refreshed.notice);
@@ -1466,12 +1454,12 @@ async function processPayment(): Promise<void> {
         return;
       }
       if (result.errorCode === "validation_error") showReturnToCartAction();
-      throw new Error(getPaymentResultErrorMessage(result));
+      throw new CheckoutBuyerMessage(getPaymentResultErrorMessage(result));
     }
   } catch (err: unknown) {
     if (submitInitVersion !== initVersion) return;
     hideCheckoutLoadingOverlay();
-    showError(err instanceof Error ? err.message : checkoutCopy.genericErrorText);
+    showError(checkoutFailureText(err, checkoutCopy, "genericErrorText"));
     isProcessing = false;
     setPaymentControlsDisabled(false);
     setPayButton(
@@ -1644,7 +1632,7 @@ async function requoteForGiftCards(): Promise<boolean> {
     if (currentInitVersion !== initVersion || sequence !== requoteSequence) return false;
     if (redirectForCartRefusal(error)) return false;
     showReturnToCartAction();
-    showError(error instanceof Error ? error.message : checkoutCopy.totalVerificationFailedText);
+    showError(quoteFailureText(error));
     setPayButton(checkoutCopy.totalUnavailableText, true);
     renderGiftCardChips();
     return false;
@@ -1809,11 +1797,7 @@ export async function initCheckoutPage(): Promise<void> {
     applyQueuedGiftCard(false);
     clearCheckoutPresentation();
     showReturnToCartAction();
-    showError(
-      error instanceof Error
-        ? error.message
-        : checkoutCopy.totalVerificationFailedText,
-    );
+    showError(quoteFailureText(error));
     setPayButton(checkoutCopy.totalUnavailableText, true);
     return;
   }

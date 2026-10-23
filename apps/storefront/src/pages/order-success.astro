@@ -60,7 +60,6 @@ import { getGatewayPresentation, isAppGatewayId } from "@/lib/checkout/gateway-p
 import {
   formatOrderReceiptDate,
   formatOrderReceiptDay,
-  localizeOrderReceiptGatewayPresentation,
 } from "@/lib/order-success-localization";
 import { formatCount, formatPageNumber } from "@/lib/store-time-zone";
 import { isGatewayEligibleForPaymentAmount } from "@/lib/checkout/gateway-amount-eligibility";
@@ -274,11 +273,7 @@ const retryPaymentOptions = order && orderSuccessView && receiptToken && canRetr
       // The method that didn't go through first ("Try again"), then the others.
       .sort((a, b) => Number(b.current) - Number(a.current))
       .map((option) => {
-        const presentation = localizeOrderReceiptGatewayPresentation(
-          option.gateway,
-          getGatewayPresentation(option.gateway, option.label),
-          copy,
-        );
+        const presentation = getGatewayPresentation(option.gateway, option.label, copy);
         return {
           ...option,
           presentation,
@@ -1259,7 +1254,7 @@ const orderRecommendations = order && showsSuccessHero && !statusView
         setRetryButtonsBusy(true, button);
         if (message) message.textContent = copy.orderReceiptLoadingCardText;
         try {
-          await stripeHandler.onSelect?.(stripeSection);
+          await stripeHandler.onSelect?.(stripeSection, copy);
           if (message) message.textContent = copy.orderReceiptEnterCardText;
         } catch {
           if (message) message.textContent = copy.orderReceiptCardLoadFailedText;
@@ -1355,6 +1350,7 @@ const orderRecommendations = order && showsSuccessHero && !statusView
       const context: PaymentContext = {
         checkoutData: {},
         config: checkoutConfig,
+        copy,
         orderId,
         totalAmount,
         advanceAmount: paymentType === "deposit" && Number.isFinite(depositAmount)

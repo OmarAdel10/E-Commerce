@@ -181,7 +181,7 @@ function isOnlineGateway(value: string): boolean {
 
 function gatewayMarkup(gateway: string): string {
   // An app's wallet reads by the store's checkout name, never its stored id.
-  const presentation = getGatewayPresentation(gateway, appGatewayName(gateway, currentCheckoutConfig?.gateways) ?? gateway);
+  const presentation = getGatewayPresentation(gateway, appGatewayName(gateway, currentCheckoutConfig?.gateways) ?? gateway, accountCopy().paymentMethodNames);
   const lightMark = presentation.markSrc
     ? `<img src="${escapeHtml(presentation.markSrc)}" alt="" aria-hidden="true" class="h-5 w-auto max-w-24 object-contain ${presentation.darkMarkSrc ? "dark:hidden" : ""}">`
     : "";
@@ -216,7 +216,7 @@ function recoveryButtonLabel(gateway: string): string {
   if (gateway === "stripe") return words.enterCard;
   if (currentDetail?.paymentRecovery.paymentType === "balance") return words.payBalance;
   const name = currentCheckoutConfig?.gateways?.find((candidate) => candidate.id === gateway)?.name;
-  const presentation = getGatewayPresentation(gateway, name ?? gateway);
+  const presentation = getGatewayPresentation(gateway, name ?? gateway, accountCopy().paymentMethodNames);
   return words.continueWith(presentation.providerLabel ?? presentation.buyerLabel);
 }
 

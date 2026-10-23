@@ -10,6 +10,7 @@
 // dates arrive already formatted in the page's digits; these functions only
 // place them in words.
 import { storefrontLanguage, type StorefrontLanguage } from "./storefront-copy";
+import type { GatewayPresentationCopy } from "./checkout/gateway-presentation";
 import { pageLanguage } from "./store-time-zone";
 
 export interface AccountCopy {
@@ -136,6 +137,8 @@ export interface AccountCopy {
     paymentReceived: string;
     paymentFailed: string;
   };
+  /** The built-in payment methods' names (the checkout language's words; a test keeps them equal). */
+  paymentMethodNames: GatewayPresentationCopy;
   recovery: {
     balanceTitle: string;
     depositTitle: string;
@@ -352,6 +355,16 @@ const EN: AccountCopy = {
     paymentReceived: "Payment received",
     paymentFailed: "Payment didn't go through",
   },
+  paymentMethodNames: {
+    creditDebitCardText: "Credit or debit card",
+    paySecurelyByCardText: "Pay securely by card",
+    onlinePaymentText: "Pay online",
+    onlinePaymentDescriptionText: "bKash, Nagad, cards and more",
+    cashOnDeliveryText: "Cash on delivery",
+    payOnDeliveryText: "Pay when you receive your order",
+    invoicePaymentText: "Pay later by invoice",
+    giftCardTitleText: "Gift card",
+  },
   recovery: {
     balanceTitle: "Remaining balance is due",
     depositTitle: "Advance payment is due",
@@ -567,6 +580,16 @@ const BN: AccountCopy = {
     booked: "কুরিয়ারে বুক করা হয়েছে",
     paymentReceived: "পেমেন্ট পাওয়া গেছে",
     paymentFailed: "পেমেন্ট হয়নি",
+  },
+  paymentMethodNames: {
+    creditDebitCardText: "ক্রেডিট বা ডেবিট কার্ড",
+    paySecurelyByCardText: "কার্ড দিয়ে নিরাপদে পেমেন্ট করুন",
+    onlinePaymentText: "অনলাইনে পেমেন্ট করুন",
+    onlinePaymentDescriptionText: "বিকাশ, নগদ, কার্ড ও আরও অনেক পদ্ধতি",
+    cashOnDeliveryText: "ক্যাশ অন ডেলিভারি",
+    payOnDeliveryText: "অর্ডার পাওয়ার সময় মূল্য পরিশোধ করুন",
+    invoicePaymentText: "পরে ইনভয়েসে পরিশোধ করুন",
+    giftCardTitleText: "গিফট কার্ড",
   },
   recovery: {
     balanceTitle: "বাকি টাকা পরিশোধ করতে হবে",

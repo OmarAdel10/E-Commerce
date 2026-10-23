@@ -2,7 +2,7 @@
  * Creates an order via the server-side proxy.
  * Shared by all gateway handlers.
  */
-import { getCheckoutErrorMessage } from "./error-messages";
+import { CheckoutCopyError, getCheckoutErrorMessage } from "./error-messages";
 import type { CreateOrderPayload } from "../api/types";
 import type { CartValidationIssue } from "../api/orders";
 import { checkoutOrderRefusal, type CheckoutOrderRefusal } from "./tax-quote-error-contract";
@@ -35,9 +35,7 @@ export function giftCardOrderFields(
   if (!giftCards) return {};
   const expected = checkoutData.expectedAmountDueMinor;
   if (typeof expected !== "number" || !Number.isSafeInteger(expected) || expected < 0) {
-    throw new Error(
-      "Your order total is no longer verified. Refresh the checkout total and try again.",
-    );
+    throw new CheckoutCopyError("totalVerificationFailedText", "gift card tender has no verified amount due");
   }
   return { giftCards, expectedAmountDueMinor: expected };
 }
@@ -116,7 +114,7 @@ function variantLabelForCartLine(item: CheckoutCartLine): string | null {
 
 function readPersistedVariantId(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "" || value.trim() === "default") {
-    throw new Error("A checkout cart item is missing its saved product variant.");
+    throw new CheckoutCopyError("checkoutDetailsUnreadableText", "a cart line has no saved variant");
   }
   return value.trim();
 }
@@ -175,15 +173,13 @@ export async function createOrder(
   ).trim();
 
   if (!checkoutRequestId) {
-    throw new Error("Checkout session expired. Please refresh checkout and try again.");
+    throw new CheckoutCopyError("checkoutDetailsUnreadableText", "checkout has no request id");
   }
   const expectedQuoteFingerprint = readString(
     checkoutData.expectedQuoteFingerprint,
   ).trim();
   if (!QUOTE_FINGERPRINT_PATTERN.test(expectedQuoteFingerprint)) {
-    throw new Error(
-      "Your order total is no longer verified. Refresh the checkout total and try again.",
-    );
+    throw new CheckoutCopyError("totalVerificationFailedText", "checkout has no verified quote fingerprint");
   }
 
   const tender = giftCardOrderFields(checkoutData);
@@ -228,7 +224,7 @@ export async function createOrder(
   if (!res.ok) {
     const err = await res.json().catch(() => ({} as ErrorPayload)) as ErrorPayload;
     throw new CheckoutOrderError(
-      getCheckoutErrorMessage(err, `Order creation failed (${res.status})`),
+      getCheckoutErrorMessage(err, ""),
       {
         status: res.status,
         errorCode: typeof err.errorCode === "string" ? err.errorCode : undefined,
@@ -277,7 +273,7 @@ export async function createOrder(
     : typeof data.initialPaymentSessionError === "string"
       ? data.initialPaymentSessionError
       : undefined;
-  if (!orderId) throw new Error("Order creation failed");
+  if (!orderId) throw new CheckoutCopyError("orderProcessingFailedText", "order response has no id");
   return {
     orderId: orderId as string,
     totalAmount,

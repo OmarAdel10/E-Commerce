@@ -1,22 +1,19 @@
 import type { GatewayHandler, PaymentContext, PaymentResult } from "../types";
-import { CheckoutOrderError, createOrder } from "../create-order";
+import { createOrder } from "../create-order";
+import { CheckoutCopyError } from "../error-messages";
 import { resolveCheckoutPaymentRequest, resolveExplicitCheckoutPaymentRequest } from "../payment-mode";
 import { buildPaymentRecoveryUrl } from "../payment-recovery";
 import { fetchPaymentSessionWithProcessingRetry } from "../payment-session-retry";
 import { normalizeHostedCheckoutUrl } from "../redirect-url";
+import { paymentFailure } from "./failure";
 
 /**
  * One handler for every hosted (redirect) gateway: create the order, ask the
  * API for the provider session, and send the buyer to the provider's page.
  */
-export function createHostedGatewayHandler(gateway: string, providerLabel: string): GatewayHandler {
+export function createHostedGatewayHandler(gateway: string): GatewayHandler {
   return {
     id: gateway,
-    meta: { label: providerLabel, icon: "", desc: "" },
-
-    getButtonText(_isPartialPayment: boolean): string {
-      return `Continue to ${providerLabel}`;
-    },
 
     async processPayment(ctx: PaymentContext): Promise<PaymentResult> {
       let createdOrder: Awaited<ReturnType<typeof createOrder>> | null = null;
@@ -43,7 +40,7 @@ export function createHostedGatewayHandler(gateway: string, providerLabel: strin
           : undefined;
 
         if (!gatewayUrl && createdOrder.initialPaymentSessionError) {
-          throw new Error(createdOrder.initialPaymentSessionError);
+          throw new CheckoutCopyError("paymentStartFailedText", createdOrder.initialPaymentSessionError);
         }
 
         if (!gatewayUrl) {
@@ -67,12 +64,12 @@ export function createHostedGatewayHandler(gateway: string, providerLabel: strin
           }));
 
           if (!sessionRes.ok) {
-            throw new Error((sessionData.error as string) || "Payment gateway initialization failed");
+            throw new CheckoutCopyError("paymentStartFailedText", String(sessionData.error ?? sessionRes.status));
           }
           gatewayUrl = typeof sessionData.gatewayUrl === "string" ? sessionData.gatewayUrl : undefined;
         }
         gatewayUrl = normalizeHostedCheckoutUrl(gatewayUrl) ?? undefined;
-        if (!gatewayUrl) throw new Error("Payment gateway returned an unsafe checkout URL");
+        if (!gatewayUrl) throw new CheckoutCopyError("unsafeRedirectText", "the gateway's checkout URL is not safe");
 
         return {
           success: true,
@@ -88,18 +85,7 @@ export function createHostedGatewayHandler(gateway: string, providerLabel: strin
             hostedPaymentRecoveryUrl,
           };
         }
-        if (err instanceof CheckoutOrderError) {
-          return {
-            success: false,
-            error: err.message,
-            errorCode: err.errorCode,
-            details: err.details,
-            status: err.status,
-            cartIssues: err.cartIssues,
-            refusal: err.refusal,
-          };
-        }
-        return { success: false, error: err instanceof Error ? err.message : String(err) };
+        return paymentFailure(err, ctx, "paymentStartFailedText");
       }
     },
   };

@@ -1,6 +1,7 @@
 import type { GatewayHandler, PaymentContext, PaymentResult } from "../types";
-import { CheckoutOrderError, createOrder } from "../create-order";
+import { createOrder } from "../create-order";
 import { pagePath } from "@/lib/presence-url";
+import { paymentFailure } from "./failure";
 
 /** The payment method of an order the buyer's gift cards pay in full. */
 export const GIFT_CARD_PAYMENT_METHOD = "gift_card";
@@ -11,15 +12,6 @@ export const GIFT_CARD_PAYMENT_METHOD = "gift_card";
  */
 export const giftCardHandler: GatewayHandler = {
   id: GIFT_CARD_PAYMENT_METHOD,
-  meta: {
-    label: "Paid with gift card",
-    icon: "",
-    desc: "Your gift cards cover the whole order",
-  },
-
-  getButtonText(_isPartialPayment: boolean): string {
-    return "Place order";
-  },
 
   async processPayment(ctx: PaymentContext): Promise<PaymentResult> {
     try {
@@ -30,18 +22,7 @@ export const giftCardHandler: GatewayHandler = {
         redirectUrl: pagePath(`/order-success?orderId=${encodeURIComponent(orderId)}`),
       };
     } catch (err: unknown) {
-      if (err instanceof CheckoutOrderError) {
-        return {
-          success: false,
-          error: err.message,
-          errorCode: err.errorCode,
-          details: err.details,
-          status: err.status,
-          cartIssues: err.cartIssues,
-          refusal: err.refusal,
-        };
-      }
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return paymentFailure(err, ctx, "orderProcessingFailedText");
     }
   },
 };
