@@ -60,7 +60,8 @@ export function addressProblemMessages(
           : t(addressFieldLabelKey(problem.field, rules));
     const key = problem.code === "required" ? "required"
       : problem.code === "too_long" ? "tooLong"
-        : problem.code === "unavailable" ? "unavailable" : "invalid";
+        : problem.code === "unavailable" ? "unavailable"
+          : problem.code === "needed" ? "needed" : "invalid";
     errors[problem.field] = t(key, { field });
   }
   return errors;

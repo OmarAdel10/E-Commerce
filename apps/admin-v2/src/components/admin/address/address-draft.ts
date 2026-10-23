@@ -275,7 +275,8 @@ export type AddressProblemField = AddressField | "countryCode" | "phone" | "city
 
 export interface AddressProblem {
   field: AddressProblemField;
-  code: "required" | "invalid" | "too_long" | "unknown_country" | "unavailable";
+  /** `needed`: what an address saved without checking still needs (a name or first line, and a place). */
+  code: "required" | "invalid" | "too_long" | "unknown_country" | "unavailable" | "needed";
 }
 
 /** The fields an address the API refused breaks (`details.issues`), or null for another error. */

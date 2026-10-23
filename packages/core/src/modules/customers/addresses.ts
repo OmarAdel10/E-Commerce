@@ -11,7 +11,9 @@
 // - The recipient's phone is read in the address country (E.164); what was
 //   typed is kept beside it.
 // - Staff (never buyers) may save an address that breaks its rules
-//   (`skipValidation`): it is stored as typed and marked validation_skipped.
+//   (`skipValidation`): it is stored as typed and marked validation_skipped,
+//   but never an empty one: it still needs a name or first line, and a place
+//   when its country asks for one (`missingAddressIdentity`).
 import type { Database } from "@scalius/database/client";
 import { CUSTOMER_ADDRESS_ID_PREFIX, customerAddresses, customers, placeAddressFieldSql, places } from "@scalius/database/schema";
 import {
@@ -59,7 +61,8 @@ export type AddressProblemField = AddressField | "countryCode" | "phone" | "city
 
 export interface AddressProblem {
     field: AddressProblemField;
-    code: AddressIssueCode | "unavailable";
+    /** `needed`: what an address kept without checking still needs (`missingAddressIdentity`). */
+    code: AddressIssueCode | "unavailable" | "needed";
 }
 
 const FIELD_NAMES: Record<AddressProblemField, string> = {
@@ -90,6 +93,8 @@ export function addressProblemMessage(problem: AddressProblem): string {
             return `The ${name} is too long.`;
         case "unavailable":
             return `The selected ${name} is no longer available. Choose it again.`;
+        case "needed":
+            return `Enter the ${name}: an address saved without checking still needs it.`;
         default:
             return `Check the ${name}.`;
     }
@@ -261,6 +266,11 @@ export function resolveAddressWithLocation(
     const tooLong = problems.filter((problem) => problem.code === "too_long");
     if (tooLong.length > 0) throw new AddressValidationError(tooLong);
     if (problems.length > 0 && !skip) throw new AddressValidationError(problems);
+    // Skipping the country's rules keeps a nonstandard address, never an empty one.
+    if (problems.length > 0) {
+        const missing = missingAddressIdentity({ ...input, ...canonicalInput }, rules, usesDeliveryHierarchy(countryCode));
+        if (missing.length > 0) throw new AddressValidationError(missing);
+    }
 
     // Kept as typed when skipped; the adapter ids are stored only when they name a real hierarchy.
     const skipped = problems.length > 0;
@@ -274,6 +284,36 @@ export function resolveAddressWithLocation(
     // the thana there (and the city as locality) for every reader.
     const adapted = location === NO_LOCATION ? address : { ...address, ...deliveryHierarchyCanonicalFields(location) };
     return { ...adapted, ...location, phone, phoneRaw };
+}
+
+/** The place fields of an address, in the order a form asks for them. */
+const PLACE_FIELDS = ["locality", "postalCode", "adminArea", "dependentLocality"] as const;
+
+/**
+ * What an address kept without checking still needs (`needed`): someone or
+ * somewhere to deliver to (a recipient name or the first line), and a place
+ * (a city, thana, postal code or region, typed or picked) when the
+ * country's rules ask for one. A country whose rules ask for no place needs only the first.
+ */
+export function missingAddressIdentity(
+    input: AddressInput,
+    rules: { requiredFields: readonly AddressField[] },
+    hierarchy: boolean,
+): AddressProblem[] {
+    const has = (value: string | null | undefined) => normalizeAddressText(value) !== null;
+    const missing: AddressProblem[] = [];
+    if (!has(input.name) && !has(input.line1)) missing.push({ field: "line1", code: "needed" });
+    const asksPlace = hierarchy || PLACE_FIELDS.some((field) => rules.requiredFields.includes(field));
+    // A picked City, Thana or Area counts even when it no longer forms a valid hierarchy.
+    const hasPlace = [input.city, input.zone, input.area].some((id) => has(id))
+        || PLACE_FIELDS.some((field) => has(input[field]));
+    if (asksPlace && !hasPlace) {
+        missing.push({
+            field: hierarchy ? "city" : PLACE_FIELDS.find((field) => rules.requiredFields.includes(field))!,
+            code: "needed",
+        });
+    }
+    return missing;
 }
 
 /** `resolveAddressFromRows` reading the adapter's locations (one statement, Bangladesh only). */
