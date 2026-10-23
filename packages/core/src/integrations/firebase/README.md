@@ -1,16 +1,19 @@
 # Firebase (FCM push)
 
-Firebase Cloud Messaging sends push notifications to admin dashboard browsers. The server calls the FCM HTTP v1 REST API directly with Web Crypto. It does not use the Node.js `firebase-admin` SDK. This document is for contributors and operators. Which events push, and how receipts and pauses work, is in the [notifications README](../../modules/notifications/README.md).
+Firebase Cloud Messaging is the legacy staff push path. The dashboard now enrolls browsers through first-party Web Push (`packages/core/src/integrations/web-push/`, `apps/admin-v2/src/lib/web-push.ts`). The FCM server code remains for staff devices that registered a token earlier. The server calls the FCM HTTP v1 REST API directly with Web Crypto. It does not use the Node.js `firebase-admin` SDK. This document is for contributors and operators. Which events push, and how receipts and pauses work, is in the [notifications README](../../modules/notifications/README.md).
 
 ## Flow
 
-1. The merchant opens Settings > Notifications (`/admin/settings/notifications`) > Sending > Push (`PushFields` in `apps/admin-v2/src/components/admin/settings/NotificationSettings.tsx`) and saves the service account JSON and the web app config.
-2. A staff member selects "Turn on" in the dashboard notification menu (`NotificationDropdown.tsx`). That calls `useFirebaseInit` (`apps/admin-v2/src/hooks/use-firebase-init.ts`).
-3. The hook reads the public config from `GET /api/v1/auth/firebase-config`. It needs `apiKey` and `vapidKey`. Without them the status is `unconfigured`.
-4. The hook asks for browser notification permission, loads `@firebase/app` and `@firebase/messaging` on demand and registers the service worker `apps/admin-v2/public/firebase-messaging-sw.js`. The public config travels in the script URL query (without `vapidKey`). The worker scope is the dashboard base path.
-5. It gets an FCM token and sends it to `POST /api/v1/admin/fcm-token`.
-6. For each notification the API Worker sends one FCM request per active token (`sendOrderNotification()` and the other senders in the notifications domain).
-7. In the foreground the dashboard shows a toast, plays `/alert.mp3` and dispatches an `admin-notification` event. In the background the service worker shows the notification.
+Current enrollment is Web Push, not Firebase:
+
+1. A staff member turns on "Notifications on this device" in My account (`ThisDeviceNotifications.tsx`). The dashboard reads the VAPID public key from `GET /api/v1/admin/web-push`, subscribes the browser through `apps/admin-v2/public/web-push-sw.js` and saves the subscription at `POST /api/v1/admin/web-push/subscriptions`. The platform derives the VAPID keys from `SCALIUS_SECRET`; there is no service account to save.
+2. For each staff push the API sends to the Web Push browsers and to the active FCM tokens alike (`sendAdminPush()` in the notifications domain).
+
+The FCM part of that send still works as follows:
+
+1. A service account and web app config saved to the `firebase` settings document (`POST /api/v1/admin/settings/firebase`) enable the FCM sender. The dashboard no longer offers a screen or hook for this (`useFirebaseInit` is gone).
+2. Tokens already in `admin_fcm_tokens` (registered by `POST /api/v1/admin/fcm-token`) receive one FCM request each (`sendOrderNotification()` and the other senders in the notifications domain).
+3. `apps/admin-v2/public/firebase-messaging-sw.js` is a retirement worker. It has install and activate handlers only and unregisters itself, so a browser that held the old Firebase worker drops its subscription and never shows a notification twice.
 
 ## Credentials
 
@@ -57,5 +60,5 @@ Table `admin_fcm_tokens` (`packages/database/src/schema/system.ts`): `user_id`, 
 
 ## Limits
 
-- The service worker loads the Firebase compat SDK 9.15.0 from `gstatic.com`.
-- Admin push is Firebase only. There is no first-party Web Push provider. Do not describe admin push as Cloudflare-native.
+- The dashboard loads no Firebase SDK. The retired `firebase-messaging-sw.js` imports none; the live worker is `web-push-sw.js`.
+- Staff push is Web Push plus retained FCM. Web Push is first-party (VAPID keys from `SCALIUS_SECRET`, RFC 8291 encryption); FCM needs a Google service account and is delivered separately.

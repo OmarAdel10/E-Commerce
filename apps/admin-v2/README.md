@@ -81,10 +81,10 @@ SDK call (@scalius/api-client/sdk) unwrapped once by apiData() in src/lib/api.ts
 
 ## Copy and language
 
-Copy lives in `src/i18n/<feature>.ts`. Each file calls `defineMessages({ en, bn })`, and the type requires every `en` key in `bn`. Components call `useMessages(catalog)`. `i18n/index.ts` formats numbers (lakh grouping) and dates (Asia/Dhaka) for the active locale and saves the choice in `localStorage` (`scalius.dashboard.locale`). `vocabulary.test.ts` keeps one Bangla word per idea.
+Copy lives in `src/i18n/<feature>.ts`. Each file calls `defineMessages({ en, bn })`, and the type requires every `en` key in `bn`. Components call `useMessages(catalog)`. `i18n/index.ts` formats numbers (grouping follows the store region, lakhs in Bangladesh) and dates (in the store time zone) for the active locale and saves the choice in `localStorage` (`scalius.dashboard.locale`). `vocabulary.test.ts` keeps one Bangla word per idea.
 
 ## Notes on screens
 
-- **Scanner pairing.** `POST /api/v1/admin/auth/scanner-link` needs `products.view` and `products.edit` (super admins pass). It stores a one-time token claim. `/api/scanner-token` exchanges the token for a scanner cookie. Tokens never appear in URLs.
+- **Scanner pairing.** `POST /api/v1/admin/auth/scanner-link` needs `products.view` and `products.adjust_stock` (super admins pass). It stores a one-time token claim. The pairing link carries the token in the URL fragment (`/scanner#token=...`), which is never sent to the server. The scanner page removes the fragment, then `/api/scanner-token` exchanges the token, in a POST body, for a scanner cookie.
 - **Order detail** (`components/admin/orderview/`). `ManualFulfillmentDialog` records hand-over by line quantity for three kinds: ship, pickup and service. `ShipmentCard` shows a recovery notice. Its repair and courier-check actions appear only to users who can manage shipments.
 - **Status badges.** `orderview/status-badges.ts` and `resource/StatusBadge.tsx` map statuses to badge variants. DESIGN.md has the table.

@@ -119,9 +119,9 @@ For a cookie session, in order:
 
 ## Permissions
 
-`PERMISSIONS` in `rbac/permissions.ts` is the one list: 95 permissions named `<area>.<action>`.
+`PERMISSIONS` in `rbac/permissions.ts` is the one list of permissions, each named `<area>.<action>` (count them with `Object.values(PERMISSIONS).length`).
 
-- `permission-metadata.ts` marks 25 permissions sensitive: both `permanent_delete`, `orders.refund`, `orders.issue_invoice`, `gift_cards.*`, `discounts.*`, `settings.general.*`, `settings.delivery_providers.*`, `settings.fraud_checker.*`, `taxes.manage`, `team.manage`, `team.manage_roles`, `agent_access.*`, `webhooks.*` and `apps.manage`.
+- `permission-metadata.ts` marks the sensitive permissions (`isSensitive: true`; the file is the list): both `permanent_delete`, `orders.refund`, `orders.issue_invoice`, `orders.record_payment`, `orders.charge_saved_methods`, `marketing.send`, `gift_cards.*`, `discounts.*`, `settings.general.*`, `settings.delivery_providers.*`, `settings.fraud_checker.*`, `settings.theme.edit`, `taxes.manage`, `team.manage`, `team.manage_roles`, `agent_access.*`, `webhooks.*` and `apps.manage`.
 - The dashboard groups them in 13 display categories (`PermissionCategory`). Inventory, reviews and gift cards show under Products. Conversations show under Orders. Taxes, agent access, webhooks and apps show under Settings.
 - Prerequisites (`permissionPrerequisites`): a permission needs its area's `.view`; `permanent_delete` needs `delete`; `inventory.view` needs `products.view`. A role save is rejected when a permission lacks its prerequisite. Effective access drops a permission whose prerequisite is missing.
 
@@ -170,7 +170,7 @@ Under `/api/v1/admin`. Rules from `rbac/route-permissions/staff.ts`.
 | `GET /rbac/roles`, `GET /rbac/roles/{id}`, `GET /rbac/permissions` | `team.view` or `team.manage_roles` |
 | `POST /rbac/roles`, `PUT` and `DELETE /rbac/roles/{id}`, `POST` and `DELETE /rbac/user-roles`, `POST` and `DELETE /rbac/user-permissions` | `team.manage_roles` |
 | `POST /auth/change-password`, `POST /auth/update-profile`, `GET` and `PUT /auth/shortcuts`, `/auth/2fa/*`, `GET /auth/account-security`, `GET /auth/sessions`, `DELETE /auth/sessions` and `/{commandId}`, `GET /rbac/my-permissions` | Any signed-in person |
-| `POST /auth/scanner-link` | `products.view` and `products.edit` |
+| `POST /auth/scanner-link` | `products.view` and `products.adjust_stock` |
 
 Rules that code enforces:
 
@@ -194,7 +194,7 @@ Better Auth e-mail sign-up is not atomic on the one-shot proxy adapters. Create 
 ## Scanner pairing
 
 1. `POST /api/v1/admin/auth/scanner-link` stores the SHA-256 of a one-time token (`sct_...`) in `scanner_token_claims`. It lives 15 minutes.
-2. The scanner page (`/scanner`) reads the token from the URL fragment and posts it to `<dashboard>/api/scanner-token`. Tokens in URLs are refused.
+2. The scanner page (`/scanner`) reads the token from the URL fragment (`/scanner#token=...`, never sent to the server), removes the fragment, and posts the token in a body to `<dashboard>/api/scanner-token`. A token in a query string is refused.
 3. The exchange consumes the claim atomically. The claim row is the session: `consumed_session_hash` (SHA-256 of the cookie value) and `session_expires_at` (6 hours, slid by each refresh of `<dashboard>/api/scanner-token`). It sets `scanner_sid` (`HttpOnly`, `SameSite=Strict`). Every read of the session also requires the pairing staff member to be unbanned and to still hold `products.adjust_stock` (`staffPermissionSql`); suspending, removing or deleting them deletes the rows.
 4. The middleware lets a scanner session call only the allowlist in `packages/shared/src/scanner-auth.ts` (inventory lookup, locations, stock adjust and set, purchase order and transfer reads and receiving). It never inherits the minting admin's permissions.
 

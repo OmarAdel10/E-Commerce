@@ -34,7 +34,7 @@ The triggers keep these rules:
 - A promotion redemption advances its promotion only when it exhausts it (the count reaches `max_redemptions`, or the spend reaches `max_discount_spend_minor`), and a removed one only when it un-exhausts it. The other redemptions of a flash sale leave its pages cached.
 - `rebuildCatalogProjections` sets `cache_clock.coarse = 1` for its batches. Every trigger then advances only `store`.
 - `POST /api/v1/cache/clear` (Settings, Advanced, "Refresh store"; permission `settings.cache.manage`) advances `store`. Every entry depends on `store`.
-- An entry with `s0` below `cache_clock.floor` is invalid. No code prunes `cache_dep`, so the floor stays 0.
+- An entry with `s0` below `cache_clock.floor` is invalid. Nothing raises the floor, so it stays 0. On SQLite no code prunes `cache_dep`. On PostgreSQL the scheduled `cache_dep_compaction` job runs `cache_dep_compact()`, which deletes the rows a newer row of the same key supersedes (each key keeps its newest) without moving the floor.
 
 ### Key kinds
 
@@ -46,24 +46,26 @@ lm:all  lm:cat:<id>  lm:brand:<id>  lm:seo  lm:shape
 lo:<facet>:<scope>   lf:<scope>   srch
 c|b|col|pg|attr|promo : <id> or *    (categories, brands, collections, CMS pages, attributes, promotions)
 m:<mediaId>   set:<category>:<key>   theme   nav:<menuId> or nav:*
-ship  loc  tax  lang  an   cf:<ownerType>   plg:<pluginId> or plg:*   plgs:<pluginId>:<collection>
-mk:<marketId>   mk:*   mk:backup   mk:selling   mo:<definitionId> or mo:*
+ship  loc  tax  lang  an   cf:<ownerType>   plg:<pluginId> or plg:*
+mk:<marketId>   mk:*   mk:backup   mk:selling
+pl:<marketId>   pl:<marketId>:<productId>   tr:<type>:<id>   tr:slugs:<type>:<locale>   tr:locales
+obj:<typeId>   rd
 t:<table>   store
 ```
 
 - `p` advances on any buyer-visible fact of the product (page, card, JSON-LD, feed row). `lm` covers membership and newest order of a public product set, sitemap and feed flags and lastmods, and the store-shape counts (`lm:shape`). `lo` facets are `price`, `band`, `disc`, `name`, `rating` and `sale` (scope `all` only).
 - `sold` advances only when the visible sold count changes (10 or more units in 30 days), `popular` only at 2 or more units. `recommendation-signals` advances on any order or order line change; no request reads it any more (the ranking runs only in the refresh jobs, outside a scope), so its triggers are a later migration's to drop.
 - `mk:<marketId>` advances on any change of a market's row, countries or presences, and `mk:*` on any market change (the active presence matrix). `mk:backup` advances only when the backup market's `price_increment_minor` changes. Every reader that prices at the increment declares it (`deps.backupMarketPricing()`). `mk:selling` is the set of countries the active markets sell to (`deps.sellingCountries()`): it advances when a country of an active market or a market's status changes, never for a rename or a presence edit; the checkout config declares it beside its own `mk:<id>`.
-- `mo:<definitionId>` advances on any change of a metaobject definition or one of its entries; `mo:*` on any definition change. A section that shows a definition's entries declares its `mo:<id>`.
+- `pl:<marketId>` advances when a market's price mode, FX policy or active public price lists change; `pl:<marketId>:<productId>` when the active list prices of that product's SKUs in the market change. `tr:<type>:<id>` advances on one resource's translations and localized handles; `tr:slugs:<type>:<locale>` on which resource a localized handle names; `tr:locales` on the locale and market of each presence. `obj:<typeId>` advances on a public object type and its published records. `rd` advances on any URL redirect and is read only on the storefront's not-found path. The key list is `CACHE_DEP_KINDS`.
 - `t:<table>` is the coarse fallback for any buyer-visible change of the table. `store` is everything.
 
 ### Market-keyed and market-invariant reads
 
 `PUBLIC_API_CACHE_ROUTES` (`packages/shared/src/public-api-cache-routes.ts`) gives every public read a `market` field: `{ keyed: true }` or `{ invariant: <reason> }` (MARKETS-DESIGN D4). This is the one list of reads that are the same in every market.
 
-- A keyed read carries the page's presence (`?presence=en-in`), so the presence is part of its key. Only `/api/v1/checkout/config` is keyed. The storefront transport adds the presence to keyed reads only (`withMarketPresence()`), so root pages keep their keys.
+- A keyed read carries the page's presence (`?presence=en-in`), so the presence is part of its key. The routes that show a price, a translation or a market setting are keyed (products, categories, brands, collections, search, the homepage, layout, landing and template reads, pages, articles, navigation, checkout config and the like); the rest are invariant, each with a stated reason. `PUBLIC_API_CACHE_ROUTES` is the list. The storefront transport adds the presence to keyed reads only (`withMarketPresence()`), so root pages keep their keys.
 - A route learns its presence only through `publicMarketPresence()` (`apps/api/src/utils/public-market.ts`) and reads that market joined with its settings documents (`readPresenceMarketWithDocuments()`), in the statement it already runs. The helper refuses an invariant route, so a read cannot vary by market while its key does not.
-- Before a read varies by market (price lists, FX, translations in step 4), mark it keyed. Its presence then enters its key.
+- Before a read varies by market, mark it keyed. Its presence then enters its key.
 
 ### Migrations
 
@@ -117,9 +119,9 @@ Inside core, import `deps` from the `cache-deps` folder (`../../cache-deps` in a
    | A dynamic collection | `deps.collection(id)` plus `deps.listMembership(categoryScope(...))`, plus `deps.listOrder(...)` when sorted |
    | Custom field values | `deps.customFieldDefinitions(ownerType)` plus the owner's own keys |
    | The store-shape counts | `deps.key(cacheDep.storeShape())` (`lm:shape`) plus the "any row" keys the read uses |
-   | App output (sections, product blocks) and active apps' scripts | `deps.plugin(id)` (one installation), `deps.anyPlugin()` (which apps are active), `deps.pluginCollections(id, reads)` (storage collections a section declares) |
+   | App output (sections, product blocks) and active apps' scripts | `deps.plugin(id)` (one installation), `deps.anyPlugin()` (which apps are active), `deps.objects(typeIds)` (public object types a section reads) |
 
-   One row, one settings document or a global fact has a same-named call: `deps.category(id)`, `deps.brand(id)`, `deps.settings(category, key)`, `deps.theme()`, `deps.navigation(menuId)`, `deps.shipping()` and so on. `deps.anyX()` covers a list of all rows. Id helpers skip `null` and `undefined`, so `deps.brand(product.brandId)` works inline. `plugin_kv` is exempt because app storefront output never reads it. App declarations live in `packages/core/src/modules/plugins/storefront.ts` and `apps/api/src/plugins/storefront-render.ts`.
+   One row, one settings document or a global fact has a same-named call: `deps.category(id)`, `deps.brand(id)`, `deps.settings(category, key)`, `deps.theme()`, `deps.navigation(menuId)`, `deps.shipping()` and so on. `deps.anyX()` covers a list of all rows. Id helpers skip `null` and `undefined`, so `deps.brand(product.brandId)` works inline. `plugin_kv` is exempt because app storefront output never reads it. App declarations live in `packages/core/src/modules/plugins/storefront.ts`. The API plans app component data (`apps/api/src/routes/storefront.ts`); the storefront extension host (`apps/storefront/src/lib/extensions/host.ts`) draws the components.
 
 3. For a scheduled switch such as a promotion `starts_at` or `ends_at`, call `deps.validUntil(nextTransition)` with the next future instant among the facts read.
 4. Facts no key can validate (a KV hint, a live provider call, a per-buyer value) make the output uncacheable. Call `deps.uncacheable("short-code")`. Never put a value in the reason.
@@ -152,7 +154,7 @@ The reader gives the storefront a proof per part: the API version, `status` (`hi
    - A frontier call longer than 1.5 seconds renders the page live.
 4. The slow path (`POST /api/v1/storefront/frontier/check`) sends the key hashes. The API scans at most 4,000 changes after `s0` and answers "changed" beyond that. One check runs per entry and isolate; concurrent requests join it.
 5. `GET /api/v1/storefront/frontier` and the check route answer 404 without the `X-Scalius-Frontier-Key` header. The API Worker answers both at its entry, before the Platform settings and the route families (`cacheFrontierEndpoint`), because a quiet store's hit waits on them. Both Workers derive the key as an HKDF of `SCALIUS_SECRET` (purpose `cache-frontier`). A frontier answer holds at most 4,000 changes: the newest ones, with the horizon raised to the first change left out (an entry older than that takes the slow path). An answer always reaches the clock: a key row holds its latest change, so a cut below the clock could miss a key that changed again after it.
-6. Private requests (checkout, account, a session cookie) always render. A product's variant links are its one cached page.
+6. Private requests (account, a session cookie) always render. Anonymous `/cart` and `/checkout` requests may be served from a buyer-agnostic shell (`isBuyerShellPathname`; the query is discarded). A product's variant links are its one cached page.
 
 ### Read your writes
 
