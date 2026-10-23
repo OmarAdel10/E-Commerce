@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "~/lib/toast";
 import { StatusBadge } from "~/components/admin/resource/StatusBadge";
+import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField } from "~/components/ui/field";
@@ -50,10 +51,14 @@ export function SalesChannelsSettings() {
   const allLocations = locations.data ?? [];
   const activeLocations = allLocations.filter((location) => location.status === "active");
 
-  // One location means no choice to make: the locations stay out of sight.
+  // One location means no choice to make: the locations stay out of sight,
+  // unless a channel sells from no active location (a store whose only linked
+  // location was archived before archiving refused it): then its repair shows.
   const choosesLocations = activeLocations.length > 1;
+  const sellsFromNowhere = (channel: SalesChannel) => locations.data !== undefined
+    && !channel.locationIds.some((id) => activeLocations.some((location) => location.id === id));
   const locationSummary = (channel: SalesChannel) => {
-    if (!locations.data || !choosesLocations) return null;
+    if (!locations.data || !choosesLocations || sellsFromNowhere(channel)) return null;
     const linked = activeLocations.filter((location) => channel.locationIds.includes(location.id)).length;
     return linked === activeLocations.length
       ? t("allLocations")
@@ -67,6 +72,16 @@ export function SalesChannelsSettings() {
         title={t("title")}
         description={t("description")}
         rows={
+          <>
+          {locations.isError ? (
+            // Without the locations, neither the summary nor a repair can be shown: say so.
+            <Alert variant="warning" className="m-4">
+              <AlertDescription className="flex flex-wrap items-center gap-3">
+                <span className="min-w-0 flex-1">{t("locationsLoadFailed")}</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => void locations.refetch()}>{t("retry")}</Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <ul>
             {channels.data.map((channel) => (
               <li key={channel.id} className="flex flex-wrap items-start gap-3 border-b border-border px-4 py-3 last:border-b-0">
@@ -88,8 +103,11 @@ export function SalesChannelsSettings() {
                     </Link>
                     {locationSummary(channel) ? <> · {locationSummary(channel)}</> : null}
                   </p>
+                  {sellsFromNowhere(channel) ? (
+                    <p className="text-body text-destructive">{t("noActiveLocation")}</p>
+                  ) : null}
                 </div>
-                {canEdit && (choosesLocations || channel.id !== ONLINE_STORE) ? (
+                {canEdit && (choosesLocations || sellsFromNowhere(channel) || channel.id !== ONLINE_STORE) ? (
                   <Button type="button" variant="outline" size="sm" onClick={() => setManaging(channel)}>
                     {t("manage")}
                   </Button>
@@ -97,6 +115,7 @@ export function SalesChannelsSettings() {
               </li>
             ))}
           </ul>
+          </>
         }
       />
       {managing ? (
@@ -104,7 +123,7 @@ export function SalesChannelsSettings() {
           key={managing.id}
           channel={managing}
           locations={allLocations}
-          choosesLocations={choosesLocations}
+          choosesLocations={choosesLocations || sellsFromNowhere(managing)}
           onClose={() => setManaging(null)}
         />
       ) : null}

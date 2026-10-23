@@ -17,6 +17,8 @@ import {
     orders,
     productVariants,
     purchaseOrders,
+    salesChannelLocations,
+    salesChannels,
     type InventoryLocationKind,
 } from "@scalius/database/schema";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
@@ -478,6 +480,7 @@ export async function archiveInventoryLocation(db: Database, id: string): Promis
         )`,
         sql`NOT ${openOrdersAtLocation(id)}`,
         sql`NOT ${openStockDocumentsAtLocation(id)}`,
+        sql`NOT EXISTS (${channelsSellingOnlyFrom(id)})`,
     )).returning({ id: inventoryLocations.id });
     if (archived.length > 0) return getInventoryLocationRecord(db, id);
 
@@ -494,7 +497,43 @@ export async function archiveInventoryLocation(db: Database, id: string): Promis
     if (documents?.open) {
         throw new ConflictError(`Purchase orders or transfers still arrive at or leave from ${location.name}. Receive or cancel them first.`);
     }
+    const stranded = await db.select({ id: salesChannels.id, name: salesChannels.name })
+        .from(salesChannels)
+        .where(sql`${salesChannels.id} IN (${channelsSellingOnlyFrom(id)})`)
+        .orderBy(asc(salesChannels.position), asc(salesChannels.name))
+        .all();
+    if (stranded.length > 0) {
+        const names = stranded.map((channel) => channel.name);
+        // The channels by id and name, so the dashboard can say it in the merchant's language.
+        throw new AppError(
+            409,
+            "conflict",
+            `${names.join(", ")} ${names.length === 1 ? "sells" : "sell"} only from ${location.name}. `
+            + "In Settings → Sales channels, choose another location for "
+            + `${names.length === 1 ? "it" : "them"} first, then archive ${location.name}.`,
+            { reason: "location_sells_channel", channels: stranded },
+        );
+    }
     throw new ConflictError(`Open orders are set to ship from ${location.name}. Change their location first.`);
+}
+
+/**
+ * The channels a location is the only active location of: archiving it would
+ * leave them selling from nowhere (their buyers would see nothing in stock),
+ * so the archive is refused until another active location is linked. Every
+ * channel sells from at least one active location (updateSalesChannel checks
+ * the same rule on the channel's side).
+ */
+function channelsSellingOnlyFrom(locationId: string): SQL {
+    return sql`SELECT only_link.channel_id FROM ${salesChannelLocations} AS only_link
+        WHERE only_link.location_id = ${locationId}
+          AND NOT EXISTS (
+              SELECT 1 FROM ${salesChannelLocations} AS other_link
+              INNER JOIN ${inventoryLocations} AS other_location ON other_location.id = other_link.location_id
+              WHERE other_link.channel_id = only_link.channel_id
+                AND other_link.location_id <> ${locationId}
+                AND other_location.status = 'active'
+          )`;
 }
 
 /**
