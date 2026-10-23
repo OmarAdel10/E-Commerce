@@ -8,15 +8,20 @@ import {
 } from "@scalius/api-client/sdk";
 import { PERMISSIONS } from "@scalius/core/auth/rbac/permissions";
 import { getDecimalPlaces } from "@scalius/shared/currency";
+import { PackageSearch } from "lucide-react";
+import { cn } from "@scalius/shared/utils";
 import { Alert, AlertDescription } from "~/components/ui/alert";
+import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { Skeleton } from "~/components/ui/skeleton";
+import { useShownAfter } from "~/components/admin/data-table/use-shown-after";
 import { NumberInput } from "~/components/ui/number-input";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 import { MoneyInput } from "~/components/admin/shared/MoneyInput";
 import { Page } from "~/components/admin/resource/Page";
 import { PageHeader } from "~/components/admin/resource/PageHeader";
-import { ErrorState } from "~/components/admin/states";
+import { EmptyState, ErrorState } from "~/components/admin/states";
 import { SaveBarProvider, SaveNotCompleted, useSaveBar } from "~/components/admin/shared/SaveBar";
 import { pairFromStored, storedFromPair, type PricePair } from "~/components/admin/product-form/compare-at";
 import { usePermissions } from "~/contexts/PermissionContext";
@@ -58,11 +63,39 @@ const samePair = (a: PricePair, b: PricePair) => a.price === b.price && a.compar
  */
 export function ProductBulkEditor({ ids }: { ids: string[] }) {
   const t = useMessages(productBulkEditMessages);
+  // Opened without a selection (a bookmark, a typed address): say how to get one.
+  if (ids.length === 0) {
+    return (
+      <Page width="index">
+        <PageHeader backTo="/admin/products" title={t("bulkEditTitle")} />
+        <EmptyState
+          icon={PackageSearch}
+          title={t("bulkEditNoSelectionTitle")}
+          description={t("bulkEditNoSelectionBody")}
+          action={<Button asChild><Link to="/admin/products">{t("bulkEditChooseProducts")}</Link></Button>}
+          help={false}
+        />
+      </Page>
+    );
+  }
   return (
     <SaveBarProvider savedMessage={t("bulkEditSaved")}>
       <BulkEditorGrid ids={ids} />
     </SaveBarProvider>
   );
+}
+
+/** The grid's shape while the selection loads (L2/L3): its real headings, a row per product. */
+function BulkEditorSkeleton({ rows }: { rows: number }) {
+  return Array.from({ length: Math.min(rows, 50) }, (_, index) => (
+    <TableRow key={index} still aria-hidden="true" data-slot="skeleton">
+      <TableCell className="min-w-56"><Skeleton className="h-3.5 w-48 max-w-full" /></TableCell>
+      <TableCell className="w-36"><Skeleton className="h-9 w-32" /></TableCell>
+      <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
+      <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
+      <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
+    </TableRow>
+  ));
 }
 
 function BulkEditorGrid({ ids }: { ids: string[] }) {
@@ -160,13 +193,30 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     { value: "draft", label: product("statusDraft") },
   ];
 
+  const pending = query.isPending;
+  const skeletonShown = useShownAfter(pending);
+  // Products deleted (or put in trash) since they were chosen are not in the read.
+  const missing = pending ? 0 : Math.max(0, ids.length - loaded.length);
+
   return (
     <Page width="index">
-      <PageHeader backTo="/admin/products" title={t("bulkEditTitle")} meta={t("bulkEditMeta", { count: ids.length })} />
+      <PageHeader backTo="/admin/products" title={t("bulkEditTitle")} meta={t("bulkEditMeta", { count: pending ? ids.length : loaded.length })} />
       {query.isError ? (
         <ErrorState onRetry={() => void query.refetch()} />
+      ) : !pending && loaded.length === 0 ? (
+        <EmptyState
+          icon={PackageSearch}
+          title={t("bulkEditGoneTitle")}
+          description={t("bulkEditGoneBody")}
+          action={<Button asChild><Link to="/admin/products">{t("bulkEditChooseProducts")}</Link></Button>}
+          help={false}
+        />
       ) : (
-        <Card className="overflow-clip p-0">
+        <Card className="overflow-clip p-0" aria-busy={pending || undefined}>
+          <span className="sr-only" role="status" aria-live="polite">{pending && skeletonShown ? t("bulkEditLoading") : ""}</span>
+          {missing > 0 ? (
+            <Alert className="m-4"><AlertDescription>{t("bulkEditSomeGone", { count: missing })}</AlertDescription></Alert>
+          ) : null}
           <Table>
             <TableHeader>
               <TableRow>
@@ -177,7 +227,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                 <TableHead data-numeric>{t("bulkEditOnHand")}</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className={cn(pending && !skeletonShown && "invisible")}>
+              {pending ? <BulkEditorSkeleton rows={ids.length} /> : null}
               {loaded.map((product) => {
                 const next = draft(product.id);
                 const problem = priceProblem(product);
