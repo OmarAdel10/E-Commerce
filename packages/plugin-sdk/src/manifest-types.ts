@@ -122,7 +122,7 @@ export type StorefrontSettingsOf<M, Kind extends "section" | "component" | "skin
 /**
  * Declares a manifest with its literal types kept, so `definePlugin` can type
  * `ctx.objects` records and `ctx.settings` by key. A mistake is reported at
- * the key that is wrong (`placement: "buybox"` → Did you mean "buy-box"?), not
+ * the key that is wrong (`placement: "oders"` → Did you mean "orders"?), not
  * as a wall of structural types. Identity at runtime.
  */
 export function defineManifest<const M extends Manifest>(manifest: M): DefinedManifest<M> {

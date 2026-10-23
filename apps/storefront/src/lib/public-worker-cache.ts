@@ -419,9 +419,10 @@ export interface PublicStorefrontCacheContext {
 
 /**
  * Serves one storefront request. Private requests (receipts, accounts, a named
- * session cookie, variant selections) always render. Public requests and the
- * buyer shells render the canonical, cookie-less URL, and
- * a successful anonymous render is stored for the next visitor.
+ * session cookie) always render. Public requests and the buyer shells render
+ * the canonical, cookie-less URL (variant selections are made in the browser
+ * and share the product's entry), and a successful anonymous render is stored
+ * for the next visitor.
  */
 export async function servePublicStorefrontRequest(
   request: Request,
