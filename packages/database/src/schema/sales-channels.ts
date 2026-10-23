@@ -13,7 +13,9 @@
 // - `sales_channel_locations`: the locations whose on-hand a channel sells. A
 //   new channel links every active location and a new location every channel,
 //   so a channel's sellable stock is the SKU's stock until a merchant unlinks
-//   one. Never a per-channel stock count.
+//   one. Never a per-channel stock count. Every channel keeps at least one
+//   active location: triggers (0183) refuse the unlink or archive that would
+//   leave it none.
 //
 // `orders.sales_channel_id` names the channel an order sold from.
 
@@ -27,6 +29,13 @@ import { inventoryLocations } from "./inventory";
 /** Mirrors `SALES_CHANNEL_KINDS` in `@scalius/shared/sales-channels`. */
 export const SALES_CHANNEL_KIND_VALUES = ["online_store", "pos", "catalog_feed", "agent", "app"] as const;
 export const SALES_CHANNEL_STATUS_VALUES = ["active", "inactive"] as const;
+
+/**
+ * RAISE message of the triggers (migration 0183) that keep every channel
+ * selling from at least one active location: unlinking a channel's last
+ * active location, or archiving it, aborts the write.
+ */
+export const SALES_CHANNEL_LOCATION_REQUIRED = "SALES_CHANNEL_LOCATION_REQUIRED";
 
 export const salesChannels = sqliteTable("sales_channels", {
     id: text("id").primaryKey(),

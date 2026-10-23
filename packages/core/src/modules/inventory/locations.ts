@@ -17,6 +17,7 @@ import {
     orders,
     productVariants,
     purchaseOrders,
+    SALES_CHANNEL_LOCATION_REQUIRED,
     salesChannelLocations,
     salesChannels,
     type InventoryLocationKind,
@@ -466,7 +467,17 @@ function openOrdersAtLocation(locationId: string | SQL): SQL {
  * an order arriving concurrently cannot slip past the guard.
  */
 export async function archiveInventoryLocation(db: Database, id: string): Promise<InventoryLocationRecord> {
-    const archived = await db.update(inventoryLocations).set({
+    const archived = await guardedArchive(db, id).catch((error: unknown) => {
+        // A channel's location change made this its only active location after the guard read (0183's trigger): say which.
+        if (collectErrorText(error).includes(SALES_CHANNEL_LOCATION_REQUIRED)) return [];
+        throw error;
+    });
+    if (archived.length > 0) return getInventoryLocationRecord(db, id);
+    return refuseArchive(db, id);
+}
+
+function guardedArchive(db: Database, id: string) {
+    return db.update(inventoryLocations).set({
         status: "archived",
         version: sql`${inventoryLocations.version} + 1`,
         updatedAt: sql`unixepoch()`,
@@ -482,8 +493,10 @@ export async function archiveInventoryLocation(db: Database, id: string): Promis
         sql`NOT ${openStockDocumentsAtLocation(id)}`,
         sql`NOT EXISTS (${channelsSellingOnlyFrom(id)})`,
     )).returning({ id: inventoryLocations.id });
-    if (archived.length > 0) return getInventoryLocationRecord(db, id);
+}
 
+/** Why the guarded archive changed nothing, as the merchant-facing error (or the location, already archived). */
+async function refuseArchive(db: Database, id: string): Promise<InventoryLocationRecord> {
     const location = await getInventoryLocationRecord(db, id);
     if (location.status === "archived") return location;
     if (location.isDefault) {
