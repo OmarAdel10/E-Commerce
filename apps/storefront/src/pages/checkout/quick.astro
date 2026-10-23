@@ -190,6 +190,12 @@ if (quoteResult && !quoteResult.ok && quoteResult.reason === "rate" && quoteResu
   quoteResult = quoteInput ? await fetchQuickCheckoutQuote(quoteInput, customerSessionToken) : null;
 }
 const quote = quoteResult?.ok ? quoteResult.quote : null;
+// The quote lists the methods the order may use where it is handed over: a
+// pickup or an order that ships nothing in the store's own country (cash on
+// delivery serves Bangladesh), and cash only when every line is handed over
+// in person. This page places cash orders, so without cash it sends the buyer
+// to the cart.
+const codFitsOrder = quote === null || quote.allowedPaymentMethods.includes("cod");
 const buyerFields = [...new Map((quote?.buyerUi ?? []).flatMap((block) =>
   block.attributes.filter((attribute) => attribute.required).map((attribute) => {
     const key = `${block.appId}.${attribute.key}`;
@@ -251,6 +257,9 @@ if (!codAvailable) {
   ruleMessages = [];
 } else if (!codServesDestination) {
   errorMessage = formatCheckoutLanguageText(copy.cashOnDeliveryCountryUnavailableText, { country: countryName });
+  ruleMessages = [];
+} else if (!codFitsOrder) {
+  errorMessage = copy.cashOnDeliveryUnavailableText;
   ruleMessages = [];
 } else if (form.intent === "place" && !errorMessage) {
   fieldErrors = quickCheckoutFieldErrors(form, mode, MIN_SHIPPING_ADDRESS_LENGTH, contactFields.email);
@@ -579,7 +588,7 @@ const secondaryButtonClass =
 
         <MarketingConsentField consent={marketingConsent} selected={Object.keys(form.marketingConsent).map((key) => key.replace("marketingConsent_", ""))} idPrefix="quick" />
 
-        {quote && codAvailable && codServesDestination ? (
+        {quote && codAvailable && codServesDestination && codFitsOrder ? (
           <div class="space-y-2">
             <button type="submit" name="intent" value="place" class="flex h-12 w-full items-center justify-center rounded-lg bg-primary px-4 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               {copy.placeOrderText} · {quoteMoney(quote.totalAmount)}

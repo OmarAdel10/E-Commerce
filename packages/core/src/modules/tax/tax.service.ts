@@ -128,7 +128,8 @@ interface RegionRateRow {
 
 /**
  * The tax authority in three statements, as before regions: the settings
- * row (with the markets' flags and the origin country beside it), the
+ * row (with the markets' flags and the origin country beside it, read also
+ * when the store never saved tax settings), the
  * classes, and the regions with their active rates.
  */
 export function createStorefrontTaxAuthorityReadPlan(
@@ -136,7 +137,10 @@ export function createStorefrontTaxAuthorityReadPlan(
 ): StorefrontTaxAuthorityReadPlan {
     return {
         statements: [
+            // One row always: the store's origin country does not depend on
+            // the settings row (a store that never saved tax settings has none).
             db.select({
+                settingsId: taxSettings.id,
                 enabled: taxSettings.enabled,
                 taxShipping: taxSettings.taxShipping,
                 defaultTaxClassId: taxSettings.defaultTaxClassId,
@@ -146,7 +150,7 @@ export function createStorefrontTaxAuthorityReadPlan(
                 version: taxSettings.version,
                 marketTaxInclusion: MARKET_TAX_INCLUSION_SQL,
                 originCountry: ORIGIN_COUNTRY_SQL,
-            }).from(taxSettings).where(eq(taxSettings.id, "default")),
+            }).from(sql`(SELECT 1 AS one) AS tax_authority_row`).leftJoin(taxSettings, eq(taxSettings.id, "default")),
             db.select({
                 id: taxClasses.id,
                 name: taxClasses.name,
@@ -175,10 +179,10 @@ export function createStorefrontTaxAuthorityReadPlan(
         ],
         resolve(results) {
             const settingsRows = Array.isArray(results[0])
-                ? results[0] as Array<Omit<TaxSettingsDefinition, never> & { marketTaxInclusion: string | null; originCountry: string | null }>
+                ? results[0] as Array<Omit<TaxSettingsDefinition, never> & { settingsId: string | null; marketTaxInclusion: string | null; originCountry: string | null }>
                 : [];
             const settingsRow = settingsRows[0] ?? null;
-            const settings: TaxSettingsDefinition = settingsRow
+            const settings: TaxSettingsDefinition = settingsRow?.settingsId
                 ? {
                     enabled: Boolean(settingsRow.enabled),
                     taxShipping: Boolean(settingsRow.taxShipping),
@@ -229,6 +233,17 @@ export function createStorefrontTaxAuthorityReadPlan(
             });
         },
     };
+}
+
+/**
+ * The store's own country: its default location's (where pickups are
+ * collected and an address-less order is taxed). One statement; checkout
+ * reads it with the tax authority instead (`originCountry`). Null: no active
+ * default location.
+ */
+export async function readStoreOriginCountry(db: Database): Promise<string | null> {
+    const row = await db.select({ originCountry: ORIGIN_COUNTRY_SQL }).from(sql`(SELECT 1 AS one) AS store_origin`).get();
+    return row?.originCountry ?? null;
 }
 
 /** Reads the tax authority in one batch (staff orders and previews; checkout folds it into its own). */

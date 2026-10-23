@@ -16,6 +16,7 @@ import { quoteStorefrontDiscount, type StorefrontDiscountQuote } from "../promot
 import {
   buildStorefrontTaxAllocationLineId,
   calculateStorefrontTaxQuote,
+  readStorefrontTaxAuthority,
   taxAddressSource,
   type StorefrontTaxAuthoritySnapshot,
   type TaxDiscountAllocationInput,
@@ -139,6 +140,12 @@ export interface StorefrontCheckoutPricing {
   /** The chosen rate as the buyer sees it (an app may have renamed or priced it). */
   shippingMethod: StorefrontOrderShippingMethodSnapshot | null;
   taxQuote: TaxQuote;
+  /**
+   * The store's own country (its default location's, the tax origin): where
+   * a pickup or an order that ships nothing is handed over
+   * (`paymentCountryOf`). Null: no active default location.
+   */
+  storeCountryCode: string | null;
   /** App rules the cart breaks: checkout is blocked while any remain. */
   ruleErrors: CheckoutRuleError[];
   /** The delivery options to show when an app changed them; null when none did. */
@@ -431,7 +438,9 @@ export async function priceStorefrontCheckout(
     // The signed-in buyer (and their tax exemption); a guest is never exempt.
     customer: input.segmentCustomerId ? { id: input.segmentCustomerId, exemption: input.taxExemption ?? null } : null,
   };
-  const taxQuote = await calculateStorefrontTaxQuote(db, taxQuoteInput, input.taxAuthority, { apps: input.appProviders });
+  // The authority read once: the quote's, and the store's country it carries.
+  const taxAuthority = input.taxAuthority ?? await readStorefrontTaxAuthority(db);
+  const taxQuote = await calculateStorefrontTaxQuote(db, taxQuoteInput, taxAuthority, { apps: input.appProviders });
 
   return {
     lineIds,
@@ -444,6 +453,7 @@ export async function priceStorefrontCheckout(
     shippingMinor,
     shippingMethod,
     taxQuote,
+    storeCountryCode: taxAuthority.originCountry,
     ruleErrors,
     shippingRates,
     appCart,

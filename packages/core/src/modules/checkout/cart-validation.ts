@@ -7,6 +7,7 @@ import { discountedPriceMinor, fromMinor, toMinor } from "@scalius/shared/money"
 import { isLineAmountInRange } from "@scalius/shared/order-limits";
 import { mapCustomizationPrices, NO_PROPERTIES_HASH } from "@scalius/shared/line-properties";
 import { isForeignPresentment, presentShopMinor, shopPresentment, type PresentmentMoney } from "@scalius/shared/presentment";
+import { normalizeMarketCountry } from "@scalius/shared/markets";
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { ONLINE_STORE_CHANNEL_ID } from "@scalius/shared/sales-channels";
 import {
@@ -1176,19 +1177,49 @@ function presentStorefrontCartFulfilmentSummary(summary: StorefrontCartFulfilmen
     };
 }
 
+/** No method lists it: an order whose store country is unknown fits only methods that serve any country. */
+export const UNKNOWN_STORE_COUNTRY = "ZZ";
+
+/**
+ * The country a payment method's `countries` are checked against: where the
+ * order is handed over (and its cash collected). A delivery: the delivery
+ * country. A pickup, or an order that ships nothing (a service is performed
+ * by the store): the store's own country, its default location's (the tax
+ * origin, `originCountry`); unknown, `UNKNOWN_STORE_COUNTRY`, so a method
+ * limited to some countries fails closed. Null only while a physical cart has
+ * no delivery method yet: nothing to check until one is chosen.
+ */
+export function paymentCountryOf(
+    summary: Pick<StorefrontCartFulfilmentSummary, "requiresDeliveryMethod" | "deliveryMethodKind">,
+    deliveryCountryCode: string | null | undefined,
+    storeCountryCode: string | null | undefined,
+): string | null {
+    if (summary.deliveryMethodKind === "delivery") return normalizeMarketCountry(deliveryCountryCode);
+    if (summary.requiresDeliveryMethod && summary.deliveryMethodKind === null) return null;
+    return normalizeMarketCountry(storeCountryCode) ?? UNKNOWN_STORE_COUNTRY;
+}
+
+/** Whether `paymentCountryOf` needs the store's country: a pickup, or a cart that ships nothing. */
+export function paymentCountryIsStore(
+    summary: Pick<StorefrontCartFulfilmentSummary, "requiresDeliveryMethod" | "deliveryMethodKind">,
+): boolean {
+    return summary.deliveryMethodKind === "pickup" || !summary.requiresDeliveryMethod;
+}
+
 /**
  * The payment methods a cart may use: the store's enabled methods, without
- * cash on delivery when nothing is shipped, collected or performed, and
- * without a method that doesn't serve the delivery country (cash on
- * delivery serves Bangladesh; MARKETS-DESIGN step 3b). A pickup or an order
- * that ships nothing has no delivery country. A deferred method (net terms,
- * an app's invoice) is offered only when `deferredOffered` names it: the
+ * cash on delivery unless every line is handed over in person
+ * (`allowsCashOnDelivery`), and without a method that doesn't serve the
+ * order's payment country (`paymentCountryOf`: cash on delivery serves
+ * Bangladesh; MARKETS-DESIGN step 3b). A deferred method (net terms, an
+ * app's invoice) is offered only when `deferredOffered` names it: the
  * signed-in buyer's eligibility (payment-terms.ts); never to a guest.
  */
 export function resolveCartPaymentMethods(
     enabledMethods: readonly string[],
     summary: Pick<StorefrontCartFulfilmentSummary, "allowsCashOnDelivery">,
-    deliveryCountryCode: string | null = null,
+    /** `paymentCountryOf()`; null: not known yet, no country filter. */
+    paymentCountryCode: string | null = null,
     providers: Pick<PaymentProviders, "countryIssue" | "currencyIssue" | "isDeferred"> = BUILT_IN_PAYMENT_PROVIDERS,
     /**
      * The order's currency (its market's, MARKETS-DESIGN step 6): a gateway
@@ -1202,6 +1233,6 @@ export function resolveCartPaymentMethods(
     return enabledMethods.filter((method) =>
         (!providers.isDeferred(method) || deferredOffered.has(method))
         && (method !== "cod" || summary.allowsCashOnDelivery)
-        && providers.countryIssue(method, deliveryCountryCode) === null
+        && providers.countryIssue(method, paymentCountryCode) === null
         && (currencyCode === null || providers.currencyIssue(method, currencyCode) === null));
 }

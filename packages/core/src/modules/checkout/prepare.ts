@@ -18,6 +18,7 @@ import {
 } from "@scalius/shared/presentment";
 import {
   buildStorefrontTaxAllocationLineId,
+  readStorefrontTaxAuthority,
   type StorefrontTaxAuthoritySnapshot,
   type TaxQuote,
 } from "../tax";
@@ -66,6 +67,8 @@ import {
 } from "../orders";
 import {
     isTrustedStorefrontCartValidationResult,
+    paymentCountryIsStore,
+    paymentCountryOf,
     summarizeStorefrontCartFulfilment,
     validateStorefrontCartItems,
     type StorefrontCartFulfilmentLine,
@@ -807,13 +810,24 @@ export async function createStorefrontOrder(
     const lineTypes = assertStorefrontLineFulfilment(cartValidation, deliveryPreflight);
     const { requiresShipping, allowsCashOnDelivery } = deliveryPreflight.fulfilment;
     const giftCardHandles = (data.giftCards ?? []).map((card) => card.handle);
+    // Where the order is handed over (paymentCountryOf): the delivery country,
+    // else the store's own, which the tax authority carries. A direct caller
+    // without one reads it now, and the order is priced with that read.
+    const handedOverAtStore = paymentCountryIsStore(deliveryPreflight.fulfilment);
+    const taxAuthority = taxAuthoritySnapshot
+        ?? (handedOverAtStore ? await readStorefrontTaxAuthority(storefrontDb) : undefined);
+    const paymentCountry = paymentCountryOf(
+        deliveryPreflight.fulfilment,
+        deliveryPreflight.address?.countryCode,
+        taxAuthority?.originCountry,
+    );
     const assertCashOnDeliveryFits = (paymentMethod: string) => {
         if (paymentMethod === PaymentMethod.COD && !allowsCashOnDelivery) {
             throw new ValidationError("Cash on delivery isn't available for this order. Choose an online payment method.");
         }
-        // A method that doesn't serve the delivery country (cash on delivery: Bangladesh).
+        // A method that doesn't serve the country the order is handed over in (cash on delivery: Bangladesh).
         const countryIssue = (appOptions.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS)
-            .countryIssue(paymentMethod, deliveryPreflight.address?.countryCode ?? null);
+            .countryIssue(paymentMethod, paymentCountry, handedOverAtStore ? "store" : "delivery");
         if (countryIssue) throw new ValidationError(countryIssue, { reason: PAYMENT_METHOD_UNAVAILABLE_REASON });
     };
     // With gift cards the method is settled once the amount due is known.
@@ -910,7 +924,7 @@ export async function createStorefrontOrder(
         // A tax-exempt account pays no tax (read with its session; a guest never is).
         taxExemption: customerIdentity?.taxExemption ?? null,
         currency: requestCurrency,
-        taxAuthority: taxAuthoritySnapshot,
+        taxAuthority,
         apps: appOptions.apps,
         appProviders: appOptions.appProviders,
         channel: appOptions.channel ?? "online_store",

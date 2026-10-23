@@ -25,6 +25,7 @@ import {
   createTrustedStorefrontCheckoutPolicySnapshot,
   loadStorefrontCheckoutAuthority,
   NO_CHECKOUT_APP_FUNCTIONS,
+  paymentCountryOf,
   resolveCartPaymentMethods,
   resolveExistingCheckoutAttempt,
   validateCheckoutAttributes,
@@ -566,6 +567,7 @@ export async function submitAgentStorefrontCheckout(
     await assertStorefrontAppPaymentMethod(apps, prepared.appCart, prepared.paymentMethod, resolveCartPaymentMethods(
       authority.activePaymentMethods.enabledMethods,
       delivery.fulfilment,
+      paymentCountryOf(delivery.fulfilment, delivery.address?.countryCode, authority.taxAuthority.originCountry),
     ), paymentProviders);
   }
 

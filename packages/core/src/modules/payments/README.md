@@ -81,12 +81,15 @@ gateway; the kernel suites in `gateways/gateway-kernel.test.ts` and
   (events, refunds) are ISO minor units: an adapter whose wire form differs
   decodes them with `decodeProviderAmount`, and a value it cannot decode
   becomes `NaN`, which the kernel refuses.
-- A payment method states the shipping countries it serves (`countries`:
-  `"any"`, the default, or ISO codes; MARKETS-DESIGN step 3b). Cash on
-  delivery serves `["BD"]` (`COD_COUNTRIES`). `PaymentProviders.countryIssue()`
-  refuses a method for a delivery country it does not serve. Checkout config,
-  the cart's methods, the agent quote and order placement apply it; staff
-  orders do not (staff decide).
+- A payment method states the countries it serves (`countries`: `"any"`, the
+  default, or ISO codes; MARKETS-DESIGN step 3b). Cash on delivery serves
+  `["BD"]` (`COD_COUNTRIES`). `PaymentProviders.countryIssue()` refuses a
+  method for the country the order is handed over in, checkout's
+  `paymentCountryOf()`: the delivery country, or the store's own (its default
+  location's, the tax origin) for a pickup or an order that ships nothing; an
+  unknown store country fits only `"any"` methods. The cart's methods, the
+  tax quote, quick checkout, the agent quote and order placement apply it;
+  staff orders do not (staff decide).
 
 ## Storage
 

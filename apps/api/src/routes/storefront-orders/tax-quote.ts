@@ -35,6 +35,7 @@ import {
     NO_DEFERRED_ELIGIBILITY,
     offeredDeferredMethods,
     resolveAppPaymentMethods,
+    paymentCountryOf,
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
     storefrontLinePropertiesHashes,
@@ -387,8 +388,9 @@ app.openapi(taxQuoteRoute, async (c) => {
     : await resolveAppPaymentMethods(apps, pricing.appCart, resolveCartPaymentMethods(
       paymentMethods.enabledMethods,
       delivery.fulfilment,
-      // A method that doesn't serve the delivery country is not offered (cash on delivery: Bangladesh).
-      delivery.address?.countryCode ?? null,
+      // A method that doesn't serve the country the order is handed over in
+      // (the delivery's, else the store's) is not offered (cash on delivery: Bangladesh).
+      paymentCountryOf(delivery.fulfilment, delivery.address?.countryCode, pricing.storeCountryCode),
       paymentProviders,
       // A gateway that can't charge the order's currency is not offered.
       quote.currencyCode,

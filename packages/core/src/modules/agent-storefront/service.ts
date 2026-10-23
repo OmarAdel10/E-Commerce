@@ -22,6 +22,7 @@ import {
   priceStorefrontCheckout,
   resolveAppPaymentMethods,
   resolveBundlePromotionInterplay,
+  paymentCountryOf,
   resolveCartPaymentMethods,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
@@ -989,14 +990,15 @@ export async function quoteAgentStorefrontCheckout(
   // app adjusts them, or when a delivery abroad may rule a method out:
   // cash on delivery serves Bangladesh).
   const paymentProviders = input.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS;
-  const deliveryCountry = delivery.address?.countryCode ?? null;
-  const abroad = deliveryCountry !== null && deliveryCountry !== DELIVERY_HIERARCHY_COUNTRY;
+  // Where the order is handed over: the delivery country, else the store's.
+  const paymentCountry = paymentCountryOf(delivery.fulfilment, delivery.address?.countryCode, pricing.storeCountryCode);
+  const abroad = paymentCountry !== null && paymentCountry !== DELIVERY_HIERARCHY_COUNTRY;
   // A market's own currency may rule a gateway out (`chargeCurrencies`, MARKETS-DESIGN step 6).
   const foreignCurrency = quote.currencyCode !== projection.money.shopCurrencyCode;
   let payment: { methods: Array<{ methodId: string; name: string }>; changed: boolean } | null = null;
   if (apps.points.has("checkout.payment_methods") || abroad || foreignCurrency) {
     const enabled = (await getActivePaymentMethods(db, input.credentialEncryptionKey, paymentProviders)).enabledMethods;
-    const allowed = resolveCartPaymentMethods(enabled, delivery.fulfilment, deliveryCountry, paymentProviders, quote.currencyCode);
+    const allowed = resolveCartPaymentMethods(enabled, delivery.fulfilment, paymentCountry, paymentProviders, quote.currencyCode);
     payment = await resolveAppPaymentMethods(apps, pricing.appCart, allowed, paymentProviders);
     const withoutCountry = resolveCartPaymentMethods(enabled, delivery.fulfilment);
     if (allowed.length !== withoutCountry.length) payment = { ...payment, changed: true };

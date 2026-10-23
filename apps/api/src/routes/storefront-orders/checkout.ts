@@ -35,6 +35,7 @@ import {
     assertStorefrontCheckoutPolicy,
     loadStorefrontCheckoutReads,
     offeredDeferredMethods,
+    paymentCountryOf,
     resolveCartPaymentMethods,
     resolveOrderDeferredTerms,
     type StorefrontCheckoutAuthoritySnapshot,
@@ -691,7 +692,7 @@ app.openapi(createOrderRoute, async (c) => {
       await assertStorefrontAppPaymentMethod(apps, result.appCart, result.paymentMethod, resolveCartPaymentMethods(
         checkoutAuthority.activePaymentMethods.enabledMethods,
         deliveryPreflight.fulfilment,
-        deliveryPreflight.address?.countryCode ?? null,
+        paymentCountryOf(deliveryPreflight.fulfilment, deliveryPreflight.address?.countryCode, checkoutAuthority.taxAuthority.originCountry),
         paymentProviders,
         null,
         deferredTerms ? offeredDeferredMethods(deferredTerms.eligibility) : undefined,

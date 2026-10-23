@@ -149,13 +149,16 @@ export interface PaymentProviders {
   label(id: string): string;
   /** Store-currency eligibility shared by every checkout surface; credential readiness is separate. */
   currencyIssue(id: string, currencyCode: unknown): string | null;
-  /** The shipping countries a method serves: COD's countries, a gateway's declared ones, else `any`. */
+  /** The countries a method serves: COD's countries, a gateway's declared ones, else `any`. */
   countries(id: string): ProviderCountries;
   /**
-   * Why a method can't take an order delivered to this country, or null
-   * (null country: nothing is delivered, every method fits).
+   * Why a method can't take an order handed over in this country, or null.
+   * The country is checkout's `paymentCountryOf()`: the delivery country, or
+   * the store's own for a pickup or an order that ships nothing (`where:
+   * "store"`, which words the refusal). Null: not known yet (a physical cart
+   * before its delivery method), nothing to check.
    */
-  countryIssue(id: string, shippingCountryCode: string | null | undefined): string | null;
+  countryIssue(id: string, countryCode: string | null | undefined, where?: "delivery" | "store"): string | null;
   filterForCurrency(ids: readonly string[], currencyCode: unknown): string[];
   /**
    * The one amount codec of every payment path (MARKETS-DESIGN D2): the
@@ -211,8 +214,13 @@ export function createPaymentProviders(apps: readonly PaymentGateway[] = []): Pa
   const countries = (id: string): ProviderCountries =>
     id === COD_PAYMENT_METHOD ? COD_COUNTRIES : get(id)?.countries ?? "any";
 
-  const countryIssue = (id: string, shippingCountryCode: string | null | undefined): string | null => {
-    if (!shippingCountryCode || providerServesCountry(countries(id), shippingCountryCode)) return null;
+  const countryIssue = (id: string, countryCode: string | null | undefined, where: "delivery" | "store" = "delivery"): string | null => {
+    if (!countryCode || providerServesCountry(countries(id), countryCode)) return null;
+    if (where === "store") {
+      return id === COD_PAYMENT_METHOD
+        ? "Paying in cash isn't available for this order. Choose an online payment method."
+        : `${label(id)} isn't available for this order. Choose another payment method.`;
+    }
     return id === COD_PAYMENT_METHOD
       ? "Cash on delivery isn't available for this delivery country. Choose an online payment method."
       : `${label(id)} isn't available for this delivery country. Choose another payment method.`;

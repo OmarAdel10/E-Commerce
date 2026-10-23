@@ -5,6 +5,7 @@ import { storefrontUiSlotsOn } from "@scalius/shared/plugins/storefront-protocol
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { InventoryPool } from "@scalius/database/schema";
 import { readStoreCurrency } from "@scalius/core/modules/markets";
+import { readStoreOriginCountry } from "@scalius/core/modules/tax";
 import { getActivePaymentMethods } from "@scalius/core/modules/payments";
 import {
   checkoutPurchaseOptions,
@@ -16,6 +17,8 @@ import {
   type StorefrontCartFulfilmentSummary,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
+  paymentCountryIsStore,
+  paymentCountryOf,
   resolveCartPaymentMethods,
   storefrontLinePropertiesHashes,
   summarizeStorefrontCartFulfilment,
@@ -359,8 +362,27 @@ app.openapi(cartValidationRoute, async (c) => {
     giftCardTenderRates(money),
   );
   const propertiesHashes = await storefrontLinePropertiesHashes(result);
+  // The methods the cart may use where it is handed over (paymentCountryOf):
+  // a pickup or a cart that ships nothing is handed over in the store's own
+  // country, read only then and only when an enabled method serves some
+  // countries alone (cash on delivery: Bangladesh).
+  const allowedPaymentMethods = async (
+    fulfilment: StorefrontCartFulfilmentSummary,
+    deliveryCountryCode: string | null,
+  ) => {
+    const storeCountry = paymentCountryIsStore(fulfilment)
+      && paymentMethods.enabledMethods.some((method) => paymentProviders.countries(method) !== "any")
+      ? await readStoreOriginCountry(db)
+      : null;
+    return resolveCartPaymentMethods(
+      paymentMethods.enabledMethods,
+      fulfilment,
+      paymentCountryOf(fulfilment, deliveryCountryCode, storeCountry),
+      paymentProviders,
+      money.currencyCode,
+    );
+  };
   const cartOnly = summarizeStorefrontCartFulfilment(result, null);
-  const cartOnlyPayment = resolveCartPaymentMethods(paymentMethods.enabledMethods, cartOnly, null, paymentProviders, money.currencyCode);
   // Delivery is priced once a method is chosen: a pickup rate needs no
   // address, a delivery rate needs city and zone.
   const wantsDelivery = Boolean(data.shippingMethodId) || Boolean(data.city && data.zone);
@@ -371,7 +393,7 @@ app.openapi(cartValidationRoute, async (c) => {
       ...presentCart(cartOnly, propertiesHashes),
       valid: cartValid && ruleErrors.length === 0,
       ruleErrors,
-      allowedPaymentMethods: cartOnlyPayment,
+      allowedPaymentMethods: await allowedPaymentMethods(cartOnly, null),
       giftCardIssues,
     });
   }
@@ -404,13 +426,7 @@ app.openapi(cartValidationRoute, async (c) => {
     ...presentCart(delivery.fulfilment, propertiesHashes),
     valid: cartValid && ruleErrors.length === 0,
     ruleErrors,
-    allowedPaymentMethods: resolveCartPaymentMethods(
-      paymentMethods.enabledMethods,
-      delivery.fulfilment,
-      delivery.address?.countryCode ?? null,
-      paymentProviders,
-      money.currencyCode,
-    ),
+    allowedPaymentMethods: await allowedPaymentMethods(delivery.fulfilment, delivery.address?.countryCode ?? null),
     giftCardIssues,
     ...(delivery.kind && delivery.shippingMethod
       ? {
