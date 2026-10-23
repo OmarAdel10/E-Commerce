@@ -17,6 +17,7 @@ import { useCatalogActionPermissions } from "~/hooks/use-catalog-action-permissi
 import { useMessages } from "~/i18n";
 import { settingsLocationsMessages } from "~/i18n/settings-locations";
 import { getServerFnError } from "~/lib/api-helpers";
+import { countryName } from "~/lib/country-name";
 import {
   inventoryLocationsQueryOptions,
   useInventoryLocationAction,
@@ -27,7 +28,10 @@ import { SettingsLoadFailure } from "../SettingsLoadFailure";
 import { LocationDialog } from "./LocationDialog";
 
 function addressLine(location: InventoryLocation): string {
-  return [location.addressLine1, location.addressLine2, location.city, location.postalCode].filter(Boolean).join(", ");
+  // The country is the location's authority (tax origin): always shown, even without an address.
+  return [location.addressLine1, location.addressLine2, location.city, location.postalCode, countryName(location.countryCode)]
+    .filter(Boolean)
+    .join(", ");
 }
 
 export function LocationsManager() {

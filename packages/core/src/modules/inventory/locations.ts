@@ -24,6 +24,7 @@ import { z } from "zod";
 import { readIncomingStock, type IncomingStockRow } from "./inventory-insights";
 import { blankToNull, optionalTextSchema, parseInventoryInput } from "./validation";
 import { readStoreCountry } from "../../utils/store-country";
+import { addressRulesFor } from "@scalius/shared/address-metadata";
 
 /** RAISE message of the trigger that refuses a stock movement without an active location. */
 export const INVENTORY_LOCATION_REQUIRED = "INVENTORY_LOCATION_REQUIRED";
@@ -261,7 +262,10 @@ export const inventoryLocationInputSchema = z.object({
     addressLine2: optionalTextSchema(200),
     city: optionalTextSchema(80),
     postalCode: optionalTextSchema(20),
-    countryCode: z.string().trim().regex(/^[A-Za-z]{2}$/, "Use a two-letter country code.").optional(),
+    // The country is authoritative (tax origin, courier and zone reach): a country an address can be in.
+    countryCode: z.string().trim().regex(/^[A-Za-z]{2}$/, "Use a two-letter country code.")
+        .refine((code) => addressRulesFor(code.toUpperCase()) !== null, "Choose a country from the list.")
+        .optional(),
     phone: optionalTextSchema(32),
 });
 export type InventoryLocationInput = z.input<typeof inventoryLocationInputSchema>;
