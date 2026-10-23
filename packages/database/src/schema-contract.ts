@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 184,
-  name: "0184_drop_courier_test_columns",
+  version: 185,
+  name: "0185_shipping_profiles",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -701,6 +701,11 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 184,
     name: "0184_drop_courier_test_columns",
     sourceSha256: "c3740d37e46100e16b505b60582138f255164306571d0e67bd8a1e0d6d406364",
+  },
+  {
+    version: 185,
+    name: "0185_shipping_profiles",
+    sourceSha256: "f3bf3eb495bb4842d9e3954bf0d33a55ec504c34cc90e8437e979d7f7acd1bb2",
   },
 ] as const;
 

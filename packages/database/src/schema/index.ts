@@ -22,6 +22,7 @@ export * from "./notifications";
 export * from "./inventory";
 export * from "./purchasing";
 export * from "./delivery";
+export * from "./shipping-profiles";
 export * from "./marketing";
 export * from "./promotions";
 export * from "./content";

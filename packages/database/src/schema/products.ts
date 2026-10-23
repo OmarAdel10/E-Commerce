@@ -9,6 +9,7 @@ import { UNIX_NOW } from "./shared";
 import { taxClasses } from "./tax";
 import { media } from "./media";
 import { warrantyPolicies } from "./warranty";
+import { shippingProfiles } from "./shipping-profiles";
 
 /**
  * A discount a buyer can see: the rule the buyer pricing projection applies
@@ -61,6 +62,11 @@ export const products = sqliteTable(
         discountBps: integer("discount_bps").notNull().default(0),
         discountType: text("discount_type", { enum: ["percentage", "flat"] }).default("percentage"),
         discountAmountMinor: integer("discount_amount_minor").notNull().default(0),
+        /**
+         * Its shipping profile ships free: a mirror of `shipping_profiles.free_delivery`
+         * (migration 0185; a trigger refuses a row that disagrees). Write the
+         * profile; cards, filters, feeds and checkout read this.
+         */
         freeDelivery: integer("free_delivery", { mode: "boolean" }).notNull().default(false),
         taxClassId: text("tax_class_id")
             .references(() => taxClasses.id, { onDelete: "set null" }),
@@ -81,6 +87,9 @@ export const products = sqliteTable(
         emiEligible: integer("emi_eligible", { mode: "boolean" }).notNull().default(true),
         /** The product's warranty policy (Wave B); checkout freezes its current revision onto lines. */
         warrantyPolicyId: text("warranty_policy_id").references(() => warrantyPolicies.id, { onDelete: "set null" }),
+        /** The product's shipping profile (0185); NULL is the default profile (`shp_default`). */
+        shippingProfileId: text("shipping_profile_id")
+            .references(() => shippingProfiles.id, { onDelete: "set null" }),
     },
     (table) => [
         check("products_is_gift_card_check", sql`${table.isGiftCard} IN (0, 1)`),
@@ -121,6 +130,9 @@ export const products = sqliteTable(
         ),
         check("products_page_template_shape", sql.raw(templateIdCheck("page_template"))),
         check("products_emi_eligible_check", sql`${table.emiEligible} IN (0, 1)`),
+        index("products_shipping_profile_idx")
+            .on(table.shippingProfileId)
+            .where(sql`${table.shippingProfileId} IS NOT NULL`),
         index("products_warranty_policy_idx")
             .on(table.warrantyPolicyId)
             .where(sql`${table.warrantyPolicyId} IS NOT NULL`),

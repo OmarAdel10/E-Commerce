@@ -85,6 +85,8 @@ export const CACHE_DEP_LATER_TABLES: Readonly<Record<string, string>> = {
   object_types: "0155_v2_beta_contract",
   object_records: "0155_v2_beta_contract",
   url_redirects: "0181_url_redirects",
+  shipping_profiles: "0185_shipping_profiles",
+  shipping_profile_rates: "0185_shipping_profiles",
 };
 /**
  * Triggers added after their table's migration, by trigger name: the table's
@@ -122,7 +124,8 @@ export const CACHE_DEP_LATER_TRIGGERS: Readonly<Record<string, string>> = {
   // channels' publications replace it): the triggers that name it are
   // reinstalled without it. A channel's sellable stock reads its linked
   // locations, so raw stock moves a SKU's keys once a location is unlinked.
-  cdep_products_upd: "0122_sales_channels",
+  // Shipping profiles (0185) add products.shipping_profile_id, a visible column.
+  cdep_products_upd: "0185_shipping_profiles",
   cdep_products_seo: "0122_sales_channels",
   cdep_product_variants_chstock: "0122_sales_channels",
   cdep_product_variants_chstock_old: "0122_sales_channels",
@@ -205,6 +208,15 @@ export const CACHE_DEP_BASELINE_COLUMNS: Readonly<Record<string, readonly string
     "id", "enabled", "prices_include_tax", "tax_shipping", "default_tax_class_id", "shipping_tax_class_id",
     "display_label", "version", "created_at", "updated_at",
   ],
+};
+/**
+ * Column sets a table's triggers saw after 0100, between two later
+ * migrations that reinstalled them: a schema compiled before the later one
+ * still holds that text, and its PostgreSQL form names those columns.
+ */
+export const CACHE_DEP_SUPERSEDED_COLUMNS: Readonly<Record<string, ReadonlyArray<readonly string[]>>> = {
+  // 0122 (without exclude_from_product_feed) until 0185 added shipping_profile_id.
+  products: [CACHE_DEP_BASELINE_COLUMNS.products!.filter((column) => column !== "exclude_from_product_feed")],
 };
 const isBaselineTable = (table: string) => !PROJECTION_TABLES.has(table) && !(table in CACHE_DEP_LATER_TABLES);
 
@@ -520,8 +532,10 @@ const PROJECTION_BASELINE_CHANGED: Readonly<Record<string, readonly string[]>> =
   "order_items:upd": ["product_id", "order_id"],
 };
 
+let renderingColumns: Readonly<Record<string, readonly string[]>> | null = null;
+
 function columnsOf(table: string): string[] {
-  const frozen = renderingBaseline ? CACHE_DEP_BASELINE_COLUMNS[table] : undefined;
+  const frozen = renderingBaseline ? CACHE_DEP_BASELINE_COLUMNS[table] : renderingColumns?.[table];
   if (frozen) return [...frozen];
   const columns = tableColumns.get(table);
   if (!columns) throw new Error(`Cache dependency registry names unknown table ${table}.`);
@@ -842,6 +856,20 @@ const baselineByName = new Map([
     || baselineWhereTriggers.has(trigger.name) || bandTriggers.has(trigger.name)),
   ...generatedProjectionBaseline.filter((trigger) => PROJECTION_TABLES.has(trigger.table)),
 ].map((trigger) => [trigger.name, trigger]));
+/** The triggers of each superseded column set (`CACHE_DEP_SUPERSEDED_COLUMNS`), by name. */
+const supersededByName = new Map<string, GeneratedCacheDepTrigger[]>();
+for (const [table, columnSets] of Object.entries(CACHE_DEP_SUPERSEDED_COLUMNS)) {
+  for (const columns of columnSets) {
+    renderingColumns = { [table]: columns };
+    try {
+      for (const trigger of generateCacheDepTriggers().filter((entry) => entry.table === table)) {
+        supersededByName.set(trigger.name, [...(supersededByName.get(trigger.name) ?? []), trigger]);
+      }
+    } finally {
+      renderingColumns = null;
+    }
+  }
+}
 
 /** The trigger names a retired table's drop removes (its SQLite triggers go with the table). */
 export function retiredCacheDepTriggerNames(migration?: string): string[] {
@@ -868,6 +896,11 @@ export function cacheDepPostgresTrigger(name: string, installedSqlite?: string):
   // columns still holds 0100's trigger: its PostgreSQL form names those columns.
   const baseline = baselineByName.get(name);
   if (baseline && installedSqlite !== undefined && installedSqlite.trim() === baseline.sqlite) return `${baseline.postgres};`;
+  // Likewise a schema compiled between two later migrations that reinstalled it.
+  const superseded = installedSqlite === undefined
+    ? undefined
+    : supersededByName.get(name)?.find((trigger) => installedSqlite.trim() === trigger.sqlite);
+  if (superseded) return `${superseded.postgres};`;
   const postgresSql = postgresByName.get(name);
   return postgresSql === undefined ? undefined : `${postgresSql};`;
 }

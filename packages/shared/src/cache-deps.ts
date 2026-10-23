@@ -747,6 +747,18 @@ const CACHE_DEP_TABLE_RULES = {
     note: "The countries, admin areas and postal prefixes a shipping zone serves (MARKETS-DESIGN step 3b): which rates an address gets and which countries discovery claims.",
     rules: everyChange([{ dep: "ship" }]),
   },
+  shipping_profiles: {
+    kinds: ["ship"],
+    noise: ["revision", "updated_at"],
+    note: "Shipping profiles (0185): a profile's default weight prices its unweighed lines; its free flag is fixed and mirrored on its products (products.free_delivery).",
+    rules: everyChange([{ dep: "ship" }]),
+  },
+  shipping_profile_rates: {
+    kinds: ["ship"],
+    noise: [],
+    note: "A profile's own prices behind a delivery option (0185): the storefront rate read lists them with each option.",
+    rules: everyChange([{ dep: "ship" }]),
+  },
   places: {
     kinds: ["loc"],
     noise: ["source", "source_key", "source_version", "source_active", "updated_at"],
