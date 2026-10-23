@@ -125,6 +125,7 @@ export function OrderList({
   } = useServerTable({
     columns,
     queryOptions: ordersQueryOptions({ ...orderListQuery(search, term), appFilter, appColumns }),
+    rowScope: showArchived ? "archived" : "live",
     dataSelector: selectOrders,
     currentPage: cursored ? 1 : search.page,
     currentLimit: search.limit,
