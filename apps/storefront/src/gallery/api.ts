@@ -387,6 +387,46 @@ async function cartValidation(request: Request) {
   };
 }
 
+/**
+ * The cart's authoritative total (the order API's tax quote): every line at
+ * its fixture product's price, the chosen delivery option's fee, no tax and
+ * no discount. Without it the cart page only ever shows its "couldn't update
+ * the total" failure.
+ */
+async function taxQuote(entry: GalleryEntry, request: Request) {
+  const body = (await request.clone().json().catch(() => null)) as {
+    items?: Array<{ cartKey?: string; productId: string; variantId: string; quantity: number; productName?: string; variantLabel?: string }>;
+    shippingMethodId?: string;
+  } | null;
+  const bangla = entry.scenario.locale === "bn";
+  const items = (body?.items ?? []).map((item, index) => {
+    const productIndex = Number(/^prod_(\d+)$/.exec(item.productId)?.[1]);
+    const product = Number.isSafeInteger(productIndex) ? cardProduct(productIndex, { bangla }) : null;
+    return {
+      cartKey: item.cartKey ?? `line-${index}`, productId: item.productId, variantId: item.variantId, quantity: item.quantity,
+      unitPrice: product?.discountedPrice ?? 0, productName: item.productName ?? product?.name ?? item.productId, variantLabel: item.variantLabel ?? null,
+      fulfillmentType: null, properties: [], propertiesPriceMinor: 0, propertiesHash: "none",
+    };
+  });
+  const method = fixtureShippingMethods().find((candidate) => candidate.id === body?.shippingMethodId) ?? null;
+  const subtotalMinor = items.reduce((sum, item) => sum + Math.round(item.unitPrice * 100) * item.quantity, 0);
+  const shippingMinor = method ? method.fee * 100 : 0;
+  const totalMinor = subtotalMinor + shippingMinor;
+  return {
+    valid: true, quoteFingerprint: "taxq_galleryfixturequote001",
+    discounts: [], offers: [], rejectedCodes: [],
+    displayLabel: "VAT", pricesIncludeTax: false, shippingTaxed: false, currencyCode: "BDT", decimalPlaces: 2, settingsVersion: 1,
+    subtotalMinor, subtotalAmount: subtotalMinor / 100, shippingMinor, shippingAmount: shippingMinor / 100,
+    discountMinor: 0, discountAmount: 0, taxMinor: 0, taxAmount: 0, totalMinor, totalAmount: totalMinor / 100,
+    shippingMethod: method ? { id: method.id, name: method.name, description: method.description, baseAmountMinor: shippingMinor, feeWaived: false } : null,
+    deliveryMethodKind: method ? "delivery" : null, requiresShipping: method !== null, pickup: null,
+    allowedPaymentMethods: entry.scenario.checkout === "no-cod" ? [] : ["cod"],
+    items,
+    // The quote carries the apps' buyer UI, as the API's does.
+    buyerUi: checkoutApps(entry),
+  };
+}
+
 /** Answers one request the storefront sent to the fixture API origin. */
 export async function answerFixtureApi(entry: GalleryEntry, request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -394,6 +434,9 @@ export async function answerFixtureApi(entry: GalleryEntry, request: Request): P
   const json = { "Content-Type": "application/json" };
   if (url.pathname === "/api/v1/orders/cart-validation" && request.method === "POST") {
     return new Response(envelope({ ...await cartValidation(request), buyerUi: checkoutApps(entry) }), { headers: json });
+  }
+  if (url.pathname === "/api/v1/orders/tax-quote" && request.method === "POST") {
+    return new Response(envelope(await taxQuote(entry, request)), { headers: json });
   }
   if (url.pathname === "/api/v1/auth/token") {
     return new Response(envelope({ token: "gallery-token", expiresIn: 3600 }), { headers: json });
