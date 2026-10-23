@@ -203458,6 +203458,11 @@
                                 "nullable": true,
                                 "description": "Tracked on-hand units across live SKUs; null when no SKU tracks quantity."
                               },
+                              "available": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Units tracked SKUs can still sell: on hand minus open orders, never below 0 per SKU; null when no SKU tracks quantity."
+                              },
                               "hasVariantDiscount": {
                                 "type": "boolean",
                                 "description": "Some SKUs carry their own discount."
@@ -203597,6 +203602,7 @@
                               "category",
                               "variantCount",
                               "onHand",
+                              "available",
                               "hasVariantDiscount",
                               "hasStockHistory",
                               "mediaCount",
@@ -222518,6 +222524,11 @@
                                 "nullable": true,
                                 "description": "Tracked on-hand units across live SKUs; null when no SKU tracks quantity."
                               },
+                              "available": {
+                                "type": "number",
+                                "nullable": true,
+                                "description": "Units tracked SKUs can still sell: on hand minus open orders, never below 0 per SKU; null when no SKU tracks quantity."
+                              },
                               "hasVariantDiscount": {
                                 "type": "boolean",
                                 "description": "Some SKUs carry their own discount."
@@ -222562,6 +222573,7 @@
                               "category",
                               "variantCount",
                               "onHand",
+                              "available",
                               "hasVariantDiscount",
                               "hasStockHistory",
                               "mediaCount",
