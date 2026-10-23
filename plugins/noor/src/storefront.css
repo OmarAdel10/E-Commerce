@@ -918,7 +918,8 @@
 .noor-marquee-track { display: flex; inline-size: max-content; animation: noor-marquee var(--m-speed, 40s) linear infinite; }
 .noor-marquee.speed-slow { --m-speed: 60s; }
 .noor-marquee.speed-fast { --m-speed: 24s; }
-.noor-marquee:hover .noor-marquee-track { animation-play-state: paused; }
+/* Hover pauses only where hover is real: on touch, a tap would leave it paused until the next tap elsewhere. */
+@media (hover: hover) { .noor-marquee:hover .noor-marquee-track { animation-play-state: paused; } }
 /* The buyer's pause holds until they play it again (the checkbox's state). */
 .noor-marquee:has(.noor-marquee-pause:checked) .noor-marquee-track { animation-play-state: paused; }
 .noor-marquee-toggle { position: relative; flex: none; display: grid; place-items: center; inline-size: 2.75rem; block-size: 2.75rem; margin-inline: 0.25rem 0.5rem; border: 1px solid color-mix(in oklab, currentColor 35%, transparent); border-radius: 999px; color: inherit; cursor: pointer; }
