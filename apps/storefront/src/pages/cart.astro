@@ -2299,7 +2299,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
             meta?.dataset.gateways || "[]",
           );
           if (!transferWrite.ok) {
-            showCheckoutTransferError(transferWrite.message);
+            showCheckoutTransferError(checkoutCopy[transferWrite.copyKey]);
             return;
           }
 
@@ -2345,6 +2345,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
         input: streetLine,
         service: addressApp,
         locale: pageLocale(),
+        copy: checkoutCopy,
         post: apiPost(browserApiUrl),
         signal: cartPageSignal,
       });

@@ -162,13 +162,12 @@ export function initCheckoutPhoneField(signal?: AbortSignal, options: CheckoutPh
     countries: (data.countries ?? "").split(","),
     mode: data.countryMode === "exclude" ? "exclude" : "include",
   });
+  // The page's checkout language, rendered by CheckoutPhoneField.astro (every message is a required prop).
   const messages = {
-    required: data.requiredMessage || "Enter your phone number.",
-    invalid: data.invalidMessage || "Enter a valid phone number.",
-    mobile: data.mobileMessage || "Enter a Bangladeshi mobile number (01XXXXXXXXX).",
-    country:
-      data.countryMessage ||
-      "This store does not accept phone numbers from that country.",
+    required: data.requiredMessage ?? "",
+    invalid: data.invalidMessage ?? "",
+    mobile: data.mobileMessage ?? "",
+    country: data.countryMessage ?? "",
   };
   const soldCountries = readSoldCountries(data.phoneCountries);
   let country = data.defaultCountry || "BD";
@@ -372,7 +371,7 @@ export function initCheckoutPhoneField(signal?: AbortSignal, options: CheckoutPh
       const select = intl.createCountrySelect({
         policy,
         selected: country,
-        label: data.countryLabel || "Phone number country",
+        label: data.countryLabel ?? "",
         languageCode: data.language || "en",
       });
       select.addEventListener(

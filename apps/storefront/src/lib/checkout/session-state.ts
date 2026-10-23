@@ -83,8 +83,6 @@ export interface HostedPaymentRecoverySession {
   createdAt: number;
 }
 
-export const CHECKOUT_TRANSFER_UNAVAILABLE_MESSAGE =
-  "We could not open payment because this browser blocked checkout storage. Please allow site storage for this store, then try again.";
 
 function removeSessionKeys(keys: readonly string[]): void {
   for (const key of keys) {
@@ -293,7 +291,7 @@ export function syncCheckoutTransferSession(
 export function writeCheckoutTransferSession(
   checkoutData: Record<string, unknown>,
   gatewaysJson: string,
-): { ok: true } | { ok: false; message: string } {
+): { ok: true } | { ok: false; copyKey: "checkoutStorageBlockedText" } {
   const checkoutDataJson = JSON.stringify(checkoutData);
 
   try {
@@ -311,10 +309,8 @@ export function writeCheckoutTransferSession(
       // ignore cleanup failures after storage denial
     }
 
-    return {
-      ok: false,
-      message: CHECKOUT_TRANSFER_UNAVAILABLE_MESSAGE,
-    };
+    // The page says why in its own words (the checkout language).
+    return { ok: false, copyKey: "checkoutStorageBlockedText" };
   }
 
   try {
