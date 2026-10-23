@@ -62,6 +62,26 @@ const url = (group: Group, key: string, label: string, fallback: string, help = 
 const choice = (group: Group, key: string, label: string, options: Array<[string, string]>, fallback: string) =>
   ({ key, label, type: "select" as const, options: options.map(([value, text]) => ({ value, label: text })), default: fallback, group });
 
+/**
+ * Where SSLCommerz's API credentials come from: the email it sends when a
+ * store is registered. The store password is that API password, not the
+ * merchant panel login, and the panel does not show it.
+ */
+const SSLCOMMERZ_HELP = {
+  storeId: "From the API credentials email SSLCommerz sent when your store was registered (sandbox and live stores each have their own).",
+  storePassword: "The API store password from that same email, not your merchant panel login. The panel doesn't show it: if it's lost, ask SSLCommerz support to send it again.",
+};
+const SSLCOMMERZ_SETTINGS_BN = {
+  sslcommerz_store_id: {
+    label: "স্টোর আইডি",
+    help: "স্টোর রেজিস্টার করার সময় SSLCommerz যে এপিআই ক্রেডেনশিয়াল ইমেইল পাঠিয়েছে, সেখান থেকে (স্যান্ডবক্স ও লাইভ স্টোরের আলাদা)।",
+  },
+  sslcommerz_store_password: {
+    label: "স্টোর পাসওয়ার্ড",
+    help: "একই ইমেইলের এপিআই স্টোর পাসওয়ার্ড, মার্চেন্ট প্যানেলের লগইন পাসওয়ার্ড নয়। প্যানেলে এটি দেখা যায় না: হারিয়ে গেলে SSLCommerz সাপোর্টকে আবার পাঠাতে বলুন।",
+  },
+};
+
 const SETTINGS = [
   secret("smsnetbd", "smsnetbd_api_key", "API key"),
   text("smsnetbd", "smsnetbd_sender_id", "Sender ID", 128, "Only when SMS.net.bd approved a sender ID for you."),
@@ -110,8 +130,8 @@ const SETTINGS = [
     group: "sslcommerz" as const,
     help: "Sandbox uses SSLCommerz's test system. Switch to Live together with your live store ID and password.",
   },
-  text("sslcommerz", "sslcommerz_store_id", "Store ID", 200, "From the store credentials SSLCommerz sent you."),
-  secret("sslcommerz", "sslcommerz_store_password", "Store password"),
+  text("sslcommerz", "sslcommerz_store_id", "Store ID", 200, SSLCOMMERZ_HELP.storeId),
+  secret("sslcommerz", "sslcommerz_store_password", "Store password", SSLCOMMERZ_HELP.storePassword),
   ...BKASH_SETTINGS,
   ...NAGAD_SETTINGS,
 ];
@@ -382,6 +402,7 @@ export const manifest = {
       settings: {
         ...Object.fromEntries(SETTINGS.flatMap((field) => (BN_LABELS[field.label] ? [[field.key, { label: BN_LABELS[field.label] }]] : []))),
         ...NAGAD_SETTINGS_BN,
+        ...SSLCOMMERZ_SETTINGS_BN,
       },
     },
   },
