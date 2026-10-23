@@ -102,8 +102,8 @@ export function OrderReturnRow({
                 orderReturn.status === "requested" ? null : t("returns.qtyApproved", { count: line.approvedQuantity }),
                 line.receivedQuantity > 0 ? t("returns.qtyReceived", { count: line.receivedQuantity }) : null,
                 line.restockQuantity > 0 ? t("returns.qtyRestocked", { count: line.restockQuantity }) : null,
-                // Untracked items are received, never "damaged": their stock isn't counted.
-                line.inventoryTracked && line.damagedQuantity > 0 ? t("returns.qtyDamaged", { count: line.damagedQuantity }) : null,
+                // Only units recorded as damaged; an untracked item's other units are only received.
+                line.damagedQuantity > 0 ? t("returns.qtyDamaged", { count: line.damagedQuantity }) : null,
                 !courierReturn && line.reason && line.reason !== orderReturn.reason ? line.reason : null,
               ].filter(Boolean).join(" · ")}
             </p>
@@ -122,7 +122,10 @@ export function OrderReturnRow({
                       restocked: receipt.restockQuantity,
                       damaged: receipt.damagedQuantity,
                     })
-                  : t("returns.qtyReceived", { count: receipt.receivedQuantity })}
+                  : [
+                      t("returns.qtyReceived", { count: receipt.receivedQuantity }),
+                      receipt.damagedQuantity > 0 ? t("returns.qtyDamaged", { count: receipt.damagedQuantity }) : null,
+                    ].filter(Boolean).join(" · ")}
                 {restockedAt ? ` · ${t("returns.restockedAt", { location: restockedAt })}` : null}
               </li>
             );

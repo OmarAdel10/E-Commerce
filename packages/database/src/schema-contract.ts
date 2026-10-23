@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 181,
-  name: "0181_url_redirects",
+  version: 182,
+  name: "0182_return_untracked_receipts",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -686,6 +686,11 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 181,
     name: "0181_url_redirects",
     sourceSha256: "13670fb5240828ba6920b7341b8a9ec78294cf1ee48698749e3338b750ecb327",
+  },
+  {
+    version: 182,
+    name: "0182_return_untracked_receipts",
+    sourceSha256: "7cf0582e4d333b7b0a929df3caeea60bddf55a4c92ed8dc9c0a2c7ec85200d01",
   },
 ] as const;
 

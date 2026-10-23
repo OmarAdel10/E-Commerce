@@ -17,7 +17,9 @@ import { customersQueryOptions } from "@/lib/api-query-options/customers";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useMessages } from "@/i18n";
 import { orderFormMessages } from "@/i18n/order-form";
-import { customerFill, customerLookupTerm, findCustomerByPhone, isGuestRecord } from "./customer-lookup";
+import { customerFill, customerLookupTerm, findCustomerByPhone, isGuestRecord, resolveSavedPlaces, type SavedPlaceIssue } from "./customer-lookup";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { locationMessages } from "@/i18n/location";
 import { Field } from "~/components/ui/field";
 
 /** Element ids of the address fields (`AddressFields` with the "order" prefix), to focus on a validation error. */
@@ -55,18 +57,24 @@ function useReturningCustomer() {
   const customer = enabled && lookup.data
     ? findCustomerByPhone(lookup.data.customers, phone ?? "")
     : null;
-  const [filledFor, setFilledFor] = React.useState<{ phone: string; filled: boolean } | null>(null);
+  const [filledFor, setFilledFor] = React.useState<{ phone: string; filled: boolean; placeIssue: SavedPlaceIssue | null } | null>(null);
 
   React.useEffect(() => {
     if (!customer || filledFor?.phone === customer.phone) return;
     let cancelled = false;
     void (async () => {
-      // A saved Bangladesh address is used only while its city is still an active delivery city.
-      const savedCity = customer.defaultAddress?.countryCode === "BD" ? customer.defaultAddress.city : null;
-      const city = savedCity
-        ? await queryClient.fetchQuery(deliveryLocationByIdQueryOptions(savedCity)).catch(() => null)
-        : null;
+      // A saved Bangladesh City → Thana → Area is used as far as each is still an active delivery place.
+      const saved = customer.defaultAddress?.countryCode === "BD" ? customer.defaultAddress : null;
+      const read = (id: string | null | undefined) => id
+        ? queryClient.fetchQuery(deliveryLocationByIdQueryOptions(id)).catch(() => null)
+        : Promise.resolve(null);
+      const [cityRecord, zoneRecord, areaRecord] = saved
+        ? await Promise.all([read(saved.city), read(saved.zone), read(saved.area)])
+        : [null, null, null];
       if (cancelled) return;
+      const places = saved
+        ? resolveSavedPlaces(saved, { city: cityRecord, zone: zoneRecord, area: areaRecord })
+        : { known: {}, issue: null };
       const values = form.getValues();
       const fill = customerFill(customer, {
         customerName: values.customerName ?? "",
@@ -76,7 +84,7 @@ function useReturningCustomer() {
         city: values.city ?? "",
         zone: values.zone ?? "",
         area: values.area ?? null,
-      }, new Set(city?.type === "city" && city.isActive ? [city.id] : []));
+      }, places.known);
       const set = { shouldDirty: true, shouldValidate: true };
       if (fill.customerName !== undefined) form.setValue("customerName", fill.customerName, set);
       if (fill.customerEmail !== undefined) form.setValue("customerEmail", fill.customerEmail, set);
@@ -86,22 +94,29 @@ function useReturningCustomer() {
         if (fill[name] !== undefined) form.setValue(name, fill[name], set);
       }
       if (fill.city !== undefined) {
+        // Names first: the pickers label the saved choice without searching for it.
+        form.setValue("cityName", places.known.city?.name ?? "");
+        form.setValue("zoneName", places.known.zone?.name ?? "");
+        form.setValue("areaName", places.known.area?.name ?? null);
         form.setValue("city", fill.city, set);
-        form.setValue("cityName", city?.name ?? "");
-        form.setValue("zoneName", customer.defaultAddress?.zoneName ?? "");
-        form.setValue("areaName", customer.defaultAddress?.areaName ?? null);
       }
       if (fill.zone !== undefined) form.setValue("zone", fill.zone, set);
       if (fill.area !== undefined) form.setValue("area", fill.area, set);
-      // Found by its phone, so it has one.
-      setFilledFor({ phone: customer.phone ?? "", filled: Object.keys(fill).length > 0 });
+      // Found by its phone, so it has one. A saved place left out is explained only when the address was filled.
+      setFilledFor({
+        phone: customer.phone ?? "",
+        filled: Object.keys(fill).length > 0,
+        placeIssue: fill.shippingAddress !== undefined || fill.city !== undefined ? places.issue : null,
+      });
     })();
     return () => {
       cancelled = true;
     };
   }, [customer, filledFor, form, queryClient]);
 
-  return customer ? { customer, filled: filledFor?.phone === customer.phone && filledFor.filled } : null;
+  if (!customer) return null;
+  const current = filledFor?.phone === customer.phone ? filledFor : null;
+  return { customer, filled: current?.filled ?? false, placeIssue: current?.placeIssue ?? null };
 }
 
 /** The order's address fields as the form holds them (flat `shipping*` values plus Bangladesh's ids). */
@@ -186,9 +201,10 @@ function OrderAddressFields() {
 export function CustomerInfoSection() {
   const { form, refs, handleKeyDown, addressRefused } = useOrderForm();
   const t = useMessages(orderFormMessages);
-  const [items, shippingMethodKind, skipAddressValidation] = useWatch({
+  const place = useMessages(locationMessages);
+  const [items, shippingMethodKind, skipAddressValidation, city, zone, area] = useWatch({
     control: form.control,
-    name: ["items", "shippingMethodKind", "skipAddressValidation"],
+    name: ["items", "shippingMethodKind", "skipAddressValidation", "city", "zone", "area"],
   });
   // Pickup orders and orders of services have no delivery address (the phone stays required).
   const needsAddress = orderNeedsAddress({ items: items ?? [], shippingMethodKind });
@@ -196,6 +212,8 @@ export function CustomerInfoSection() {
     ? null
     : shippingMethodKind === "pickup" ? t("pickupNoAddress") : t("noDeliveryNoAddress");
   const returning = useReturningCustomer();
+  // A saved place that wasn't filled in is explained until the merchant chooses one there.
+  const placeIssue = returning?.placeIssue && !{ city, zone, area }[returning.placeIssue.field] ? returning.placeIssue : null;
 
   return (
     <>
@@ -236,12 +254,16 @@ export function CustomerInfoSection() {
                           returning.filled ? t("nameFromLatestOrder") : null,
                         ].filter(Boolean).join(" ")
                       : [
-                          returning.customer.totalOrders === 1
-                            ? t("returningCustomerOne")
-                            : t("returningCustomer", { count: returning.customer.totalOrders }),
+                          returning.customer.totalOrders === 0
+                            ? t("savedCustomerNoOrders")
+                            : returning.customer.totalOrders === 1
+                              ? t("returningCustomerOne")
+                              : t("returningCustomer", { count: returning.customer.totalOrders }),
+                          // Filled from the customer record and its default address, never from an order.
                           returning.filled ? t("filledFromCustomer") : null,
                         ].filter(Boolean).join(" ")
-                    : t("phoneHelp")}
+                    // Who uses the number follows how the order is fulfilled.
+                    : t(needsAddress ? "phoneHelp" : shippingMethodKind === "pickup" ? "phoneHelpPickup" : "phoneHelpNoDelivery")}
               >
                 <AdminPhoneInput
                   ref={(el) => {
@@ -289,6 +311,15 @@ export function CustomerInfoSection() {
           </CardContent>
         ) : (
         <CardContent className="space-y-4">
+          {placeIssue ? (
+            <Alert variant="warning" role="note">
+              <AlertDescription>
+                {placeIssue.reason === "inactive"
+                  ? t("savedPlaceInactive", { field: place(placeIssue.field), name: placeIssue.name ?? "" })
+                  : t("savedPlaceMissing", { field: place(placeIssue.field) })}
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <OrderAddressFields />
           {addressRefused || skipAddressValidation ? (
             <SkipAddressValidation

@@ -1,6 +1,6 @@
 import { RECORDED_PAYMENT_VIAS } from "@scalius/shared/payment-terms";
 import { z } from "zod";
-import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
+import { adminPhoneSchema } from "~/lib/admin-phone-schema";
 import { MAX_LINE_QUANTITY } from "@scalius/shared/order-limits";
 import { translate } from "~/i18n";
 import { orderFormMessages, type OrderFormMessageKey } from "~/i18n/order-form";
@@ -10,7 +10,7 @@ import type { CustomizationSchema, LinePropertyInput, ResolvedLineProperty } fro
 import { ORDER_CHANNEL_SOURCE_MAX_LENGTH, ORDER_CHANNEL_SOURCE_PRESETS } from "@scalius/shared/order-channel";
 import { normalizeOrderChannelSource } from "@scalius/shared/order-channel-source";
 import { orderNeedsAddress } from "./order-line-properties";
-import { toLatinDigits } from "@scalius/shared/phone-input";
+import type { AddressDraft } from "~/components/admin/address/address-draft";
 
 export interface Product {
   id: string;
@@ -105,31 +105,11 @@ const msg = (key: OrderFormMessageKey) => ({
   error: () => translate(orderFormMessages, key),
 });
 
-/**
- * A Bangladesh mobile in any spacing, with +880/880/0 and Bangla digits, or a
- * full international number; saved as +8801XXXXXXXXX (E.164).
- */
-export function toE164Phone(raw: string): string | null {
-  const latin = toLatinDigits(raw).trim();
-  const bdMobile = /^(?:\+?880|0)?(1[3-9]\d{8})$/.exec(latin.replace(/[\s\-().]/g, ""));
-  if (bdMobile) return `+880${bdMobile[1]}`;
-  try {
-    return validateAndFormatPhone(latin);
-  } catch {
-    return null;
-  }
-}
-
 export const orderFormSchema = z.object({
   id: z.string().optional(),
   version: z.number().int().min(1).optional(),
   customerName: z.string().trim().min(1, msg("nameRequired")).min(3, msg("nameTooShort")).max(100, msg("nameTooLong")),
-  customerPhone: z.string().trim().min(1, msg("phoneRequired")).transform((raw, context) => {
-    const phone = toE164Phone(raw);
-    if (phone) return phone;
-    context.addIssue({ code: "custom", message: translate(orderFormMessages, "phoneInvalid") });
-    return z.NEVER;
-  }),
+  customerPhone: adminPhoneSchema(),
   customerEmail: z.email(msg("emailInvalid")).nullable(),
   /**
    * The shipping country (MARKETS-DESIGN D7): Bangladesh uses the street
@@ -215,6 +195,12 @@ export const orderFormSchema = z.object({
   paidReference: z.string().max(120).optional(),
   /** An invoice's days; null: the store's net days. */
   paymentTermsDays: z.number().int().min(1).max(365).nullable().optional(),
+  /**
+   * New orders: the billing address is part of the draft, so it is dirty,
+   * discarded and guarded with every other field (the API checks it).
+   */
+  billingSameAsShipping: z.boolean().optional(),
+  billing: z.custom<AddressDraft>().optional(),
 }).superRefine((values, context) => {
   if (values.sourceChoice === "other") {
     const name = values.sourceName?.trim() ?? "";

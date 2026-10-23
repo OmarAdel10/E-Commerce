@@ -412,6 +412,19 @@ interface RevealedProblem {
 }
 
 /** Brings a control into view below the top bar and puts the cursor there. */
+/**
+ * Marks a section that saves with its own button (a password change, a
+ * two-step setup) on a save bar page: Save on the bar never lists, counts or
+ * focuses its fields. Put it on the section's root: `{...{ [OWN_SAVE_ATTRIBUTE]: "" }}`.
+ */
+export const OWN_SAVE_ATTRIBUTE = "data-own-save";
+
+/** The invalid controls the save bar's Save is about: none inside a section with its own save. */
+function invalidControls(container: ParentNode): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>('[aria-invalid="true"]:not([disabled])')]
+    .filter((element) => !element.closest(`[${OWN_SAVE_ATTRIBUTE}]`));
+}
+
 function moveTo(element: HTMLElement | null) {
   if (!element) return;
   element.scrollIntoView?.({ block: "center" });
@@ -480,7 +493,7 @@ export function SaveErrorBanner() {
     const current = scopeRef.current;
     const container = anchor.current?.closest("[role=dialog]") ?? document;
     // A field the last save marked is already counted.
-    const fields = [...container.querySelectorAll<HTMLElement>('[aria-invalid="true"]:not([disabled])')]
+    const fields = invalidControls(container)
       .filter((element) => !(element.id && element.id in serverMarked.current));
     const lines: RevealedProblem[] = fields.map((element) => ({ line: describeControl(element, t), element }));
     for (const problem of current?.problems ?? []) {
@@ -516,7 +529,7 @@ export function SaveErrorBanner() {
     seenAttempt.current = attempt;
     if (errors.length === 0 && Object.keys(fieldErrors).length === 0) return;
     const container = anchor.current?.closest("[role=dialog]") ?? document;
-    const field = container.querySelector<HTMLElement>('[aria-invalid="true"]:not([disabled])');
+    const field = invalidControls(container)[0] ?? null;
     const banner = ref.current;
     if (field) {
       field.focus();

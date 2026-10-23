@@ -11,6 +11,7 @@ import { Input } from "~/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { Skeleton } from "~/components/ui/skeleton";
 import { UnsavedChangesGuard } from "~/components/admin/shared/UnsavedChangesGuard";
+import { OWN_SAVE_ATTRIBUTE } from "~/components/admin/shared/SaveBar";
 import { downloadRecoveryCodes } from "~/components/auth/auth-ui";
 import type { AuthFailure } from "~/components/auth/auth-error";
 import { authClient } from "~/lib/auth-client";
@@ -418,7 +419,7 @@ export function TwoFactorSetup({ user, required = false }: {
   const submits = step === "password" || step === "verify" || step === "off";
 
   return (
-    <Card id="two-step" className="scroll-mt-4">
+    <Card id="two-step" className="scroll-mt-4" {...{ [OWN_SAVE_ATTRIBUTE]: "" }}>
       <UnsavedChangesGuard isDirty={dirty && step !== "codes"} isSubmitting={busy} />
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">

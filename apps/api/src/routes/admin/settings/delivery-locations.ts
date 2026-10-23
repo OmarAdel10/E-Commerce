@@ -202,7 +202,7 @@ const deliveryLocationSchema = z.object({
     parentPath: z.array(z.string()).optional(),
     /** Live places under it by level (`{ "2": 1, "3": 4 }`): what deleting it deletes too. */
     descendants: z.record(z.string(), z.number().int()).optional(),
-}).passthrough();
+});
 
 type PlaceRow = Omit<typeof places.$inferSelect, "externalIds" | "metadata"> & {
     externalIds: string | Record<string, unknown>;

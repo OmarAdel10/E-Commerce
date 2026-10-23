@@ -282,6 +282,7 @@ function returnFrom(row: typeof orderReturns.$inferSelect, lines: readonly (type
       receivedQuantity: line.receivedQuantity,
       restockQuantity: line.restockQuantity,
       damagedQuantity: line.damagedQuantity,
+      untrackedQuantity: line.untrackedQuantity,
       rejectedQuantity: line.rejectedQuantity,
     })),
     createdAt: isoRequired(row.createdAt),

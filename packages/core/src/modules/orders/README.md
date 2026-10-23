@@ -234,7 +234,7 @@ Payment events (one handler for every gateway) call `processPaymentConfirmed()` 
 | GET/POST | `/:id/returns` | `listOrderReturns()` / `createOrderReturn()` | Read or request item-level returns; request does not change stock |
 | GET | `/:id/returns/:returnId` | `getOrderReturn()` | Read item lines, lifecycle, and sanitized recovery state |
 | POST | `/:id/returns/:returnId/approve` | `approveOrderReturn()` | Approve/reject every requested unit without changing stock |
-| POST | `/:id/returns/:returnId/receive` | `receiveOrderReturn()` | Record immutable restock/damaged dispositions and exact ledger movement |
+| POST | `/:id/returns/:returnId/receive` | `receiveOrderReturn()` | Record immutable dispositions (tracked: restocked or damaged, each unit; untracked: received, `untracked_quantity`, never assumed damaged) and the exact ledger movement |
 | POST | `/:id/returns/:returnId/reconcile` | `reconcileOrderReturnReceipt()` | Resume a claimed receipt from server-owned durable input |
 | POST | `/:id/returns/:returnId/cancel` | `cancelOrderReturn()` | Cancel an unreceived request/approval |
 | POST | `/:id/refund` | `processRefund()` | Refund with optional gateway |

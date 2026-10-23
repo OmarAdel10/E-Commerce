@@ -50,8 +50,9 @@ function typedQuantity(value: number | null): number {
 
 /**
  * Receipt lines for the API. A tracked item is split into back-in-stock and
- * damaged; an untracked item is only received, which the server records as
- * "not put back into stock" (never shown as damaged).
+ * damaged; an untracked item is only received: nothing restocked, nothing
+ * damaged, and the server records its units as received with stock not
+ * tracked (`untrackedQuantity`).
  */
 export function buildReceiptLines(lines: readonly OrderReturnLineDto[], draft: Record<string, ReceiptDraft>) {
   return lines.flatMap((line) => {
@@ -62,7 +63,7 @@ export function buildReceiptLines(lines: readonly OrderReturnLineDto[], draft: R
       lineId: line.id,
       receivedQuantity: current.received,
       restockQuantity: restock,
-      damagedQuantity: current.received - restock,
+      damagedQuantity: line.inventoryTracked ? current.received - restock : 0,
     }];
   });
 }

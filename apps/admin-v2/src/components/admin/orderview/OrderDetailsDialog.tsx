@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
+import { adminPhoneSchema } from "~/lib/admin-phone-schema";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import {
@@ -37,15 +37,6 @@ import { orderErrorMessage, useUpdateOrderDetails } from "~/lib/api-mutations/or
 import type { Order } from "./types";
 import { Field } from "~/components/ui/field";
 
-function isPhone(value: string): boolean {
-  try {
-    validateAndFormatPhone(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Customer, delivery and billing details of an order that hasn't shipped
  * (Shopify's address modal). An order that ships nothing has no delivery
@@ -61,7 +52,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange }: {
   const mutation = useUpdateOrderDetails();
   const schema = useMemo(() => z.object({
     customerName: z.string().trim().min(3, t("details.nameInvalid")).max(100, t("details.nameInvalid")),
-    customerPhone: z.string().refine(isPhone, t("details.phoneInvalid")),
+    customerPhone: adminPhoneSchema(),
     customerEmail: z.union([z.literal(""), z.email(t("details.emailInvalid"))]),
   }), [t]);
   type Values = z.input<typeof schema>;

@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { phoneNumberSchema } from "@scalius/shared/customer-utils";
+import { adminPhoneSchema } from "./admin-phone-schema";
 import { translate } from "~/i18n";
 import { formMessages } from "~/i18n/forms";
 import type { AddressDraft } from "~/components/admin/address/address-draft";
 
 // Apart from the other form schemas: phone validation carries libphonenumber's
-// metadata, which only the customer form needs.
+// metadata (`adminPhoneSchema`, shared with the order forms).
 
 type FormMessage = keyof (typeof formMessages)["en"];
 
@@ -21,7 +21,7 @@ export const customerFormSchema = z.object({
    * Empty only for a customer with an email, when the store lets digital and
    * service orders go without a phone (the API checks the setting).
    */
-  phone: z.literal("").or(phoneNumberSchema),
+  phone: adminPhoneSchema({ optional: true }),
   /**
    * New customers only: the first address (the default), its country's
    * fields (`AddressFields`). The API checks it against the country's rules;

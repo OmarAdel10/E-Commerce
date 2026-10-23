@@ -190,25 +190,28 @@ function lineProperties(item: Pick<OrderItem, "orderItemId" | "properties">) {
 
 /**
  * The new order's billing address: "same as delivery" (or a separate one)
- * when it ships; otherwise only what staff entered (none when untouched).
+ * when it ships; otherwise only what staff entered (none while the draft
+ * still equals the one the form started with).
  */
-export interface OrderBillingState {
-  draft: AddressDraft;
-  sameAsShipping: boolean;
-  touched: boolean;
+function toOrderBillingInput(values: OrderFormValues, initialBilling: AddressDraft | undefined) {
+  const draft = values.billing ?? emptyAddressDraft();
+  if (orderNeedsAddress(values)) return orderBillingInput(draft, values.billingSameAsShipping ?? true);
+  return billingEntered(draft, initialBilling) ? orderBillingInput(draft, false) : {};
 }
 
-function toOrderBillingInput(values: OrderFormValues, billing: OrderBillingState) {
-  if (orderNeedsAddress(values)) return orderBillingInput(billing.draft, billing.sameAsShipping);
-  return billing.touched ? orderBillingInput(billing.draft, false) : {};
+/** Staff changed the billing draft from the one the form started with. */
+export function billingEntered(draft: AddressDraft | undefined, initial: AddressDraft | undefined): boolean {
+  if (!draft) return false;
+  const start = initial ?? emptyAddressDraft(draft.countryCode);
+  return (Object.keys(start) as Array<keyof AddressDraft>).some((key) => (draft[key] ?? null) !== (start[key] ?? null));
 }
 
-function toCreateOrderInput(values: OrderFormValues, requestKey: string, billing: OrderBillingState): CreateOrderInput {
+function toCreateOrderInput(values: OrderFormValues, requestKey: string, initialBilling: AddressDraft | undefined): CreateOrderInput {
   const channelSource = orderChannelSourceInput(values);
   return {
     requestKey,
     ...toOrderBaseContentInput(values),
-    ...toOrderBillingInput(values, billing),
+    ...toOrderBillingInput(values, initialBilling),
     // The order keeps the method's name; a custom charge has none.
     ...(values.shippingMethodId ? { shippingMethodId: values.shippingMethodId } : {}),
     // Where a staff-created order came in (Facebook, walk-in, …); the server stores it as a slug.
@@ -290,14 +293,9 @@ function OrderEditor({
   const [completed, setCompleted] = React.useState(false);
   // The API refused the address once: staff may then keep it, marked.
   const [addressRefused, setAddressRefused] = React.useState(false);
-  // The billing address of a new order (an edit changes it in the order's details dialog).
-  const [billing, setBilling] = React.useState<OrderBillingState>(() => ({
-    draft: emptyAddressDraft(defaultValues?.shippingCountryCode || "BD"),
-    sameAsShipping: true,
-    touched: false,
-  }));
+  // The API's refusal of the billing address. The address itself is a form field
+  // (an edit changes it in the order's details dialog).
   const [billingProblems, setBillingProblems] = React.useState<AddressProblem[] | null>(null);
-  const billingErrors = useAddressErrors(billingProblems, billing.draft.countryCode);
   const addressText = useMessages(addressMessages);
   const placeText = useMessages(locationMessages);
   const queryClient = useQueryClient();
@@ -339,6 +337,8 @@ function OrderEditor({
       sourceName: "",
       paymentMethod: "cod",
       paymentTermsDays: null,
+      billingSameAsShipping: true,
+      billing: emptyAddressDraft(defaultValues?.shippingCountryCode || "BD"),
       ...defaultValues,
       customerPhone: normalizeAdminPhone(defaultValues?.customerPhone ?? ""),
     },
@@ -358,6 +358,8 @@ function OrderEditor({
     quoteMethodKind,
     quoteCountry,
     quotePaymentMethod,
+    billingSameAsShipping,
+    billingDraft,
   ] = useWatch({
     control: form.control,
     name: [
@@ -371,8 +373,12 @@ function OrderEditor({
       "shippingMethodKind",
       "shippingCountryCode",
       "paymentMethod",
+      "billingSameAsShipping",
+      "billing",
     ],
   });
+  const initialBilling = form.formState.defaultValues?.billing as AddressDraft | undefined;
+  const billingErrors = useAddressErrors(billingProblems, billingDraft?.countryCode ?? "BD");
   // Bangladesh is taxed by City/Thana/Area; another country by its country (until tax regions).
   const abroad = Boolean(quoteCountry && quoteCountry !== "BD");
   const needsAddress = orderNeedsAddress({ items: quoteItems, shippingMethodKind: quoteMethodKind });
@@ -404,15 +410,15 @@ function OrderEditor({
       // Paid orders are placed as invoices: priced the same way, and they may hold downloads and gift cards.
       ...(!isEdit && (quotePaymentMethod === "net_terms" || quotePaymentMethod === "paid") ? { paymentMethod: "net_terms" as const } : {}),
       // A new order that ships nothing is taxed in the billing country staff entered.
-      ...(!isEdit && !needsAddress && billing.touched && billing.draft.countryCode
+      ...(!isEdit && !needsAddress && billingDraft && billingEntered(billingDraft, initialBilling) && billingDraft.countryCode
         ? {
-          billingCountryCode: billing.draft.countryCode,
-          billingAdminArea: billing.draft.adminArea.trim() || null,
-          billingPostalCode: billing.draft.postalCode.trim() || null,
+          billingCountryCode: billingDraft.countryCode,
+          billingAdminArea: billingDraft.adminArea.trim() || null,
+          billingPostalCode: billingDraft.postalCode.trim() || null,
         }
         : {}),
     }),
-    [abroad, billing, isEdit, needsAddress, quoteArea, quoteCity, quoteCountry, quoteDiscount, quoteItems, quoteMethodId, quotePaymentMethod, quoteShipping, quoteZone],
+    [abroad, billingDraft, initialBilling, isEdit, needsAddress, quoteArea, quoteCity, quoteCountry, quoteDiscount, quoteItems, quoteMethodId, quotePaymentMethod, quoteShipping, quoteZone],
   );
   const currencyDecimalPlaces = getDecimalPlaces(currencyCode);
   const localDiscountLimit = React.useMemo(
@@ -614,7 +620,7 @@ function OrderEditor({
         submit: (submittedRequestKey) => {
           rememberSubmittedAdminOrderRequestKey(submittedRequestKey);
           return createMutation.mutateAsync(
-            toCreateOrderInput(enrichedValues, submittedRequestKey, billing),
+            toCreateOrderInput(enrichedValues, submittedRequestKey, initialBilling),
           );
         },
         replaceRequestKey: replaceSubmittedAdminOrderRequestKey,
@@ -707,6 +713,7 @@ function OrderEditor({
     save,
     discard: () => {
       form.reset();
+      setBillingProblems(null);
       amendmentRequest.current = null;
       // A new draft never reuses the discarded one's create request.
       if (createRequestKey.current) {
@@ -770,10 +777,10 @@ function OrderEditor({
                 {isEdit ? null : (
                   <BillingSection
                     ships={needsAddress}
-                    sameAsShipping={billing.sameAsShipping}
-                    onSameAsShippingChange={(checked) => setBilling((current) => ({ ...current, sameAsShipping: checked, touched: true }))}
-                    value={billing.draft}
-                    onChange={(draft) => setBilling((current) => ({ ...current, draft, touched: true }))}
+                    sameAsShipping={billingSameAsShipping ?? true}
+                    onSameAsShippingChange={(checked) => form.setValue("billingSameAsShipping", checked, { shouldDirty: true })}
+                    value={billingDraft ?? emptyAddressDraft()}
+                    onChange={(draft) => form.setValue("billing", draft, { shouldDirty: true })}
                     errors={billingErrors}
                     disabled={isInteractionLocked}
                   />

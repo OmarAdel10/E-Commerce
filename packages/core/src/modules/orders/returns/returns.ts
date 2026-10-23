@@ -64,6 +64,8 @@ export interface OrderReturnLineView {
   receivedQuantity: number;
   restockQuantity: number;
   damagedQuantity: number;
+  /** Received units of an item whose stock isn't tracked: neither restocked nor damaged. */
+  untrackedQuantity: number;
   rejectedQuantity: number;
   /** Quantity still available for a new return case across this order item. */
   remainingReturnableQuantity: number;
@@ -101,6 +103,8 @@ export interface OrderReturnReceiptView {
   receivedQuantity: number;
   restockQuantity: number;
   damagedQuantity: number;
+  /** Received units of an item whose stock isn't tracked: neither restocked nor damaged. */
+  untrackedQuantity: number;
   actorType: string;
   actorId: string | null;
   inventoryMovementId: string | null;
@@ -273,6 +277,7 @@ const returnLineFields = {
   receivedQuantity: orderReturnLines.receivedQuantity,
   restockQuantity: orderReturnLines.restockQuantity,
   damagedQuantity: orderReturnLines.damagedQuantity,
+  untrackedQuantity: orderReturnLines.untrackedQuantity,
   rejectedQuantity: orderReturnLines.rejectedQuantity,
   reason: orderReturnLines.reason,
   notes: orderReturnLines.notes,
@@ -284,6 +289,7 @@ const returnReceiptFields = {
   receivedQuantity: orderReturnReceiptLines.receivedQuantity,
   restockQuantity: orderReturnReceiptLines.restockQuantity,
   damagedQuantity: orderReturnReceiptLines.damagedQuantity,
+  untrackedQuantity: orderReturnReceiptLines.untrackedQuantity,
   actorType: orderReturnReceiptLines.actorType,
   actorId: orderReturnReceiptLines.actorId,
   inventoryMovementId: orderReturnReceiptLines.inventoryMovementId,
@@ -882,6 +888,14 @@ async function shouldMarkWholeOrderReturned(
   return fulfilledItems.every((item) => (receivedByItem.get(item.id) ?? 0) === item.handedOver);
 }
 
+/** An untracked item's received units that are neither restocked nor marked damaged. */
+function untrackedReceiptQuantity(
+  line: { inventoryTracked: boolean },
+  receipt: { receivedQuantity: number; restockQuantity: number; damagedQuantity: number },
+): number {
+  return line.inventoryTracked ? 0 : receipt.receivedQuantity - receipt.restockQuantity - receipt.damagedQuantity;
+}
+
 export async function receiveOrderReturn(
   db: Database,
   orderId: string,
@@ -921,6 +935,13 @@ export async function receiveOrderReturn(
     }
     if (receipt.restockQuantity > 0 && (!line.inventoryTracked || !line.variantId)) {
       throw new ValidationError("Stock isn't tracked for this item, so it can't go back into stock.", {
+        lineId: line.id,
+      });
+    }
+    // Stock that is counted needs every unit's disposition; an untracked item's
+    // other units are only received (`untrackedQuantity`), never assumed damaged.
+    if (line.inventoryTracked && receipt.restockQuantity + receipt.damagedQuantity !== receipt.receivedQuantity) {
+      throw new ValidationError("Restock and damaged quantities must account for every received unit.", {
         lineId: line.id,
       });
     }
@@ -1089,6 +1110,7 @@ export async function receiveOrderReturn(
         notes: sql<string | null>`${receipt.notes ?? null}`.as("notes"),
         createdAt: sql<Date>`unixepoch()`.as("created_at"),
         restockLocationId: sql<string | null>`${restockLocationByLineId.get(line.id) ?? null}`.as("restock_location_id"),
+        untrackedQuantity: sql<number>`${untrackedReceiptQuantity(line, receipt)}`.as("untracked_quantity"),
       })
         .from(orderReturnLines)
         .innerJoin(orderReturns, eq(orderReturns.id, orderReturnLines.returnId))

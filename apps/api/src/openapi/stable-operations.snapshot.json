@@ -21837,6 +21837,9 @@
        "damagedQuantity": {
         "type": "integer"
        },
+       "untrackedQuantity": {
+        "type": "integer"
+       },
        "rejectedQuantity": {
         "type": "integer"
        }
@@ -21850,6 +21853,7 @@
        "receivedQuantity",
        "restockQuantity",
        "damagedQuantity",
+       "untrackedQuantity",
        "rejectedQuantity"
       ]
      }
