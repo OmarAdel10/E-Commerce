@@ -25,7 +25,7 @@ import {
   NET_TERMS_LABEL,
   NET_TERMS_PAYMENT_METHOD,
 } from "./identity";
-import type { PaymentGateway } from "./port";
+import type { GatewayAmountLimits, PaymentGateway } from "./port";
 import { minorToMajorString } from "./port";
 import { stripeGateway } from "./stripe";
 
@@ -51,6 +51,13 @@ export {
 
 // ── Gateways one request can use ────────────────────────────────────────────
 
+/** A gateway's charge limits in one currency: its per-currency ones, else its single-currency `amountLimits`; null when none is known. */
+export function gatewayAmountLimits(gateway: PaymentGateway, currency: string): GatewayAmountLimits | null {
+  const code = currency.trim().toUpperCase();
+  const limits = gateway.amountLimitsFor ? gateway.amountLimitsFor(code) : gateway.amountLimits ?? null;
+  return limits && limits.currency === code ? limits : null;
+}
+
 /** Provider charge limits, checked before an order commits and before a session is created. */
 export function getGatewayAmountIssue(
   gateway: PaymentGateway,
@@ -58,11 +65,18 @@ export function getGatewayAmountIssue(
   currency: string,
   label = `${gateway.label} payment amount`,
 ): string | null {
-  const limits = gateway.amountLimits;
-  if (!limits || limits.currency !== currency.toUpperCase()) return null;
+  const limits = gatewayAmountLimits(gateway, currency);
+  if (!limits) return null;
   if (Number.isSafeInteger(amountMinor) && amountMinor >= limits.minMinor && amountMinor <= limits.maxMinor) return null;
   const decimals = getDecimalPlaces(limits.currency);
-  return `${label} must be between ${minorToMajorString(limits.minMinor, decimals)} ${limits.currency} and ${minorToMajorString(limits.maxMinor, decimals)} ${limits.currency}.`;
+  const min = `${minorToMajorString(limits.minMinor, decimals)} ${limits.currency}`;
+  const max = `${minorToMajorString(limits.maxMinor, decimals)} ${limits.currency}`;
+  if (gateway.amountLimitsFor) {
+    return Number.isSafeInteger(amountMinor) && amountMinor > limits.maxMinor
+      ? `${label} must be at most ${max}.`
+      : `${label} must be at least ${min}.`;
+  }
+  return `${label} must be between ${min} and ${max}.`;
 }
 
 /** The refusal reason when cash on delivery cannot collect an amount exactly. */
@@ -91,9 +105,12 @@ function exactAmountIssue(label: string, encoded: EncodedProviderAmount, amountM
     + `(it would drop ${minorToMajorString(encoded.roundingMinor, decimals)}). Set prices in steps the provider accepts.`;
 }
 
-/** Public checkout copy of a gateway's limits, in major units. */
-export function publicAmountLimits(gateway: PaymentGateway): { currency: string; min: number; max: number } | undefined {
-  const limits = gateway.amountLimits;
+/**
+ * Public checkout copy of a gateway's limits, in major units: for the store's
+ * currency when given (a per-currency provider has limits only there).
+ */
+export function publicAmountLimits(gateway: PaymentGateway, currency?: string): { currency: string; min: number; max: number } | undefined {
+  const limits = currency ? gatewayAmountLimits(gateway, currency) : gateway.amountLimits;
   if (!limits) return undefined;
   const scale = 10 ** getDecimalPlaces(limits.currency);
   return { currency: limits.currency, min: limits.minMinor / scale, max: limits.maxMinor / scale };

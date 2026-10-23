@@ -151,6 +151,14 @@ staff release it; the dashboard payments read returns `review` per payment.
 COD is not a gateway: collection is recorded in `cod.ts` and COD refunds are
 confirmed manual settlements.
 
+A gateway's charge limits come from `gatewayAmountLimits(gateway, currency)`:
+an app provider's single-currency `amountLimits`, or a built-in's
+per-currency `amountLimitsFor` (Stripe's published minimums and its
+eight-digit maximum; a currency Stripe publishes no minimum for has none).
+Precommit, session creation, saved-method charges, the advance-payment
+setting and the public checkout config all read the same limits, so a charge
+Stripe would refuse is refused before the order commits.
+
 A refund fills the order's captures in one order (newest first, gift-card
 tenders last; `allocateRefundAcrossSources`, `@scalius/shared/refund-sources`).
 `listRefundSources()` returns those sources with what each still refunds and

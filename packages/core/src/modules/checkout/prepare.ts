@@ -31,7 +31,7 @@ import {
 import { isGiftCardTenderBlocked } from "@scalius/shared/gift-card-tender";
 import { isPaymentTermsDays } from "@scalius/shared/payment-terms";
 import { PAYMENT_TERMS_UNAVAILABLE_MESSAGE } from "./payment-terms";
-import { BUILT_IN_PAYMENT_PROVIDERS, CASH_ON_DELIVERY_AMOUNT_REASON, type PaymentProviders } from "../payments";
+import { BUILT_IN_PAYMENT_PROVIDERS, CASH_ON_DELIVERY_AMOUNT_REASON, gatewayAmountLimits, type PaymentProviders } from "../payments";
 import { assertDiscountCodesApplied } from "../promotions";
 import { checkoutPurchaseOptions, PAYMENT_METHOD_UNAVAILABLE_REASON, type CheckoutAppFunctions } from "./app-functions";
 import { createAppLinePricer } from "./app-line-prices";
@@ -1012,12 +1012,9 @@ export async function createStorefrontOrder(
     });
     if (giftCardsApplied) {
         // A gateway charges the remainder: below its minimum it cannot.
-        const limits = (appOptions.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS).get(paymentMethod)?.amountLimits;
-        if (
-            limits
-            && limits.currency === taxQuote.currencyCode.toUpperCase()
-            && giftCardTender.amountDueMinor < limits.minMinor
-        ) {
+        const gateway = (appOptions.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS).get(paymentMethod);
+        const limits = gateway ? gatewayAmountLimits(gateway, taxQuote.currencyCode) : null;
+        if (limits && giftCardTender.amountDueMinor < limits.minMinor) {
             throw new ValidationError(GIFT_CARD_REMAINDER_TOO_SMALL_MESSAGE, { reason: "gift_card_remainder_too_small" });
         }
     }

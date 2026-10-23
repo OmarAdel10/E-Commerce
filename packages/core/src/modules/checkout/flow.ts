@@ -2,6 +2,7 @@ import { getDecimalPlaces } from "@scalius/shared/currency";
 import {
   BUILT_IN_PAYMENT_PROVIDERS,
   COD_PAYMENT_METHOD,
+  gatewayAmountLimits,
   getGatewayAmountIssue,
   NET_TERMS_PAYMENT_METHOD,
   isOnlinePaymentMethod,
@@ -47,6 +48,8 @@ export function getCheckoutFlowValidationIssues(options: {
     availablePaymentMethods?: readonly string[];
     /** The request's gateways, for their amount limits; built-in ones alone by default. */
     paymentProviders?: PaymentProviders;
+    /** The store currency the advance is charged in (a per-currency provider's limits apply there). */
+    currencyCode?: string;
 }): string[] {
     const issues: string[] = [];
     const checkoutMode = options.checkoutMode ?? "all";
@@ -74,7 +77,7 @@ export function getCheckoutFlowValidationIssues(options: {
     }
     for (const methodId of availablePaymentMethods ?? []) {
         const gateway = (options.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS).get(methodId);
-        const limits = gateway?.amountLimits;
+        const limits = gateway && (options.currencyCode ? gatewayAmountLimits(gateway, options.currencyCode) : gateway.amountLimits);
         if (!gateway || !limits) continue;
         const amountMinor = Math.round(Number(options.partialPaymentAmount) * 10 ** getDecimalPlaces(limits.currency));
         const amountIssue = getGatewayAmountIssue(gateway, amountMinor, limits.currency, `${gateway.label} advance payment amount`);

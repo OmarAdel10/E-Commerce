@@ -14,6 +14,7 @@ import {
 import {
   PaymentProviderError,
   isProviderTimeoutError,
+  type GatewayAmountLimits,
   type GatewayProviderRefund,
   type GatewayRefundProbe,
   type PaymentEvent,
@@ -36,6 +37,26 @@ export const STRIPE_AMOUNT_CODECS: ProviderAmountCodecs = {
   TND: { minorIncrement: 10 },
   MGA: { wireExponent: 0 },
 };
+
+/**
+ * Stripe's published minimum charge per currency (ISO minor units), from
+ * https://docs.stripe.com/currencies#minimum-and-maximum-charge-amounts.
+ * Another currency's minimum is the equivalent of 0.50 USD in the account's
+ * settlement currency, which Scalius cannot know before the call, so none is
+ * claimed for it.
+ */
+const STRIPE_MINIMUM_CHARGE_MINOR: Readonly<Record<string, number>> = {
+  USD: 50, AED: 200, AUD: 50, BGN: 100, BRL: 50, CAD: 50, CHF: 50, CZK: 1_500, DKK: 250, EUR: 50,
+  GBP: 30, HKD: 400, HUF: 17_500, INR: 50, JPY: 50, MXN: 1_000, MYR: 200, NOK: 300, NZD: 50, PLN: 200,
+  RON: 200, SEK: 300, SGD: 50, THB: 1_000,
+};
+/** Stripe takes amounts of at most eight digits in the currency's smallest unit. */
+const STRIPE_MAXIMUM_CHARGE_MINOR = 99_999_999;
+
+function stripeAmountLimits(currency: string): GatewayAmountLimits | null {
+  const minMinor = STRIPE_MINIMUM_CHARGE_MINOR[currency];
+  return minMinor === undefined ? null : { currency, minMinor, maxMinor: STRIPE_MAXIMUM_CHARGE_MINOR };
+}
 
 /**
  * A Stripe amount back in ISO minor units. NaN when it is not a value the
@@ -153,6 +174,7 @@ export const stripeGateway: PaymentGateway<StripeSettings> = {
   checkoutName: "Card Payment",
   flow: "card",
   chargeCurrencies: "any",
+  amountLimitsFor: stripeAmountLimits,
   amountCodecs: STRIPE_AMOUNT_CODECS,
   supportsRefund: true,
 
