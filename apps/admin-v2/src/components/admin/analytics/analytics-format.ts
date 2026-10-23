@@ -5,6 +5,7 @@ import type { AnalyticsGranularity, AnalyticsRange } from "@scalius/shared/analy
 import type { AnalyticsColumn } from "@scalius/shared/analytics-reports";
 import { formatDateTime, formatNumber } from "~/i18n";
 import { analyticsMessages, type AnalyticsMessageKey } from "~/i18n/analytics";
+import { appPaymentMethodName } from "~/lib/app-payment-method";
 
 type Translate = (key: AnalyticsMessageKey, vars?: Record<string, string | number>) => string;
 
@@ -64,10 +65,24 @@ function hasMessage(key: string): key is AnalyticsMessageKey {
   return Object.hasOwn(analyticsMessages.en, key);
 }
 
+/**
+ * A payment method as the overview and every report name it: the store's own
+ * methods in words, an app's method (`<plugin id>:<provider id>`) as its
+ * installed provider's name (else its provider id in words), never the
+ * namespaced stored id. Any other code has no words here and shows as it is.
+ */
+export function analyticsPaymentMethodLabel(id: string, t: Translate, appNames?: ReadonlyMap<string, string>): string {
+  const key = `enum.paymentMethod.${id}`;
+  if (hasMessage(key)) return t(key);
+  return appPaymentMethodName(id, appNames) ?? id;
+}
+
 export interface CellFormatContext {
   t: Translate;
   money: (value: number) => string;
   granularity: AnalyticsGranularity | null;
+  /** Installed apps' payment provider names, by method id (`useAppPaymentMethodNames`). */
+  paymentMethodNames?: ReadonlyMap<string, string>;
 }
 
 /** A report cell as text (the table and the totals row). */
@@ -94,7 +109,8 @@ export function formatReportCell(
         ? formatBucketLabel(String(value), context.granularity, true)
         : formatDayLabel(String(value), { day: "numeric", month: "short", year: "numeric" });
     case "enum": {
-      // A method or status an app added has no words here: show its code.
+      if (column.enum === "paymentMethod") return analyticsPaymentMethodLabel(String(value), context.t, context.paymentMethodNames);
+      // A status an app added has no words here: show its code.
       const key = `enum.${column.enum}.${value}`;
       return hasMessage(key) ? context.t(key) : String(value);
     }

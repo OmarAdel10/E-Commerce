@@ -37,15 +37,18 @@ export function ReportTable({
   money,
   onSort,
   onPage,
+  paymentMethodNames,
 }: {
   data: ReportTableData;
   money: (value: number) => string;
   onSort: (key: string, direction: "asc" | "desc") => void;
   onPage: (page: number) => void;
+  /** Installed apps' payment provider names, so app methods read as the overview names them. */
+  paymentMethodNames?: ReadonlyMap<string, string>;
 }) {
   const t = useMessages(analyticsMessages);
   const columns = data.report.columns;
-  const context = { t, money, granularity: data.granularity };
+  const context = { t, money, granularity: data.granularity, paymentMethodNames };
   const label = (column: AnalyticsColumn) => t(`column.${column.key}` as AnalyticsMessageKey);
   // Totals exist for columns that add up (and rates computed from those sums).
   const hasTotals = columns.some((column, index) => index > 0 && isNumericColumn(column) && data.totals[column.key] != null);

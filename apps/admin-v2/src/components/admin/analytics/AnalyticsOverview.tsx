@@ -15,12 +15,12 @@ import { useCurrency } from "~/hooks/use-currency";
 import { formatNumber, useMessages } from "~/i18n";
 import { analyticsMessages, type AnalyticsMessageKey } from "~/i18n/analytics";
 import { analyticsOverviewQueryOptions, type AnalyticsOverview as OverviewData } from "~/lib/api-query-options/analytics";
-import { appPaymentMethodFallbackName } from "~/lib/app-payment-method";
+import { hasAppPaymentMethod, useAppPaymentMethodNames } from "~/hooks/use-app-payment-method-names";
 import { AnalyticsToolbar } from "./AnalyticsToolbar";
 import { BreakdownCard, type BreakdownRow } from "./BreakdownCard";
 import { MetricTile } from "./MetricTile";
 import { SalesTrendChart, type TrendPoint } from "./SalesTrendChart";
-import { formatBucketLabel, formatPercent, formatRangeLabel, formatSignedPercent } from "./analytics-format";
+import { analyticsPaymentMethodLabel, formatBucketLabel, formatPercent, formatRangeLabel, formatSignedPercent } from "./analytics-format";
 import type { AnalyticsSearch, AnalyticsSelection } from "./analytics-selection";
 
 type Period = OverviewData["current"];
@@ -54,6 +54,8 @@ export function AnalyticsOverview({
     granularity,
   }));
   const reportSearch: AnalyticsSearch = { from: selection.from, to: selection.to };
+  // App methods read as their installed provider's name, as in the reports.
+  const paymentMethodNames = useAppPaymentMethodNames(hasAppPaymentMethod(overview.data?.breakdowns.paymentMethod.map((row) => row.key) ?? []));
 
   const header = (
     <PageHeader
@@ -210,7 +212,7 @@ export function AnalyticsOverview({
         />
         <BreakdownCard
           title={t("breakdown.paymentMethod")}
-          rows={data.breakdowns.paymentMethod.map((row) => breakdownRow(row, t, "paymentMethod"))}
+          rows={data.breakdowns.paymentMethod.map((row) => breakdownRow(row, t, "paymentMethod", paymentMethodNames))}
           format={fmt}
           reportId="sales_by_payment_method"
           search={reportSearch as Record<string, string | undefined>}
@@ -253,6 +255,7 @@ export function breakdownRow(
   row: OverviewBreakdown,
   t: Translate,
   kind: "channel" | "paymentMethod" | "city" | "zone" | "location",
+  paymentMethodNames?: ReadonlyMap<string, string>,
 ): BreakdownRow {
   const word = (key: string, fallback: string) => (hasKey(key) ? t(key) : fallback);
   let name: string;
@@ -262,8 +265,8 @@ export function breakdownRow(
     name = word(`enum.channel.${row.key}`, row.key);
     detail = row.label || null;
   } else if (kind === "paymentMethod") {
-    // An app's method (`<plugin id>:<provider id>`) reads as its provider, never the stored id.
-    name = word(`enum.paymentMethod.${row.key}`, appPaymentMethodFallbackName(row.key) ?? row.key);
+    // The one payment method label the reports use too.
+    name = analyticsPaymentMethodLabel(row.key, t, paymentMethodNames);
   }
   else if (kind === "city") name = row.key || t("token.city");
   else if (kind === "zone") name = row.label || word(`token.${row.key}`, row.key);
