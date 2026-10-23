@@ -185854,39 +185854,6 @@
                                         "message"
                                       ]
                                     }
-                                  },
-                                  "lastTestAttemptAt": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "number"
-                                      },
-                                      {}
-                                    ]
-                                  },
-                                  "lastTestSuccessAt": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "number"
-                                      },
-                                      {}
-                                    ]
-                                  },
-                                  "lastTestFailureAt": {
-                                    "anyOf": [
-                                      {
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "number"
-                                      },
-                                      {}
-                                    ]
                                   }
                                 },
                                 "required": [
@@ -186261,39 +186228,6 @@
                                   "message"
                                 ]
                               }
-                            },
-                            "lastTestAttemptAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestSuccessAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestFailureAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
                             }
                           },
                           "required": [
@@ -186650,39 +186584,6 @@
                                   "message"
                                 ]
                               }
-                            },
-                            "lastTestAttemptAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestSuccessAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestFailureAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
                             }
                           },
                           "required": [
@@ -186891,39 +186792,6 @@
                                   "message"
                                 ]
                               }
-                            },
-                            "lastTestAttemptAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestSuccessAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestFailureAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
                             }
                           },
                           "required": [
@@ -187256,39 +187124,6 @@
                                   "message"
                                 ]
                               }
-                            },
-                            "lastTestAttemptAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestSuccessAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
-                            },
-                            "lastTestFailureAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "number"
-                                },
-                                {}
-                              ]
                             }
                           },
                           "required": [

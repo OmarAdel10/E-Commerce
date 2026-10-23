@@ -52540,9 +52540,6 @@ export type GetApiV1AdminSettingsDeliveryProvidersResponses = {
                         label: string;
                         message: string;
                     }>;
-                    lastTestAttemptAt?: string | number | unknown;
-                    lastTestSuccessAt?: string | number | unknown;
-                    lastTestFailureAt?: string | number | unknown;
                 };
                 createdAt: string | number;
                 updatedAt: string | number;
@@ -52639,9 +52636,6 @@ export type PostApiV1AdminSettingsDeliveryProvidersResponses = {
                     label: string;
                     message: string;
                 }>;
-                lastTestAttemptAt?: string | number | unknown;
-                lastTestSuccessAt?: string | number | unknown;
-                lastTestFailureAt?: string | number | unknown;
             };
             createdAt: string | number;
             updatedAt: string | number;
@@ -52733,9 +52727,6 @@ export type PutApiV1AdminSettingsDeliveryProvidersResponses = {
                     label: string;
                     message: string;
                 }>;
-                lastTestAttemptAt?: string | number | unknown;
-                lastTestSuccessAt?: string | number | unknown;
-                lastTestFailureAt?: string | number | unknown;
             };
             createdAt: string | number;
             updatedAt: string | number;
@@ -52774,9 +52765,6 @@ export type PutApiV1AdminSettingsDeliveryProvidersResponses = {
                     label: string;
                     message: string;
                 }>;
-                lastTestAttemptAt?: string | number | unknown;
-                lastTestSuccessAt?: string | number | unknown;
-                lastTestFailureAt?: string | number | unknown;
             };
             createdAt: string | number;
             updatedAt: string | number;
@@ -52910,9 +52898,6 @@ export type GetApiV1AdminSettingsDeliveryProvidersByIdResponses = {
                     label: string;
                     message: string;
                 }>;
-                lastTestAttemptAt?: string | number | unknown;
-                lastTestSuccessAt?: string | number | unknown;
-                lastTestFailureAt?: string | number | unknown;
             };
             createdAt: string | number;
             updatedAt: string | number;

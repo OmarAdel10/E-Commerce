@@ -40,9 +40,6 @@ export interface DeliveryProviderReadiness {
     label: string;
     message: string;
   }>;
-  lastTestAttemptAt?: string | number | null;
-  lastTestSuccessAt?: string | number | null;
-  lastTestFailureAt?: string | number | null;
 }
 
 /** Represents a delivery provider record from the database */
@@ -89,9 +86,6 @@ export function resolveProviderReadiness(
         ? provider.readiness.issues
         : [],
       activationBlockers: provider.readiness.activationBlockers,
-      lastTestAttemptAt: provider.readiness.lastTestAttemptAt ?? null,
-      lastTestSuccessAt: provider.readiness.lastTestSuccessAt ?? null,
-      lastTestFailureAt: provider.readiness.lastTestFailureAt ?? null,
     };
   }
 
@@ -102,9 +96,6 @@ export function resolveProviderReadiness(
     canCreateShipment: provider.isActive,
     issues: provider.isActive ? [] : [FALLBACK_INACTIVE_ISSUE],
     activationBlockers: [],
-    lastTestAttemptAt: null,
-    lastTestSuccessAt: null,
-    lastTestFailureAt: null,
   };
 }
 

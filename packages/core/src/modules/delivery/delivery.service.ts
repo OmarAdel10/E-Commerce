@@ -143,9 +143,6 @@ async function readCourierSetup(
       readiness: getDeliveryProviderReadinessSummary({
         type: provider.type,
         isActive: provider.isActive,
-        lastTestAttemptAt: provider.lastTestAttemptAt,
-        lastTestSuccessAt: provider.lastTestSuccessAt,
-        lastTestFailureAt: provider.lastTestFailureAt,
       }),
     },
   };
@@ -186,10 +183,6 @@ export async function assertDeliveryProviderActivatable(
     isActive: true,
     credentials: "{}",
     config: "{}",
-    lastTestAttemptAt: null,
-    lastTestSuccessAt: null,
-    lastTestFailureAt: null,
-    lastTestSuccessFingerprint: null,
     ...provider,
   }, encryptionKey, couriers);
   const blockers = setup.readiness.activationBlockers;
@@ -388,15 +381,7 @@ export async function testDeliveryProvider(
     throw new NotFoundError(`Provider with ID ${id} not found`);
   }
 
-  const testedAt = sql`unixepoch()`;
-  await db
-    .update(deliveryProviders)
-    .set({
-      lastTestAttemptAt: testedAt,
-      updatedAt: sql`unixepoch()`,
-    })
-    .where(eq(deliveryProviders.id, id));
-
+  // The courier's app keeps the outcome (provider-connection.ts); the row records nothing.
   try {
     if (!encryptionKey) {
       throw new ServiceUnavailableError("CREDENTIAL_ENCRYPTION_KEY is required to test provider readiness.");
@@ -409,34 +394,8 @@ export async function testDeliveryProvider(
       });
     }
     if (!courier || setup.settings === null) throw new ServiceUnavailableError(setupFailureMessage(setup));
-    const result = await testCourierConnection(courier, setup.settings, db);
-    if (result.success) {
-      await db
-        .update(deliveryProviders)
-        .set({
-          lastTestSuccessAt: sql`unixepoch()`,
-          lastTestFailureAt: null,
-          updatedAt: sql`unixepoch()`,
-        })
-        .where(eq(deliveryProviders.id, id));
-    } else {
-      await db
-        .update(deliveryProviders)
-        .set({
-          lastTestFailureAt: sql`unixepoch()`,
-          updatedAt: sql`unixepoch()`,
-        })
-        .where(eq(deliveryProviders.id, id));
-    }
-    return result;
+    return await testCourierConnection(courier, setup.settings, db);
   } catch (error: unknown) {
-    await db
-      .update(deliveryProviders)
-      .set({
-        lastTestFailureAt: sql`unixepoch()`,
-        updatedAt: sql`unixepoch()`,
-      })
-      .where(eq(deliveryProviders.id, id));
     return {
       success: false,
       message: `Failed to test provider: ${error instanceof Error ? error.message : String(error)}`,

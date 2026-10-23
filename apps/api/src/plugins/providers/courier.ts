@@ -209,9 +209,6 @@ export function appCourier(
         activationBlockers: appSetupBlockers(installation.manifest.name, settings),
         isActive: provider.isActive,
         connection: tested,
-        lastTestAttemptAt: provider.lastTestAttemptAt,
-        lastTestSuccessAt: provider.lastTestSuccessAt,
-        lastTestFailureAt: provider.lastTestFailureAt,
       });
       const error = settings.credentialErrors[0];
       return error

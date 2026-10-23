@@ -27,10 +27,6 @@ export type CourierRow = Pick<
   | "isActive"
   | "credentials"
   | "config"
-  | "lastTestAttemptAt"
-  | "lastTestSuccessAt"
-  | "lastTestFailureAt"
-  | "lastTestSuccessFingerprint"
 >;
 
 /** What every port call of a courier gets besides its input. */

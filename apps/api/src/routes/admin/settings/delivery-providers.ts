@@ -43,11 +43,6 @@ function safeProviderTestResult(result: { success?: unknown }): {
 
 type DeliveryProviderRouteRecord = NonNullable<Awaited<ReturnType<typeof getDeliveryProvider>>>;
 
-function timestampForClient(value: Date | number | string | null | undefined): string | number | null {
-    if (value instanceof Date) return value.toISOString();
-    return value ?? null;
-}
-
 function requiredTimestampForClient(value: Date | number | string): string | number {
     if (value instanceof Date) return value.toISOString();
     return value;
@@ -98,9 +93,6 @@ async function serializeProviderForClient(
                 label: blocker.label.slice(0, 100),
                 message: blocker.message.slice(0, 500),
             })),
-            lastTestAttemptAt: timestampForClient(readiness.lastTestAttemptAt),
-            lastTestSuccessAt: timestampForClient(readiness.lastTestSuccessAt),
-            lastTestFailureAt: timestampForClient(readiness.lastTestFailureAt),
         },
     };
 }
@@ -132,9 +124,6 @@ const deliveryProviderSchema = z.object({
             label: z.string(),
             message: z.string(),
         })),
-        lastTestAttemptAt: z.union([z.string(), z.number()]).nullable().optional(),
-        lastTestSuccessAt: z.union([z.string(), z.number()]).nullable().optional(),
-        lastTestFailureAt: z.union([z.string(), z.number()]).nullable().optional(),
     }).optional(),
     createdAt: z.union([z.string(), z.number()]),
     updatedAt: z.union([z.string(), z.number()]),

@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 183,
-  name: "0183_channel_active_location",
+  version: 184,
+  name: "0184_drop_courier_test_columns",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -696,6 +696,11 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 183,
     name: "0183_channel_active_location",
     sourceSha256: "598a32fa4a8353c0784d83ed53bab22a9084d72ae6bf0421d67eeb3e5d138b4b",
+  },
+  {
+    version: 184,
+    name: "0184_drop_courier_test_columns",
+    sourceSha256: "c3740d37e46100e16b505b60582138f255164306571d0e67bd8a1e0d6d406364",
   },
 ] as const;
 
