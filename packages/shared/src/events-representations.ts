@@ -162,6 +162,8 @@ export const returnRepresentationSchema = z.object({
     receivedQuantity: z.number().int(),
     restockQuantity: z.number().int(),
     damagedQuantity: z.number().int(),
+    /** Received units of an item whose stock isn't tracked: neither restocked nor damaged. */
+    untrackedQuantity: z.number().int(),
     rejectedQuantity: z.number().int(),
   })),
   createdAt: iso,

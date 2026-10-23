@@ -42,10 +42,12 @@ export const receiveOrderReturnSchema = z.object({
     damagedQuantity: quantitySchema,
     notes: noteSchema,
   }).superRefine((line, ctx) => {
-    if (line.restockQuantity + line.damagedQuantity !== line.receivedQuantity) {
+    // A tracked item's units are each restocked or damaged (checked against the line);
+    // an untracked item's units not marked damaged are recorded as received, stock not tracked.
+    if (line.restockQuantity + line.damagedQuantity > line.receivedQuantity) {
       ctx.addIssue({
         code: "custom",
-        message: "Restock and damaged quantities must account for every received unit.",
+        message: "Restock and damaged quantities can't be more than the units received.",
         path: ["receivedQuantity"],
       });
     }

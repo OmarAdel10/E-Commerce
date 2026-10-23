@@ -680,6 +680,11 @@
         "minimum": -9007199254740991,
         "maximum": 9007199254740991
        },
+       "untrackedQuantity": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+       },
        "rejectedQuantity": {
         "type": "integer",
         "minimum": -9007199254740991,
@@ -695,6 +700,7 @@
        "receivedQuantity",
        "restockQuantity",
        "damagedQuantity",
+       "untrackedQuantity",
        "rejectedQuantity"
       ]
      }

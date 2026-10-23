@@ -695,6 +695,12 @@ export const orderReturnLines = sqliteTable("order_return_lines", {
     notes: text("notes"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(UNIX_NOW),
     updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(UNIX_NOW),
+    /**
+     * Received units of an item whose stock isn't tracked: neither put back
+     * into stock nor damaged (nobody assessed them). Migration 0182; last, as
+     * PostgreSQL adds it.
+     */
+    untrackedQuantity: integer("untracked_quantity").notNull().default(0),
 }, (table) => [
     uniqueIndex("order_return_lines_return_item_unique").on(table.returnId, table.orderItemId),
     // An order line's delete (order amendment) checks this foreign key; the
@@ -708,6 +714,7 @@ export const orderReturnLines = sqliteTable("order_return_lines", {
         AND ${table.receivedQuantity} >= 0
         AND ${table.restockQuantity} >= 0
         AND ${table.damagedQuantity} >= 0
+        AND ${table.untrackedQuantity} >= 0
         AND ${table.rejectedQuantity} >= 0
     )`),
     check("order_return_lines_approval_bounded", sql`(
@@ -715,7 +722,7 @@ export const orderReturnLines = sqliteTable("order_return_lines", {
     )`),
     check("order_return_lines_receipt_bounded", sql`(
         ${table.receivedQuantity} <= ${table.approvedQuantity}
-        AND ${table.restockQuantity} + ${table.damagedQuantity} = ${table.receivedQuantity}
+        AND ${table.restockQuantity} + ${table.damagedQuantity} + ${table.untrackedQuantity} = ${table.receivedQuantity}
     )`),
 ]);
 
@@ -776,12 +783,11 @@ export const orderReturnReceiptLines = sqliteTable("order_return_receipt_lines",
         .references(() => inventoryMovements.id, { onDelete: "restrict" }),
     notes: text("notes"),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(UNIX_NOW),
-    /**
-     * Where restocked units went (set exactly when `restock_quantity` > 0).
-     * Keep it the last column: receipt lines are inserted by position.
-     */
+    /** Where restocked units went (set exactly when `restock_quantity` > 0). */
     restockLocationId: text("restock_location_id")
         .references(() => inventoryLocations.id, { onDelete: "restrict" }),
+    /** Received units of an untracked item: no stock disposition and no damage asserted (0182). */
+    untrackedQuantity: integer("untracked_quantity").notNull().default(0),
 }, (table) => [
     uniqueIndex("order_return_receipt_lines_command_line_unique").on(table.commandId, table.returnLineId),
     index("order_return_receipt_lines_return_created_idx").on(table.returnId, table.createdAt),
@@ -793,7 +799,8 @@ export const orderReturnReceiptLines = sqliteTable("order_return_receipt_lines",
     check("order_return_receipt_lines_disposition_exact", sql`(
         ${table.restockQuantity} >= 0
         AND ${table.damagedQuantity} >= 0
-        AND ${table.restockQuantity} + ${table.damagedQuantity} = ${table.receivedQuantity}
+        AND ${table.untrackedQuantity} >= 0
+        AND ${table.restockQuantity} + ${table.damagedQuantity} + ${table.untrackedQuantity} = ${table.receivedQuantity}
     )`),
     check("order_return_receipt_lines_movement_shape", sql`(
         (${table.restockQuantity} = 0 AND ${table.inventoryMovementId} IS NULL)
