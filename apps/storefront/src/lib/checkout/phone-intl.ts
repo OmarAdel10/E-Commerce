@@ -7,6 +7,7 @@ import {
   parsePhoneNumberFromString,
   type PhoneCountryPolicy,
 } from "@scalius/shared/customer-utils";
+import { ltr } from "@/lib/bidi";
 import { validateStorefrontPhone } from "@/lib/phone-country-policy";
 import { phoneCountryMeta } from "@scalius/shared/phone-example";
 import { toLatinDigits } from "@scalius/shared/phone-input";
@@ -72,7 +73,8 @@ export function createCountrySelect(options: {
   // while the button keeps showing the selected calling code.
   select.className = "absolute inset-0 h-full w-full cursor-pointer opacity-0";
   for (const { country, name } of countries) {
-    const option = new Option(`${name} ${callingCode(country)}`, country);
+    // The code keeps its own direction inside a right-to-left country name.
+    const option = new Option(`${name} ${ltr(callingCode(country))}`, country);
     option.selected = country === options.selected;
     select.append(option);
   }

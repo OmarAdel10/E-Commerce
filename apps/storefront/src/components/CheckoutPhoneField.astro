@@ -159,14 +159,15 @@ const singleCountry = policy.mode === "include" && policy.countries.length === 1
     <span class="relative flex h-full shrink-0 items-center border-e border-input">
       {
         singleCountry ? (
-          <span class="px-3 text-sm font-medium text-muted-foreground">{callingCode}</span>
+          <bdi dir="ltr" class="px-3 text-sm font-medium text-muted-foreground">{callingCode}</bdi>
         ) : (
           <button
             type="button"
             data-phone-country
             class="flex h-full items-center gap-1 px-3 text-sm font-medium text-foreground"
           >
-            <span data-phone-code>{callingCode}</span>
+            {/* A calling code reads left to right on every page ("+971", never "971+"); the script changes only its text. */}
+            <bdi dir="ltr" data-phone-code>{callingCode}</bdi>
             {/* The visible code is part of the name (WCAG 2.5.3): "+880, Phone number country". */}
             <span class="sr-only">{countrySelectLabel}</span>
             <svg aria-hidden="true" class="h-3 w-3 opacity-60" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 4.5 3 3 3-3" /></svg>
