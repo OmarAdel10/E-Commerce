@@ -2,7 +2,7 @@
 
 An app can redesign a store without a fork: new sections, components in slots and app pages, skins of the header, footer, product card, product page, listings and any core section, a single-page order landing, and ready-made templates that apply a whole look in one click. The merchant activates the app, picks its template in the theme editor and edits every part like the built-in ones.
 
-This page is the storefront reference. Building a theme? Read [Build a theme](themes.md) first: it is the path through this page and the rules that make a theme work on any store, not only yours. [Apps](apps.md) covers the manifest and lifecycle; Buyer UI on private pages (cart, checkout, account) is in [Commerce hooks](commerce-hooks.md#buyer-ui-extensions). The reference theme is `plugins/noor` in the Scalius repository; `plugins/volt` and `plugins/bazaar` are two more.
+This page is the storefront reference. Building a theme? Read [Build a theme](themes.md) first: it is the path through this page and the rules that make a theme work on any store, not only yours. [Apps](apps.md) covers the manifest and lifecycle; Buyer UI on private pages (cart, checkout, account) is in [Commerce hooks](commerce-hooks.md#buyer-ui-extensions). The reference theme is `plugins/noor` in the Scalius repository.
 
 The contract is `@scalius/shared/plugins/storefront-protocol` (data shapes, render protocol, limits) and `@scalius/shared/plugins/storefront-components` (manifest declarations). The SDK entries are `@scalius/plugin-sdk/storefront`, `@scalius/plugin-sdk/storefront/testing` and `@scalius/plugin-sdk/island`.
 
@@ -128,7 +128,7 @@ A skin is app markup for a core-owned unit. It gets the unit's public projection
 | `header`, `footer` | `StorefrontHeaderData`, `StorefrontFooterData` | its slots | empty: core |
 | `product_card` | `StorefrontProductCardData` (`{ product, position, aboveFold }`) | its two slots | empty: core |
 | `product_main` | `StorefrontProductPage` | `buy_form` (required, exactly one), `gallery`, `reviews`, `recommendations` | no buy form: core |
-| `listing_main` | `StorefrontListingPage` | `filters`, `toolbar`, `pagination` (appended when left out) | empty: core |
+| `listing_main` | `StorefrontListingPage` | `filters`, `toolbar`, `pagination` (only an omitted `pagination` is appended; place `filters` and `toolbar` yourself) | empty: core |
 | `section:<type>` | `StorefrontSectionSkinData<StorefrontSectionSkinSettings[type]>` | none | empty: the core section |
 
 - **`product_main`** draws the product page's breadcrumbs, gallery and buy box. `<BuyForm />` is the store's real buy form: price, options, buyer inputs, quantity, buttons, delivery facts and the buy-box app components, kept current as the buyer chooses. `<Gallery />` is the theme's gallery (thumbnails and zoom on computers, a swipeable photo on phones, the chosen SKU's photo); its first photo is preloaded. Prefer it to drawing `product.media` yourself. The skin owns the description (`descriptionHtml`). Reviews and related products a skin places replace the template's modules of the same.
@@ -154,7 +154,7 @@ Sections, components and skins use the app settings types (`text`, `textarea`, `
 | Type | Stored | The component gets |
 | --- | --- | --- |
 | `image` | a media id | `StorefrontImage` (`url`, `width`, `height`, `alt`, `srcset`) or `null` |
-| `products` (`limit` up to 36) | a source: `newest`, `featured`, `collection:<id>`, `category:<id>`, … | up to `limit` `StorefrontProductCard`s, priced in the buyer's market |
+| `products` (`limit` up to 36) | a source: `newest`, `on-sale`, `popular`, `collection:<id>` or `category:<id>` | up to `limit` `StorefrontProductCard`s, priced in the buyer's market |
 | `product` | a product id | one card or `null` |
 | `link` | a store path or an `https://` URL | the string |
 | `list` (`fields` up to 12, `max` up to 24, `itemLabel`) | items of the fields above (no products, no lists) | items with their images resolved |

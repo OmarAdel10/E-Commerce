@@ -12,7 +12,7 @@ Follow the loop in `scalius`: search, describe, read facts, dry run, approval wh
 
 - A product is a container; what sells and holds stock is a SKU (`product_variants`). A simple product has exactly one hidden SKU (`defaultSku` on create). There is no product-level stock.
 - Options are merchant-named axes, at most five. Every active SKU picks exactly one value of every axis, in axis order. Create the whole matrix in one `dashboard.products.create`; do not add SKUs afterwards one by one. If a create's answer is lost, read by name before retrying.
-- SKU codes and barcodes are unique across the store, ignoring case and spaces.
+- SKU codes and barcodes are unique across the store, ignoring case and surrounding spaces.
 - Prices use the store currency (`dashboard.settings.currency_get`); never convert. Ask for any price, stock, option value or copy the merchant did not give.
 - Product edits send the `aggregateRevision` from a fresh `dashboard.products.get_section`; on a conflict, reread and reapply only the requested change.
 

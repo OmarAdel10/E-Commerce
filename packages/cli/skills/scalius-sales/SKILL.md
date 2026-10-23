@@ -22,13 +22,13 @@ Order numbers and names are not ids. Search (`dashboard.orders.list` `search`, `
 ## Orders
 
 - Cancel with `dashboard.orders.update_status` (status `cancelled`, a reason); this releases reserved stock. A paid order also needs a refund.
-- A return is created, approved, then received; receiving puts the units back in stock.
+- A return is created, approved, then received; receiving records received, restocked and damaged quantities, and only the restocked quantity goes back into stock. Ask the merchant for the item's condition first.
 - Courier booking (`dashboard.orders.create_shipment`) needs the provider id from `dashboard.delivery_providers.list`; own-rider handover is `dashboard.orders.fulfillment_create`.
 - Orders need a phone unless the store's rules say otherwise; Bangladesh, delivery and cash-on-delivery orders always need one.
 
 ## Discounts
 
-Create as a draft, preview it against a cart, then activate. Start and end are epoch seconds plus the store's time zone; minimums are `amountMinor`. Ask before changing a live discount.
+Create as a draft, preview it against a cart, then activate. Start and end are ISO 8601 date-times (`startsAt`, `endsAt`), scheduled in the store's time zone; minimums are `amountMinor`. Ask before changing a live discount.
 
 ## Customers, reviews, inbox, gift cards
 

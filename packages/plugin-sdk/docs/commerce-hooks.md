@@ -97,7 +97,7 @@ A function reads your app's own data through the manifest, never through I/O. Up
 - Keys: `customer`, `line.variantId`, `line.productId`, `attribute.<key>` (the buyer's answer to one of your checkout attributes), or one hop `{ from: "<as>.<field>" }` along a `single_line_text` or `object_reference` field of an earlier single-key read.
 - Objects are your declared types. A custom-field read names up to 10 of your own fields of one owner type (`product`, `variant` or `customer`) and is keyed by that owner.
 - `input.reads[as]` is `{ revision, data } | null` for a single key, or `Record<key, { revision, data }>` (existing records only) per line. `readOne(reads, as)` and `readMany(reads, as)` read them typed. Custom-field records have revision 0. Data is in the same wire form `ctx.objects` reads (money as `{ amountMinor, currency }`). Weak references are not resolved.
-- Bounds, checked before anything is read: 100 keys per function (a per-line read counts its distinct SKUs or products, at most its `max`) and 256 KiB of resolved JSON. Over a bound, the function does not run and `onError` applies.
+- Bounds: a function declares at most four reads. Each read asks for at most 100 keys (a per-line read counts its distinct SKUs or products, at most its `max`), checked before anything is read, so four reads of a 99-line cart all run. The resolved JSON of the function's reads may total 256 KiB, measured after the records are read and decoded. Over a bound, the function does not run and `onError` applies.
 - Cost: reads ride the read batch checkout already sends. They add statements, never a round trip. A store whose apps declare no reads pays nothing.
 
 ### Commits
@@ -116,7 +116,7 @@ A `checkout.discounts` answer may carry `commit: [{ as, record }]` (up to four) 
 
 - A function that throws, times out, answers invalidly (`function_invalid_output`) or exceeds its read bounds is left out: `onError: "skip"` (the default).
 - Only `cart.transform`, `cart.line_prices`, `cart.validate` and `checkout.payment_methods` may declare `onError: "block"`. Checkout then stops with the store's buyer-safe text.
-- Wall budget: the smaller of `limits.wallMs` and 1.5 s. CPU: 50 ms in an isolate.
+- Wall budget: the smaller of `limits.wallMs` and 1.5 s. CPU: the smaller of your manifest `limits.cpuMs` and the plan ceiling (50 ms on the default, up to 200 ms on Paid), with a fixed 50 ms cap for `buyer.ui`.
 - `priority` (0 to 1000, default 100): lower runs first among apps at the same point.
 
 ### Testing
@@ -194,7 +194,7 @@ A third-party app calling a beta or internal operation gets `api_operation_not_s
 
 ### Testing against the contract
 
-`createContractApi({ handlers })` answers `ctx.api.call` in tests from the stable operations sealed with your SDK release. It refuses what production refuses: an unknown operation, an ungranted scope, a missing or unsupported `idempotencyKey`, an undeclared body field, and any value or response the schema rejects. A repeat with the same key replays the first answer.
+`createContractApi({ handlers })` answers `ctx.api.call` in tests from the stable operations sealed with your SDK release. It refuses what production refuses: an unknown operation, an ungranted scope, a missing or unsupported `idempotencyKey`, an undeclared body field, and a value or response that breaks the operation's schema. The checker covers a JSON Schema subset (types, enums, lengths, patterns, required fields) and ignores `format` and other keywords it does not know, so it is weaker than the production routes: a malformed date-time that production rejects can pass here. Test production refinements and format checks against a host. A repeat with the same key replays the first answer.
 
 ## 4. Deferred payment
 
@@ -229,7 +229,7 @@ A payment provider may declare two optional capabilities, each with its operatio
 How they work:
 
 - A session for a signed-in customer may carry `savePaymentMethod: { customerId, usage: "off_session" }`. The provider's confirmed or `authorized` event then names `savedPaymentMethod: { ref, brand?, last4?, expiryMonth?, expiryYear?, label? }`: an opaque reference plus display facts, never card data. The store keeps it for that customer. Checkout asks to save only for a signed-in buyer whose order has a purchase-option line and a vaulting gateway.
-- A confirmed or `authorized` event may carry `review: { reason }` when the provider flagged the payment (its fraud or risk screen). It still counts as paid; the store holds the order for staff review in the same write, so nothing ships or is handed over until staff release the hold.
+- A confirmed or `authorized` event may carry `review: { reason }` when the provider flagged the payment (its fraud or risk screen). A confirmed payment still counts as paid; an `authorized` one records held funds and credits nothing until it is captured. Either way the store holds the order for staff review in the same write, so nothing ships or is handed over until staff release the hold.
 - An `authorized` payment holds money without counting as paid. A held order cannot be cancelled or switched until it is captured or voided.
 - `payments.charge` charges a saved method without the buyer (`capture: "manual"` only authorizes); `payments.capture` and `payments.void` settle an authorization; `payment_methods.list` and `payment_methods.delete` manage saved methods. All need the Sensitive `write_payment_methods` and reach only the methods kept for your own purchase options. The mutations need an Idempotency-Key.
 - Each command claims a payment attempt before any provider call, keyed from the caller's Idempotency-Key. An unanswered call stays uncertain; a repeat under the same key asks again instead of charging twice (`payment_outcome_unknown`).

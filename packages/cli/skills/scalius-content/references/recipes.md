@@ -23,6 +23,7 @@ Every write: dryRun first. [approval] = destructive or financial: the write answ
 ## Write and publish an About Us page and link it in the footer
 1. write  dashboard.content.create needs body.title, body.content, body.metaTitle, body.metaDescription: contentType page, isPublished true, the merchant's words
 2. read   dashboard.navigation.placements_list: which menu is the footer
-3. write  dashboard.navigation.items_create rev; needs path.menuId, body.label, body.labelMode, body.target: labelMode resource, target the page
-4. write  dashboard.navigation.menus_publish rev; needs path.menuId
-5. verify dashboard.content.get
+3. read   dashboard.navigation.menus_get: the footer menu's current revision (placements show only the published one)
+4. write  dashboard.navigation.items_create rev; needs path.menuId, body.label, body.labelMode, body.target: labelMode resource, target the page
+5. write  dashboard.navigation.menus_publish rev; needs path.menuId
+6. verify dashboard.content.get

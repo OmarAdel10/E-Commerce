@@ -25,11 +25,13 @@ Note: COD is Bangladesh-only by its own country rule; nothing else to restrict.
 Note: A place zone beats the country zone; no zone means no delivery.
 
 ## Charge 5% VAT on Bangladesh orders
-1. read   dashboard.taxes.settings_get: prices include tax or not (per market)
-2. write  dashboard.taxes.regions_create needs body.countryCode: countryCode BD
-3. read   dashboard.taxes.classes_list: the standard class
-4. write  dashboard.taxes.rates_create needs body.taxClassId, body.taxRegionId, body.name, body.rateBps: name VAT, rateBps 500
-5. verify dashboard.taxes.preview: a sample BD order
+1. read   dashboard.taxes.settings_get: enabled, default class and version (a fresh store has tax off)
+2. read   dashboard.markets.get: pricesIncludeTax belongs to the market, not the tax settings
+3. write  dashboard.taxes.regions_create needs body.countryCode: countryCode BD
+4. read   dashboard.taxes.classes_list: the standard class
+5. write  dashboard.taxes.rates_create needs body.taxClassId, body.taxRegionId, body.name, body.rateBps: name VAT, rateBps 500
+6. write  dashboard.taxes.settings_update rev; needs body.enabled, body.taxShipping, body.defaultTaxClassId, body.shippingTaxClassId, body.displayLabel: enabled true and defaultTaxClassId the standard class; a region and rate alone do not turn tax on
+7. verify dashboard.taxes.preview: a sample BD order
 
 ## Invite a staff member who can only manage orders
 1. read   dashboard.team.roles.list: a role with only order permissions

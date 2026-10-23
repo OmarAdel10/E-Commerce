@@ -74,7 +74,7 @@
           "steps": [
             ["cli", "scalius media upload a.jpg b.jpg c.jpg --yes", "returns media ids"],
             ["read", "dashboard.products.get_section", "section media: current gallery and revision"],
-            ["write", "dashboard.products.update_section", "section media with the new mediaIds"]
+            ["write", "dashboard.products.update_section", "section media: the whole media list, [{id, mediaId, altText, isPrimary}] with the new files added and exactly one primary"]
           ],
           "note": "Without a shell, import public HTTPS images with dashboard.media.import_url."
         },
@@ -170,7 +170,7 @@
             ["read", "dashboard.orders.get", "line ids and version"],
             ["write", "dashboard.orders.return_create", "one line, reason"],
             ["write", "dashboard.orders.return_approve"],
-            ["write", "dashboard.orders.return_receive", "puts the unit back in stock"],
+            ["write", "dashboard.orders.return_receive", "receivedQuantity 1, restockQuantity 1, damagedQuantity 0 once the condition is confirmed; only restockQuantity returns stock"],
             ["verify", "dashboard.orders.return_get"]
           ]
         },
@@ -178,7 +178,8 @@
           "title": "Create a cash-on-delivery order for Rahim with two panjabis",
           "steps": [
             ["read", "dashboard.resources.customers.list", "find Rahim; ask if several match"],
-            ["read", "dashboard.products.list_summaries", "query {search:\"panjabi\"}: the SKU ids"],
+            ["read", "dashboard.products.list_summaries", "query {search:\"panjabi\"}: the product ids"],
+            ["read", "dashboard.product_variants.list", "the SKU (variant) ids of each product"],
             ["read", "dashboard.shipping_methods.list", "delivery fee for the address"],
             ["write", "dashboard.resources.orders.create", "customerId, items qty 2, shippingMinor, paymentMethod cod"],
             ["verify", "dashboard.resources.orders.get"]
@@ -289,6 +290,7 @@
           "steps": [
             ["write", "dashboard.content.create", "contentType page, isPublished true, the merchant's words"],
             ["read", "dashboard.navigation.placements_list", "which menu is the footer"],
+            ["read", "dashboard.navigation.menus_get", "the footer menu's current revision (placements show only the published one)"],
             ["write", "dashboard.navigation.items_create", "labelMode resource, target the page"],
             ["write", "dashboard.navigation.menus_publish"],
             ["verify", "dashboard.content.get"]
@@ -331,10 +333,12 @@
         {
           "title": "Charge 5% VAT on Bangladesh orders",
           "steps": [
-            ["read", "dashboard.taxes.settings_get", "prices include tax or not (per market)"],
+            ["read", "dashboard.taxes.settings_get", "enabled, default class and version (a fresh store has tax off)"],
+            ["read", "dashboard.markets.get", "pricesIncludeTax belongs to the market, not the tax settings"],
             ["write", "dashboard.taxes.regions_create", "countryCode BD"],
             ["read", "dashboard.taxes.classes_list", "the standard class"],
             ["write", "dashboard.taxes.rates_create", "name VAT, rateBps 500"],
+            ["write", "dashboard.taxes.settings_update", "enabled true and defaultTaxClassId the standard class; a region and rate alone do not turn tax on"],
             ["verify", "dashboard.taxes.preview", "a sample BD order"]
           ]
         },

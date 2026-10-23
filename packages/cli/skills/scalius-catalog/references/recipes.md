@@ -22,7 +22,7 @@ Note: Every SKU picks one value of every axis, in axis order; send the whole mat
 ## Upload 3 local photos as the product gallery
 1. cli    scalius media upload a.jpg b.jpg c.jpg --yes: returns media ids
 2. read   dashboard.products.get_section: section media: current gallery and revision
-3. write  dashboard.products.update_section rev; needs path.id, path.section: section media with the new mediaIds
+3. write  dashboard.products.update_section rev; needs path.id, path.section: section media: the whole media list, [{id, mediaId, altText, isPrimary}] with the new files added and exactly one primary
 Note: Without a shell, import public HTTPS images with dashboard.media.import_url.
 
 ## Raise every Shoes price by 5% (show me first)

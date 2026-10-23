@@ -36,15 +36,16 @@ Note: Cancelling releases the order's reserved stock. A paid order also needs da
 1. read   dashboard.orders.get: line ids and version
 2. write  dashboard.orders.return_create rev; needs path.id, body.reason, body.lines: one line, reason
 3. write  dashboard.orders.return_approve rev; needs path.id, path.returnId, body.lines
-4. write  dashboard.orders.return_receive rev; needs path.id, path.returnId, body.lines: puts the unit back in stock
+4. write  dashboard.orders.return_receive rev; needs path.id, path.returnId, body.lines: receivedQuantity 1, restockQuantity 1, damagedQuantity 0 once the condition is confirmed; only restockQuantity returns stock
 5. verify dashboard.orders.return_get
 
 ## Create a cash-on-delivery order for Rahim with two panjabis
 1. read   dashboard.resources.customers.list: find Rahim; ask if several match
-2. read   dashboard.products.list_summaries: query {search:"panjabi"}: the SKU ids
-3. read   dashboard.shipping_methods.list: delivery fee for the address
-4. write  dashboard.resources.orders.create needs body.items, body.shippingMinor: customerId, items qty 2, shippingMinor, paymentMethod cod
-5. verify dashboard.resources.orders.get
+2. read   dashboard.products.list_summaries: query {search:"panjabi"}: the product ids
+3. read   dashboard.product_variants.list: the SKU (variant) ids of each product
+4. read   dashboard.shipping_methods.list: delivery fee for the address
+5. write  dashboard.resources.orders.create needs body.items, body.shippingMinor: customerId, items qty 2, shippingMinor, paymentMethod cod
+6. verify dashboard.resources.orders.get
 Note: This stable operation takes minor units (60 BDT = 6000).
 
 ## Tag every customer with more than 3 orders as VIP
