@@ -724,7 +724,8 @@
 }
 [dir="rtl"] .noor-drawer { inset: 0 0 0 auto; transform: translateX(100%); }
 .noor-drawer:popover-open { transform: none; }
-@starting-style { .noor-drawer:popover-open { transform: translateX(-100%); } }
+/* It slides in from its own edge: the start of the line, the right on a right-to-left page. */
+@starting-style { .noor-drawer:popover-open { transform: translateX(-100%); } [dir="rtl"] .noor-drawer:popover-open { transform: translateX(100%); } }
 .noor-drawer::backdrop { background: rgb(20 16 12 / 0.45); }
 .noor-drawer-top { position: sticky; inset-block-start: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding-block: 0.5rem; padding-inline: 1.25rem 0.5rem; background: var(--n-surface); border-block-end: 1px solid var(--n-line); }
 .noor-drawer-title { font-family: var(--n-serif); font-size: 1.375rem; }
