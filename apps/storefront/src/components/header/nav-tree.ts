@@ -94,13 +94,15 @@ export function navigationDepth(items: readonly NavigationItem[]): number {
 export interface NavigationLinkCost {
   /** A parent that has a link and children adds a "Shop all" / "All X" link (panels and drill levels). */
   allLinks?: boolean;
+  /** A heading (no link of its own) costs as much as a link: an app skin draws every item, linked or not. */
+  headings?: boolean;
 }
 
 /** The anchors a rendering of this tree emits. */
 export function countNavigationLinks(items: readonly NavigationItem[], cost: NavigationLinkCost = {}): number {
   return items.reduce((sum, item) => {
     const children = item.subMenu ?? [];
-    const own = item.href ? 1 : 0;
+    const own = item.href || cost.headings ? 1 : 0;
     const all = cost.allLinks && item.href && children.length > 0 ? 1 : 0;
     return sum + own + all + countNavigationLinks(children, cost);
   }, 0);
@@ -144,7 +146,7 @@ export function pruneNavigation(
     const next: Slot[] = [];
     for (const slot of order) {
       if (slot.parent && !slot.parent.kept) continue;
-      const own = slot.item.href ? 1 : 0;
+      const own = slot.item.href || cost.headings ? 1 : 0;
       const parent = slot.parent;
       const allLink = cost.allLinks && parent?.item.href && parent.keptChildren === 0 ? 1 : 0;
       if (used + own + allLink > maxLinks) continue;

@@ -734,16 +734,26 @@
 .noor-drawer-list a, .noor-drawer-list summary { display: flex; align-items: center; justify-content: space-between; min-block-size: 3.25rem; overflow-wrap: anywhere; color: inherit; font-size: 1rem; font-weight: 500; text-decoration: none; cursor: pointer; list-style: none; }
 .noor-drawer-list summary > span { min-inline-size: 0; }
 .noor-drawer-list summary::-webkit-details-marker { display: none; }
-.noor-drawer-list details[open] > summary > .noor-icon:last-child { transform: rotate(180deg); }
-.noor-drawer-back { display: none; }
+/* A summary's chevron (and, drilled in, its way back) is drawn here, not in
+   the markup: a dense menu costs no icon per item. Two borders of a square
+   turned by --noor-chev point down (logical sides, so the turn flips on a
+   right-to-left page). */
+.noor-drawer-list summary { --noor-chev: 45deg; }
+[dir="rtl"] .noor-drawer-list summary { --noor-chev: -45deg; }
+.noor-drawer-list summary::after, .noor-drawer.is-drill .noor-drawer-list details[open] > summary::before {
+  content: ""; flex: none; inline-size: 0.5rem; block-size: 0.5rem; margin-inline: 0.5rem 0.25rem;
+  border-block-end: 1.6px solid currentColor; border-inline-end: 1.6px solid currentColor; opacity: 0.75;
+  transform: translateY(-25%) rotate(var(--noor-chev)); transition: transform var(--n-fast);
+}
+.noor-drawer-list details[open] > summary::after { transform: translateY(25%) rotate(calc(var(--noor-chev) + 180deg)); }
 /* Drill-in (the theme's phone navigation): an open level covers the one before it; its summary leads back. */
 .noor-drawer.is-drill .noor-drawer-nav { position: relative; min-block-size: 24rem; }
 .noor-drawer.is-drill .noor-drawer-list details[open] { position: absolute; inset: 0; z-index: 1; overflow-y: auto; padding-inline: 1.25rem; background: var(--n-surface); }
-.noor-drawer.is-drill .noor-drawer-list details > summary > .noor-icon:last-child { transform: rotate(-90deg); }
-[dir="rtl"] .noor-drawer.is-drill .noor-drawer-list details > summary > .noor-icon:last-child { transform: rotate(90deg); }
+/* Drilled in: a closed level points ahead (inline end), an open one back (inline start) from its summary. */
+.noor-drawer.is-drill .noor-drawer-list details > summary::after { transform: rotate(calc(var(--noor-chev) * -1)); }
 .noor-drawer.is-drill .noor-drawer-list details[open] > summary { justify-content: flex-start; gap: 0.5rem; font-weight: 600; border-block-end: 1px solid var(--n-line); }
-.noor-drawer.is-drill .noor-drawer-list details[open] > summary > .noor-drawer-back { display: inline-flex; }
-.noor-drawer.is-drill .noor-drawer-list details[open] > summary > .noor-icon:last-child { display: none; }
+.noor-drawer.is-drill .noor-drawer-list details[open] > summary::before { margin-inline: 0.25rem 0; transform: rotate(calc(var(--noor-chev) * 3)); }
+.noor-drawer.is-drill .noor-drawer-list details[open] > summary::after { content: none; }
 .noor-drawer.is-drill .noor-drawer-list details ul { margin: 0; padding-inline-start: 0; border: 0; }
 .noor-drawer.is-drill .noor-drawer-list details li { border-block-end: 1px solid var(--n-line); }
 .noor-drawer.is-drill .noor-drawer-list details a { min-block-size: 3rem; color: inherit; font-size: 1rem; }

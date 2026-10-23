@@ -2572,6 +2572,7 @@ export declare const STOREFRONT_COMPONENT_LIMITS: {
     readonly htmlBytes: number;
     readonly htmlDepth: 48;
     readonly htmlElements: 6000;
+    readonly menuItems: 300;
     readonly renderWallMs: 250;
     readonly renderCpuMs: 50;
     readonly batchJobs: 120;

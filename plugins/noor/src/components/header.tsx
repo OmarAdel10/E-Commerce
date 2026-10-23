@@ -199,21 +199,23 @@ export function MenuLinks({ items, current = NO_CURRENT }: { items: StorefrontMe
   </li>)}</ul>;
 }
 
-function DrawerMenu({ items, context, current, nested = false }: { items: StorefrontMenuItem[]; context: Context; current: MenuCurrent; nested?: boolean }) {
+/**
+ * The phone drawer: every level, each parent a native disclosure whose
+ * summary names it (its chevrons are drawn by the stylesheet, so a dense
+ * menu costs a handful of elements per item) and whose list opens with an
+ * "All X" link to its own page.
+ */
+function DrawerMenu({ items, context, current, parent }: { items: StorefrontMenuItem[]; context: Context; current: MenuCurrent; parent?: StorefrontMenuItem }) {
   return (
-    <ul class={nested ? undefined : "noor-drawer-list"}>
+    <ul class={parent ? undefined : "noor-drawer-list"}>
+      {parent && linked(parent) ? <li><a href={parent.url} aria-current={pageOnly(current, parent)}>{t(context, { en: `All ${parent.title}`, bn: `সব ${parent.title}` })}</a></li> : null}
       {items.map((item) => (
         <li>
           {item.children.length > 0 ? (
+            // One level at a time: an open level covers the one before, and its summary is the way back.
             <details>
-              {/* One level at a time: an open level covers the one before, and its summary is the way back. */}
-              <summary>
-                <span class="noor-drawer-back" aria-hidden="true"><Icon name="back" size={16} /></span>
-                <span>{item.title}</span>
-                <Icon name="down" size={16} />
-              </summary>
-              {linked(item) ? <ul><li><a href={item.url} aria-current={pageOnly(current, item)}>{t(context, { en: `All ${item.title}`, bn: `সব ${item.title}` })}</a></li></ul> : null}
-              <DrawerMenu items={item.children} context={context} current={current} nested />
+              <summary><span>{item.title}</span></summary>
+              <DrawerMenu items={item.children} context={context} current={current} parent={item} />
             </details>
           ) : <ItemLink item={item} current={current} />}
         </li>

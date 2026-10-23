@@ -17072,6 +17072,7 @@
    "htmlBytes": 262144,
    "htmlDepth": 48,
    "htmlElements": 6000,
+   "menuItems": 300,
    "renderWallMs": 250,
    "renderCpuMs": 50,
    "batchJobs": 120,

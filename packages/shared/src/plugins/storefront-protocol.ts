@@ -210,6 +210,16 @@ export const STOREFRONT_COMPONENT_LIMITS = {
   /** Element nesting and element count of one render's markup. */
   htmlDepth: 48,
   htmlElements: 6_000,
+  /**
+   * Items (links and headings) one menu a skin gets carries at most (a
+   * header's `menu` and `categories`, each footer menu): the store's header
+   * menu (150 items) and its category cut (150) fit whole; a larger tree is
+   * cut top levels first, each parent keeping its own link (its page lists
+   * the rest), so every level stays reachable and a header that draws its
+   * menu on computers and again in a phone drawer renders within
+   * `htmlElements`.
+   */
+  menuItems: 300,
   /** A batch's wall time before the storefront falls back to its own blocks. */
   renderWallMs: 250,
   /** CPU one batch may use in its isolate. */
@@ -345,8 +355,9 @@ export interface StorefrontStoreInfo {
 /** What a header skin gets: the store, its header menu and the core routes. */
 export interface StorefrontHeaderData {
   store: StorefrontStoreInfo;
+  /** The header menu: three levels and `STOREFRONT_COMPONENT_LIMITS.menuItems` items at most. */
   menu: StorefrontMenuItem[];
-  /** The top categories with their children, for a category menu. */
+  /** The top categories with their children, for a category menu (within the same bounds). */
   categories: StorefrontMenuItem[];
   announcement: { text: string; url: string | null } | null;
   /**

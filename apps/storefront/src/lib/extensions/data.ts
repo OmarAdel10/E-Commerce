@@ -23,7 +23,7 @@ import type {
   StorefrontSkinnableSection,
   StorefrontTile,
 } from "@scalius/shared/plugins/storefront-protocol";
-import { STOREFRONT_SECTION_SKIN_PROJECTIONS } from "@scalius/shared/plugins/storefront-protocol";
+import { STOREFRONT_COMPONENT_LIMITS, STOREFRONT_SECTION_SKIN_PROJECTIONS } from "@scalius/shared/plugins/storefront-protocol";
 import { STOREFRONT_CORE_ROUTES, STOREFRONT_SEARCH_SCOPE_PARAM as SEARCH_SCOPE_PARAM } from "@scalius/shared/storefront-routes";
 import {
   HOME_PRODUCT_LIST_LIMIT,
@@ -59,7 +59,7 @@ import { getProductImageSrcSet, getProductImageUrl } from "@/lib/product-media";
 import { productGalleryItems } from "@/components/product/lib/gallery-media";
 import { objectFieldViews } from "@/lib/object-fields";
 import { isVariantAvailable } from "@/lib/product-sellable-variants";
-import { navigationFromCategoryTree, sourceNavigation, type NavigationSource } from "@/components/header/nav-tree";
+import { navigationFromCategoryTree, pruneNavigation, sourceNavigation, type NavigationSource } from "@/components/header/nav-tree";
 import { phoneNavigation } from "@/components/header/phone-navigation";
 import { hasSeveralMarkets, marketCountryOptions, selectedMarketCountry } from "@/lib/market-selector";
 import { MARKET_SELECTION_PATH, stripPresencePath, type MarketMatrix } from "@scalius/shared/markets";
@@ -74,20 +74,33 @@ import {
   type HomepageHeaderLead,
 } from "@/lib/homepage-sections";
 
-/** Three levels at most, store paths or https links only; a linked category's photo as the item's image. */
-function menuItems(items: readonly NavigationItem[] | undefined, depth = 1): StorefrontMenuItem[] {
+/** Three levels at most, store paths or https links only. */
+function skinNavigation(items: readonly NavigationItem[] | undefined, depth = 1): NavigationItem[] {
   if (!items || depth > 3) return [];
   return items.flatMap((item) => {
     const url = item.href?.trim() ?? "";
     if (!item.title?.trim() || (url && !/^(?:\/(?!\/)|https:\/\/)/.test(url))) return [];
-    const title = item.title.trim();
-    return [{
-      title,
-      url: url || "#",
-      children: menuItems(item.subMenu, depth + 1),
-      image: item.imageUrl ? storefrontImageOf({ url: item.imageUrl, alt: title }) : null,
-    }];
+    const children = skinNavigation(item.subMenu, depth + 1);
+    return [{ ...item, title: item.title.trim(), href: url || undefined, subMenu: children.length > 0 ? children : undefined }];
   });
+}
+
+/**
+ * A menu as a skin gets it: the tree within `menuItems` (headings count: a
+ * skin draws them too), cut top levels first like the store's own header
+ * (`pruneNavigation`), so a header that
+ * draws it on computers and again in its phone drawer always renders within
+ * the render bounds, and every level stays reachable. A linked category's
+ * photo is the item's image.
+ */
+function menuItems(items: readonly NavigationItem[]): StorefrontMenuItem[] {
+  const convert = (list: readonly NavigationItem[]): StorefrontMenuItem[] => list.map((item) => ({
+    title: item.title,
+    url: item.href || "#",
+    children: convert(item.subMenu ?? []),
+    image: item.imageUrl ? storefrontImageOf({ url: item.imageUrl, alt: item.title }) : null,
+  }));
+  return convert(pruneNavigation(skinNavigation(items), STOREFRONT_COMPONENT_LIMITS.menuItems, { headings: true }));
 }
 
 /** The header's market facts (`StorefrontHeaderData.market`), from the layout read the page already has. */
