@@ -1,8 +1,9 @@
 // Noor's product page (a skin of the store's product page): the store's
 // gallery (one photo at a time with thumbnails, swipe on phones, zoom, the
-// chosen variant's photo) beside the title, brand and rating and the store's
-// own buy form (price, options, buyer inputs, quantity and buttons, kept
-// current by the store), then the description, reviews and related products.
+// chosen variant's photo) beside the brand and title and the store's own buy
+// form (the rating line linked to the reviews, price, options, buyer inputs,
+// quantity and buttons, kept current by the store), then the description,
+// reviews and related products.
 // On computers the buy column stays in view while the page scrolls (the
 // store's sticky column, which also handles a column taller than the
 // window). The gallery, buy form, reviews and recommendations are the
@@ -10,7 +11,7 @@
 
 import { BuyForm, Gallery, Recommendations, Reviews, raw, t, type ProductMainProps } from "@scalius/plugin-sdk/storefront";
 import { Icon } from "./icons";
-import { Stars, choice, cx, ratingLabel, ratingValue, reviewCount } from "./ui";
+import { choice, cx } from "./ui";
 
 interface ProductSkinSettings {
   media_side: string;
@@ -43,12 +44,7 @@ export function ProductPage({ settings, data, context }: ProductMainProps<Produc
           <div class="noor-pdp-buy" data-sticky-column>
             {product.brand ? <p class="noor-eyebrow"><a href={product.brand.url}>{product.brand.title}</a></p> : null}
             <h1 class="noor-h1">{product.title}</h1>
-            {product.rating ? (
-              <p class="noor-rating-line">
-                <Stars value={product.rating.average} label={ratingLabel(context, product.rating.average, product.rating.count)} />
-                <span>{ratingValue(context, product.rating.average)} · {reviewCount(context, product.rating.count)}</span>
-              </p>
-            ) : null}
+            {/* The buy form opens with the store's rating line under the title: one linked summary, not two. */}
             <BuyForm title={false} />
           </div>
         </div>
