@@ -901,12 +901,22 @@
 
 /* ── Marquee ────────────────────────────────────────────────────────────── */
 
-.noor-marquee { overflow: hidden; color: var(--n-bg); background: var(--n-ink); }
+.noor-marquee { display: flex; align-items: center; overflow: hidden; color: var(--n-bg); background: var(--n-ink); }
+.noor-marquee-view { flex: 1; min-inline-size: 0; overflow: hidden; }
 .noor-marquee.style-plain { color: var(--n-ink); background: transparent; border-block: 1px solid var(--n-line); }
 .noor-marquee-track { display: flex; inline-size: max-content; animation: noor-marquee var(--m-speed, 40s) linear infinite; }
 .noor-marquee.speed-slow { --m-speed: 60s; }
 .noor-marquee.speed-fast { --m-speed: 24s; }
 .noor-marquee:hover .noor-marquee-track { animation-play-state: paused; }
+/* The buyer's pause holds until they play it again (the checkbox's state). */
+.noor-marquee:has(.noor-marquee-pause:checked) .noor-marquee-track { animation-play-state: paused; }
+.noor-marquee-toggle { position: relative; flex: none; display: grid; place-items: center; inline-size: 2.75rem; block-size: 2.75rem; margin-inline: 0.25rem 0.5rem; border: 1px solid color-mix(in oklab, currentColor 35%, transparent); border-radius: 999px; color: inherit; cursor: pointer; }
+.noor-marquee-toggle:hover { background: color-mix(in oklab, currentColor 12%, transparent); }
+.noor-marquee-toggle:has(:focus-visible) { outline: 2px solid var(--ring, currentColor); outline-offset: 2px; }
+.noor-marquee-pause { position: absolute; inset: 0; z-index: 1; inline-size: 100%; block-size: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.noor-marquee-icon { display: grid; grid-area: 1 / 1; }
+.noor-marquee-icon.is-play, .noor-marquee-pause:checked ~ .is-pause { display: none; }
+.noor-marquee-pause:checked ~ .is-play { display: grid; }
 .noor-marquee-run { display: flex; margin: 0; padding: 0; list-style: none; }
 .noor-marquee-run li { display: flex; align-items: center; gap: 1.75rem; padding-block: 0.75rem; padding-inline: 1.75rem 0; font-size: 0.875rem; font-weight: 500; letter-spacing: 0.04em; white-space: nowrap; }
 .noor-marquee-sep { opacity: 0.55; }
@@ -1303,6 +1313,8 @@ body:has(.noor-bar) { padding-block-end: 4.5rem; }
 
 @media (prefers-reduced-motion: reduce) {
   .noor-s *, .noor-header-shell *, .noor-marquee *, .noor-card * { animation: none !important; transition-duration: 1ms !important; }
+  /* Nothing moves, so there is nothing to pause. */
+  .noor-marquee-toggle { display: none; }
 }
 
 /* Focus: the store's ring, visible on every control Noor draws. */

@@ -45,10 +45,23 @@ export function Marquee({ settings, context }: SectionProps<MarqueeSettings>) {
       )))}
     </ul>
   );
+  // Moving text needs a way to stop it (WCAG 2.2.2): a native checkbox, so
+  // it works before any script, by keyboard (Space) and by touch, and its
+  // state holds until the buyer changes it (hover only pauses for a moment).
+  // Under reduced motion nothing moves and the control is not drawn.
+  const pause = t(context, { en: "Pause moving text", bn: "চলমান লেখা থামান" });
   return (
     <section class={cx("noor-marquee", `speed-${choice(settings.speed, ["slow", "normal", "fast"] as const, "normal")}`, `style-${choice(settings.style, ["solid", "plain", "outline"] as const, "solid")}`)}
       aria-label={t(context, { en: "Highlights", bn: "হাইলাইট" })}>
-      <div class="noor-marquee-track">{run(false)}{run(true)}</div>
+      <div class="noor-marquee-view">
+        <div class="noor-marquee-track">{run(false)}{run(true)}</div>
+      </div>
+      <label class="noor-marquee-toggle" title={pause}>
+        <input type="checkbox" class="noor-marquee-pause" />
+        <span class="noor-sr">{pause}</span>
+        <span class="noor-marquee-icon is-pause"><Icon name="pause" size={16} /></span>
+        <span class="noor-marquee-icon is-play"><Icon name="play" size={16} /></span>
+      </label>
     </section>
   );
 }

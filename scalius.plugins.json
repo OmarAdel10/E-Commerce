@@ -11,9 +11,9 @@
     },
     {
       "id": "scalius.noor",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "source": "plugins/noor",
-      "sha256": "7d58865bf6cd251239453829f98c504cc9601883fddfadd2649d6426ee1c8185"
+      "sha256": "6f387e89e6eafba6c439220dec0bc31d427becb9fe81eab9e6ac0a51f0089742"
     }
   ]
 }
