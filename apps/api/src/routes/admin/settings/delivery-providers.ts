@@ -30,17 +30,6 @@ const DELIVERY_PROVIDER_PAGE_LIMIT = 10;
 type AppRouteHandler<R extends RouteConfig> = RouteHandler<R, { Bindings: Env }>;
 type AppRouteContext<R extends RouteConfig> = Parameters<AppRouteHandler<R>>[0];
 
-function safeProviderTestResult(result: { success?: unknown }): {
-    success: boolean;
-    message: string;
-} {
-    const success = result.success === true;
-    return {
-        success,
-        message: success ? "Connection successful" : "Connection failed",
-    };
-}
-
 type DeliveryProviderRouteRecord = NonNullable<Awaited<ReturnType<typeof getDeliveryProvider>>>;
 
 function requiredTimestampForClient(value: Date | number | string): string | number {
@@ -310,9 +299,9 @@ app.openapi(testExistingRoute, async (c) => {
     const { id } = c.req.valid("param");
     const provider = await getDeliveryProvider(db, id);
     if (!provider) throw new NotFoundError("Provider not found");
+    // The courier app's own answer (merchant-safe), or the setup to finish: what Shipping shows.
     const result = await testDeliveryProvider(db, id, getCredentialEncryptionKey(c.env as Record<string, unknown>), requestCourierProviders(c));
-
-    return ok(c, safeProviderTestResult(result));
+    return ok(c, result);
 });
 
 // ── Delete Provider ──
