@@ -1,4 +1,5 @@
-import type { CustomizationSchema } from "@scalius/shared/line-properties";
+import { lineInputIssues, lineInputLength, type CustomizationSchema } from "@scalius/shared/line-properties";
+import { cn } from "@scalius/shared/utils";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -10,18 +11,44 @@ import { Field } from "~/components/ui/field";
 
 export const linePropertyFieldId = (key: string) => `line-property-${key}`;
 
+/** A message under one buyer input. */
+export interface LinePropertyError {
+  key: string;
+  message: string;
+}
+
+/**
+ * What the buyer would be told before the line is added: the shared
+ * per-field rule (`lineInputIssues`, as the storefront and the server judge
+ * the inputs), one message per field in schema order.
+ */
+export function linePropertyErrors(
+  schema: CustomizationSchema,
+  values: Readonly<Record<string, string>>,
+  t: (key: "inputRequired" | "inputInvalid" | "inputTooLong", vars: Record<string, string | number>) => string,
+): LinePropertyError[] {
+  const entries = schema.fields.map((field) => ({ key: field.key, value: values[field.key] ?? "" }));
+  return lineInputIssues(schema, entries).map(({ key, problem }) => {
+    const label = schema.fields.find((field) => field.key === key)?.label ?? "";
+    const message = problem.kind === "too_long"
+      ? t("inputTooLong", { label, max: problem.maxLength })
+      : t(problem.kind === "required" ? "inputRequired" : "inputInvalid", { label });
+    return { key, message };
+  });
+}
+
 /**
  * The product's buyer inputs for a line added by staff, as the buyer sees
  * them on the product page: labelled fields with character counts, choices
  * showing "+৳200", a box to tick. Values are buyer content: they go in the
  * request body only.
  */
-export function LinePropertyFields({ schema, values, onChange, error, surcharge }: {
+export function LinePropertyFields({ schema, values, onChange, errors, surcharge }: {
   schema: CustomizationSchema;
   values: Readonly<Record<string, string>>;
   onChange: (key: string, value: string) => void;
-  /** The field the last Add was refused for, with why. */
-  error: { key: string | null; message: string } | null;
+  /** Why the last Add was refused, under each field it names (`linePropertyErrors`). */
+  errors: readonly LinePropertyError[];
   /** Formats a surcharge in minor units. */
   surcharge: (priceMinor: number) => string;
 }) {
@@ -33,11 +60,12 @@ export function LinePropertyFields({ schema, values, onChange, error, surcharge 
       {schema.fields.map((field) => {
         const id = linePropertyFieldId(field.key);
         const value = values[field.key] ?? "";
-        const invalid = error?.key === field.key;
+        const fieldError = errors.find((entry) => entry.key === field.key);
+        const invalid = Boolean(fieldError);
         const describedBy = [field.help ? `${id}-help` : null, invalid ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
         const label = `${field.label}${field.required ? "" : ` ${t("optional")}`}`;
         const help = field.help ? <p id={`${id}-help`} className="text-body text-muted-foreground">{field.help}</p> : null;
-        const message = invalid ? <p id={`${id}-error`} className="text-body text-destructive">{error!.message}</p> : null;
+        const message = invalid ? <p id={`${id}-error`} className="text-body text-destructive">{fieldError!.message}</p> : null;
         if (field.type === "checkbox") {
           return (
             <div key={field.key} className="space-y-1">
@@ -60,7 +88,7 @@ export function LinePropertyFields({ schema, values, onChange, error, surcharge 
         }
         return (
           <div key={field.key} className="flex flex-col gap-1">
-            <Field id={id} label={field.type === "select" ? label : `${label}${extra(field.priceMinor)}`} help={field.help} error={invalid ? error!.message : undefined}>
+            <Field id={id} label={field.type === "select" ? label : `${label}${extra(field.priceMinor)}`} help={field.help} error={fieldError?.message}>
             {field.type === "select" ? (
               <SearchableSelect
                 id={id}
@@ -92,8 +120,12 @@ export function LinePropertyFields({ schema, values, onChange, error, surcharge 
             )}
             </Field>
             {field.type === "select" ? null : (
-              <p className="text-end text-body text-muted-foreground tabular-nums" aria-live="polite">
-                {t("characterCount", { count: [...value].length, max: field.maxLength })}
+              // Over the limit the count turns red, as on the product page.
+              <p
+                className={cn("text-end text-body tabular-nums", lineInputLength(value) > field.maxLength ? "text-destructive" : "text-muted-foreground")}
+                aria-live="polite"
+              >
+                {t("characterCount", { count: lineInputLength(value), max: field.maxLength })}
               </p>
             )}
           </div>
