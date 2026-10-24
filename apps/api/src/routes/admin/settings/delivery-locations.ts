@@ -21,42 +21,13 @@ import {
     placeLevelName,
     placeLevels,
 } from "@scalius/shared/places";
-import { isReady, readinessMessages } from "@scalius/shared/readiness";
-import { getCheckoutDeliveryReadiness } from "@scalius/core/modules/checkout";
 import { NotFoundError, ValidationError } from "../../../utils/api-error";
 
 import { ok, created } from "../../../utils/api-response";
 import { successEnvelope, paginatedEnvelope, messageResponse, errorResponses } from "../../../schemas/responses";
 
 const app = new OpenAPIHono<{ Bindings: Env }>();
-const CHECKOUT_BREAKING_LOCATION_MESSAGE =
-    "This change would make checkout unavailable. Keep at least one active city with an active thana.";
 type AppRouteHandler<R extends RouteConfig> = RouteHandler<R, { Bindings: Env }>;
-
-async function assertDeliveryLocationsCanBeRemovedFromCheckout(
-    db: Parameters<typeof getCheckoutDeliveryReadiness>[0],
-    ids: readonly string[],
-) {
-    const [currentReadiness, nextReadiness] = await Promise.all([
-        getCheckoutDeliveryReadiness(db),
-        getCheckoutDeliveryReadiness(db, { excludeDeliveryLocationIds: ids }),
-    ]);
-    if (isReady(currentReadiness) && !isReady(nextReadiness)) {
-        throw new ValidationError([CHECKOUT_BREAKING_LOCATION_MESSAGE, ...readinessMessages(nextReadiness)].join(" "));
-    }
-}
-
-async function assertAllDeliveryLocationsCanBeRemovedFromCheckout(
-    db: Parameters<typeof getCheckoutDeliveryReadiness>[0],
-) {
-    const currentReadiness = await getCheckoutDeliveryReadiness(db);
-    if (isReady(currentReadiness)) {
-        throw new ValidationError([
-            CHECKOUT_BREAKING_LOCATION_MESSAGE,
-            "Deleting all delivery locations would remove every active city and thana.",
-        ].join(" "));
-    }
-}
 
 /** A level's name in an API message ("thana"). */
 const levelWord = (countryCode: string, level: number) => placeLevelName(countryCode, level, "en").toLowerCase();
@@ -75,7 +46,7 @@ function assertLevel(countryCode: string, level: number) {
 }
 
 async function assertValidLocationParent(
-    db: Parameters<typeof getCheckoutDeliveryReadiness>[0],
+    db: Parameters<typeof createPlace>[0],
     countryCode: string,
     level: number,
     parentId: string | null | undefined,
@@ -111,7 +82,7 @@ async function assertValidLocationParent(
 }
 
 async function assertActiveLocationIdentityAvailable(
-    db: Parameters<typeof getCheckoutDeliveryReadiness>[0],
+    db: Parameters<typeof createPlace>[0],
     countryCode: string,
     level: number,
     parentId: string | null | undefined,
@@ -484,8 +455,6 @@ app.openapi(deleteAllRoute, async (c) => {
     }
     const countryCode = countryOf(rawCountry);
     const db = c.get("db");
-    // Checkout reads Bangladesh's places only.
-    if (countryCode === PLACE_ADDRESS_COUNTRY) await assertAllDeliveryLocationsCanBeRemovedFromCheckout(db);
     await db.delete(places).where(eq(places.countryCode, countryCode));
 
     return ok(c, { message: "All delivery locations have been permanently deleted." });
@@ -514,7 +483,6 @@ app.openapi(bulkDeleteRoute, async (c) => {
     try {
         const db = c.get("db");
         const { ids } = c.req.valid("json");
-        await assertDeliveryLocationsCanBeRemovedFromCheckout(db, ids);
         await deletePlaces(db, ids);
 
         return ok(c, { message: `${ids.length} locations deleted successfully.` });
@@ -603,13 +571,6 @@ app.openapi(updateLocationRoute, async (c) => {
             id,
         );
 
-        const removesCurrentLocationFromReadiness =
-            currentLocation.isActive &&
-            parsedData.isActive === false;
-        if (removesCurrentLocationFromReadiness) {
-            await assertDeliveryLocationsCanBeRemovedFromCheckout(db, [id]);
-        }
-
         const updatedLocation = await updatePlace(db, id, parsedData);
 
         if (!updatedLocation) throw new NotFoundError("Location not found");
@@ -642,21 +603,12 @@ app.openapi(deleteLocationRoute, async (c) => {
     const db = c.get("db");
     const { id } = c.req.valid("param");
     const currentLocation = await db
-        .select({
-            id: places.id,
-            countryCode: places.countryCode,
-            level: places.level,
-            isActive: places.isActive,
-        })
+        .select({ id: places.id })
         .from(places)
         .where(and(eq(places.id, id), isNull(places.deletedAt)))
         .get();
 
     if (!currentLocation) throw new NotFoundError("Location not found");
-    // Checkout needs an active Bangladesh city with an active thana.
-    if (currentLocation.isActive && currentLocation.countryCode === PLACE_ADDRESS_COUNTRY && currentLocation.level <= 2) {
-        await assertDeliveryLocationsCanBeRemovedFromCheckout(db, [id]);
-    }
 
     await deletePlaces(db, [id]);
 

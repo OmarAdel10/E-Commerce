@@ -24,8 +24,6 @@ import { selectSettingsDocuments } from "../../settings-store";
 import { checkoutDocument, customerAuthDocument } from "../settings";
 
 export interface CheckoutReadinessOptions {
-    excludeShippingMethodIds?: readonly string[];
-    excludeDeliveryLocationIds?: readonly string[];
     encryptionKey?: string;
     runtimeEnv?: Record<string, unknown>;
     /** The app providers a saved SMS or email choice may name. */

@@ -84,7 +84,7 @@ Callers:
 
 ## Dashboard
 
-Settings, Shipping, Delivery areas lists one country at a time. The selector shows the countries that have places and Add country. Each level of the country is a tab. Delete all deletes one country's places.
+Settings, Shipping, Delivery areas lists one country at a time. The selector shows the countries that have places and Add country. Each level of the country is a tab. Delete all deletes one country's places. Merchants can remove or deactivate the final Bangladesh city/thana hierarchy, for example to pause physical delivery. Public checkout still supports digital and service orders; a physical quote/order must validate its current address and delivery option. Placed orders retain their frozen address fields. Parent/identity validation and mutation permissions remain in force.
 
 ## API
 
@@ -93,5 +93,5 @@ Settings, Shipping, Delivery areas lists one country at a time. The selector sho
 | `GET /api/v1/admin/settings/delivery-locations?country=&level=&parentId=&search=` | List places. `descendants` counts live places under each place, by level. |
 | `GET /api/v1/admin/settings/delivery-locations/countries` | The countries with live places, with counts. |
 | `POST /api/v1/admin/settings/delivery-locations` | Create a merchant place: `countryCode`, `level`, `parentId`, `name`. |
-| `DELETE /api/v1/admin/settings/delivery-locations/all` | Hard-delete one country's places (`countryCode`). Refused for Bangladesh while checkout depends on them. |
+| `DELETE /api/v1/admin/settings/delivery-locations/all` | Hard-delete one country's places (`countryCode`), with `confirmDeleteAll: true`. Other countries remain unchanged. |
 | `GET /api/v1/locations/cities`, `/zones?cityId=`, `/areas?zoneId=` (and `/summaries`) | Public Bangladesh pickers, unchanged. |

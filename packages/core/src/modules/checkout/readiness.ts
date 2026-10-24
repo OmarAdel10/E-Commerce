@@ -6,7 +6,7 @@
 import type { Database } from "@scalius/database/client";
 import { places, shippingMethods } from "@scalius/database/schema";
 import { PLACE_ADDRESS_COUNTRY } from "@scalius/shared/places";
-import { and, eq, isNull, not, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { mergeReadiness, readiness, type ReadinessIssue } from "@scalius/shared/readiness";
 import {
@@ -16,19 +16,11 @@ import {
     type CheckoutReadiness,
 } from "@scalius/shared/checkout-readiness";
 import { deps } from "../../cache-deps";
-import { inJsonArray } from "../../utils/in-json-array";
 import { type CheckoutReadinessOptions, getCustomerSignInReadiness } from "../customers";
-
-function uniqueIds(ids: readonly string[] | undefined): string[] {
-    return [...new Set((ids ?? []).map((id) => id.trim()).filter(Boolean))];
-}
 
 export async function getCheckoutDeliveryReadiness(
     db: Database,
-    options: CheckoutReadinessOptions = {},
 ): Promise<CheckoutDeliveryReadiness> {
-    const excludedShippingMethodIds = uniqueIds(options.excludeShippingMethodIds);
-    const excludedDeliveryLocationIds = uniqueIds(options.excludeDeliveryLocationIds);
     deps.shipping();
     deps.locations();
 
@@ -36,9 +28,6 @@ export async function getCheckoutDeliveryReadiness(
         eq(shippingMethods.isActive, true),
         isNull(shippingMethods.deletedAt),
     ];
-    if (excludedShippingMethodIds.length > 0) {
-        shippingConditions.push(not(inJsonArray(shippingMethods.id, excludedShippingMethodIds)));
-    }
 
     // An active thana (level 2) under an active Bangladesh city (level 1).
     const zoneConditions: SQL[] = [
@@ -47,13 +36,6 @@ export async function getCheckoutDeliveryReadiness(
         eq(places.isActive, true),
         isNull(places.deletedAt),
     ];
-    if (excludedDeliveryLocationIds.length > 0) {
-        zoneConditions.push(not(inJsonArray(places.id, excludedDeliveryLocationIds)));
-    }
-
-    const excludedCityPredicate: SQL = excludedDeliveryLocationIds.length > 0
-        ? sql`AND ${not(inJsonArray(sql`city.id`, excludedDeliveryLocationIds))}`
-        : sql``;
     zoneConditions.push(sql`
         EXISTS (
             SELECT 1
@@ -62,7 +44,6 @@ export async function getCheckoutDeliveryReadiness(
               AND city.level = 1
               AND city.is_active = 1
               AND city.deleted_at IS NULL
-              ${excludedCityPredicate}
         )
     `);
 
@@ -101,7 +82,7 @@ export async function getCheckoutReadiness(
     } = {},
 ): Promise<CheckoutReadiness> {
     const [delivery, signIn] = await Promise.all([
-        getCheckoutDeliveryReadiness(db, options),
+        getCheckoutDeliveryReadiness(db),
         getCustomerSignInReadiness(db, options),
     ]);
     const value = options.requireDeliverySetup === false ? signIn : mergeReadiness(delivery, signIn);

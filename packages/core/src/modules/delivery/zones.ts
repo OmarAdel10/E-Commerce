@@ -855,19 +855,6 @@ async function liveRateIds(db: Database, zoneId: string | null): Promise<string[
 }
 
 /**
- * Checkout needs at least one active rate: a write may not remove the last
- * one (unless the store never had one).
- */
-async function assertCheckoutKeepsARate(db: Database, zoneId: string | null, nextActive: number) {
-    if (nextActive > 0) return;
-    const rows = await db.select({ zoneId: shippingMethods.zoneId }).from(shippingMethods)
-        .where(and(eq(shippingMethods.isActive, true), isNull(shippingMethods.deletedAt)));
-    if (rows.length > 0 && rows.every((row) => (row.zoneId ?? null) === zoneId)) {
-        throw new ValidationError("Keep at least one active delivery rate so buyers can check out.");
-    }
-}
-
-/**
  * Soft-deletes rates the merchant removed, updates kept ones in place (ids
  * stay stable for orders that reference them) and inserts new ones.
  */
@@ -1062,7 +1049,6 @@ export async function updateDeliveryZone(
     const zone = parseZone(input, currency);
     await assertLocationsAssignable(db, id, zone.locationIds);
     await assertRegionsAssignable(db, id, zone.regions);
-    await assertCheckoutKeepsARate(db, id, zone.rates.filter((rate) => rate.isActive).length);
     try {
         await safeBatch(db, [
             // The whole write applies only to the revision the merchant edited.
@@ -1113,7 +1099,7 @@ export async function updateDeliveryZoneRate(
     if (current.revision !== expectedRevision) {
         throw new SettingsRevisionConflictError("delivery_zone", expectedRevision, current.revision);
     }
-    const rate = await db.select({ id: shippingMethods.id, isActive: shippingMethods.isActive }).from(shippingMethods)
+    const rate = await db.select({ id: shippingMethods.id }).from(shippingMethods)
         .where(and(eq(shippingMethods.id, rateId), eq(shippingMethods.zoneId, zoneId), isNull(shippingMethods.deletedAt))).get();
     if (!rate) throw new NotFoundError("Delivery rate not found in this zone");
     const issues: Issue[] = [];
@@ -1125,11 +1111,6 @@ export async function updateDeliveryZoneRate(
     if (patch.isActive !== undefined) values.isActive = patch.isActive;
     if (Object.keys(values).length === 0) issues.push({ path: [], message: "Change the fee, the free-delivery threshold or whether the rate is active." });
     throwIssues(issues);
-    if (patch.isActive === false && rate.isActive) {
-        const active = await db.select({ id: shippingMethods.id }).from(shippingMethods)
-            .where(and(eq(shippingMethods.zoneId, zoneId), eq(shippingMethods.isActive, true), isNull(shippingMethods.deletedAt)));
-        await assertCheckoutKeepsARate(db, zoneId, active.length - 1);
-    }
     try {
         await safeBatch(db, [
             buildBatchGuard(
@@ -1157,7 +1138,6 @@ export async function updateDeliveryZoneRate(
 export async function deleteDeliveryZone(db: Database, id: string): Promise<void> {
     const existing = await db.select({ id: deliveryZones.id }).from(deliveryZones).where(eq(deliveryZones.id, id)).get();
     if (!existing) throw new NotFoundError("Shipping zone not found");
-    await assertCheckoutKeepsARate(db, id, 0);
     await safeBatch(db, [
         db.update(shippingMethods).set({ deletedAt: now, updatedAt: now })
             .where(and(eq(shippingMethods.zoneId, id), isNull(shippingMethods.deletedAt))),
@@ -1175,7 +1155,6 @@ export async function updatePickupRates(
     const issues: Issue[] = [];
     const parsed = parseRates(rates, currency, issues, "pickup");
     throwIssues(issues);
-    await assertCheckoutKeepsARate(db, null, parsed.filter((rate) => rate.isActive).length);
     try {
         const { revision } = await pickupDocument.write(db, {}, undefined, {
             expectedRevision,
