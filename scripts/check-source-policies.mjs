@@ -52,6 +52,21 @@ export const policies = [
     sample: 'const total = new Intl.NumberFormat("en-IN").format(amount);',
   },
   {
+    rule: "storefront scripts write a buyer's words from the page's catalogue, never an English literal",
+    why: "a script that sets text or a label to an English string shows English on a Bangla store; markup words are checked by buyerEnglishViolations, script words here (apps/storefront/src/lib/*-copy.ts, or a data attribute the page fills)",
+    paths: [storefront, "plugins"],
+    extensions: [".ts", ".tsx", ".astro"],
+    allow: {
+      "apps/storefront/src/pages/agent/continue/[continuationId].astro": "an agent's secure hand-off page renders before any store read",
+      "apps/storefront/src/lib/browser-continuation-relay.ts": "the same hand-off, before any store read",
+    },
+    forbid: [
+      /\.(?:textContent|innerText|placeholder|title|ariaLabel)\s*=\s*["'`][^"'`$]*[A-Za-z]{3,}/,
+      /setAttribute\(\s*["'](?:aria-label|aria-description|title|placeholder|alt)["']\s*,\s*["'`][^"'`$]*[A-Za-z]{3,}/,
+    ],
+    sample: 'status.textContent = "This action could not be completed. Try again.";',
+  },
+  {
     rule: "storefront money is formatted through @/lib/currency, never the shared formatters directly",
     why: "the storefront wrapper writes amounts in the page's digits (৳১,৭৫০ on a Bangla page); the shared formatters default to Latin digits, so a direct import mixes digit systems on one page",
     paths: [storefront],
@@ -471,6 +486,166 @@ function collectPhysicalUtilityViolations() {
     .flatMap((file) => physicalUtilityViolations([{ name: relative(root, file), text: readFileSync(file, "utf8") }]));
 }
 
+// ---------------------------------------------------------------------------
+// Buyer words come from the storefront's English and Bangla catalogues
+// ---------------------------------------------------------------------------
+
+/** Attributes a buyer reads or a screen reader speaks. */
+const BUYER_TEXT_ATTRIBUTES = new Set(["aria-label", "aria-description", "aria-roledescription", "aria-valuetext", "placeholder", "title", "alt", "label"]);
+/** Text that reads the same in every language: symbols and digits, one lowercase token (a key cap, a unit), a format mask, a link or an address. */
+const LANGUAGE_NEUTRAL_TEXT = /^(?:[^A-Za-z]*|[a-z][a-z0-9_-]*|[0-9X#-]{4,}|https?:\/\/\S+|[\w.+-]+@[\w.-]+)$/;
+/** Names no language translates. */
+const NEVER_TRANSLATED = new Set(["WhatsApp", "Messenger", "Facebook", "Instagram", "Google", "bKash", "Nagad", "Visa", "Mastercard", "PayPal", "Stripe"]);
+
+/**
+ * Storefront files whose words are not the buyer's (file -> reason), or the
+ * few English values one file may hold (file -> { reason, text }).
+ */
+export const BUYER_ENGLISH_ALLOW = {
+  "apps/storefront/src/pages/theme-preview.astro": "the merchant's draft preview shell (staff from the theme editor, never buyers); it reads no store language",
+  "apps/storefront/src/pages/theme-preview/library.astro": "the theme editor's section library frame (staff, never buyers)",
+  "apps/storefront/src/pages/agent/continue/[continuationId].astro": "an agent's secure hand-off page: it renders before any store read, so its words cannot follow the store language yet",
+  "apps/storefront/src/components/newsletter/NewsletterForm.astro": { reason: "the bot trap's label: hidden from people and assistive technology", text: ["Company website"] },
+};
+
+function isBuyerEnglish(raw) {
+  const text = raw.replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+  return /[A-Za-z]{2,}/.test(text) && !LANGUAGE_NEUTRAL_TEXT.test(text) && !NEVER_TRANSLATED.has(text);
+}
+
+/**
+ * Hard-coded English a buyer would read in a TSX or parsed Astro expression:
+ * text between tags, a text attribute's literal, and the literal a child
+ * expression or a text attribute can evaluate to (`{open ? "Close" : "Open"}`,
+ * `{label ?? "Search"}`, `` {`${count} items`} ``). Calls are not followed:
+ * a catalogue lookup is the way out.
+ */
+function jsxBuyerEnglish(source, node, report) {
+  const branches = (expression) => {
+    if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)) return branches(expression.expression);
+    if (ts.isConditionalExpression(expression)) return [expression.whenTrue, expression.whenFalse].forEach(branches);
+    if (ts.isBinaryExpression(expression)) {
+      const operator = expression.operatorToken.kind;
+      if (operator === ts.SyntaxKind.BarBarToken || operator === ts.SyntaxKind.QuestionQuestionToken) branches(expression.left);
+      if (operator === ts.SyntaxKind.AmpersandAmpersandToken || operator === ts.SyntaxKind.BarBarToken || operator === ts.SyntaxKind.QuestionQuestionToken) branches(expression.right);
+      return;
+    }
+    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
+      if (isBuyerEnglish(expression.text)) report(expression, JSON.stringify(expression.text));
+    } else if (ts.isTemplateExpression(expression)) {
+      const words = [expression.head.text, ...expression.templateSpans.map((span) => span.literal.text)].join(" ");
+      if (/[A-Za-z]{2,}/.test(words)) report(expression, expression.getText(source));
+    }
+  };
+  const visit = (child) => {
+    if (ts.isJsxText(child)) {
+      if (isBuyerEnglish(child.text)) report(child, child.text);
+    } else if (ts.isJsxExpression(child) && child.expression && (ts.isJsxElement(child.parent) || ts.isJsxFragment(child.parent))) {
+      branches(child.expression);
+    } else if (ts.isJsxAttribute(child) && child.initializer && BUYER_TEXT_ATTRIBUTES.has(child.name.getText(source))) {
+      if (ts.isStringLiteral(child.initializer)) {
+        if (isBuyerEnglish(child.initializer.text)) report(child, `${child.name.getText(source)}=${JSON.stringify(child.initializer.text)}`);
+      } else if (ts.isJsxExpression(child.initializer) && child.initializer.expression) {
+        branches(child.initializer.expression);
+      }
+    }
+    ts.forEachChild(child, visit);
+  };
+  if (node.kind !== ts.SyntaxKind.SourceFile) branches(node);
+  visit(node);
+}
+
+/**
+ * The end of the `{ ... }` expression opened at `start`, skipping comments,
+ * strings, templates and nested braces (an apostrophe after a letter is a
+ * word's, as in JSX text: "store's").
+ */
+function closingBrace(text, start) {
+  let depth = 0;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "/" && text[index + 1] === "/") {
+      index = text.indexOf("\n", index);
+      if (index === -1) return text.length;
+    } else if (char === "/" && text[index + 1] === "*") {
+      index = text.indexOf("*/", index + 2) + 1;
+      if (index === 0) return text.length;
+    } else if (char === "'" && /[\p{L}\p{N}]/u.test(text[index - 1] ?? "")) {
+      continue;
+    } else if (char === '"' || char === "'" || char === "`") {
+      for (index += 1; index < text.length && text[index] !== char; index += 1) if (text[index] === "\\") index += 1;
+    } else if (char === "{") depth += 1;
+    else if (char === "}" && (depth -= 1) === 0) return index;
+  }
+  return text.length;
+}
+
+/**
+ * Hard-coded buyer English in storefront TSX islands and Astro templates
+ * (frontmatter, scripts and styles aside). Words come from the en + bn
+ * catalogues (lib/*-copy.ts); a Bangla store otherwise shows English.
+ */
+export function buyerEnglishViolations(files, allow = BUYER_ENGLISH_ALLOW) {
+  const violations = [];
+  for (const { name, text } of files) {
+    const allowed = allow[name];
+    if (typeof allowed === "string") continue;
+    const allowedText = new Set(allowed?.text ?? []);
+    const found = [];
+    const lineAt = (offset) => text.slice(0, offset).split("\n").length;
+    const record = (offset, value) => {
+      const words = value.replace(/\s+/g, " ").trim();
+      if (!allowedText.has(words.replace(/^"|"$/g, ""))) found.push(`${name}:${lineAt(offset)}: ${words}`);
+    };
+    const scan = (code, offset, astroContext) => {
+      const kind = name.endsWith(".tsx") || astroContext ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+      const source = ts.createSourceFile(name, astroContext ? `(${code}\n)` : code, ts.ScriptTarget.Latest, true, kind);
+      const shift = astroContext ? offset - 1 : 0;
+      const report = (node, value) => record(node.getStart(source) + shift, value);
+      if (!astroContext) return jsxBuyerEnglish(source, source, report);
+      const statement = source.statements[0];
+      if (!statement || !ts.isExpressionStatement(statement)) return;
+      jsxBuyerEnglish(source, statement.expression.expression, report);
+    };
+    if (name.endsWith(".tsx")) {
+      scan(text, 0);
+    } else {
+      const frontmatter = /^---\n[\s\S]*?\n---\n/.exec(text);
+      let markup = text.slice(0, frontmatter?.[0].length ?? 0).replace(/[^\n]/g, " ") + text.slice(frontmatter?.[0].length ?? 0);
+      // A script or style (self-closing too: `<script set:html={json} />`) and a comment carry no buyer words.
+      markup = markup.replace(/<(script|style)\b(?:[^<>]*?\/>|[^<>]*?>[\s\S]*?<\/\1>)|<!--[\s\S]*?-->/g, (block) => block.replace(/[^\n]/g, " "));
+      let template = "";
+      for (let index = 0; index < markup.length; index += 1) {
+        if (markup[index] !== "{") {
+          template += markup[index];
+          continue;
+        }
+        const end = closingBrace(markup, index);
+        const attribute = /([\w:@.-]+)=$/.exec(template.slice(-80))?.[1];
+        const inTag = template.lastIndexOf("<") > template.lastIndexOf(">");
+        if (!inTag) scan(markup.slice(index + 1, end), index + 1, "child");
+        else if (attribute && BUYER_TEXT_ATTRIBUTES.has(attribute)) scan(markup.slice(index + 1, end), index + 1, "text-attribute");
+        template += markup.slice(index, end + 1).replace(/[^\n]/g, " ");
+        index = end;
+      }
+      for (const match of template.matchAll(/>([^<>]+)</g)) if (isBuyerEnglish(match[1])) record(match.index + 1, match[1]);
+      for (const match of template.matchAll(/\s([\w:-]+)=(["'])(.*?)\2/g)) {
+        if (BUYER_TEXT_ATTRIBUTES.has(match[1]) && isBuyerEnglish(match[3])) record(match.index + 1, `${match[1]}=${JSON.stringify(match[3])}`);
+      }
+    }
+    violations.push(...found);
+  }
+  return violations;
+}
+
+function collectBuyerEnglishViolations() {
+  // Theme plugins draw buyer pages too; their words go through t(context, { en, bn }).
+  const plugins = readdirSync(resolve(root, "plugins")).map((plugin) => `plugins/${plugin}/src`).filter((path) => existsSync(resolve(root, path)));
+  return [`${storefront}/components`, `${storefront}/pages`, `${storefront}/layouts`, ...plugins]
+    .flatMap((path) => codeFiles(path, new Set([".tsx", ".astro"])))
+    .flatMap((file) => buyerEnglishViolations([{ name: relative(root, file), text: readFileSync(file, "utf8") }]));
+}
+
 export function collectSourcePolicyViolations() {
   const violations = policies.flatMap((policy) => policyViolations(
     policy,
@@ -484,6 +659,7 @@ export function collectSourcePolicyViolations() {
   ).map((violation) => `${policy.rule}\n    ${violation}`));
   return [
     ...violations,
+    ...collectBuyerEnglishViolations().map((v) => `storefront buyer words come from the en + bn catalogues (apps/storefront/src/lib/*-copy.ts), so a Bangla store never shows English\n    ${v}`),
     ...collectPhysicalUtilityViolations().map((v) => `dashboard and storefront classes use logical sides (ms-, pe-, inset-s-, text-start), so right-to-left pages mirror\n    ${v}`),
     ...mutableModuleVariables().map((v) => `no mutable module state\n    ${v}`),
     ...collectCoreBoundaryViolations().map((v) => `core domain boundaries (scripts/core-boundaries.mjs)\n    ${v}`),
@@ -497,6 +673,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     for (const violation of violations) console.error(`- ${violation}`);
     process.exitCode = 1;
   } else {
-    console.log(`Source policy check: OK (${policies.length + 3} policies)`);
+    console.log(`Source policy check: OK (${policies.length + 4} policies)`);
   }
 }
