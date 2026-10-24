@@ -56,6 +56,24 @@ function refundedLineQuantitySql() {
           AND ${qualifiedColumn(orderRefunds.status)} <> 'failed')`;
 }
 
+/** A failed refund can restore owed units, including an entire line omitted from preparation. */
+function autoLineObligationsUnchangedCondition(
+    orderId: string,
+    type: FulfillmentType,
+    lines: readonly { id: string; quantity: number; refundedQuantity: number }[],
+) {
+    const snapshot = JSON.stringify(lines.map(({ id, quantity, refundedQuantity }) => ({ id, quantity, refundedQuantity })));
+    return sql`(SELECT count(*) FROM ${orderItems}
+        WHERE ${orderItems.orderId} = ${orderId} AND ${orderItems.fulfillmentType} = ${type}) = ${lines.length}
+        AND NOT EXISTS (SELECT 1 FROM json_each(${snapshot}) AS expected
+            WHERE NOT EXISTS (SELECT 1 FROM ${orderItems}
+                WHERE ${orderItems.orderId} = ${orderId}
+                  AND ${orderItems.fulfillmentType} = ${type}
+                  AND ${orderItems.id} = json_extract(expected.value, '$.id')
+                  AND ${orderItems.quantity} = CAST(json_extract(expected.value, '$.quantity') AS INTEGER)
+                  AND ${refundedLineQuantitySql()} = CAST(json_extract(expected.value, '$.refundedQuantity') AS INTEGER)))`;
+}
+
 export interface AutoFulfilResult {
     orderId: string;
     /** Types handed over in this run. */
@@ -184,6 +202,7 @@ export async function autoFulfilOrder(
                   AND ${orders.paymentStatus} = ${order.paymentStatus}
                   AND ${orders.paidAmountMinor} = ${order.paidAmountMinor}
                   AND ${refundedAmountSql(orderId)} = ${order.refundedAmountMinor}
+                  AND ${autoLineObligationsUnchangedCondition(orderId, type, items.filter((item) => item.fulfillmentType === type))}
                   AND ${requiresConfirmation ? inArray(orders.status, STAFF_CONFIRMED_ORDER_STATUSES) : sql`1 = 1`}
                   AND ${noActiveRefundAttemptForOrderIdCondition(orderId)}
             ) AND coalesce((SELECT ${settings.revision} FROM ${settings}
