@@ -15,9 +15,13 @@
  *    without one).
  * 2. PATH_RULES below, for inputs the module graph cannot see: migration SQL
  *    (read with fs into the migrated images), the cache-dependency and trigger
- *    generators, the plugin manifest/ABI, and the generated contracts.
+ *    generators, the plugin manifest/ABI, the generated contracts, and the
+ *    rulebook's scenario tables and drivers.
  * A change to the test setup itself runs everything. The selection then runs
  * through `scripts/test-runner.mjs`, so the serial files keep their own pass.
+ * Suites under their own Vitest config (`tests/invariants/`) are not collected
+ * here: CI runs the ones a rule cites through `node rules/cli.mjs impact` and
+ * `test`, and every cited one in the weekly `verify`.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -74,6 +78,18 @@ export const PATH_RULES = [
       /^scripts\/plugin[^/]*\.mjs$/,
     ],
     run: ["packages/shared/src/plugins/", "packages/plugin-sdk/", "apps/api/src/plugins/", "plugins/", "scripts/plugin"],
+  },
+  {
+    // The runner reads each scenario table with fs and imports its driver by name.
+    name: "rulebook scenarios",
+    when: [/^rules\/[a-z]+\/[^/]+\.scenarios\.yaml$/, /^rules\/drivers\//],
+    run: ["rules/scenarios.test.ts"],
+  },
+  {
+    // The self-tests spawn the CLI; the domains file shapes coverage.
+    name: "rulebook tooling",
+    when: [/^rules\/(?:rulebook|cli)\.mjs$/, /^rules\/domains\.yaml$/],
+    run: ["rules/rulebook.test.ts", "rules/scenarios.test.ts"],
   },
   {
     name: "generated contracts",
