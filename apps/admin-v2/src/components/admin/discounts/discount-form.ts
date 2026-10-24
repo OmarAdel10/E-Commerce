@@ -555,6 +555,8 @@ export interface SummaryFormat {
   scope: (scope: Scope) => string;
   /** The picked customer segments by name ("VIP, Dhaka buyers"). */
   segments?: (ids: string[]) => string;
+  /** Shipping profiles by name ("Bulky items"). */
+  profiles?: (ids: string[]) => string;
 }
 
 const one = (value: string) => latinDigits(value).trim() === "1";
@@ -614,9 +616,16 @@ export function summarizeDraft(
     const cap = amount(draft.freeShippingMaxRate);
     if (cap) lines.push({ key: "summaryShippingRateCap", vars: { value: cap } });
   }
+  // Excluded profiles keep their delivery charged: the summary never says the whole order ships free (QA D10).
+  const excluded = (draft.type === "shipping" || bundlesShipping(draft)) && draft.freeShippingExcludedProfiles.length > 0
+    ? format.profiles?.(draft.freeShippingExcludedProfiles) ?? format.number(String(draft.freeShippingExcludedProfiles.length))
+    : null;
   if (draft.type === "shipping") {
-    lines.push({ key: "summaryFreeShipping" });
-  } else if (draft.type === "buy_get") {
+    lines.push(excluded ? { key: "summaryFreeShippingExcept", vars: { names: excluded } } : { key: "summaryFreeShipping" });
+  } else if (excluded) {
+    lines.push({ key: "summaryShippingExcluded", vars: { names: excluded } });
+  }
+  if (draft.type === "buy_get") {
     if (draft.buyScope.ids.length > 0) {
       const names = format.scope(draft.buyScope);
       const buyAmount = amount(draft.buyValue);

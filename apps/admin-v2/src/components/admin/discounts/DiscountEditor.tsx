@@ -200,6 +200,8 @@ function EditorPage({ type, discount }: { type: DiscountType; discount?: Discoun
   const segments = useSegmentNames(view.eligibility === "segments");
   const segmentLabel = useSegmentLabel(segments.names);
   const fullSegments = (ids: string[]) => formatList(ids.map((id) => segments.names.get(id) ?? t(segments.query.isPending ? "loading" : segments.query.isError ? "loadFailed" : "segmentDeleted")), getLocale());
+  const profileNames = new Map((useQuery({ ...shippingProfilesQuery, enabled: hasPermission(ADMIN_PERMISSIONS.SETTINGS_SHIPPING_METHODS_VIEW) }).data ?? [])
+    .map((profile) => [profile.id, profile.name]));
   const fullScope = (picked: Scope) => {
     const names = picked.ids.flatMap((id) => items.get(id)?.name ? [items.get(id)!.name] : []);
     const missing = picked.ids.filter((id) => !items.has(id));
@@ -212,6 +214,7 @@ function EditorPage({ type, discount }: { type: DiscountType; discount?: Discoun
     date: (epoch) => formatDateTime(new Date(epoch * 1_000), { dateStyle: "medium", timeStyle: "short" }),
     scope: canSave ? (picked: Scope) => scopeLabel(picked, items) : fullScope,
     segments: canSave ? segmentLabel : fullSegments,
+    profiles: (ids) => formatList(ids.map((id) => profileNames.get(id) ?? t("profileDeleted")), getLocale()),
   };
   // The live and scheduled discounts this one may combine with (a page of each).
   const live = useQuery(discountsQueryOptions({ view: "active", limit: 90 }));

@@ -1457,7 +1457,10 @@ function renderCartLine(
       jsCartKey,
     }) + (mixed && (item.fulfillmentKind === "digital" || item.fulfillmentKind === "service")
       ? `<span class="block" data-cart-line-fulfilment>${escapeHtml(item.fulfillmentKind === "digital" ? copy.cartLineDigitalText : copy.cartLineServiceText)}</span>`
-      : "");
+      // A free-delivery product's own delivery is free (its shipping profile), whatever the rest pays.
+      : item.freeDelivery === true && (item.fulfillmentKind ?? "physical") === "physical"
+        ? `<span class="block font-medium text-foreground" data-cart-line-ships-free>${escapeHtml(copy.cartLineShipsFreeText)}</span>`
+        : "");
   const stepperButton =
     "flex h-full w-11 items-center justify-center text-sm text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:text-muted-foreground disabled:hover:bg-transparent sm:w-9";
 

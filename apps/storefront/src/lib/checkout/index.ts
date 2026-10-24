@@ -529,9 +529,21 @@ function displayString(value: unknown): string | null {
   return normalized || null;
 }
 
+/** The cart lines (keys) whose product ships free, from the cart the checkout carries. */
+function freeDeliveryCartKeys(cartItems: unknown): Set<string> {
+  if (typeof cartItems !== "string") return new Set();
+  try {
+    const parsed = JSON.parse(cartItems) as Record<string, { freeDelivery?: unknown }> | null;
+    return new Set(Object.entries(parsed ?? {}).filter(([, line]) => line?.freeDelivery === true).map(([key]) => key));
+  } catch {
+    return new Set();
+  }
+}
+
 function appendOrderItems(
   parent: HTMLElement,
   quote: CheckoutTaxQuote,
+  shipsFreeLines: ReadonlySet<string>,
 ): void {
   // The receipt's groups: a mixed order says which lines ship and which
   // arrive digitally ("Delivery", "Digital items"); one shipped group reads as before.
@@ -543,7 +555,7 @@ function appendOrderItems(
     if (headed) appendTextElement(section, "p", "text-xs font-semibold text-muted-foreground", group.heading);
     const list = document.createElement("ul");
     list.className = "space-y-3";
-    appendOrderItemRows(list, group.items, quote);
+    appendOrderItemRows(list, group.items, quote, shipsFreeLines);
     section.appendChild(list);
   }
   parent.appendChild(section);
@@ -553,6 +565,7 @@ function appendOrderItemRows(
   list: HTMLElement,
   items: readonly CheckoutTaxQuote["items"][number][],
   quote: CheckoutTaxQuote,
+  shipsFreeLines: ReadonlySet<string>,
 ): void {
   for (const item of items) {
     const row = document.createElement("li");
@@ -577,6 +590,10 @@ function appendOrderItemRows(
         }),
       ].filter(Boolean).join(" · "),
     );
+    // A free-delivery product's own delivery is free, as the cart said.
+    if (item.fulfillmentType !== "digital" && item.fulfillmentType !== "service" && shipsFreeLines.has(item.cartKey)) {
+      appendTextElement(itemCopy, "p", "text-xs font-medium leading-5 text-foreground", checkoutCopy.cartLineShipsFreeText);
+    }
     // How the line is bought, when an app's option ("Subscribe and save").
     if (item.purchaseOption) {
       appendTextElement(itemCopy, "p", "break-words text-xs font-medium leading-5 text-foreground", item.purchaseOption.title);
@@ -830,7 +847,7 @@ export function renderOrderSummaryDetails(
   quote: CheckoutTaxQuote,
 ): void {
   details.replaceChildren();
-  appendOrderItems(details, quote);
+  appendOrderItems(details, quote, freeDeliveryCartKeys(data.cartItems));
   appendSummaryRow(details, checkoutCopy.subtotalText, currencyFmt(quote.subtotalAmount, quote));
   // Delivery savings show on the delivery line ("৳80 Free (CODE)"), never as a discount line.
   const deliveryDiscounts = quote.discounts.filter(({ shippingAmount }) => shippingAmount > 0);

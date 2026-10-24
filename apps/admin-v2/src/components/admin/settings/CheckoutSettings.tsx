@@ -117,8 +117,9 @@ export const ORDER_PROBLEM_TEXT_FIELDS = [
   "checkoutDeliveryChangedText",
   "cashOnDeliveryUnavailableText",
 ] as const;
-/** A cart its delivery options can't take (a shipping profile's weight or value limit). */
+/** Delivery by shipping profile: a line that ships free, and a cart its options can't take (a weight or value limit). */
 export const DELIVERY_LIMIT_TEXT_FIELDS = [
+  "cartLineShipsFreeText",
   "deliveryOverWeightText",
   "deliveryOverWeightNoneText",
   "deliveryItemsUnavailableText",
