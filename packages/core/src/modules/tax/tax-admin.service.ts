@@ -20,7 +20,7 @@ import { addressRulesFor } from "@scalius/shared/address-metadata";
 import { DELIVERY_HIERARCHY_COUNTRY, normalizeMarketCountry } from "@scalius/shared/markets";
 import { deliveryHierarchyLevel } from "@scalius/shared/places";
 import { isQualifiedProviderId } from "@scalius/shared/plugins/providers/kinds";
-import { and, asc, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import { containsText } from "../../utils/text-match";
 import type { BatchItem } from "drizzle-orm/batch";
 import { nanoid } from "nanoid";
@@ -45,7 +45,7 @@ export const MAX_TAX_POSTAL_PREFIX_LENGTH = 10;
 
 const TAX_CONFIGURATION_READINESS_CONFLICT = "tax_configuration_readiness_conflict";
 const TAX_CONFIGURATION_READINESS_MESSAGE =
-    "Tax is enabled. Keep an active rate on each taxable default or shipping class, or mark the class exempt, before saving this change.";
+    "Tax is enabled. Keep an active rate on each taxable default or shipping class in each country using built-in tax, or mark the class exempt, before saving this change.";
 
 export interface UpdateTaxSettingsInput {
     expectedVersion: number;
@@ -192,58 +192,49 @@ function buildTaxConfigurationReadinessGuard(db: Database) {
         defaultTaxClassId: sql.raw('"tax_settings"."default_tax_class_id"'),
         shippingTaxClassId: sql.raw('"tax_settings"."shipping_tax_class_id"'),
     };
-    const taxClass = {
-        id: sql.raw('"tax_classes"."id"'),
-        isExempt: sql.raw('"tax_classes"."is_exempt"'),
-        deletedAt: sql.raw('"tax_classes"."deleted_at"'),
-    };
-    const rate = {
-        taxClassId: sql.raw('"tax_rates"."tax_class_id"'),
-        isActive: sql.raw('"tax_rates"."is_active"'),
-    };
+    // A country's sub-regions can provide coverage, but another country's
+    // rates cannot. This is lifecycle readiness, not complete address coverage.
+    const classReady = (classId: SQL, needsRates: SQL, countryCode?: SQL) => sql`
+        EXISTS (
+            SELECT 1 FROM tax_classes AS coverage_class
+            WHERE coverage_class.id = ${classId}
+              AND coverage_class.deleted_at IS NULL
+              AND (
+                  coverage_class.is_exempt = 1 OR NOT (${needsRates})
+                  OR EXISTS (
+                      SELECT 1 FROM tax_rates AS coverage_rate
+                      INNER JOIN tax_regions AS coverage_region
+                          ON coverage_region.id = coverage_rate.tax_region_id
+                      WHERE coverage_rate.tax_class_id = coverage_class.id
+                        AND coverage_rate.is_active = 1
+                        ${countryCode ? sql`AND coverage_region.country_code = ${countryCode}` : sql``}
+                  )
+              )
+        )
+    `;
+    const classesReady = (needsRates: SQL, countryCode?: SQL) => sql`
+        ${classReady(settings.defaultTaxClassId, needsRates, countryCode)}
+        AND (
+            ${settings.taxShipping} = 0
+            OR ${classReady(sql`COALESCE(${settings.shippingTaxClassId}, ${settings.defaultTaxClassId})`, needsRates, countryCode)}
+        )
+    `;
     return buildBatchGuard(db, sql`
-            NOT EXISTS (
-                SELECT 1 FROM ${taxSettings}
-                WHERE ${settings.id} = 'default'
-                  AND ${settings.enabled} = 1
-                  AND ${settings.providerId} = 'system'
-            ) OR EXISTS (
-                SELECT 1 FROM ${taxSettings}
-                WHERE ${settings.id} = 'default'
-                  AND ${settings.enabled} = 1
-                  AND EXISTS (
-                      SELECT 1 FROM ${taxClasses}
-                      WHERE ${taxClass.id} = ${settings.defaultTaxClassId}
-                        AND ${taxClass.deletedAt} IS NULL
-                        AND (
-                            ${taxClass.isExempt} = 1
-                            OR EXISTS (
-                                SELECT 1 FROM ${taxRates}
-                                WHERE ${rate.taxClassId} = ${taxClass.id}
-                                  AND ${rate.isActive} = 1
-                            )
-                        )
+        NOT EXISTS (
+            SELECT 1 FROM ${taxSettings}
+            WHERE ${settings.id} = 'default' AND ${settings.enabled} = 1
+              AND (
+                  NOT (${classesReady(sql`${settings.providerId} = 'system'`)})
+                  OR EXISTS (
+                      SELECT 1 FROM tax_regions AS coverage_country
+                      WHERE coverage_country.admin_area = ''
+                        AND coverage_country.postal_prefix = ''
+                        AND coverage_country.place_id IS NULL
+                        AND COALESCE(coverage_country.provider_id, ${settings.providerId}) = 'system'
+                        AND NOT (${classesReady(sql`1 = 1`, sql`coverage_country.country_code`)})
                   )
-                  AND (
-                      ${settings.taxShipping} = 0
-                      OR EXISTS (
-                          SELECT 1 FROM ${taxClasses}
-                          WHERE ${taxClass.id} = COALESCE(
-                              ${settings.shippingTaxClassId},
-                              ${settings.defaultTaxClassId}
-                          )
-                            AND ${taxClass.deletedAt} IS NULL
-                            AND (
-                                ${taxClass.isExempt} = 1
-                                OR EXISTS (
-                                    SELECT 1 FROM ${taxRates}
-                                    WHERE ${rate.taxClassId} = ${taxClass.id}
-                                      AND ${rate.isActive} = 1
-                                )
-                            )
-                      )
-                  )
-            )
+              )
+        )
     `, TAX_CONFIGURATION_READINESS_CONFLICT);
 }
 
@@ -583,7 +574,7 @@ export async function updateTaxRate(db: Database, id: string, input: UpdateTaxRa
     if (taxRegionId !== current.taxRegionId) await requireTaxRegion(db, taxRegionId);
     const nextIsActive = input.isActive ?? current.isActive;
     const removesActiveCoverage = current.isActive && (
-        !nextIsActive || taxClassId !== current.taxClassId
+        !nextIsActive || taxClassId !== current.taxClassId || taxRegionId !== current.taxRegionId
     );
     const update = db.update(taxRates).set({
         taxClassId,
@@ -785,7 +776,7 @@ export async function createTaxRegion(db: Database, input: CreateTaxRegionInput)
     }
     const id = `txreg_${nanoid()}`;
     try {
-        await db.insert(taxRegions).values({
+        const insert = db.insert(taxRegions).values({
             id,
             countryCode,
             adminArea,
@@ -796,6 +787,10 @@ export async function createTaxRegion(db: Database, input: CreateTaxRegionInput)
             createdAt: sql`unixepoch()`,
             updatedAt: sql`unixepoch()`,
         });
+        // A new country can introduce a system-provider obligation even when
+        // the store-wide provider is an app. Check that post-state atomically.
+        if (isCountry) await executeTaxConfigurationGuardedMutation(db, insert);
+        else await insert;
     } catch (error) {
         const message = errorMessages(error);
         if (/tax_regions_scope_unique|UNIQUE|duplicate key/i.test(message)) {
@@ -815,11 +810,12 @@ export async function updateTaxRegion(db: Database, id: string, input: UpdateTax
     if (providerId !== null && !isCountryTaxRegion({ adminArea: current.adminArea, postalPrefix: current.postalPrefix, placeId: current.placeId })) {
         throw new ValidationError("Only a country chooses its tax provider; its regions use it.");
     }
-    const rows = await db.update(taxRegions).set({
+    const update = db.update(taxRegions).set({
         providerId,
         version: sql`${taxRegions.version} + 1`,
         updatedAt: sql`unixepoch()`,
     }).where(and(eq(taxRegions.id, id), eq(taxRegions.version, input.expectedVersion))).returning({ id: taxRegions.id });
+    const rows = await executeTaxConfigurationGuardedMutation(db, update);
     if (!rows[0]) throw new ConflictError("Tax region changed. Reload and try again.");
     return readTaxRegion(db, id);
 }
@@ -839,6 +835,10 @@ export async function deleteTaxRegion(db: Database, id: string, expectedVersion:
         .returning({ id: taxRegions.id });
     // A country's regions go first: the database refuses a country with regions left.
     const statements: BatchItem<"sqlite">[] = [
+        buildBatchGuard(db, sql`EXISTS (
+            SELECT 1 FROM ${taxRegions}
+            WHERE ${taxRegions.id} = ${id} AND ${taxRegions.version} = ${expectedVersion}
+        )`, "tax_region_version_conflict"),
         ...(isCountry ? [db.delete(taxRegions).where(and(
             eq(taxRegions.countryCode, current.countryCode),
             or(ne(taxRegions.adminArea, ""), ne(taxRegions.postalPrefix, ""), sql`${taxRegions.placeId} IS NOT NULL`),
@@ -850,12 +850,15 @@ export async function deleteTaxRegion(db: Database, id: string, expectedVersion:
     try {
         results = [...await safeBatch(db, statements as unknown as readonly [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]])];
     } catch (error) {
+        if (isBatchGuardError(error, "tax_region_version_conflict")) {
+            throw new ConflictError("Tax region changed. Reload and try again.");
+        }
         if (isTaxConfigurationReadinessConflict(error)) {
             throw new ConflictError(TAX_CONFIGURATION_READINESS_MESSAGE);
         }
         throw error;
     }
-    const removed = results[isCountry ? 1 : 0] as Array<{ id: string }> | undefined;
+    const removed = results[isCountry ? 2 : 1] as Array<{ id: string }> | undefined;
     if (!removed?.[0]) throw new ConflictError("Tax region changed. Reload and try again.");
     return { id, countryCode: current.countryCode };
 }

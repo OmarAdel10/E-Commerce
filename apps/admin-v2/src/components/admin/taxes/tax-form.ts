@@ -30,19 +30,27 @@ type SettingsDraft = Pick<
   TaxSettingsRecord,
   "enabled" | "taxShipping" | "defaultTaxClassId" | "shippingTaxClassId" | "displayLabel"
 > & { providerId?: string };
-type ClassesAndRates = Pick<TaxConfigurationPayload, "classes" | "rates">;
+type TaxCoverageConfiguration = Pick<TaxConfigurationPayload, "settings" | "classes" | "rates" | "regions">;
 
-function hasActiveRate(configuration: ClassesAndRates, classId: string): boolean {
-  return configuration.rates.some((rate) => rate.isActive && rate.taxClassId === classId);
+/** Each required scope's active rates: global system baseline, then system countries. */
+function coverageRateGroups(configuration: TaxCoverageConfiguration, classId: string, providerId: string): TaxRateRecord[][] {
+  const active = configuration.rates.filter((rate) => rate.isActive && rate.taxClassId === classId);
+  const countries = new Map(configuration.regions.map((region) => [region.id, region.countryCode]));
+  return [
+    ...(providerId === SYSTEM_TAX_PROVIDER_ID ? [active] : []),
+    ...configuration.regions
+      .filter((region) => region.kind === "country" && (region.providerId ?? providerId) === SYSTEM_TAX_PROVIDER_ID)
+      .map((region) => active.filter((rate) => countries.get(rate.taxRegionId) === region.countryCode)),
+  ];
 }
 
 /**
  * Mirrors the server's save checks so an unsafe tax setup can't be saved:
- * collecting tax needs a default group, and every taxed group needs a rate.
+ * collecting tax needs a default group and coverage in each system-provider country.
  */
 export function taxSettingsIssue(
   input: SettingsDraft,
-  configuration: ClassesAndRates,
+  configuration: TaxCoverageConfiguration,
 ): TaxSettingsIssue | null {
   if (!input.displayLabel.trim()) return { field: "label", key: "labelRequired" };
   const find = (id: string | null) => configuration.classes.find((taxClass) => taxClass.id === id);
@@ -58,16 +66,15 @@ export function taxSettingsIssue(
     return { field: "delivery", key: "deliveryRequired" };
   }
   if (!input.enabled || !input.defaultTaxClassId) return null;
-  // An app provider calculates without your rates.
-  if ((input.providerId ?? SYSTEM_TAX_PROVIDER_ID) !== SYSTEM_TAX_PROVIDER_ID) return null;
-
+  const providerId = input.providerId ?? configuration.settings.providerId;
+  const hasCoverage = (classId: string) => coverageRateGroups(configuration, classId, providerId).every((rates) => rates.length > 0);
   const defaultClass = find(input.defaultTaxClassId)!;
-  if (!defaultClass.isExempt && !hasActiveRate(configuration, defaultClass.id)) {
+  if (!defaultClass.isExempt && !hasCoverage(defaultClass.id)) {
     return { field: "default", key: "groupNeedsRate", name: defaultClass.name };
   }
   const deliveryClass = input.taxShipping ? find(input.shippingTaxClassId ?? defaultClass.id)! : null;
   if (deliveryClass && deliveryClass.id !== defaultClass.id && !deliveryClass.isExempt
-    && !hasActiveRate(configuration, deliveryClass.id)) {
+    && !hasCoverage(deliveryClass.id)) {
     return { field: "delivery", key: "groupNeedsRate", name: deliveryClass.name };
   }
   return null;
@@ -94,8 +101,8 @@ export function normalizePostalPrefix(value: string): string | null {
 export type RequiredTaxRateRole = "products" | "delivery";
 
 /**
- * While tax is collected, the last active rate of the default or delivery
- * group can't be turned off, moved or deleted (the server refuses it too).
+ * While tax is collected, preserve the default/delivery group's final active
+ * rate in each required system-provider scope (the server rechecks at commit).
  */
 export function getRequiredTaxRateRoles(
   configuration: TaxConfigurationPayload,
@@ -108,10 +115,9 @@ export function getRequiredTaxRateRoles(
   );
   if (!taxClass || taxClass.isExempt) return [];
 
-  const activeClassRates = configuration.rates.filter(
-    (candidate) => candidate.isActive && candidate.taxClassId === rate.taxClassId,
-  );
-  if (activeClassRates.length !== 1 || activeClassRates[0]?.id !== rate.id) return [];
+  const required = coverageRateGroups(configuration, rate.taxClassId, configuration.settings.providerId)
+    .some((rates) => rates.length === 1 && rates[0]?.id === rate.id);
+  if (!required) return [];
 
   const roles: RequiredTaxRateRole[] = [];
   if (configuration.settings.defaultTaxClassId === rate.taxClassId) roles.push("products");

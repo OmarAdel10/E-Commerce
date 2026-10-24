@@ -49,6 +49,7 @@ import {
   normalizePostalPrefix,
   percentToBasisPoints,
   taxRegionName,
+  taxSettingsIssue,
 } from "./tax-form";
 import { NONE, CheckRow, useCanManageTaxes, useGroupName, useRefreshTaxes, useSaveFailure, useWriteFailure } from "./tax-shared";
 import { FieldRow } from "~/components/ui/field";
@@ -63,7 +64,7 @@ function useRegionName() {
 
 // ── Service ─────────────────────────────────────────────────────────────
 
-function ServiceCard({ region, storeProviderId }: { region: TaxRegionRecord; storeProviderId: string }) {
+function ServiceCard({ region, config }: { region: TaxRegionRecord; config: TaxConfigurationPayload }) {
   const t = useMessages(taxesMessages);
   const canEdit = useCanManageTaxes();
   const services = useTaxServices();
@@ -71,6 +72,13 @@ function ServiceCard({ region, storeProviderId }: { region: TaxRegionRecord; sto
   const saveFailure = useSaveFailure();
   const saved = region.providerId ?? NONE;
   const [draft, setDraft] = useState(saved);
+  const issue = taxSettingsIssue(config.settings, {
+    ...config,
+    regions: config.regions.map((candidate) => candidate.id === region.id
+      ? { ...candidate, providerId: draft === NONE ? null : draft }
+      : candidate),
+  });
+  const issueText = issue?.key === "groupNeedsRate" ? t("groupNeedsRate", { name: issue.name }) : issue ? t(issue.key) : undefined;
   const save = useMutation({
     mutationFn: () => apiData(putApiV1AdminTaxesRegionsById({
       path: { id: region.id },
@@ -81,6 +89,7 @@ function ServiceCard({ region, storeProviderId }: { region: TaxRegionRecord; sto
   useSaveBar({
     fields: { service: "tax-region-service" },
     dirty: draft !== saved,
+    invalid: issue !== null,
     saving: save.isPending,
     save: () => save.mutateAsync().catch(saveFailure),
     discard: () => setDraft(saved),
@@ -88,14 +97,14 @@ function ServiceCard({ region, storeProviderId }: { region: TaxRegionRecord; sto
   if (!services.hasApps && !region.providerId) return null;
   return (
     <SettingsCard title={t("service")}>
-      <SettingsField id="tax-region-service" label={t("service")} help={t("serviceRegionHelp", { country: countryName(region.countryCode) })}>
+      <SettingsField id="tax-region-service" label={t("service")} help={t("serviceRegionHelp", { country: countryName(region.countryCode) })} error={issueText}>
         <SearchableSelect
           id="tax-region-service"
           aria-describedby="tax-region-service-note"
           value={draft}
           disabled={!canEdit}
           onValueChange={setDraft}
-          options={[{ value: NONE, label: t("storeDefault", { name: services.name(storeProviderId) }) }, ...services.options]}
+          options={[{ value: NONE, label: t("storeDefault", { name: services.name(config.settings.providerId) }) }, ...services.options]}
           ariaLabel={t("service")}
           triggerClassName="w-full"
         />
@@ -468,7 +477,7 @@ export function TaxRegionPage({ regionId }: { regionId: string }) {
   const hasGroups = config.classes.length > 0;
   return (
     <SettingsPage page="taxes" back={back} title={country} readOnly={!canEdit}>
-      <ServiceCard key={`${region.id}:${region.version}`} region={region} storeProviderId={config.settings.providerId} />
+      <ServiceCard key={`${region.id}:${region.version}`} region={region} config={config} />
 
       <SettingsCard
         title={t("ratesTitle")}

@@ -102,10 +102,10 @@ export function marketTaxInclusionFromSql(value: unknown): TaxMarketInclusion {
     return { backup, countries };
 }
 
-/** The order's market's flag: the active market selling to its shipping country, else the backup market. */
-export function pricesIncludeTaxFor(markets: TaxMarketInclusion, shippingCountry: string | null): boolean {
-    return shippingCountry !== null && Object.hasOwn(markets.countries, shippingCountry)
-        ? markets.countries[shippingCountry] === true
+/** The order's market's flag: shipping country, else billing country, supplied by checkout; fallback is the backup market. */
+export function pricesIncludeTaxFor(markets: TaxMarketInclusion, orderCountry: string | null): boolean {
+    return orderCountry !== null && Object.hasOwn(markets.countries, orderCountry)
+        ? markets.countries[orderCountry] === true
         : markets.backup;
 }
 
