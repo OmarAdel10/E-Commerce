@@ -1,8 +1,8 @@
 import type { FitCondition, StorefrontFitFacts, StorefrontThemeFallback } from "@scalius/shared/storefront-theme";
 import { formatNumber, useMessages } from "~/i18n";
-import { onlineStoreMessages } from "~/i18n/online-store";
+import { onlineStoreCommonMessages } from "~/i18n/online-store-common";
 
-type MessageKey = keyof (typeof onlineStoreMessages)["en"];
+type MessageKey = keyof (typeof onlineStoreCommonMessages)["en"];
 
 /**
  * A fit condition in plain words: what the store needs for a choice to show
@@ -10,7 +10,7 @@ type MessageKey = keyof (typeof onlineStoreMessages)["en"];
  * the navigation the header renders).
  */
 export function useFitReason(facts: StorefrontFitFacts) {
-  const t = useMessages(onlineStoreMessages);
+  const t = useMessages(onlineStoreCommonMessages);
   const option = (key: string) => t(key as MessageKey);
   const reason = (condition: FitCondition): string => {
     if ("anyOf" in condition) return condition.anyOf.map(reason).join(" ");

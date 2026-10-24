@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { SaveErrorBanner, useSaveBar, type SaveBarEntry } from "~/components/admin/shared/SaveBar";
 import { isAdminApiConflictError } from "~/lib/admin-api-error";
 import { translate } from "~/i18n";
-import { onlineStoreMessages } from "~/i18n/online-store";
+import { onlineStoreCommonMessages } from "~/i18n/online-store-common";
 import { Page } from "~/components/admin/resource/Page";
 import { sameFormValue } from "~/lib/form-values";
 
@@ -194,7 +194,7 @@ export function useDocumentDraft<T>({
 export function failSave(error: unknown, reload: () => void): never {
   if (isAdminApiConflictError(error)) {
     reload();
-    throw new Error(translate(onlineStoreMessages, "conflict"));
+    throw new Error(translate(onlineStoreCommonMessages, "conflict"));
   }
   throw error;
 }

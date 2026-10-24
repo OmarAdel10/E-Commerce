@@ -23,7 +23,7 @@ import {
 } from "~/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { useMessages } from "~/i18n";
-import { onlineStoreMessages } from "~/i18n/online-store";
+import { onlineStoreCommonMessages } from "~/i18n/online-store-common";
 
 const RESOURCE_PAGE_SIZE = 20;
 const RESOURCE_SEARCH_DEBOUNCE_MS = 250;
@@ -57,7 +57,7 @@ export function NavigationResourcePicker({
   trigger,
   onValueChange,
 }: NavigationResourcePickerProps) {
-  const t = useMessages(onlineStoreMessages);
+  const t = useMessages(onlineStoreCommonMessages);
   const [open, setOpen] = useState(false);
   const [type, setType] = useState(initialType);
   const [searchTerm, setSearchTerm] = useState("");

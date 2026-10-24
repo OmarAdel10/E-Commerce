@@ -34,7 +34,7 @@ import {
   type StorefrontThemeDocument,
 } from "@scalius/shared/storefront-theme";
 import { useMessages } from "~/i18n";
-import { onlineStoreMessages } from "~/i18n/online-store";
+import { onlineStoreCommonMessages } from "~/i18n/online-store-common";
 import { themeEditorMessages } from "~/i18n/theme-editor";
 import { themeSettingMessages } from "~/i18n/theme-settings";
 import { settingLabelKey, sectionLabelScope } from "../schema-form/labels";
@@ -47,7 +47,7 @@ import type { TreeGroupModel, TreeItemModel } from "./LayerTree";
 
 type Theme = StorefrontThemeDocument;
 type Section = StorefrontSection;
-type MessageKey = keyof (typeof onlineStoreMessages)["en"];
+type MessageKey = keyof (typeof onlineStoreCommonMessages)["en"];
 
 const SECTION_ICONS: Partial<Record<StorefrontSectionType, LucideIcon>> = {
   hero: Image,
@@ -88,7 +88,7 @@ function blockSummary(item: unknown): string {
 }
 
 export function useSectionName(apps: ReadonlyMap<string, AppSectionEntry>) {
-  const store = useMessages(onlineStoreMessages);
+  const store = useMessages(onlineStoreCommonMessages);
   // The merchant's own heading names a section; its type otherwise.
   return (section: Section): string => {
     if (isStorefrontAppSection(section)) return apps.get(section.settings.app)?.section.name ?? section.settings.app;
@@ -120,7 +120,7 @@ export function useEditorTree({ theme, page, pageName, resolved, appSections, he
   handlers: TreeHandlers;
 }): TreeGroupModel[] {
   const t = useMessages(themeEditorMessages);
-  const store = useMessages(onlineStoreMessages);
+  const store = useMessages(onlineStoreCommonMessages);
   const labels = useMessages(themeSettingMessages);
   const fitReason = useFitReason(resolved.facts);
   const sectionName = useSectionName(appSections);

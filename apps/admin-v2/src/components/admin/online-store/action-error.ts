@@ -1,6 +1,6 @@
 import { AdminApiResponseError } from "~/lib/admin-api-error";
 import { translate } from "~/i18n";
-import { onlineStoreMessages } from "~/i18n/online-store";
+import { onlineStoreCommonMessages } from "~/i18n/online-store-common";
 import { saveBarMessages } from "~/i18n/save-bar";
 
 /**
@@ -12,5 +12,5 @@ export function actionErrorText(error: unknown): string {
   if (error instanceof AdminApiResponseError && error.status < 500 && error.message && !error.message.startsWith("API error")) {
     return error.message;
   }
-  return translate(onlineStoreMessages, "actionFailed");
+  return translate(onlineStoreCommonMessages, "actionFailed");
 }
