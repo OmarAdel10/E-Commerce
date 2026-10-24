@@ -6,7 +6,7 @@ license: AGPL-3.0-only
 
 # Scalius Catalog
 
-Follow the loop in `scalius`: search, describe, read facts, dry run, approval when asked, write, verify. Step-by-step recipes: [references/recipes.md](references/recipes.md). Reviewed workflows: [references/workflows.md](references/workflows.md).
+Follow the loop in `scalius`: search, describe, read facts, dry run, approval when asked, write, verify. Recipes: [references/recipes.md](references/recipes.md). Reviewed workflows: [references/workflows.md](references/workflows.md).
 
 ## How products work
 
