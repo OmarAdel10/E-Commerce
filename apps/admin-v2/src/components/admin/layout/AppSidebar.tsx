@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
@@ -41,7 +41,9 @@ function Mark() {
 interface TipState {
   label: string;
   keys: boolean;
-  x: number;
+  /** The button's edge facing the page: its right, or its left in a right-to-left language. */
+  edge: number;
+  rtl: boolean;
   y: number;
 }
 
@@ -52,22 +54,43 @@ interface TipState {
  * and, for `data-tip="keys"` (the collapse toggle), its shortcut.
  */
 function useNavTooltip() {
-  const [tip, setTip] = useState<TipState | null>(null);
+  // The tooltip keeps its own state: a hover re-renders it alone, not the navigation under it.
+  const setTip = useRef<(tip: TipState | null) => void>(() => undefined);
   const show = (event: PointerEvent | FocusEvent) => {
     const target = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
     if (event.type === "focus" && !target?.matches(":focus-visible")) return;
     // Touch has no hover: a tap never leaves a tooltip behind.
     if ("pointerType" in event && event.pointerType === "touch") return;
-    if (!target) return setTip(null);
+    if (!target) return setTip.current(null);
     const box = target.getBoundingClientRect();
-    setTip({ label: target.getAttribute("aria-label") ?? "", keys: target.dataset.tip === "keys", x: box.right + 8, y: box.top + box.height / 2 });
+    const rtl = getComputedStyle(target).direction === "rtl";
+    setTip.current({ label: target.getAttribute("aria-label") ?? "", keys: target.dataset.tip === "keys", edge: rtl ? box.left : box.right, rtl, y: box.top + box.height / 2 });
   };
-  const hide = () => setTip(null);
+  const hide = () => setTip.current(null);
   const handlers = { onPointerOver: show, onPointerLeave: hide, onFocus: show, onBlur: hide, onClick: hide };
-  const tooltip = tip ? (
+  return { handlers, tooltip: <NavTooltip bind={setTip} /> };
+}
+
+const sameTip = (a: TipState | null, b: TipState | null) =>
+  a === b || (a !== null && b !== null && a.label === b.label && a.keys === b.keys && a.edge === b.edge && a.y === b.y);
+
+function NavTooltip({ bind }: { bind: RefObject<(tip: TipState | null) => void> }) {
+  const [tip, setTip] = useState<TipState | null>(null);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    bind.current = (next) => setTip((current) => (sameTip(current, next) ? current : next));
+  }, [bind]);
+  // 8px beside the button, on the page's side: measured before paint, since in a
+  // right-to-left language the tooltip ends there and its width decides where it starts.
+  useLayoutEffect(() => {
+    if (tip && box.current) box.current.style.setProperty("--tip-x", `${tip.rtl ? tip.edge - 8 - box.current.offsetWidth : tip.edge + 8}px`);
+  }, [tip]);
+  if (!tip) return null;
+  return (
     <span
+      ref={box}
       aria-hidden
-      style={{ "--tip-x": `${tip.x}px`, "--tip-y": `${tip.y}px` } as CSSProperties}
+      style={{ "--tip-y": `${tip.y}px` } as CSSProperties}
       className="pointer-events-none fixed left-(--tip-x) top-(--tip-y) z-50 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-topbar px-2 py-1 text-body text-topbar-foreground shadow-popover"
     >
       {tip.label}
@@ -81,8 +104,7 @@ function useNavTooltip() {
         </span>
       ) : null}
     </span>
-  ) : null;
-  return { handlers, tooltip };
+  );
 }
 
 /**
