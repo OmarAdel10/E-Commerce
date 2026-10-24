@@ -56,10 +56,6 @@ export const policies = [
     why: "a script that sets text or a label to an English string shows English on a Bangla store; markup words are checked by buyerEnglishViolations, script words here (apps/storefront/src/lib/*-copy.ts, or a data attribute the page fills)",
     paths: [storefront, "plugins"],
     extensions: [".ts", ".tsx", ".astro"],
-    allow: {
-      "apps/storefront/src/pages/agent/continue/[continuationId].astro": "an agent's secure hand-off page renders before any store read",
-      "apps/storefront/src/lib/browser-continuation-relay.ts": "the same hand-off, before any store read",
-    },
     forbid: [
       /\.(?:textContent|innerText|placeholder|title|ariaLabel)\s*=\s*["'`][^"'`$]*[A-Za-z]{3,}/,
       /setAttribute\(\s*["'](?:aria-label|aria-description|title|placeholder|alt)["']\s*,\s*["'`][^"'`$]*[A-Za-z]{3,}/,
@@ -173,6 +169,77 @@ export const policies = [
     extensions: [".astro"],
     forbid: [/set:html=\{[^}]*\bJSON\.stringify/, /\w*Json(?:Ld)?\s*=[^;]{0,200}?\bJSON\.stringify\(/],
     sample: "const productJsonLd = JSON.stringify(schema);",
+  },
+  {
+    rule: "server-rendered script values use serializeJsonForInlineScript before template interpolation",
+    why: "JSON quoting does not stop an HTML parser from closing a script element inside merchant-controlled text",
+    paths: [storefront],
+    allow: {
+      "apps/storefront/src/components/product/scripts/product-desktop-zoom-controller.ts": "JSON quotes a CSS url(), never HTML or JavaScript",
+      "apps/storefront/src/gallery/navigation.mjs": "the dev-only script ID has a bounded alphanumeric validation with closing-tag regression coverage",
+      "apps/storefront/src/lib/checkout/shipping-methods.ts": "JSON appears only in a private announcement deduplication key",
+      "apps/storefront/src/lib/extensions/host.ts": "JSON appears only in a render-cache lookup key",
+      "apps/storefront/src/lib/product-card-layout.ts": "JSON appears only in a layout-cache lookup key",
+      "apps/storefront/src/store/cart.ts": "sorted JSON compares persisted cart state; it is never embedded in HTML or a script",
+    },
+    forbid: [/\$\{\s*JSON\.stringify\s*\(/],
+    sample: 'return `window.config=${JSON.stringify(value)};`;',
+  },
+  {
+    rule: "email shape checks use the linear shared text scanner, never unbounded overlapping regex classes",
+    why: "an invalid address with many domain dots makes repeated domain and suffix classes backtrack quadratically; the shared scanner preserves each form's validation options",
+    paths: [storefront, "apps/admin-v2/src", "apps/api/src", "packages/core/src", "packages/shared/src", "packages/plugin-sdk/src", "plugins"],
+    forbid: [/\[[^\]\r\n]*\](?:\+|\*|\{\d+,\})@\[[^\]\r\n]*\](?:\+|\*|\{\d+,\})\\\./],
+    sample: String.raw`const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;`,
+  },
+  {
+    rule: "URL and pathname suffixes use the linear shared text scanner, never an unanchored repeated suffix regex",
+    why: "a long run of slashes or dots before a final different character makes a suffix regex restart at every position; trimTrailingCharacter scans only the actual suffix",
+    paths: ["apps/storefront/src", "apps/admin-v2/src", "apps/api/src", "packages/core/src", "packages/shared/src", "packages/plugin-sdk/src", "plugins"],
+    forbid: [
+      /\/\\[/.]\+\$\/[dgimsuvy]*/,
+      /\/\^\\\/\+\|\\\/\+\$\/[dgimsuvy]*/,
+    ],
+    sample: String.raw`return pathname.replace(/\/+$/, "");`,
+  },
+  {
+  rule: "merchant field values use the bounded shared pattern matcher, never a native whole-pattern constructor",
+  why: "small merchant patterns can backtrack exponentially even on short values; the shared matcher bounds state expansion and total evaluated work",
+  paths: [
+    "packages/shared/src/custom-fields.ts",
+    "packages/shared/src/plugins/objects.ts",
+    "packages/shared/src/plugins/object-patterns.ts",
+    "apps/admin-v2/src/components/admin/custom-fields/custom-field-draft.ts",
+    "packages/plugin-sdk/src/testing.ts",
+  ],
+  forbid: [/\bRegExp\s*\(/],
+  sample: 'const expression = new RegExp(pattern, "u");',
+  },
+  {
+    rule: "template variable parsing trims names after matching a disjoint brace body",
+    why: "leading and trailing whitespace repetitions overlap the unrestricted variable body, so an unterminated placeholder can backtrack cubically",
+    paths: ["apps/storefront/src", "apps/admin-v2/src", "apps/api/src", "packages/core/src", "packages/shared/src", "packages/plugin-sdk/src", "plugins"],
+    forbid: [/\\\{\\\{\\s\*\(\[\^\{\}\][+*]\??\)\\s\*/],
+    sample: String.raw`const VARIABLE = /\{\{\s*([^{}]*?)\s*\}\}/g;`,
+  },
+  {
+    rule: "unbounded filename, address and per-line whitespace suffixes use the linear shared text scanner",
+    why: "mixed trailing character classes can restart at every character of a long interior run before failing; scan the suffix once",
+    paths: ["packages/shared/src/digital.ts", "packages/shared/src/address-metadata.ts", "packages/core/src/modules/warranty/policies.ts"],
+    forbid: [
+      /\/\^\[\.\\s\]\+\|\[\.\\s\]\+\$\/[dgimsuvy]*/,
+      /\/\^\[,\\-–\\s\]\+\|\[,\\-–\\s\]\+\$\/[dgimsuvy]*/,
+      /\/\[ \\t\]\+\$\/[dgimsuvy]*m[dgimsuvy]*/,
+    ],
+    sample: String.raw`input.terms.replace(/[ \t]+$/gm, "");`,
+  },
+  {
+    rule: "catalog feed diagnostics reuse the live feed's eligibility and row projection",
+    why: "duplicated assignment, price, image and availability checks can mark an item ready even when the feed omits it",
+    paths: ["packages/core/src/modules/catalog/feed-diagnostics.ts"],
+    require: [/publicProductHasBuyerResolvableSku\s*\(/, /projectCatalogFeedRows\s*\(/],
+    forbid: [/calculateCatalogFeedDiscountedAmount\s*\(/, /isPositiveCatalogFeedAmount\s*\(/],
+    sample: "const ready = Boolean(variant.optionCombinationKey);",
   },
   {
     rule: "sensitive storefront forms (auth OTP, cart checkout, payment recovery, product buyer inputs) submit with method=post",
@@ -504,7 +571,6 @@ const NEVER_TRANSLATED = new Set(["WhatsApp", "Messenger", "Facebook", "Instagra
 export const BUYER_ENGLISH_ALLOW = {
   "apps/storefront/src/pages/theme-preview.astro": "the merchant's draft preview shell (staff from the theme editor, never buyers); it reads no store language",
   "apps/storefront/src/pages/theme-preview/library.astro": "the theme editor's section library frame (staff, never buyers)",
-  "apps/storefront/src/pages/agent/continue/[continuationId].astro": "an agent's secure hand-off page: it renders before any store read, so its words cannot follow the store language yet",
   "apps/storefront/src/components/newsletter/NewsletterForm.astro": { reason: "the bot trap's label: hidden from people and assistive technology", text: ["Company website"] },
 };
 
