@@ -17,6 +17,8 @@ import { createTursoDatabase } from "../turso-adapter";
 import type { Database } from "../types";
 import { compiledMigrationSql, migratedImage, restoreMigratedImage } from "./migrated-image";
 
+export { createSqliteClock, type SqliteClock } from "./sqlite-clock";
+
 export {
   compiledMigrationSql,
   migratedImageCacheDirectory,

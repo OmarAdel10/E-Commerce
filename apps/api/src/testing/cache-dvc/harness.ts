@@ -32,6 +32,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import {
   createMigratedSqlite,
+  createSqliteClock,
   createSqliteD1Binding,
 } from "@scalius/database/testing/sqlite-d1";
 import { drizzle } from "drizzle-orm/d1";
@@ -254,49 +255,54 @@ export class DvcHarness {
     const rng = new Rng(config.seed);
     // Turso runs on its own schema (no FTS5; the search index instead).
     const sqlite = createMigratedSqlite({ provider: config.provider === "turso" ? "turso" : "d1" });
-    let harnessNow = () => DVC_SEED_EPOCH * 1000;
-    // SQL publication guards and JS deadlines must advance on the same clock.
-    sqlite.function("unixepoch", () => Math.floor(harnessNow() / 1000));
-    const binding = createSqliteD1Binding(sqlite);
-    const seedDb = drizzle(binding, { schema }) as unknown as Database;
-    config.setSystemTime(DVC_SEED_EPOCH * 1000);
-    await seedDvcStore(sqlite, seedDb);
-    const model = loadSchemaModel(sqlite);
-    const rowLog = RowLog.install(sqlite, model);
-    const reference = new ReferenceClock(sqlite, rowLog);
-    reference.sync();
-    const useTriggers = config.clock === "triggers" || (config.clock !== "reference" && hasTriggerClock(sqlite));
-    if (config.clock === "triggers" && !hasTriggerClock(sqlite)) {
-      throw new Error("DVC clock 'triggers' requested but cache_clock/cache_dep are not in the migrations (S1 not merged).");
+    try {
+      let harnessNow = () => DVC_SEED_EPOCH * 1000;
+      // SQL publication guards and JS deadlines must advance on the same clock.
+      createSqliteClock(sqlite, () => harnessNow());
+      const binding = createSqliteD1Binding(sqlite);
+      const seedDb = drizzle(binding, { schema }) as unknown as Database;
+      config.setSystemTime(DVC_SEED_EPOCH * 1000);
+      await seedDvcStore(sqlite, seedDb);
+      const model = loadSchemaModel(sqlite);
+      const rowLog = RowLog.install(sqlite, model);
+      const reference = new ReferenceClock(sqlite, rowLog);
+      reference.sync();
+      const useTriggers = config.clock === "triggers" || (config.clock !== "reference" && hasTriggerClock(sqlite));
+      if (config.clock === "triggers" && !hasTriggerClock(sqlite)) {
+        throw new Error("DVC clock 'triggers' requested but cache_clock/cache_dep are not in the migrations (S1 not merged).");
+      }
+      const clock: DvcClock = useTriggers ? new TriggerClock(sqliteClockSql(sqlite)) : reference;
+      const db = config.provider === "turso" && config.providerDatabase ? config.providerDatabase(sqlite) : seedDb;
+      const env = {
+        DB: binding,
+        JWT_SECRET: "dvc-harness-secret-0123456789abcdef0123",
+        CREDENTIAL_ENCRYPTION_KEY: "dvc-harness-credential-key-0123456789abcdef",
+        RL_STANDARD: { limit: async () => ({ success: true }) },
+        ...(config.provider === "turso" ? { __DVC_DB: db } : {}),
+      } as unknown as Env;
+      const recorder = (config.recorder ?? ((context) => coarseTableRecorder(context.sqlite, context.model, context.now)))({
+        sqlite, model, now: () => harnessNow(),
+      });
+      const harness = new DvcHarness(
+        config, sqlite, seedDb, env, model, rowLog, reference, clock,
+        (config.partValidator ?? referencePartValidator)(clock),
+        config.frontierModel ?? referenceFrontierModel(),
+        recorder,
+        new RowMutator(sqlite, model, rng.fork("mutations")),
+        rng,
+        config.parts ?? dvcPartCatalogue(),
+        config.pages ?? dvcPageCatalogue(),
+      );
+      (harness as { db: Database }).db = db;
+      harnessNow = () => harness.now;
+      harness.installCapture();
+      harness.installRandomness();
+      (harness.mutator as unknown as { coverage: MutationCoverage }).coverage = harness.coverage;
+      return harness;
+    } catch (error) {
+      sqlite.close();
+      throw error;
     }
-    const clock: DvcClock = useTriggers ? new TriggerClock(sqliteClockSql(sqlite)) : reference;
-    const db = config.provider === "turso" && config.providerDatabase ? config.providerDatabase(sqlite) : seedDb;
-    const env = {
-      DB: binding,
-      JWT_SECRET: "dvc-harness-secret-0123456789abcdef0123",
-      CREDENTIAL_ENCRYPTION_KEY: "dvc-harness-credential-key-0123456789abcdef",
-      RL_STANDARD: { limit: async () => ({ success: true }) },
-      ...(config.provider === "turso" ? { __DVC_DB: db } : {}),
-    } as unknown as Env;
-    const recorder = (config.recorder ?? ((context) => coarseTableRecorder(context.sqlite, context.model, context.now)))({
-      sqlite, model, now: () => harnessNow(),
-    });
-    const harness = new DvcHarness(
-      config, sqlite, seedDb, env, model, rowLog, reference, clock,
-      (config.partValidator ?? referencePartValidator)(clock),
-      config.frontierModel ?? referenceFrontierModel(),
-      recorder,
-      new RowMutator(sqlite, model, rng.fork("mutations")),
-      rng,
-      config.parts ?? dvcPartCatalogue(),
-      config.pages ?? dvcPageCatalogue(),
-    );
-    (harness as { db: Database }).db = db;
-    harnessNow = () => harness.now;
-    harness.installCapture();
-    harness.installRandomness();
-    (harness.mutator as unknown as { coverage: MutationCoverage }).coverage = harness.coverage;
-    return harness;
   }
 
   // -------------------------------------------------------------------------
@@ -617,39 +623,40 @@ export class DvcHarness {
   private async renderOnRevertedCopy(path: string, changes: readonly LoggedChange[], keep?: string): Promise<{ status: number; body: string }> {
     const image = (this.sqlite as DatabaseSync & { serialize(): Uint8Array }).serialize();
     const copy = new DatabaseSync(":memory:") as DatabaseSync & { deserialize(image: Uint8Array): void };
-    copy.deserialize(image);
-    copy.function("unixepoch", () => Math.floor(this.now / 1000));
-    copy.exec("PRAGMA foreign_keys = OFF");
-    for (const { name } of copy.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger'").all() as Array<{ name: string }>) {
-      copy.exec(`DROP TRIGGER "${name}"`);
-    }
-    for (const change of [...changes].reverse()) {
-      if (keep === `${change.table}:${change.op}`) continue;
-      const table = this.model.get(change.table)!;
-      const keyColumns = table.pkColumns.length > 0 ? table.pkColumns : table.columns.map((column) => column.name);
-      const keyOf = (row: Readonly<Record<string, unknown>>) => keyColumns.map((column) => row[column] as SQLInputValue);
-      const where = keyColumns.map((column) => `"${column}" = ?`).join(" AND ");
-      if (change.op === "insert") copy.prepare(`DELETE FROM "${change.table}" WHERE ${where}`).run(...keyOf(change.new!));
-      if (change.op === "delete" || change.op === "update") {
-        if (change.op === "update") copy.prepare(`DELETE FROM "${change.table}" WHERE ${where}`).run(...keyOf(change.new!));
-        const columns = Object.keys(change.old!);
-        const restored = columns.map((column) => (change.op === "update" && keep === `${change.table}.${column}` ? change.new![column] : change.old![column]) as SQLInputValue);
-        copy.prepare(`INSERT INTO "${change.table}" (${columns.map((column) => `"${column}"`).join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`)
-          .run(...restored);
+    try {
+      copy.deserialize(image);
+      createSqliteClock(copy, () => this.now);
+      copy.exec("PRAGMA foreign_keys = OFF");
+      for (const { name } of copy.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger'").all() as Array<{ name: string }>) {
+        copy.exec(`DROP TRIGGER "${name}"`);
       }
-    }
-    const env = { ...(this.env as unknown as Record<string, unknown>), DB: createSqliteD1Binding(copy) } as unknown as Env;
-    delete (env as unknown as Record<string, unknown>).__DVC_DB;
-    const { ctx, settle } = this.ctx();
-    this.config.setSystemTime(this.now);
-    const { response, body } = await this.randomScope.run(new Rng(`render:${path}`), async () => {
-      const rendered = await renderPublicRead(new Request(`${RENDER_HOST}${path}`, { headers: { Accept: "application/json" } }), env, ctx);
-      const text = await rendered.text();
-      await settle();
-      return { response: rendered, body: text };
-    });
-    copy.close();
-    return { status: response.status, body };
+      for (const change of [...changes].reverse()) {
+        if (keep === `${change.table}:${change.op}`) continue;
+        const table = this.model.get(change.table)!;
+        const keyColumns = table.pkColumns.length > 0 ? table.pkColumns : table.columns.map((column) => column.name);
+        const keyOf = (row: Readonly<Record<string, unknown>>) => keyColumns.map((column) => row[column] as SQLInputValue);
+        const where = keyColumns.map((column) => `"${column}" = ?`).join(" AND ");
+        if (change.op === "insert") copy.prepare(`DELETE FROM "${change.table}" WHERE ${where}`).run(...keyOf(change.new!));
+        if (change.op === "delete" || change.op === "update") {
+          if (change.op === "update") copy.prepare(`DELETE FROM "${change.table}" WHERE ${where}`).run(...keyOf(change.new!));
+          const columns = Object.keys(change.old!);
+          const restored = columns.map((column) => (change.op === "update" && keep === `${change.table}.${column}` ? change.new![column] : change.old![column]) as SQLInputValue);
+          copy.prepare(`INSERT INTO "${change.table}" (${columns.map((column) => `"${column}"`).join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`)
+            .run(...restored);
+        }
+      }
+      const env = { ...(this.env as unknown as Record<string, unknown>), DB: createSqliteD1Binding(copy) } as unknown as Env;
+      delete (env as unknown as Record<string, unknown>).__DVC_DB;
+      const { ctx, settle } = this.ctx();
+      this.config.setSystemTime(this.now);
+      const { response, body } = await this.randomScope.run(new Rng(`render:${path}`), async () => {
+        const rendered = await renderPublicRead(new Request(`${RENDER_HOST}${path}`, { headers: { Accept: "application/json" } }), env, ctx);
+        const text = await rendered.text();
+        await settle();
+        return { response: rendered, body: text };
+      });
+      return { status: response.status, body };
+    } finally { copy.close(); }
   }
 
   /** `table.column` (or `table:insert`/`table:delete`) changed after `logPos`, in `tables`. */
