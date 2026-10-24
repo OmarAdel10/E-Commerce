@@ -142,7 +142,7 @@ function AdminLayout() {
             focus either). */}
         <div className="flex h-svh overflow-clip bg-sidebar text-sidebar-foreground print:h-auto print:overflow-visible print:bg-transparent">
           <AppSidebar nav={sidebarNav} user={user} showSettings={canOpen(SETTINGS_ITEM.to)} />
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div data-shell-column="" className="flex min-w-0 flex-1 flex-col">
             <AdminHeader user={user} />
             <div className="relative flex min-h-0 flex-1 flex-col overflow-clip rounded-t-xl bg-background text-foreground md:mb-2 md:ms-2 md:me-2 md:rounded-xl nav:ms-0 print:m-0 print:overflow-visible">
               <AdminNavigationProgress />

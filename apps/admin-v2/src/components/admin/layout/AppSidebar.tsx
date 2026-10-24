@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
@@ -36,14 +36,38 @@ function historyIndex(state: unknown): number {
 }
 
 /**
+ * The navigation takes its new width in one step and the page column beside
+ * it (`data-shell-column`: top bar and canvas) slides from where it was into
+ * its new place, a 200ms transform. So the page lays out once per change,
+ * not on every frame as a width transition does. Never on first paint, and
+ * not at all with reduced motion.
+ */
+function useColumnSlide(frame: RefObject<HTMLDivElement | null>, state: string) {
+  const width = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const element = frame.current;
+    // The phone drawer has no frame: the next desktop change starts afresh.
+    if (!element) return void (width.current = null);
+    const previous = width.current;
+    const next = element.offsetWidth;
+    width.current = next;
+    const column = element.parentElement?.querySelector<HTMLElement>(":scope > [data-shell-column]");
+    if (previous === null || previous === next || !column?.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const shift = (previous - next) * (getComputedStyle(element).direction === "rtl" ? -1 : 1);
+    column.animate([{ transform: `translateX(${shift}px)` }, { transform: "none" }], { duration: 200, easing: "ease-out" });
+  }, [frame, state]);
+}
+
+/**
  * Shopify's navigation on the near-black frame. From 1100px: a 240px panel
  * (wordmark and collapse button, the sections, Settings) or, collapsed with ⌘B,
  * a 56px icon rail with tooltips; on both, a section with sub-pages opens a
  * flyout of them (NavFlyouts.tsx);
  * Settings swaps the panel for the settings list beside the rail. Narrower
  * (phones, tablets, a 1024px laptop) the same panel is a drawer that lists every
- * section with its sub-pages open (no accordions). The width eases
- * between states and a new panel slides in; neither moves on first paint.
+ * section with its sub-pages open (no accordions). Between states the page
+ * column slides (`useColumnSlide`) and a new panel slides in; neither moves on
+ * first paint.
  * Search, notifications and the store menu live in the canvas' top bar.
  */
 export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
@@ -71,7 +95,9 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
     else void router.navigate({ to: "/admin" });
   };
 
+  const navState = inSettings ? "settings" : collapsed ? "rail" : "panel";
   const frame = useRef<HTMLDivElement>(null);
+  useColumnSlide(frame, desktop ? navState : "drawer");
   const closeDrawer = () => setDrawerOpen(false);
   const panel = (drawer: boolean) =>
     inSettings ? (
@@ -96,11 +122,8 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
       <div
         ref={frame}
         data-nav=""
-        data-nav-state={inSettings ? "settings" : collapsed ? "rail" : "panel"}
-        className={cn(
-          "flex h-full shrink-0 overflow-clip transition-[width] duration-200 ease-out print:hidden",
-          inSettings ? "w-74" : collapsed ? "w-14" : "w-60",
-        )}
+        data-nav-state={navState}
+        className={cn("flex h-full shrink-0 overflow-clip print:hidden", inSettings ? "w-74" : collapsed ? "w-14" : "w-60")}
       >
         {inSettings || collapsed ? <Rail nav={nav} showSettings={showSettings} inSettings={inSettings} /> : null}
         {panelKey ? (

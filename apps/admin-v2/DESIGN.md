@@ -158,7 +158,7 @@ Code: `components/admin/layout/`.
 - The top bar holds one search pill (`Cmd+K` cap), help, notifications and the store menu. While a form is dirty, the contextual save bar takes over the whole top bar (`SaveBar` portals into `#admin-top-bar`): a light bar with the message at the start, Discard, then Save; a screen reader hears it appear (a `role=status` line); it shakes when leaving is blocked.
 - Navigation rows use `NAV_ROW` (`nav-button.ts`). The current page (`aria-current=page`) sits on the `bg-sidebar-accent` pill in semibold.
 - Declare every keyboard shortcut once in `shortcuts.ts` (`SHORTCUTS`, `matchesShortcut`). The `?` dialog lists that table.
-- The panel animates (180ms slide, 200ms width) only after a change, never on load. The page-loading bar (`AdminNavigationProgress`) appears after 180ms.
+- The panel animates only after a change, never on load: the navigation takes its new width at once and the page column slides into place (a 200ms transform, so the page lays out once, not every frame), while a new panel or flyout slides in 8px from the rail's side (180ms, mirrored in right-to-left). Sub-pages appear by opacity and transform only. Reduced motion turns all of it off. The page-loading bar (`AdminNavigationProgress`) appears after 180ms.
 
 ### Theme document fields
 

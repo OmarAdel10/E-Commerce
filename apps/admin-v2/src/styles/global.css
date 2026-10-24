@@ -385,19 +385,21 @@
     }
   }
 
-  /* Polaris "snappy grow" for navigation sub-items. */
-  /* A navigation panel (main or settings) sliding in beside the rail. */
+  /* A navigation panel (main or settings) or a rail flyout sliding in from
+     the rail's side: from the left, or the right in a right-to-left page. */
   @keyframes panel-in {
     from {
       opacity: 0;
-      transform: translateX(-0.5rem);
+      translate: var(--nav-slide-from, -0.5rem) 0;
     }
   }
 
+  /* Polaris "snappy grow" for navigation sub-items, drawn by opacity and a
+     transform only: the rows take their place at once, nothing re-lays out. */
   @keyframes nav-grow {
     from {
       opacity: 0;
-      margin-bottom: -10%;
+      translate: 0 -0.25rem;
     }
   }
 
@@ -726,6 +728,10 @@ body:has([data-leave-guard][data-state="open"]) [data-save-bar]::after {
 
 [dir="rtl"] [data-admin-navigation-progress] > div {
   transform-origin: right center;
+}
+
+[dir="rtl"] {
+  --nav-slide-from: 0.5rem;
 }
 
 /* Shopify's navigation glyphs are thin outlines; its scrollbars stay dark. */
