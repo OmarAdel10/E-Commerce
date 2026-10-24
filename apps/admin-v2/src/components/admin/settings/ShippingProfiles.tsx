@@ -196,7 +196,6 @@ function ProfileForm({ profile, options }: { profile: ShippingProfile | null; op
   const common = useMessages(settingsMessages);
   const { fmt, symbol } = useCurrency();
   const wholeTaka = useWholeUnitPrices();
-  const unit = useWeightUnit();
   const refresh = useRefreshProfiles();
   const [saved] = useState(() => toDraft(profile));
   const [draft, setDraft] = useState(saved);
@@ -297,11 +296,11 @@ function ProfileForm({ profile, options }: { profile: ShippingProfile | null; op
                   <div key={rate.key} className="space-y-3 rounded-lg border border-border p-3">
                     <div className="grid gap-3 sm:grid-cols-3">
                       {amountField(rate, "fee", t("fee"))}
-                      {weightField(rate, "minWeightGrams", `${t("profileWeightFrom")} (${unit})`)}
-                      {weightField(rate, "maxWeightGrams", `${t("profileWeightTo")} (${unit})`)}
+                      {weightField(rate, "minWeightGrams", t("profileWeightFrom"))}
+                      {weightField(rate, "maxWeightGrams", t("profileWeightTo"))}
                       {amountField(rate, "minSubtotal", t("profileValueFrom"))}
                       {amountField(rate, "maxSubtotal", t("profileValueTo"))}
-                      {amountField(rate, "freeOver", t("freeOver"))}
+                      {amountField(rate, "freeOver", t("profileFreeOver"))}
                     </div>
                     <Button type="button" variant="ghost" onClick={() => setDraft((current) => ({ ...current, rates: current.rates.filter((entry) => entry.key !== rate.key) }))}>
                       {t("profileRemoveRate")}

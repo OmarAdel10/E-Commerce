@@ -150,9 +150,9 @@ function deliveryFact(
 ): DeliveryFact | null {
   const { delivery, zoned } = rates;
   if (delivery.length === 0) return null;
-  // Checkout waives the delivery fee for any order holding a free-delivery
-  // product, whatever the rate or zone. The product page has no other place
-  // that says so, so the fact is stated here rather than dropped.
+  // The product's shipping profile ships it free on every rate and zone (only
+  // its own share: other items pay theirs). The product page has no other
+  // place that says so, so the fact is stated here rather than dropped.
   if (freeDelivery) {
     return {
       kind: "delivery",

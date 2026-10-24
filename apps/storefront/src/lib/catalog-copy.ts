@@ -376,7 +376,7 @@ const EN: CatalogCopy = {
   delivery: {
     free: "free",
     freeDelivery: "Free delivery",
-    freeDetail: "Delivery is free on any order with this item.",
+    freeDetail: "This item ships free. Other items in the order pay their own delivery.",
     calculated: "Delivery calculated at checkout",
     calculatedDetail: "Price depends on your address and order.",
     freeInSomeAreas: "Free delivery in some areas",
@@ -563,7 +563,7 @@ const BN: CatalogCopy = {
   delivery: {
     free: "ফ্রি",
     freeDelivery: "ফ্রি ডেলিভারি",
-    freeDetail: "এই পণ্যসহ যেকোনো অর্ডারে ডেলিভারি ফ্রি।",
+    freeDetail: "এই পণ্যের ডেলিভারি ফ্রি। অর্ডারের অন্য পণ্যের ডেলিভারি চার্জ আলাদা।",
     calculated: "ডেলিভারি চার্জ চেকআউটে হিসাব হবে",
     calculatedDetail: "চার্জ আপনার ঠিকানা ও অর্ডারের ওপর নির্ভর করে।",
     freeInSomeAreas: "কিছু এলাকায় ফ্রি ডেলিভারি",

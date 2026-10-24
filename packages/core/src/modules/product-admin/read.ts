@@ -606,6 +606,7 @@ export async function getProductDetails(
             discountType: products.discountType,
             discountAmountMinor: products.discountAmountMinor,
             freeDelivery: products.freeDelivery,
+            shippingProfileId: products.shippingProfileId,
             taxClassId: products.taxClassId,
             taxClassificationVersion: products.taxClassificationVersion,
             isGiftCard: products.isGiftCard,
