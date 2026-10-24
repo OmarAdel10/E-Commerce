@@ -162,7 +162,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   };
   const weightInvalid = (grams: number | null | undefined) => grams !== null && grams !== undefined && (!Number.isFinite(grams) || grams < 0 || grams > 1_000_000);
   const invalid = changed.some((product) => priceProblem(product) !== null
-    || product.skus.some((sku) => { const value = draft(product.id).stock[sku.id]; return value === null || value === undefined || value < 0; })
+    || product.skus.some((sku) => { const value = draft(product.id).stock[sku.id]; return sku.trackInventory && (value === null || value === undefined || value < 0); })
     || product.skus.some((sku) => weightInvalid(draft(product.id).weight[sku.id])));
 
   const save = async () => {
