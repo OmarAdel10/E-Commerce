@@ -15,17 +15,19 @@ import type {
   UpdatePriceListBody,
 } from "~/lib/api-query-options/price-lists";
 
-export type PriceListKind = PriceList["kind"];
-export const PRICE_LIST_KINDS: readonly PriceListKind[] = ["market", "segment", "sale"];
+export { PRICE_LIST_KINDS, type PriceListKind } from "@scalius/shared/market-pricing";
+import type { PriceListKind } from "@scalius/shared/market-pricing";
 export const KIND_LABEL: Readonly<Record<PriceListKind, PriceListMessageKey>> = {
   market: "kindMarket",
   segment: "kindSegment",
   sale: "kindSale",
+  override: "kindOverride",
 };
 export const KIND_HELP: Readonly<Record<PriceListKind, PriceListMessageKey>> = {
   market: "kindMarketHelp",
   segment: "kindSegmentHelp",
   sale: "kindSaleHelp",
+  override: "kindOverrideHelp",
 };
 
 type Messages = (key: PriceListMessageKey, vars?: Record<string, string | number>) => string;

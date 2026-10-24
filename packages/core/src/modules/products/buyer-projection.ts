@@ -283,14 +283,7 @@ export function presentBuyerPriceRange(
     };
 }
 
-/**
- * A price filter in a market whose public lists are live: its bounds in the
- * market's currency, and what decides a SKU's price there. A SKU with a live
- * list price (in the market's currency, at quantity 1) costs the winning one
- * (`resolvePrice`: sale before market list, then the higher priority, the
- * lower amount, the smaller list id), rounded half-up to the increment; any
- * other SKU its FX-derived price, which the base bounds already express.
- */
+/** A public market's price bounds; base bounds separately include the inverse FX conversion. */
 export interface MarketListPriceFilter {
     marketId: string;
     currencyCode: string;
@@ -300,22 +293,50 @@ export interface MarketListPriceFilter {
     maxMarketMinor?: number;
 }
 
-/** The winning live public list amount of a SKU (a column reference) in a market, rounded to its increment; NULL without one. */
-export function marketListSkuPriceSql(variantId: SQL, market: MarketListPriceFilter): SQL<number | null> {
+/**
+ * The SQL filter's counterpart of resolvePrice, pinned against that resolver.
+ * Rank one live row per public kind. An override replaces all other prices;
+ * otherwise the effective price is min(sale, market-or-base/FX). Test bounds
+ * instead of reproducing FX arithmetic: min(a,b) >= low iff both are >= low,
+ * and min(a,b) <= high iff either is <= high. The existing inverse FX bounds
+ * therefore stay exact even for currencies, rounding steps and charm endings.
+ */
+export function marketListSkuInPriceRangeSql(
+    variantId: SQL,
+    market: MarketListPriceFilter,
+    baseAtLeast: SQL,
+    baseAtMost: SQL,
+): SQL {
     const increment = Math.max(1, Math.trunc(market.incrementMinor));
-    const winner = sql`(SELECT winner_price.amount_minor FROM price_list_prices AS winner_price
-        INNER JOIN price_lists AS winner_list ON winner_list.id = winner_price.price_list_id
-        WHERE winner_price.variant_id = ${variantId} AND winner_price.currency_code = ${market.currencyCode}
-          AND winner_price.min_quantity = 1 AND winner_list.market_id = ${market.marketId}
-          AND winner_list.status = 'active' AND winner_list.kind <> 'segment'
-          AND (winner_list.starts_at IS NULL OR winner_list.starts_at <= ${market.atSeconds})
-          AND (winner_list.ends_at IS NULL OR winner_list.ends_at > ${market.atSeconds})
-        ORDER BY CASE winner_list.kind WHEN 'sale' THEN 0 ELSE 1 END, winner_list.priority DESC,
-            winner_price.amount_minor, winner_list.id
-        LIMIT 1)`;
-    if (increment <= 1) return sql<number | null>`${winner}`;
     const step = sql.raw(String(increment));
-    return sql<number | null>`MAX(${step}, ((2 * ${winner} + ${step}) / (2 * ${step})) * ${step})`;
+    const amount = increment <= 1 ? sql`price_filter.amount_minor`
+        : sql`MAX(${step}, ((2 * price_filter.amount_minor + ${step}) / (2 * ${step})) * ${step})`;
+    const rankedAmount = increment <= 1 ? sql`filter_price.amount_minor`
+        : sql`MAX(${step}, ((2 * filter_price.amount_minor + ${step}) / (2 * ${step})) * ${step})`;
+    const atLeast = market.minMarketMinor === undefined ? sql`1` : sql`CASE WHEN ${amount} >= ${market.minMarketMinor} THEN 1 ELSE 0 END`;
+    const atMost = market.maxMarketMinor === undefined ? sql`1` : sql`CASE WHEN ${amount} <= ${market.maxMarketMinor} THEN 1 ELSE 0 END`;
+    return sql`(SELECT COALESCE(
+        MAX(CASE WHEN price_filter.kind = 'override' THEN CASE WHEN ${atLeast} = 1 AND ${atMost} = 1 THEN 1 ELSE 0 END END),
+        CASE WHEN
+            COALESCE(MAX(CASE WHEN price_filter.kind = 'market' THEN ${atLeast} END), CASE WHEN ${baseAtLeast} THEN 1 ELSE 0 END) = 1
+            AND COALESCE(MAX(CASE WHEN price_filter.kind = 'sale' THEN ${atLeast} END), 1) = 1
+            AND (
+                COALESCE(MAX(CASE WHEN price_filter.kind = 'market' THEN ${atMost} END), CASE WHEN ${baseAtMost} THEN 1 ELSE 0 END) = 1
+                OR COALESCE(MAX(CASE WHEN price_filter.kind = 'sale' THEN ${atMost} END), 0) = 1
+            ) THEN 1 ELSE 0 END
+        ) FROM (
+            SELECT filter_list.kind, filter_price.amount_minor,
+                ROW_NUMBER() OVER (PARTITION BY filter_list.kind ORDER BY
+                    CASE WHEN filter_list.kind = 'sale' THEN ${rankedAmount} END,
+                    filter_list.priority DESC, filter_price.amount_minor, filter_list.id) AS rank
+            FROM price_list_prices AS filter_price
+            INNER JOIN price_lists AS filter_list ON filter_list.id = filter_price.price_list_id
+            WHERE filter_price.variant_id = ${variantId} AND filter_price.currency_code = ${market.currencyCode}
+              AND filter_price.min_quantity = 1 AND filter_list.market_id = ${market.marketId}
+              AND filter_list.status = 'active' AND filter_list.kind <> 'segment'
+              AND (filter_list.starts_at IS NULL OR filter_list.starts_at <= ${market.atSeconds})
+              AND (filter_list.ends_at IS NULL OR filter_list.ends_at > ${market.atSeconds})
+        ) AS price_filter WHERE price_filter.rank = 1) = 1`;
 }
 
 /**
@@ -347,18 +368,11 @@ export function buyerCatalogHasSkuInPriceRange(
         discountBps: sql`${products.discountBps}`,
         discountAmountMinor: sql`${products.discountAmountMinor}`,
     });
-    const baseInRange = and(
-        minPriceMinor === undefined ? undefined : sql`${effectivePrice} >= ${minPriceMinor}`,
-        maxPriceMinor === undefined ? undefined : sql`${effectivePrice} <= ${maxPriceMinor}`,
-    );
-    const listPrice = market ? marketListSkuPriceSql(sql.raw("buyer_filter_sku.id"), market) : null;
-    const listInRange = market ? and(
-        market.minMarketMinor === undefined ? undefined : sql`${listPrice} >= ${market.minMarketMinor}`,
-        market.maxMarketMinor === undefined ? undefined : sql`${listPrice} <= ${market.maxMarketMinor}`,
-    ) : undefined;
-    const inRange = listPrice
-        ? sql`AND (CASE WHEN ${listPrice} IS NULL THEN ${baseInRange ?? sql`1 = 1`} ELSE ${listInRange ?? sql`1 = 1`} END)`
-        : baseInRange ? sql`AND ${baseInRange}` : sql``;
+    const baseAtLeast = minPriceMinor === undefined ? sql`1 = 1` : sql`${effectivePrice} >= ${minPriceMinor}`;
+    const baseAtMost = maxPriceMinor === undefined ? sql`1 = 1` : sql`${effectivePrice} <= ${maxPriceMinor}`;
+    const inRange = market
+        ? sql`AND ${marketListSkuInPriceRangeSql(sql.raw("buyer_filter_sku.id"), market, baseAtLeast, baseAtMost)}`
+        : sql`AND ${baseAtLeast} AND ${baseAtMost}`;
 
     return sql`EXISTS (
         SELECT 1

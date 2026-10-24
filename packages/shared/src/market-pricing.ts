@@ -9,19 +9,21 @@
  *
  * Precedence, documented once (Medusa price lists, Shopify catalogs):
  *
- *   purchase-option app price > active sale list > segment list > market list
- *     > app price > FX-derived > base
+ *   purchase-option app price > override list > the lower of sale and the
+ *   ordinary price (segment list > market list > app price > FX-derived > base)
  *
  * - A list price applies only while its list is active and inside its
  *   schedule, in the market's currency, and (segment lists) to a member of
  *   its customer segment. Callers filter with `applicablePriceListPrices()`.
  * - Quantity breaks are `min_quantity` rows (Medusa): a list offers the row
  *   with the largest `min_quantity` that the line quantity reaches.
- * - Among lists of the same kind: the higher priority wins, then the lower
- *   amount, then the smaller list id (so the answer never depends on row order).
+ * - Sales choose the lowest rounded amount. Other kinds choose higher
+ *   priority first. Equal sale amounts or other priorities break ties by
+ *   priority, then raw amount, then list id, never by row order.
  * - A list price replaces the SKU's price and its catalogue discount. Its
  *   compare-at is the row's own; a sale row without one compares against the
- *   price the buyer would pay without sale lists (Medusa's original price).
+ *   price the buyer would pay without sale lists. A sale only applies when
+ *   lower than that price; an override deliberately replaces it by rank.
  * - FX-derived (a market in `fx` mode): the base buyer price converted at the
  *   market's rate, adjusted by its percentage, rounded half-up to the price
  *   increment, then up to the market's rounding step and its ending
@@ -29,7 +31,7 @@
  *   price converted the same way (Shopify adjusts compare-at too).
  * - App price (`cart.line_prices`, packages/plugin-sdk/docs/apps.md): a checkout
  *   function's unit price for one cart line, rounded half-up to the price
- *   increment. It sits below every list, so market and price-list rules stay
+ *   increment. It sits below override, market and segment lists, so their rules stay
  *   authoritative, and above the FX-derived and base price, so B2B contract,
  *   subscription and tiered prices replace them. The compare-at is the price
  *   without the app when that is higher. Checkout only: catalogue reads never
@@ -38,8 +40,8 @@
  *   (`purchaseOption`, a subscription or a rental) is that app's offer, so
  *   only the app that declares the option prices it, and its price outranks
  *   every list: a subscription on a sale item is charged the subscription
- *   price, never the sale price. Without its answer the line takes the
- *   one-time precedence below. Lists keep pricing one-time lines. The
+ *   price, never the sale price. Checkout refuses a line without its owner
+ *   app's valid price. Lists keep pricing one-time lines. The
  *   compare-at is the one-time price when that is higher.
  * - Base: the SKU's price after its catalogue discount (`discountedPriceMinor`).
  *
@@ -47,8 +49,9 @@
  * they see the resolved unit price as the line's catalogue price.
  */
 import { isFxRate, SAME_CURRENCY_FX_RATE } from "./money-chain";
+import { assertMinorAmount, MoneyRangeError } from "./money";
 
-export const PRICE_LIST_KINDS = ["market", "segment", "sale"] as const;
+export const PRICE_LIST_KINDS = ["market", "segment", "sale", "override"] as const;
 export type PriceListKind = (typeof PRICE_LIST_KINDS)[number];
 
 export const PRICE_LIST_STATUSES = ["draft", "active"] as const;
@@ -72,7 +75,7 @@ export const MARKET_PRICE_ADJUSTMENT_MIN_BPS = -9_900;
 export const MARKET_PRICE_ADJUSTMENT_MAX_BPS = 100_000;
 
 /** Rank of a kind in the precedence (higher wins). */
-const KIND_RANK: Readonly<Record<PriceListKind, number>> = { sale: 3, segment: 2, market: 1 };
+const KIND_RANK: Readonly<Record<PriceListKind, number>> = { override: 4, sale: 3, segment: 2, market: 1 };
 
 export function isPriceListKind(value: unknown): value is PriceListKind {
   return typeof value === "string" && (PRICE_LIST_KINDS as readonly string[]).includes(value);
@@ -162,7 +165,8 @@ function ceilDiv(top: bigint, bottom: bigint): bigint {
  * ending that would reach zero keeps the rounded price. Zero stays zero.
  */
 export function fxPriceMinor(baseMinor: number, conversion: FxConversion): number {
-  if (!Number.isSafeInteger(baseMinor) || baseMinor < 0) throw new RangeError("A base price is a non-negative safe integer.");
+  assertMinorAmount(baseMinor);
+  if (baseMinor < 0) throw new RangeError("A base price is non-negative.");
   if (baseMinor === 0) return 0;
   const { policy, incrementMinor } = conversion;
   // Exact: base × rate (between exponents) × (10000 + bps) / 10000, as one fraction.
@@ -188,7 +192,7 @@ export function fxPriceMinor(baseMinor: number, conversion: FxConversion): numbe
     }
   }
   const value = Number(rounded);
-  if (!Number.isSafeInteger(value)) throw new RangeError("The converted price exceeds the supported range.");
+  assertMinorAmount(value);
   return value;
 }
 
@@ -204,7 +208,15 @@ export function maxBaseForFxPrice(marketMinor: number, conversion: FxConversion,
   if (fxPriceMinor(0, conversion) > marketMinor) return -1;
   while (low < high) {
     const middle = low + Math.ceil((high - low) / 2);
-    if (fxPriceMinor(middle, conversion) <= marketMinor) low = middle;
+    let atMost = false;
+    try {
+      atMost = fxPriceMinor(middle, conversion) <= marketMinor;
+    } catch (error) {
+      // A search probe can overflow even when the requested price is small.
+      // Conversion is monotone, so an unsupported amount lies above the bound.
+      if (!(error instanceof MoneyRangeError)) throw error;
+    }
+    if (atMost) low = middle;
     else high = middle - 1;
   }
   return low;
@@ -337,7 +349,7 @@ export interface PriceResolutionInput {
   fx: FxConversion | null;
   /** The market currency's price increment: list amounts round half-up to it. */
   incrementMinor: number;
-  /** An app's price for this line (checkout only); every list outranks it, unless it prices the line's purchase option. */
+  /** An app's price for this line (checkout only); override/segment/market lists outrank it, sales can only lower it, and its own purchase option outranks lists. */
   app?: AppLinePrice | null;
 }
 
@@ -377,9 +389,13 @@ function rowPerList(prices: readonly PriceListPrice[], quantity: number): PriceL
   return [...best.values()];
 }
 
-function better(left: PriceListPrice, right: PriceListPrice): boolean {
+function better(left: PriceListPrice, right: PriceListPrice, incrementMinor: number): boolean {
   const rank = KIND_RANK[left.kind] - KIND_RANK[right.kind];
   if (rank !== 0) return rank > 0;
+  if (left.kind === "sale") {
+    const difference = toIncrement(left.amountMinor, incrementMinor) - toIncrement(right.amountMinor, incrementMinor);
+    if (difference !== 0) return difference < 0;
+  }
   if (left.priority !== right.priority) return left.priority > right.priority;
   if (left.amountMinor !== right.amountMinor) return left.amountMinor < right.amountMinor;
   return left.priceListId < right.priceListId;
@@ -388,6 +404,7 @@ function better(left: PriceListPrice, right: PriceListPrice): boolean {
 /** The one price of a SKU in a market for a buyer and quantity (see the module header). */
 export function resolvePrice(input: PriceResolutionInput): ResolvedPrice {
   const app = input.app && Number.isSafeInteger(input.app.amountMinor) && input.app.amountMinor > 0 ? input.app : null;
+  if (input.app?.purchaseOption && !app) throw new RangeError("A purchase option requires a valid price from its app.");
   if (app?.purchaseOption) {
     // The option's own price: above every list, struck against the one-time price.
     const oneTime = resolvePrice({ ...input, app: null });
@@ -397,7 +414,7 @@ export function resolvePrice(input: PriceResolutionInput): ResolvedPrice {
   const quantity = Math.max(1, Math.floor(input.quantity ?? 1));
   const candidates = rowPerList(input.prices, quantity);
   let winner: PriceListPrice | null = null;
-  for (const candidate of candidates) if (!winner || better(candidate, winner)) winner = candidate;
+  for (const candidate of candidates) if (!winner || better(candidate, winner, input.incrementMinor)) winner = candidate;
   if (!winner) {
     const fallback = withoutLists(input);
     if (!app) return fallback;
@@ -407,8 +424,12 @@ export function resolvePrice(input: PriceResolutionInput): ResolvedPrice {
   }
   const amountMinor = toIncrement(winner.amountMinor, input.incrementMinor);
   let compareAt = winner.compareAtMinor === null ? null : toIncrement(winner.compareAtMinor, input.incrementMinor);
-  if (compareAt === null && winner.kind === "sale") {
-    compareAt = resolvePrice({ ...input, app: null, prices: input.prices.filter((price) => price.kind !== "sale") }).amountMinor;
+  if (winner.kind === "sale") {
+    // A sale only lowers the ordinary price; an override wins by rank before
+    // reaching this branch. Keep equal-price provenance and compare-at intact.
+    const ordinary = resolvePrice({ ...input, prices: input.prices.filter((price) => price.kind !== "sale") });
+    if (amountMinor >= ordinary.amountMinor) return ordinary;
+    compareAt ??= ordinary.amountMinor;
   }
   return { amountMinor, compareAtMinor: compareAbove(amountMinor, compareAt), source: winner.kind, priceListId: winner.priceListId };
 }

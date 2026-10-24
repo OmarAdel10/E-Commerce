@@ -55,7 +55,7 @@ import {
 } from "@scalius/core/modules/price-lists";
 import { readStoreCurrency } from "@scalius/core/modules/markets";
 import { getDecimalPlaces } from "@scalius/shared/currency";
-import { MAX_PRICE_LIST_QUANTITY_BREAKS, MAX_PRICE_LISTS, PRICE_LIST_MIN_QUANTITY_MAX } from "@scalius/shared/market-pricing";
+import { MAX_PRICE_LIST_QUANTITY_BREAKS, MAX_PRICE_LISTS, PRICE_LIST_KINDS, PRICE_LIST_MIN_QUANTITY_MAX } from "@scalius/shared/market-pricing";
 import { createPriceListSchema, scheduleInstant, updatePriceListSchema } from "../../schemas/price-lists";
 import { assertContactFilterAllowed } from "./contact-access";
 import { handOverOrderLines } from "./orders/fulfilments";
@@ -1024,7 +1024,7 @@ const PriceListResource = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  kind: z.enum(["market", "segment", "sale"]),
+  kind: z.enum(PRICE_LIST_KINDS),
   marketId: z.string(),
   segmentId: z.string().nullable(),
   status: z.enum(["draft", "active"]),
@@ -1109,7 +1109,7 @@ app.openapi(createRoute({
   path: "/price-lists",
   tags: ["App API - Products"],
   summary: "Create a price list",
-  description: "A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, and wins over the market list; a segment list prices the signed-in members of one customer segment in a market. A new list is a draft until set active.",
+  description: "A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, only when it lowers the eligible price; an override list deliberately replaces other list prices; a segment list prices the signed-in members of one customer segment in a market. A new list is a draft until set active.",
   request: { body: { required: true, content: { "application/json": { schema: createPriceListSchema } } } },
   responses: {
     201: { description: "The new price list", content: { "application/json": { schema: priceListEnvelope } } },

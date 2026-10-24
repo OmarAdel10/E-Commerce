@@ -61,7 +61,7 @@ They run in this order: `cart.transform`, then `cart.line_prices`, then `cart.va
 | `checkout.payment_methods` | `methods: [{ methodId, name, gated? }]` | `{ operations: [hide \| allow \| rename \| reorder] }` |
 
 - **`cart.transform`.** A bundle's components become real order lines (stock, tax and refunds per SKU); the buyer sees one line at the summed price. Lines with buyer inputs, gift cards and carts above 99 lines are never changed.
-- **`cart.line_prices`.** `prices` set a line's unit price. The one price precedence is: purchase-option price (only the app that declares the option) > sale > segment > market list > app price > FX > base. A one-time line takes an app price only when no price list prices it, and the first app by priority wins. `adjustments` are add-ons (below).
+- **`cart.line_prices`.** `prices` set a line's unit price. The one price precedence is: purchase-option price (only the app that declares the option) > override; otherwise a sale only lowers segment > market list > app price > FX > base. A one-time line takes an app price under a sale or when no price list prices it, and the first app by priority wins. `adjustments` are add-ons (below).
 - **`checkout.discounts`.** A discount targets `{ kind: "order" }`, `{ kind: "lines", lineIds }` or `{ kind: "shipping" }`, worth `{ type: "percentage", percent }` or `{ type: "fixed_amount", amountMinor }`. Size it against `cart.lines[].lineTotalMinor`.
 - **`checkout.payment_methods`.** Hide, rename and reorder the methods checkout allows. A method marked `gated: true` is offered to this buyer only if an app answers `{ op: "allow", methodId }` (for an app's own deferred method, only that app). A hide wins over an allow.
 
@@ -242,7 +242,7 @@ An app declares `checkout.purchaseOptions` (up to 10, `{ key, title, description
 
 - A cart line names one as `<app id>.<key>`. An option no active app declares is refused (`purchase_option_unavailable`).
 - The option is part of the line's identity: the same SKU one-time and under an option are two lines. Functions see `line.purchaseOption`. The order line freezes it, and the order representation carries `purchaseOption`.
-- Core prices nothing for it. Your `cart.line_prices` price wins over every list for that line; without your answer it keeps its one-time price. `checkout.discounts` and `cart.validate` handle the rest.
+- Core prices nothing for it. Your `cart.line_prices` price wins over every list for that line; without your valid answer checkout is refused. `checkout.discounts` and `cart.validate` handle the rest.
 - The product page's buy form lists every active app's options. A Buyer UI button (`ui.cart.addLine`) and an island's `context.addLine` may add a line under one of your own options, never another app's.
 - The app needs a checkout function or a payment provider; a manifest with neither is refused.
 

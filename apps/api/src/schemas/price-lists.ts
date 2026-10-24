@@ -9,12 +9,13 @@ import {
   PRICE_LIST_MIN_QUANTITY_MAX,
   PRICE_LIST_NAME_MAX_LENGTH,
   PRICE_LIST_PRIORITY_MAX,
+  PRICE_LIST_KINDS,
 } from "@scalius/shared/market-pricing";
 import { fromMinor } from "@scalius/shared/money";
 import { PRICE_LIST_WRITE_MAX_VARIANTS, type PriceListRecord, type PriceListVariantPrices } from "@scalius/core/modules/price-lists";
 
-const kindSchema = z.enum(["market", "segment", "sale"]).openapi({
-  description: "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.",
+const kindSchema = z.enum(PRICE_LIST_KINDS).openapi({
+  description: "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.",
 });
 
 export const priceListSchema = z.object({

@@ -8,7 +8,7 @@ Market pricing (docs/MARKETS-DESIGN.md D5, "Step 4a implemented"): price lists a
 
 ## The rule
 
-`resolvePrice()` in `@scalius/shared/market-pricing` is the one precedence: an app purchase-option price (above every list), then an active sale list, then a segment list, then a market list, then an ordinary app price, then the FX-derived price, then the base price. Among lists of one kind the higher priority wins, then the lower amount, then the smaller list id. A list offers the row with the largest `min_quantity` the quantity reaches. A list price replaces the SKU price and its catalogue discount. Promotions, bundles and app discounts apply after it.
+`resolvePrice()` in `@scalius/shared/market-pricing` is the one precedence: an app purchase-option price (above every list), then an override list; otherwise a sale only lowers the ordinary segment > market list > app > FX-derived > base price. Among sale lists the lowest rounded amount wins, then priority, raw amount and list id. Other kinds choose higher priority, then lower amount and smaller list id. A list offers the row with the largest `min_quantity` the quantity reaches. A list price replaces the SKU price and its catalogue discount. Promotions, bundles and app discounts apply after it.
 
 ## Files
 

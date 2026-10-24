@@ -64,7 +64,7 @@ app.openapi(createRoute({
   path: "/",
   tags: [TAG],
   summary: "Create a price list",
-  description: "A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, and wins over the market list; a segment list prices the signed-in members of one customer segment in a market (the backup market included). A new list is a draft until set active.",
+  description: "A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, only when it lowers the eligible price; an override list deliberately replaces other list prices; a segment list prices the signed-in members of one customer segment in a market (the backup market included). A new list is a draft until set active.",
   request: { body: { required: true, content: { "application/json": { schema: createPriceListSchema } } } },
   responses: {
     201: { description: "The new price list", content: { "application/json": { schema: listEnvelope } } },
