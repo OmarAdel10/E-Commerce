@@ -226,12 +226,14 @@ export function collectFacts() {
     if (Math.abs(box.height - targetHeight) > 1) facts.controlSizes.wrong.push(`${describe(element)} (${round(box.height)}px)`);
   }
 
-  // C6: touch targets, at least 24x24, and 44px tall below 640px.
+  // C6: touch targets, at least 24x24, and 44px tall below 640px. A link inside
+  // a sentence is exempt; a link on a line of its own is a target like a button.
   facts.touch = [];
   for (const element of document.querySelectorAll("button, a[href], [role=checkbox], [role=switch], [role=radio], [role=tab]")) {
     if (!visible(element)) continue;
     const style = getComputedStyle(element);
-    if (element.tagName === "A" && style.display === "inline") continue; // a link inside running text
+    const alone = element.parentElement?.textContent?.trim() === element.textContent?.trim();
+    if (element.tagName === "A" && (style.display || "inline") === "inline" && !alone) continue; // a link inside running text
     let box = rectOf(element);
     // A small checkbox or radio counts with the label that wraps it.
     const wrapper = element.closest("label");
@@ -241,7 +243,7 @@ export function collectFacts() {
     }
     if (box.width <= 2 || box.height <= 2 || /\bsr-only\b/.test(String(element.className))) continue; // a skip link is off screen until focused
     const small = box.width < 24 - 0.5 || box.height < 24 - 0.5;
-    const shortOnPhone = phone && element.tagName !== "A" && box.height < 44 - 0.5;
+    const shortOnPhone = phone && box.height < 44 - 0.5;
     if (small || shortOnPhone) facts.touch.push(`${describe(element)} (${round(box.width)}x${round(box.height)}px)`);
   }
 

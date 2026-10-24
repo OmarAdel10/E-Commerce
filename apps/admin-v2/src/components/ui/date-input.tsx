@@ -49,7 +49,7 @@ export function DateInput(fieldProps: DateInputProps) {
           type="button"
           id={id}
           disabled={disabled}
-          className={cn(fieldClassName, "flex h-11 items-center gap-2 py-1 text-start sm:h-9", className)}
+          className={cn(fieldClassName, "flex h-11 items-center gap-2 py-1 text-start sm:pointer-fine:h-9", className)}
           {...aria}
           aria-label={aria["aria-label"] ? `${aria["aria-label"]}: ${displayedValue}` : undefined}
         >
@@ -75,7 +75,7 @@ export function DateInput(fieldProps: DateInputProps) {
           <div className="flex justify-end border-t p-1.5">
             <button
               type="button"
-              className="flex h-11 items-center gap-2 rounded-md px-3 text-body hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8"
+              className="flex h-11 items-center gap-2 rounded-md px-3 text-body hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:h-8"
               onClick={() => {
                 onValueChange("");
                 setOpen(false);

@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField } from "~/components/ui/field";
+import { standaloneLinkTarget } from "~/components/ui/link";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "~/components/ui/dialog";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { formatNumber, translate, useMessages } from "~/i18n";
@@ -100,7 +101,7 @@ export function SalesChannelsSettings() {
                     <Link
                       to="/admin/products"
                       search={{ channel: channel.id } as never}
-                      className="text-foreground hover:underline"
+                      className={`${standaloneLinkTarget} text-foreground hover:underline`}
                     >
                       {t("products", { count: channel.publishedProducts })}
                     </Link>

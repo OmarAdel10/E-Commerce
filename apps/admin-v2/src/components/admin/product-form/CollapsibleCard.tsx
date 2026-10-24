@@ -73,7 +73,7 @@ export function CollapsibleCard({
           ref={toggleRef}
           type="button"
           // The whole title row is the toggle: 8px of padding above and below the text makes a 36px target (44px on phones, C6) without moving it.
-          className="-my-2 flex min-h-11 items-start justify-between gap-3 rounded-lg py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0"
+          className="-my-2 flex min-h-11 items-start justify-between gap-3 rounded-lg py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:min-h-0"
           aria-expanded={isOpen}
           aria-controls={contentId}
           onClick={toggle}

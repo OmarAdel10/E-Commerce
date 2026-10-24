@@ -285,7 +285,7 @@ function NumberSetting({ id, label, help, error, value, spec, onChange }: {
           step={spec.int ? 1 : "any"}
           value={number}
           onChange={(event) => onChange(clamp(Number(event.target.value)))}
-          className="h-11 w-full accent-primary sm:h-6"
+          className="h-11 w-full accent-primary sm:pointer-fine:h-6"
           {...described(id, help, error)}
         />
         <div className="flex justify-between text-caption tabular-nums text-muted-foreground" aria-hidden="true">

@@ -33,10 +33,10 @@ function Toaster(props: ToasterProps) {
           content: "min-w-0 flex-1",
           description: "font-normal opacity-80",
           icon: "flex shrink-0 [&_svg]:size-4",
-          actionButton: "min-h-11 min-w-11 shrink-0 rounded-lg px-2 py-1 underline underline-offset-2 hover:no-underline sm:min-h-6 sm:min-w-0",
-          cancelButton: "min-h-11 min-w-11 shrink-0 rounded-lg px-2 py-1 opacity-80 hover:opacity-100 sm:min-h-6 sm:min-w-0",
+          actionButton: "min-h-11 min-w-11 shrink-0 rounded-lg px-2 py-1 underline underline-offset-2 hover:no-underline sm:pointer-fine:min-h-6 sm:pointer-fine:min-w-0",
+          cancelButton: "min-h-11 min-w-11 shrink-0 rounded-lg px-2 py-1 opacity-80 hover:opacity-100 sm:pointer-fine:min-h-6 sm:pointer-fine:min-w-0",
           closeButton:
-            "order-last ms-auto flex size-11 shrink-0 items-center justify-center rounded-lg opacity-80 hover:opacity-100 sm:size-7",
+            "order-last ms-auto flex size-11 shrink-0 items-center justify-center rounded-lg opacity-80 hover:opacity-100 sm:pointer-fine:size-7",
         },
       }}
       icons={{

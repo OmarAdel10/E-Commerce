@@ -64,6 +64,7 @@ import {
   type MarketForm,
 } from "./market-form";
 import { FieldRow } from "~/components/ui/field";
+import { standaloneLinkClassName } from "~/components/ui/link";
 
 function displayName(code: string, type: "currency"): string {
   try {
@@ -187,7 +188,7 @@ export function MarketEditor({ marketId }: { marketId: string }) {
           disabled={!canEdit}
           onCheckedChange={(on) => setValue("pricesIncludeTax", on)}
         />
-        <Link to="/admin/settings/taxes" className="self-start text-body text-link hover:underline">{t("taxRegionsLink")}</Link>
+        <Link to="/admin/settings/taxes" className={`self-start ${standaloneLinkClassName}`}>{t("taxRegionsLink")}</Link>
       </SettingsCard>
 
       <SettingsAdvanced label={t("advancedTitle")} forceOpen={Boolean(problems.handle || problems.suffix)}>

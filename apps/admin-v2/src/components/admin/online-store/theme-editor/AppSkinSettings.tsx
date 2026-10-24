@@ -52,7 +52,7 @@ function Fallback({ children }: { children: ReactNode }) {
           aria-expanded={open}
           aria-controls={`${id}-body`}
           onClick={() => setOpen((current) => !current)}
-          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 text-start text-body font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-3 text-start text-body font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:min-h-9"
         >
           {t("skinFallback")}
           <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground", open && "rotate-180")} aria-hidden="true" />

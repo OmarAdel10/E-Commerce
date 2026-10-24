@@ -328,7 +328,7 @@ function ComboboxView({
           }}
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => select(option)}
-          className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-body outline-none data-[active]:bg-accent data-[active]:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 sm:min-h-8"
+          className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-body outline-none data-[active]:bg-accent data-[active]:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 sm:pointer-fine:min-h-8"
         >
           <Check
             aria-hidden="true"
@@ -368,14 +368,14 @@ function ComboboxView({
             disabled={disabled}
             className={cn(
               fieldClassName,
-              "flex h-11 w-full items-center gap-2 text-start sm:h-9",
+              "flex h-11 w-full items-center gap-2 text-start sm:pointer-fine:h-9",
             )}
           >
             <span data-placeholder={label ? undefined : ""} title={busy ? undefined : label} className="min-w-0 flex-1 truncate data-[placeholder]:text-muted-foreground">
               {busy ? t("loading") : label ?? placeholder ?? t("placeholder")}
             </span>
             {/* Room for the clear button, which sits just before the chevron. */}
-            {canClear ? <span aria-hidden="true" className="size-11 shrink-0 sm:size-6" /> : null}
+            {canClear ? <span aria-hidden="true" className="size-11 shrink-0 sm:pointer-fine:size-6" /> : null}
             {busy ? (
               <Loader2 aria-hidden="true" className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
             ) : (
@@ -392,7 +392,7 @@ function ComboboxView({
               setPicked(null);
               onValueChange("", null);
             }}
-            className="absolute inset-e-8 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-6"
+            className="absolute inset-e-8 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:size-6"
           >
             <X aria-hidden="true" className="size-3.5" />
           </button>
@@ -409,7 +409,7 @@ function ComboboxView({
         }}
         className="flex w-(--radix-popover-trigger-width) min-w-60 max-w-(--radix-popover-content-available-width) flex-col overflow-hidden p-0"
       >
-        <div className={showSearch ? "flex h-11 shrink-0 items-center gap-2 border-b px-3 sm:h-9" : "sr-only"}>
+        <div className={showSearch ? "flex h-11 shrink-0 items-center gap-2 border-b px-3 sm:pointer-fine:h-9" : "sr-only"}>
           <Search aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -491,7 +491,7 @@ function ComboboxView({
                     setOpen(false);
                     emptyAction.onSelect(typed);
                   }}
-                  className="mt-2 inline-flex h-9 items-center rounded-md px-3 text-body text-link hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-8"
+                  className="mt-2 inline-flex h-11 items-center rounded-md px-3 text-body text-link hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:h-8"
                 >
                   {emptyAction.label(query.trim())}
                 </button>
@@ -512,7 +512,7 @@ function ComboboxView({
               type="button"
               disabled={loadingMore}
               onClick={onLoadMore}
-              className="flex h-9 items-center gap-2 rounded-md px-3 text-body text-link hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:h-8"
+              className="flex h-11 items-center gap-2 rounded-md px-3 text-body text-link hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:pointer-fine:h-8"
             >
               {loadingMore ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : null}
               {pageFailed && !loadingMore ? t("retry") : t("loadMore")}

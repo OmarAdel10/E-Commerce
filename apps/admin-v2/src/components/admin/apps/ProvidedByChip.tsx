@@ -20,7 +20,7 @@ export function ProvidedByChip({ pluginId, appName }: { pluginId: string; appNam
     <Link
       to="/admin/apps/$pluginId"
       params={{ pluginId }}
-      className="inline-flex min-h-11 min-w-6 max-w-full items-center rounded-lg bg-secondary px-2 py-1 text-caption font-medium text-secondary-foreground outline-none hover:bg-secondary-hover focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6"
+      className="inline-flex min-h-11 min-w-6 max-w-full items-center rounded-lg bg-secondary px-2 py-1 text-caption font-medium text-secondary-foreground outline-none hover:bg-secondary-hover focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:min-h-6"
     >
       {label}
     </Link>

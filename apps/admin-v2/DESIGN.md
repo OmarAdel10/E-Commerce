@@ -87,7 +87,7 @@ Font: Inter at weights 450 (normal), 550 (`font-medium`) and 650 (`font-semibold
 
 | Need | Use |
 | --- | --- |
-| Action | `Button`. Variants: `default` primary, `outline` secondary, `secondary` neutral, `ghost` tertiary and icon, `link` plain, `destructive` critical. Sizes (phone/`sm` up): `default` 44/36px, `sm` 44/32 (phones get the 44px touch height, C6), `lg` 44, `icon` 44/36, `icon-sm` 44/28. |
+| Action | `Button`. Variants: `default` primary, `outline` secondary, `secondary` neutral, `ghost` tertiary and icon, `link` plain, `destructive` critical. Sizes (touch/`sm` up with a mouse): `default` 44/36px, `sm` 44/32 (phones and touch screens get the 44px touch height, C6), `lg` 44, `icon` 44/36, `icon-sm` 44/28. |
 | Section | `Card` with `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`. |
 | Status | `Badge`. Use `default` (strong) only for counts, and the tone variants per the status table below. |
 | Page message | `Alert`, with a tone variant. |
@@ -255,12 +255,12 @@ Harness hooks. Shared components carry these `data-slot` names; the harness sele
 
 | ID | Rule | Check |
 | --- | --- | --- |
-| C1 | One control height: 36px from 640px, 44px below it, for inputs, selects, date fields and buttons beside them. Bangla keeps the height; the line grows inside it. | harness → visible `input,textarea[rows="1"],button[role=combobox]` heights ∈ {36} (≥640) or {44} (<640) |
+| C1 | One control height: 36px from 640px with a mouse or trackpad, 44px below 640px and on touch screens, for inputs, selects, date fields and buttons beside them. Bangla keeps the height; the line grows inside it. | harness → visible `input,textarea[rows="1"],button[role=combobox]` heights ∈ {36} (≥640) or {44} (<640) |
 | C2 | Controls in one row have one height. `size="sm"` (32px) only in table cells, card headers and menus with no field beside them. | harness → elements of one flex row whose boxes overlap vertically by >50%: max height − min height ≤ 1 |
 | C3 | One primary button per view: the page, each open dialog, each sheet. When the save bar shows, the page has no other primary. | harness → visible `.shadow-button-primary` outside overlays ≤ 1; in each `[role=dialog]` ≤ 1 |
 | C4 | Order: secondary actions, then the primary at the end. More than two secondary actions go into "More actions". | harness → `[data-slot=page-actions]`: ≤ 3 visible buttons; primary is last |
 | C5 | Never a disabled primary as the only cue. Disabled buttons say why (tooltip or help line). | review |
-| C6 | Touch targets: ≥24×24px everywhere, ≥44px tall below 640px. A 16px checkbox gets a 24px (44px on phones) hit area. | harness → `button,a[href],[role=checkbox],[role=switch],[role=radio],[role=tab]`: hit box ≥ 24×24; ≥ 44 tall under 640 |
+| C6 | Touch targets: ≥24×24px everywhere, ≥44px tall below 640px and on any touch screen (a tablet is wide): a 44px target turns compact only with a fine pointer, `sm:pointer-fine:h-9`, never `sm:h-9` (lint). A 16px checkbox gets a 24px (44px on phones) hit area. A link on a line of its own uses `standaloneLinkClassName` (or `standaloneLinkTarget` to keep its own colour, both in `components/ui/link.ts`); a link inside a sentence stays inline. | harness → `button,a[href],[role=checkbox],[role=switch],[role=radio],[role=tab]`: hit box ≥ 24×24; ≥ 44 tall under 640 (a link on a line of its own included) |
 | C7 | Icon-only buttons have an accessible name and a tooltip. | lint (`buttonRules`: a `Button` with an icon size needs `aria-label`) · harness → every visible `button` has text, `aria-label` or `aria-labelledby` |
 | C8 | Links are `text-link`. Underline only on hover, except inside running text. | review |
 

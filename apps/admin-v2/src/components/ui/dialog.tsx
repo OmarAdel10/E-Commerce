@@ -166,7 +166,7 @@ const DialogPanel = React.forwardRef<React.ComponentRef<typeof DialogPrimitive.C
         <ModalInertBackground />
         {children}
         {showCloseButton && variant === "modal" ? (
-          <DialogPrimitive.Close className="absolute inset-e-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inset-e-3 sm:top-3 sm:size-8">
+          <DialogPrimitive.Close className="absolute inset-e-2 top-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inset-e-3 sm:top-3 sm:pointer-fine:size-8">
             <X className="size-4" />
             <CloseLabel />
           </DialogPrimitive.Close>

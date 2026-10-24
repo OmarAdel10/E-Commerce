@@ -175,7 +175,7 @@ function ProductControl({ id, field, value, error, onChange }: {
     <Labelled id={id} field={field} error={error}>
       <div className="flex items-center gap-2">
         {/* The photo's box is there before a product is, so choosing one never moves the select. */}
-        <span className="grid size-11 shrink-0 place-items-center overflow-clip rounded-lg border bg-muted sm:size-9">
+        <span className="grid size-11 shrink-0 place-items-center overflow-clip rounded-lg border bg-muted sm:pointer-fine:size-9">
           {product?.primaryImage ? (
             <img src={mediaImageUrl(product.primaryImage, 96)} alt="" className="size-full object-cover" />
           ) : (
@@ -304,7 +304,7 @@ function ListControl({ id, field, value, error, media, onChange }: {
                       return next;
                     })}
                     onKeyDown={(event) => onTitleKey(event, index, key)}
-                    className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg ps-3 text-start text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9"
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg ps-3 text-start text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:min-h-9"
                   >
                     <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground", expanded && "rotate-180")} aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{name}</span>
@@ -444,7 +444,7 @@ function AppSettingInput({ id, field, value, error, media, onChange }: {
             {field.required ? <span className="font-normal text-muted-foreground"> {t("appRequired")}</span> : null}
           </legend>
           {options.map((option) => (
-            <label key={option.value} className="flex min-h-11 items-center gap-3 text-body sm:min-h-8">
+            <label key={option.value} className="flex min-h-11 items-center gap-3 text-body sm:pointer-fine:min-h-8">
               <Checkbox checked={chosen.includes(option.value)} onCheckedChange={(on) => toggle(option.value, on === true)} />
               {option.label}
             </label>
@@ -461,7 +461,7 @@ function AppSettingInput({ id, field, value, error, media, onChange }: {
             <label
               // The merchant's colour as the swatch (a runtime value, as a custom property).
               style={{ "--swatch": valid ? text : "transparent" } as CSSProperties}
-              className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:size-9"
+              className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:pointer-fine:size-9"
             >
               <span className="sr-only">{store("pickColor", { name: field.label })}</span>
               <input

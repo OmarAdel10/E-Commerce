@@ -75,7 +75,7 @@ function ChoiceList({ id, field, label, chosen, problem, help, disabled, onChang
     <fieldset id={id} aria-invalid={shown ? true : undefined} aria-describedby={shown || help ? `${id}-note` : undefined} className="space-y-1.5">
       <legend className="text-body font-medium">{label}</legend>
       {options.map((option) => (
-        <label key={option.value} className="flex min-h-11 items-center gap-3 text-body sm:min-h-8">
+        <label key={option.value} className="flex min-h-11 items-center gap-3 text-body sm:pointer-fine:min-h-8">
           <Checkbox checked={chosen.includes(option.value)} disabled={disabled} onCheckedChange={(on) => toggle(option.value, on === true)} />
           {option.label}
         </label>
@@ -303,7 +303,7 @@ export function AppSettingControl({ app, field, form, canManage, idPrefix }: {
           <div className="flex items-center gap-2">
             <label
               style={{ "--swatch": valid ? textValue : "transparent" } as CSSProperties}
-              className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:size-9"
+              className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:pointer-fine:size-9"
             >
               <span className="sr-only">{t("pickColor", { name: field.label })}</span>
               <input

@@ -193,7 +193,7 @@ function AccountComposer({ conversationId, orderId, onPosted, primary = true, al
           aria-invalid={tooLong || undefined}
           rows={1}
           // eslint-disable-next-line shadcn/no-restyle -- compact conversation composer, capped before it consumes the reading viewport
-          className="min-h-11 max-h-36 resize-none py-1 sm:min-h-9 sm:max-h-[min(16rem,35dvh)]"
+          className="min-h-11 max-h-36 resize-none py-1 sm:pointer-fine:min-h-9 sm:max-h-[min(16rem,35dvh)]"
         />
         <p id={helpId} className="sr-only">
           {t(mode === "public" ? "replyHelp" : "noteHelp")} · {t("sendShortcut")}

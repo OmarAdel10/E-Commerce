@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 import { useWatch, type UseFormReturn } from "react-hook-form";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 import { Field, ReadOnlyValue } from "@/components/ui/field";
+import { standaloneLinkClassName } from "@/components/ui/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMessages } from "~/i18n";
 import { warrantyMessages } from "~/i18n/warranty";
@@ -64,7 +65,7 @@ export function WarrantyPolicyPicker({ form, readOnly }: {
           />
         </Field>
       )}
-      <Link to="/admin/settings/policies/warranty" className="inline-flex items-center rounded-md py-0.5 text-body text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Link to="/admin/settings/policies/warranty" className={standaloneLinkClassName}>
         {t("managePolicies")}
       </Link>
     </div>

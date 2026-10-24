@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { SearchX } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { useMessages } from "~/i18n";
 import { statesMessages } from "~/i18n/states";
 import { HELP_LINKS } from "~/lib/help-links";
@@ -48,7 +49,7 @@ export function EmptyState({
             href={HELP_LINKS.questions}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-11 min-w-6 items-center rounded-md text-body text-link sm:min-h-6 hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            className={standaloneLinkClassName}
           >
             {t("emptyHelp")}
           </a>

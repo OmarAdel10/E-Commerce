@@ -641,9 +641,9 @@ export function SaveBarProvider({
  * Discard is the neutral secondary, Save the near-black primary, in both themes.
  */
 const DISCARD_BUTTON =
-  "relative inline-flex h-11 shrink-0 items-center rounded-lg bg-save-bar-secondary px-3 text-body font-medium text-save-bar-foreground hover:bg-save-bar-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-save-bar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-save-bar disabled:pointer-events-none disabled:opacity-50 md:h-8";
+  "relative inline-flex h-11 shrink-0 items-center rounded-lg bg-save-bar-secondary px-3 text-body font-medium text-save-bar-foreground hover:bg-save-bar-secondary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-save-bar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-save-bar disabled:pointer-events-none disabled:opacity-50 md:pointer-fine:h-8";
 const SAVE_BUTTON =
-  "relative inline-flex h-11 shrink-0 items-center rounded-lg bg-save-bar-primary px-3 text-body font-medium text-save-bar-primary-foreground hover:bg-save-bar-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-save-bar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-save-bar disabled:pointer-events-none disabled:opacity-50 md:h-8";
+  "relative inline-flex h-11 shrink-0 items-center rounded-lg bg-save-bar-primary px-3 text-body font-medium text-save-bar-primary-foreground hover:bg-save-bar-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-save-bar-ring focus-visible:ring-offset-1 focus-visible:ring-offset-save-bar disabled:pointer-events-none disabled:opacity-50 md:pointer-fine:h-8";
 
 function SaveBar({ state, unsavedLabel, keepsDraft }: {
   state: SaveScopeState;

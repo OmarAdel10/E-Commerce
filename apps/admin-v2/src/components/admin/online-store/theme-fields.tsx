@@ -90,7 +90,7 @@ function ColorField({
       <div className="flex items-center gap-2">
         <label
           style={{ "--swatch": valid ? value : "transparent" } as CSSProperties}
-          className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:size-9"
+          className="relative size-11 shrink-0 cursor-pointer rounded-lg border bg-(--swatch) sm:pointer-fine:size-9"
         >
           <span className="sr-only">{t("pickColor", { name: label })}</span>
           <input

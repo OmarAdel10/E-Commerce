@@ -224,7 +224,7 @@ export function ResizableImageView({
               aria-label={t("alignImageLeft")}
               title={t("alignImageLeft")}
               className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:h-8 sm:w-8",
+                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:pointer-fine:h-8 sm:pointer-fine:w-8",
                 textAlign === "left" && "bg-accent",
               )}
             >
@@ -236,7 +236,7 @@ export function ResizableImageView({
               aria-label={t("centerImage")}
               title={t("centerImage")}
               className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:h-8 sm:w-8",
+                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:pointer-fine:h-8 sm:pointer-fine:w-8",
                 (textAlign === "center" || !textAlign) && "bg-accent",
               )}
             >
@@ -248,7 +248,7 @@ export function ResizableImageView({
               aria-label={t("alignImageRight")}
               title={t("alignImageRight")}
               className={cn(
-                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:h-8 sm:w-8",
+                "flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:pointer-fine:h-8 sm:pointer-fine:w-8",
                 textAlign === "right" && "bg-accent",
               )}
             >
@@ -331,7 +331,7 @@ export function ResizableImageView({
                   type="button"
                   aria-label={t("editAlt")}
                   title={t("editAlt")}
-                  className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:h-8 sm:w-8"
+                  className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-accent sm:pointer-fine:h-8 sm:pointer-fine:w-8"
                 >
                   <PencilLine className="size-4" />
                 </button>
@@ -375,7 +375,7 @@ export function ResizableImageView({
               onClick={deleteNode}
               aria-label={t("removeImage")}
               title={t("removeImage")}
-              className="flex h-11 w-11 items-center justify-center rounded hover:bg-critical-surface hover:text-destructive sm:h-8 sm:w-8"
+              className="flex h-11 w-11 items-center justify-center rounded hover:bg-critical-surface hover:text-destructive sm:pointer-fine:h-8 sm:pointer-fine:w-8"
             >
               <Trash2 className="size-4" />
             </button>

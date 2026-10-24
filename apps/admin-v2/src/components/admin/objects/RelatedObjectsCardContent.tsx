@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { RelatedObjectRecord } from "@scalius/shared/plugins/objects";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { useMessages } from "~/i18n";
 import { objectMessages } from "~/i18n/objects";
 
@@ -17,7 +18,7 @@ export function RelatedObjectsCardContent({ records }: { records: readonly Relat
               <Link
                 to="/admin/objects/$type/records/$recordId"
                 params={{ type: record.typeHandle, recordId: record.recordId }}
-                className="text-body text-link hover:underline"
+                className={standaloneLinkClassName}
               >{record.displayName}</Link>
               <p className="text-body text-muted-foreground">{record.typeName}</p>
             </li>

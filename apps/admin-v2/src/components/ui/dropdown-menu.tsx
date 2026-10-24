@@ -13,7 +13,7 @@ const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 /** Items are 44px on touch screens and compact from `sm` up. */
 const itemClassName =
-  "relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-body outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 sm:min-h-0 [&>svg]:size-4 [&>svg]:shrink-0";
+  "relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-body outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 sm:pointer-fine:min-h-0 [&>svg]:size-4 [&>svg]:shrink-0";
 
 const DropdownMenuContent = React.forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.Content>,

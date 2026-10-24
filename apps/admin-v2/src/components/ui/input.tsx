@@ -42,7 +42,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type,
       type={type}
       className={cn(
         fieldClassName,
-        "flex h-11 py-1 file:border-0 file:bg-transparent file:text-body file:font-medium file:text-foreground sm:h-9",
+        "flex h-11 py-1 file:border-0 file:bg-transparent file:text-body file:font-medium file:text-foreground sm:pointer-fine:h-9",
         prefix !== undefined && "ps-(--affix-start)",
         suffix !== undefined && "pe-(--affix-end)",
         !affixed && className,

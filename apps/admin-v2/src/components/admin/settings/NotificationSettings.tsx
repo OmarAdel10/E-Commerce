@@ -124,7 +124,7 @@ function RulesTable({
         <tbody key={group.key}>
           <tr className="h-[calc(2lh+12px)]">
             <th colSpan={columns.length + 1} className="py-1.5 text-start font-semibold">
-              <span className="flex min-h-11 items-center sm:min-h-0">{events(group.key)}</span>
+              <span className="flex min-h-11 items-center sm:pointer-fine:min-h-0">{events(group.key)}</span>
             </th>
           </tr>
           {group.events.map((event) => (
@@ -136,13 +136,13 @@ function RulesTable({
                     params={{ event }}
                     aria-label={t("editMessage", { event: events(event) })}
                     title={events(event)}
-                    className="flex min-h-11 min-w-6 items-center text-link hover:underline sm:min-h-6"
+                    className="flex min-h-11 min-w-6 items-center text-link hover:underline sm:pointer-fine:min-h-6"
                   >
                     {/* The 44px phone target centres its text on the row, beside the checkboxes (T4). */}
                     <span className="line-clamp-2">{events(event)}</span>
                   </Link>
                 ) : (
-                  <span title={events(event)} className="flex min-h-11 items-center sm:min-h-6">
+                  <span title={events(event)} className="flex min-h-11 items-center sm:pointer-fine:min-h-6">
                     <span className="line-clamp-2">{events(event)}</span>
                   </span>
                 )}

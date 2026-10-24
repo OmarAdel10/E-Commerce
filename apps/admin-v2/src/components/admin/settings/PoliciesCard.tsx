@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "~/lib/toast";
 import { getApiV1AdminPages, postApiV1AdminPages } from "@scalius/api-client/sdk";
 import { Button } from "~/components/ui/button";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { SearchableSelect, type SearchableSelectLoader } from "~/components/ui/searchable-select";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useCurrency } from "~/hooks/use-currency";
@@ -221,7 +222,7 @@ function PolicyFields({ kind, canEdit }: { kind: PolicyKind; canEdit: boolean })
         canViewPages ? (
           <div className="space-y-1.5">
             {createFromTemplate.isSuccess ? <p role="status" className="text-body text-muted-foreground">{t("templateCreatedHelp")}</p> : null}
-            <Link to="/admin/pages/$pageId/edit" params={{ pageId: linked }} search={{ from: "policies" }} className="text-body text-link hover:underline">
+            <Link to="/admin/pages/$pageId/edit" params={{ pageId: linked }} search={{ from: "policies" }} className={standaloneLinkClassName}>
               {t("editPage")}
             </Link>
           </div>

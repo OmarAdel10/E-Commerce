@@ -43,6 +43,7 @@ import { SettingsLoadFailure } from "./SettingsLoadFailure";
 import { SettingsCard, SettingsDialog, SettingsField, SettingsRow, SettingsCardLoading } from "./SettingsPage";
 import { SettingsCheckbox } from "./SettingsCheckbox";
 import { FieldRow } from "~/components/ui/field";
+import { standaloneLinkClassName } from "~/components/ui/link";
 
 type Language = ApiResult<typeof getApiV1AdminSettingsCheckoutLanguages>["languages"][number];
 type FieldKey = "showOrderNotesField" | "showAreaField";
@@ -268,8 +269,8 @@ export function CustomerContactCard() {
         disabled={!canEdit}
         onCheckedChange={(on) => setValue("requireFullBillingAddress", on)}
       />
-      <div className="text-body">
-        <Link to="/admin/settings/customer-accounts" className="text-link hover:underline">{t("contactFieldsPointer")}</Link>
+      <div>
+        <Link to="/admin/settings/customer-accounts" className={standaloneLinkClassName}>{t("contactFieldsPointer")}</Link>
       </div>
       <div className="flex flex-col gap-4 border-t border-border pt-4">
         <FormFields

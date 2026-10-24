@@ -220,7 +220,7 @@ export function SegmentConditionRow({
           <fieldset className="space-y-1" aria-describedby={invalid ? noteId : undefined}>
             <legend className="sr-only">{name}</legend>
             {SEGMENT_CUSTOMER_TYPES.map((type) => (
-              <label key={type} className="flex min-h-11 items-center gap-3 text-body md:min-h-9">
+              <label key={type} className="flex min-h-11 items-center gap-3 text-body md:pointer-fine:min-h-9">
                 <Checkbox
                   checked={condition.types.includes(type)}
                   disabled={disabled}

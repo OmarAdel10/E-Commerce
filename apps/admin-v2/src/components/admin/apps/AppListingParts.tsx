@@ -25,7 +25,7 @@ export function Fact({ label, children }: { label: string; children: ReactNode }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 min-w-6 items-center text-link hover:underline sm:min-h-6">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 min-w-6 items-center text-link hover:underline sm:pointer-fine:min-h-6">
       {children}
     </a>
   );
@@ -72,7 +72,7 @@ export function AppListingFacts({ app, columns = 2, children }: { app: ListingFi
         <Fact label={t("support")}>
           <span className="flex flex-col gap-0.5">
             {support.url ? <ExternalLink href={support.url}>{support.url}</ExternalLink> : null}
-            {support.email ? <a href={`mailto:${support.email}`} className="inline-flex min-h-11 min-w-6 items-center text-link hover:underline sm:min-h-6">{support.email}</a> : null}
+            {support.email ? <a href={`mailto:${support.email}`} className="inline-flex min-h-11 min-w-6 items-center text-link hover:underline sm:pointer-fine:min-h-6">{support.email}</a> : null}
           </span>
         </Fact>
       ) : null}

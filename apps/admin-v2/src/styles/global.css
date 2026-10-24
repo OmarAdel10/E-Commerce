@@ -909,14 +909,15 @@ body.editor-fullscreen-active [data-slot="dialog-content"] {
   outline: none;
 }
 
-/* A table control needs a hit area even when it contains only one short word.
+/* A table control needs a hit area even when it contains only one short word:
+   44px on phones and touch screens, 24px with a mouse or trackpad (C6).
    Utilities can still clamp names or lay out a phone card as a flex column. */
 @layer components {
   :is([data-slot="table"], [data-slot="index-table"]) :is(a[href], button) {
     display: inline-block;
     min-height: 2.75rem;
     min-width: 1.5rem;
-    @media (min-width: 40rem) {
+    @media (min-width: 40rem) and (pointer: fine) {
       min-height: 1.5rem;
     }
   }

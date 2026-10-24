@@ -449,7 +449,7 @@ function InputNode({ node }: { node: PluginUiInput }) {
   if (node.type === "checkbox") {
     return (
       <div className="space-y-1">
-        <div className="flex min-h-11 items-center gap-3 sm:min-h-8">
+        <div className="flex min-h-11 items-center gap-3 sm:pointer-fine:min-h-8">
           <Checkbox {...field} checked={value === true} onCheckedChange={(checked) => set(checked === true)} />
           <Label htmlFor={id}>{node.label}</Label>
         </div>

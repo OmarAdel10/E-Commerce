@@ -777,7 +777,7 @@ const OptionMatrix = React.forwardRef<OptionMatrixEditorHandle, OptionMatrixEdit
         <div className="space-y-1">
           {/* A digital SKU's tracking follows its licence keys: no switch to get wrong. */}
           {digitalSimple ? null : readOnly ? <ReadOnlyValue label={t("trackQuantity")} value={t(simpleSku.trackInventory ? "quantityTracked" : "notTracked")} /> : (
-          <label className="flex min-h-11 items-center gap-2 text-body md:min-h-0">
+          <label className="flex min-h-11 items-center gap-2 text-body md:pointer-fine:min-h-0">
             <Checkbox
               checked={simpleSku.trackInventory}
               onCheckedChange={(checked) => { trackingChosen.current = true; updateSimple({ trackInventory: checked === true }); }}

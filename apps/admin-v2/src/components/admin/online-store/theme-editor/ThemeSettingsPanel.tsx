@@ -181,7 +181,7 @@ function BrandFields({ theme, media, setDraft }: { theme: Theme; media: MediaPre
             step={HEADER_LOGO_WIDTH_STEP}
             value={brand.logoWidth}
             onChange={(event) => setBrand({ logoWidth: Number(event.target.value) })}
-            className="h-11 w-full accent-primary sm:h-6"
+            className="h-11 w-full accent-primary sm:pointer-fine:h-6"
             aria-valuetext={`${brand.logoWidth}px`}
           />
         </Field>

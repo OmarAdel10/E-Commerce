@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { PERMISSIONS } from "@scalius/core/auth/rbac/permissions";
 import { Skeleton } from "~/components/ui/skeleton";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useMessages } from "~/i18n";
 import { reviewsMessages } from "~/i18n/reviews";
@@ -44,7 +45,7 @@ export function ReviewContext({ thread }: { thread: StaffThread }) {
           <Link
             to="/admin/reviews"
             search={{ status: tabForStatus(review.data.status), review: review.data.id }}
-            className="text-body text-link hover:underline"
+            className={`self-start ${standaloneLinkClassName}`}
           >
             {t("viewInReviews")}
           </Link>

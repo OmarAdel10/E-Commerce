@@ -14,7 +14,7 @@ export function ObjectTypeWidget({ id, label, help, value, onChange, error }: Se
     <Suspense
       fallback={(
         <Field id={id} label={label}>
-          <Skeleton className="h-11 w-full sm:h-9" />
+          <Skeleton className="h-11 w-full sm:pointer-fine:h-9" />
         </Field>
       )}
     >

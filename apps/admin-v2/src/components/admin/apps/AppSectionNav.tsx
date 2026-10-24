@@ -18,7 +18,7 @@ import { SERVICE_HEALTH } from "./app-services";
 
 
 const ROW =
-  "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-body outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-accent aria-[current=page]:font-semibold lg:min-h-8";
+  "flex min-h-11 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-start text-body outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring aria-[current=page]:bg-accent aria-[current=page]:font-semibold lg:pointer-fine:min-h-8";
 
 export function AppSectionNav({ app, current }: { app: AppDetail; current: string }) {
   const t = useMessages(appFeaturesMessages);

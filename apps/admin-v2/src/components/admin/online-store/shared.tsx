@@ -29,12 +29,12 @@ export function OnlineStorePage({
 }) {
   return (
     <Page width="settings" className="@container space-y-4 pb-10" data-presence-root={presenceKey}>
-      <div className="flex min-h-11 flex-wrap items-center gap-2 lg:min-h-9">
+      <div className="flex min-h-11 flex-wrap items-center gap-2 lg:pointer-fine:min-h-9">
         {back ? (
           <Link
             to={back.to}
             aria-label={back.label}
-            className="-ms-2 grid size-11 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground lg:size-9"
+            className="-ms-2 grid size-11 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground lg:pointer-fine:size-9"
           >
             <ArrowLeft className="size-5" aria-hidden="true" />
           </Link>

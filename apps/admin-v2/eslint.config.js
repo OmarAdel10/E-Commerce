@@ -32,6 +32,11 @@ const designRules = [
   ...classRule(`(^|\\s)dark:`, "No dark: overrides; colour tokens already switch with the theme."),
   ...classRule(`^(?=.*(^|\\s)border(\\s|$))(?=.*(^|\\s)shadow-(?!none)).*$`, "Never a border and a drop shadow together: use a shadow token (it carries its own ring edge) or a ring."),
   ...classRule(`^(?=.*(^|\\s)${variant}sticky(\\s|$))(?!.*(^|\\s)${variant}border(-[trblxy])?(\\s|$)).*$`, "Sticky bars need a border separating them from the content."),
+  // C6: a 44px target turns compact only with a mouse or trackpad, never by width alone (a touch tablet is wide).
+  ...classRule(
+    `^(?=.*(^|\\s)(min-)?(h|size|w|min-w)-11(\\s|$))(?!.*pointer-coarse:)(?=.*(^|\\s)(sm|md|lg|xl|2xl|nav):(min-)?(h|size|w|min-w)-[0-9.]+(\\s|$)).*$`,
+    "A 44px touch target stays 44px on touch screens: write the compact size as sm:pointer-fine:h-9 (any breakpoint), not sm:h-9 (DESIGN.md C6).",
+  ),
   {
     selector: ":matches(LogicalExpression[operator='&&'], ConditionalExpression) > JSXElement[openingElement.name.name=/^(Dialog|AlertDialog|Sheet)$/]",
     message: "Never conditionally render dialogs; keep them mounted and control them with `open`.",

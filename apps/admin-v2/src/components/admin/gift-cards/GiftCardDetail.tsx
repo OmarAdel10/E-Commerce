@@ -9,6 +9,7 @@ import { PageHeader } from "~/components/admin/resource/PageHeader";
 import { ConfirmDialog } from "~/components/admin/shared/ConfirmDialog";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { usePermissions } from "~/contexts/PermissionContext";
 import { formatDateTime, useMessages } from "~/i18n";
 import { giftCardsMessages, type GiftCardMessageKey } from "~/i18n/gift-cards";
@@ -207,7 +208,7 @@ export function GiftCardDetail({ card, transactions }: { card: GiftCardDetailRec
             </CardHeader>
             <CardContent className="space-y-4">
               {card.customer ? (
-                <Link to="/admin/customers/$customerId/edit" params={{ customerId: card.customer.id }} className="text-body text-link hover:underline">
+                <Link to="/admin/customers/$customerId/edit" params={{ customerId: card.customer.id }} className={standaloneLinkClassName}>
                   {card.customer.name}
                 </Link>
               ) : (

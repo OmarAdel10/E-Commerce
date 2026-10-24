@@ -87,7 +87,7 @@ export function UnitFields() {
           }))}
         >
           {(["metric", "imperial"] as const).map((system) => (
-            <label key={system} className="flex min-h-11 items-center gap-2 text-body md:min-h-9">
+            <label key={system} className="flex min-h-11 items-center gap-2 text-body md:pointer-fine:min-h-9">
               <RadioGroupItem value={system} />
               {t(system)}
             </label>

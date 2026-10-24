@@ -14,7 +14,7 @@ import { cn } from "@scalius/shared/utils";
  */
 // Put the shared outline outside filled buttons, with a contrasting gap.
 const buttonVariants = cva(
-  "relative inline-flex min-h-11 min-w-6 sm:min-h-6 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium focus-visible:outline-offset-1! focus-visible:ring-1 focus-visible:ring-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-busy:opacity-100 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "relative inline-flex min-h-11 min-w-6 sm:pointer-fine:min-h-6 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg font-medium focus-visible:outline-offset-1! focus-visible:ring-1 focus-visible:ring-background disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 aria-busy:opacity-100 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -29,11 +29,11 @@ const buttonVariants = cva(
         link: "text-link underline-offset-4 hover:underline active:opacity-75",
       },
       size: {
-        default: "h-11 px-4 text-body sm:h-9 sm:px-3",
-        sm: "h-11 px-3 text-body sm:h-8 sm:px-2.5",
+        default: "h-11 px-4 text-body sm:pointer-fine:h-9 sm:px-3",
+        sm: "h-11 px-3 text-body sm:pointer-fine:h-8 sm:px-2.5",
         lg: "h-11 px-5 text-body-lg",
-        icon: "h-11 w-11 sm:h-9 sm:w-9",
-        "icon-sm": "h-11 w-11 sm:h-7 sm:w-7",
+        icon: "h-11 w-11 sm:pointer-fine:h-9 sm:pointer-fine:w-9",
+        "icon-sm": "h-11 w-11 sm:pointer-fine:h-7 sm:pointer-fine:w-7",
       },
     },
     defaultVariants: {

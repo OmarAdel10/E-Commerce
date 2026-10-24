@@ -6,6 +6,7 @@ import { toast } from "~/lib/toast";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField } from "~/components/ui/field";
+import { standaloneLinkClassName } from "~/components/ui/link";
 import { Input } from "~/components/ui/input";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
@@ -1021,7 +1022,7 @@ export function DeliveryZonesCard() {
               </ul>
               {!hasPlaces ? (
                 <div className="px-4 pb-3 text-body">
-                  <Link to="/admin/settings/shipping/areas" className="text-link hover:underline">{t("templateNeedsPlaces")}</Link>
+                  <Link to="/admin/settings/shipping/areas" className={standaloneLinkClassName}>{t("templateNeedsPlaces")}</Link>
                 </div>
               ) : null}
             </section>

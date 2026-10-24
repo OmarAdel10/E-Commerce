@@ -121,7 +121,7 @@ function StockBadge({ variant, storeLevel }: { variant: InventoryVariant; storeL
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" className="-my-3 inline-flex min-h-11 min-w-6 shrink-0 items-center rounded-md sm:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" className="-my-3 inline-flex min-h-11 min-w-6 shrink-0 items-center rounded-md sm:pointer-fine:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Badge variant={status.badge}>{t(status.key)}</Badge>
         </button>
       </TooltipTrigger>

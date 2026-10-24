@@ -5,18 +5,24 @@
  */
 export const NAV_PANEL_QUERY = "(min-width: 1100px)";
 
+/*
+ * Every control here is 44px on phones and on any touch screen, and compact
+ * only from md with a mouse or trackpad (`md:pointer-fine:`), so a touch
+ * tablet in either orientation keeps 44px targets (DESIGN C6).
+ */
+
 /**
  * Icon buttons on the near-black navigation (rail items, collapse, Back):
- * 44px on phones, 28px from md, 16px icons, instant hover fill, the current
- * page (or an open menu) on the pill.
+ * 32px with a mouse, 16px icons, instant hover fill, the current page (or an
+ * open menu) on the pill.
  */
 export const NAV_ICON_BUTTON =
-  "flex size-11 shrink-0 items-center justify-center rounded-lg text-sidebar-muted-foreground outline-none hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground md:size-8 [&>svg]:size-4";
+  "flex size-11 shrink-0 items-center justify-center rounded-lg text-sidebar-muted-foreground outline-none hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground md:pointer-fine:size-8 [&>svg]:size-4";
 
-/** Navigation rows (Shopify's density): 44px on phones, 28px from md, 13px labels, 16px icons, 8px radius. */
+/** Navigation rows (Shopify's density): 28px with a mouse, 13px labels, 16px icons, 8px radius. */
 export const NAV_ROW =
-  "flex h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-start text-nav text-sidebar-foreground outline-none hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-semibold aria-[current=page]:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent md:h-7 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-muted-foreground aria-[current=page]:[&>svg]:text-sidebar-accent-foreground";
+  "flex h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-start text-nav text-sidebar-foreground outline-none hover:bg-sidebar-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-[current=page]:bg-sidebar-accent aria-[current=page]:font-semibold aria-[current=page]:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent md:pointer-fine:h-7 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-muted-foreground aria-[current=page]:[&>svg]:text-sidebar-accent-foreground";
 
-/** Icon and store buttons on the near-black top bar: 44px on phones, 32px from md. */
+/** Icon and store buttons on the near-black top bar: 32px with a mouse. */
 export const TOP_BAR_BUTTON =
-  "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-topbar-foreground outline-none hover:bg-topbar-hover focus-visible:ring-2 focus-visible:ring-topbar-progress data-[state=open]:bg-topbar-hover md:h-8 md:min-w-8 [&>svg]:size-5 md:[&>svg]:size-4";
+  "flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-topbar-foreground outline-none hover:bg-topbar-hover focus-visible:ring-2 focus-visible:ring-topbar-progress data-[state=open]:bg-topbar-hover md:pointer-fine:h-8 md:pointer-fine:min-w-8 [&>svg]:size-5 md:[&>svg]:size-4";

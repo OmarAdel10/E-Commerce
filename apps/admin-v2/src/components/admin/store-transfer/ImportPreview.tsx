@@ -131,7 +131,7 @@ export function ImportPreview(props: ImportPreviewProps) {
         <div className="border-t border-border pt-3">
           <Collapsible>
             <CollapsibleTrigger asChild>
-              <button type="button" className="group flex min-h-11 w-full items-center justify-between gap-2 rounded-lg text-start text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-8">
+              <button type="button" className="group flex min-h-11 w-full items-center justify-between gap-2 rounded-lg text-start text-body font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:min-h-8">
                 <span>{t("cantImport")}</span>
                 <ChevronDown className="size-4 text-muted-foreground group-data-[state=open]:rotate-180" aria-hidden="true" />
               </button>

@@ -129,7 +129,7 @@ export function SettingsNav({ variant, onNavigate }: { variant: "sidebar" | "row
           type="search"
           {...searchFieldProps}
           {...field}
-          className="h-11 w-full rounded-lg border border-sidebar-border bg-sidebar-hover ps-8 pe-2 text-body-lg text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring sm:text-nav md:h-9"
+          className="h-11 w-full rounded-lg border border-sidebar-border bg-sidebar-hover ps-8 pe-2 text-body-lg text-sidebar-foreground outline-none placeholder:text-sidebar-muted-foreground hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring sm:text-nav md:pointer-fine:h-9"
         />
       ) : (
         <Input

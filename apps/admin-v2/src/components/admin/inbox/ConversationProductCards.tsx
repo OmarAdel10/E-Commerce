@@ -18,7 +18,7 @@ export function ConversationProductCards({ products }: { products: readonly Conv
         {product.variantLabel ? <p className="wrap-anywhere text-body text-muted-foreground">{product.variantLabel}</p> : null}
         {product.price ? <ConversationAmount {...product.price} /> : null}
         {product.status !== "available" ? <p className="text-body text-muted-foreground">{t(product.status === "sold_out" ? "soldOut" : "productUnavailable")}</p> : null}
-        {product.pdpUrl ? <a href={product.pdpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-link hover:underline sm:min-h-6">{t("viewProduct")}</a> : null}
+        {product.pdpUrl ? <a href={product.pdpUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-link hover:underline sm:pointer-fine:min-h-6">{t("viewProduct")}</a> : null}
       </div>
     </li>)}
   </ul>;

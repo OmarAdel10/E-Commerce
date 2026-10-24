@@ -152,7 +152,7 @@ export function OrderCustomerCard({ order }: { order: Order }) {
             <Link
               to="/admin/customers/$customerId/edit"
               params={{ customerId: record.id }}
-              className="flex min-h-11 min-w-6 items-center text-link hover:underline sm:min-h-6"
+              className="flex min-h-11 min-w-6 items-center text-link hover:underline sm:pointer-fine:min-h-6"
             >
               {isErasedText(record.name)
                 ? to("erasedCustomer")
@@ -174,7 +174,7 @@ export function OrderCustomerCard({ order }: { order: Order }) {
             <p className="font-mono text-muted-foreground">{t("contact.whatsapp")}: {formatPhoneForDisplay(order.customerWhatsapp, getStoreRegion())}</p>
           ) : null}
           {order.customerEmail ? (
-            <a href={`mailto:${order.customerEmail}`} className="flex min-h-11 items-center break-all text-muted-foreground hover:text-foreground sm:min-h-6">
+            <a href={`mailto:${order.customerEmail}`} className="flex min-h-11 items-center break-all text-muted-foreground hover:text-foreground sm:pointer-fine:min-h-6">
               {order.customerEmail}
             </a>
           ) : null}

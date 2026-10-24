@@ -174,7 +174,7 @@ export function AppsList() {
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label={t("clearSearch")}
-                className="absolute end-0 top-0 flex size-11 items-center justify-center text-muted-foreground hover:text-foreground sm:size-9"
+                className="absolute end-0 top-0 flex size-11 items-center justify-center text-muted-foreground hover:text-foreground sm:pointer-fine:size-9"
               >
                 <X className="size-3.5" aria-hidden="true" />
               </button>

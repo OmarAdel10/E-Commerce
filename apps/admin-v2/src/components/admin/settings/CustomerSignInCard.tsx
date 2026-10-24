@@ -14,6 +14,7 @@ import {
 } from "@scalius/shared/customer-auth-policy";
 import { isReady } from "@scalius/shared/readiness";
 import { Checkbox } from "~/components/ui/checkbox";
+import { standaloneLinkTarget } from "~/components/ui/link";
 import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { useSettingsForm } from "~/hooks/use-settings-form";
@@ -189,7 +190,7 @@ export function CustomerSignInCard() {
                 {hint ? (
                   <p role={on ? "alert" : undefined} className={`pb-1 ps-7 text-body ${on ? "text-destructive" : "text-muted-foreground"}`}>
                     {collected ? (
-                      <Link to="/admin/settings/notifications" search={{ part: "sending" }} hash={SENDING_DIALOG[channel]} className="underline underline-offset-2">{hint}</Link>
+                      <Link to="/admin/settings/notifications" search={{ part: "sending" }} hash={SENDING_DIALOG[channel]} className={`${standaloneLinkTarget} underline underline-offset-2`}>{hint}</Link>
                     ) : hint}
                   </p>
                 ) : null}

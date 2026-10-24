@@ -130,7 +130,7 @@ export function DataTableToolbar({
                 onClick={clearSearch}
                 aria-label={t("clearSearch")}
                 title={t("clearSearch")}
-                className="absolute inset-e-0 top-0 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9"
+                className="absolute inset-e-0 top-0 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-fine:h-9 sm:pointer-fine:w-9"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

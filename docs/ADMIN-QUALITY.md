@@ -53,7 +53,7 @@ Each finding has a stable rule id and names the rule of "The polish bar" in `app
 | `label-truncated` | A button, tab, label or heading is wider than its box | N3 | yes |
 | `control-height` | Inputs, selects, comboboxes or buttons in one row or form section differ in height by more than 1 px | C2 | yes |
 | `control-size` | A text-like input, a one-row textarea (`rows="1"`) or a combobox is not 36 px tall (44 px below 640 px wide); checkboxes, radios, ranges, file and color inputs, rich editors, listboxes and command palettes are skipped | C1 | yes |
-| `touch-target` | A button, link, checkbox, switch, radio or tab is under 24x24 px, or, other than a link, under 44 px tall below 640 px; links inside running text are skipped | C6 | yes |
+| `touch-target` | A button, link, checkbox, switch, radio or tab is under 24x24 px, or under 44 px tall below 640 px; a link inside a sentence is skipped, a link on a line of its own is not | C6 | yes |
 | `multiple-primary` | More than one primary button in the page, or in one open dialog | C3 | yes |
 | `dialog-stack` | Two dialogs are open at once | O2 | yes |
 | `row-height` | Rows of one table differ in height by more than 1 px | T3 | yes |

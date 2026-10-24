@@ -149,7 +149,7 @@ export function VariantImagePicker({ readOnly = false, value, images, onChange, 
     const image = selected ?? inherited;
     const description = value === undefined ? t("mixedValues") : value !== null && !selected ? t("savedValueUnavailable") : state;
     return (
-      <span role="img" aria-label={`${label ?? t("variantPhoto")}: ${description}`} className="flex size-11 items-center justify-center overflow-hidden rounded border sm:size-9">
+      <span role="img" aria-label={`${label ?? t("variantPhoto")}: ${description}`} className="flex size-11 items-center justify-center overflow-hidden rounded border sm:pointer-fine:size-9">
         {image ? <img src={mediaImageUrl(image.url, 80)} alt="" className="h-full w-full object-contain" /> : <ImageIcon aria-hidden="true" className="size-4 text-muted-foreground" />}
       </span>
     );
@@ -353,7 +353,7 @@ export function AdvancedSkuFields({ readOnly = false, variant, name, issueFor, o
     </FieldRow>
       {/* A digital SKU's tracking follows its licence keys (the quantity cell says which). */}
       {showInventory && !isDigitalSku(kindRules, variant) ? (
-        <label className="flex min-h-11 items-center gap-2 text-body md:min-h-8">
+        <label className="flex min-h-11 items-center gap-2 text-body md:pointer-fine:min-h-8">
           <Switch checked={variant.trackInventory} onCheckedChange={(trackInventory) => onChange({ trackInventory })} />
           {t("trackQuantity")}
         </label>

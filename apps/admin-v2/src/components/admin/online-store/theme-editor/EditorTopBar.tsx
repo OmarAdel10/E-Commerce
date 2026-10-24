@@ -156,7 +156,7 @@ export function EditorTopBar({
           to="/admin/online-store/theme"
           aria-label={`${t("themeShort")} · ${t("back")}`}
           title={t("back")}
-          className="flex h-11 shrink-0 items-center sm:h-9 gap-1 rounded-lg px-2 text-body font-medium text-topbar-foreground hover:bg-topbar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-topbar-progress"
+          className="flex h-11 shrink-0 items-center sm:pointer-fine:h-9 gap-1 rounded-lg px-2 text-body font-medium text-topbar-foreground hover:bg-topbar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-topbar-progress"
         >
           <ChevronLeft className="size-4" aria-hidden="true" />
           {phone ? null : <span className="hidden lg:inline">{t("themeShort")}</span>}

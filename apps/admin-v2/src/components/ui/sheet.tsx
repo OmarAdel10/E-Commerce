@@ -68,7 +68,7 @@ const SheetHeader = ({ className, children, closeDisabled, ...props }: SheetHead
       <div className="flex h-lh shrink-0 items-center text-heading-md">
         <SheetPrimitive.Close
           disabled={closeDisabled}
-          className="-me-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 sm:size-8"
+          className="-me-2 flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground active:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 sm:pointer-fine:size-8"
         >
           <X className="size-4" aria-hidden />
           <CloseLabel />

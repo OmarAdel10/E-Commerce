@@ -671,7 +671,7 @@ const VariantRow = React.memo(function VariantRow({
           aria-expanded={expanded}
           aria-label={t("moreFieldsFor", { name })}
           title={name}
-          className="inline-flex h-11 max-w-full items-center gap-1 rounded-sm sm:h-9 text-start font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex h-11 max-w-full items-center gap-1 rounded-sm sm:pointer-fine:h-9 text-start font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="truncate">{label}</span>
           {expanded ? <ChevronDown aria-hidden="true" className="size-3.5 shrink-0" /> : null}

@@ -212,7 +212,7 @@ export function ReadOnlyValue({ label, value, help, mono = false, numeric = fals
         data-slot="field-control"
         className={cn(
           "text-body wrap-anywhere",
-          besideControls && "flex min-h-11 items-center sm:min-h-9",
+          besideControls && "flex min-h-11 items-center sm:pointer-fine:min-h-9",
           mono && "font-mono",
           numeric && "tabular-nums",
           empty && "text-muted-foreground",

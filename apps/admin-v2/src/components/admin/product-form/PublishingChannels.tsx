@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ReadOnlyValue } from "@/components/ui/field";
+import { standaloneLinkClassName } from "@/components/ui/link";
 import { formatList } from "@scalius/shared/locale-words";
 import { getLocale, useMessages } from "~/i18n";
 import { salesChannelsMessages } from "~/i18n/sales-channels";
@@ -34,7 +35,7 @@ export function PublishingChannels({ form, readOnly }: {
   const everywhere = channels.length > 0 && channels.every((channel) => published.has(channel.id) && channel.status === "active");
   const availableSomewhere = channels.some((channel) => published.has(channel.id) && channel.status === "active");
   const manageLink = (
-    <Link to="/admin/settings/sales-channels" className="inline-flex min-h-11 items-center rounded-md text-body text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6">
+    <Link to="/admin/settings/sales-channels" className={standaloneLinkClassName}>
       {t("manageChannels")}
     </Link>
   );

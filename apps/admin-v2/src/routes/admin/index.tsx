@@ -188,7 +188,7 @@ function HomePage() {
                         <Link
                           to="/admin/orders/$orderId"
                           params={{ orderId: order.id }}
-                          className="flex min-h-11 items-center gap-3 px-4 py-2 text-body hover:bg-muted md:min-h-10"
+                          className="flex min-h-11 items-center gap-3 px-4 py-2 text-body hover:bg-muted md:pointer-fine:min-h-10"
                         >
                           <span className="min-w-0 flex-1">
                             <span title={`${formatOrderNumber(order.orderNumber, order.id)} · ${order.customerName}`} className="block truncate font-medium">
@@ -274,7 +274,7 @@ function RecentOrdersSkeleton() {
   return (
     <ul aria-busy="true" className="divide-y border-t">
       {[0, 1, 2, 3, 4].map((row) => (
-        <li key={row} className="flex min-h-11 items-center gap-3 px-4 py-2 md:min-h-10">
+        <li key={row} className="flex min-h-11 items-center gap-3 px-4 py-2 md:pointer-fine:min-h-10">
           <Skeleton className="h-4 flex-1" />
           <Skeleton className="h-4 w-16" />
         </li>

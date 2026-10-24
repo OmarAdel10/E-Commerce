@@ -78,7 +78,7 @@ export const OrganizationCard = memo(function OrganizationCard({ form, categorie
             <ReadOnlyValue label={t("brand")} value={field.value ? brandName || t("savedValueUnavailable") : null} />
           ) : (
             <Field id="product-brand" label={t("brand")} error={fieldState.error?.message}>
-              <Suspense fallback={<Skeleton className="h-11 w-full sm:h-9" />}>
+              <Suspense fallback={<Skeleton className="h-11 w-full sm:pointer-fine:h-9" />}>
                 <BrandPicker
                   id="product-brand"
                   value={field.value}

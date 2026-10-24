@@ -9,7 +9,7 @@ import { formMessages } from "~/i18n/forms";
 import { getStoreRegion } from "~/lib/store-time-zone";
 
 const navButton =
-  "flex size-11 items-center justify-center rounded-lg text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-50 sm:size-8";
+  "flex size-11 items-center justify-center rounded-lg text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-disabled:opacity-50 sm:pointer-fine:size-8";
 
 /**
  * The date picker. Weeks start on the store country's first day (CLDR:
@@ -54,7 +54,7 @@ function Calendar({ className, showOutsideDays = true, formatters, labels, ...pr
         nav: "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
         button_previous: navButton,
         button_next: navButton,
-        month_caption: "flex h-11 w-full items-center justify-center px-11 sm:h-8 sm:px-8",
+        month_caption: "flex h-11 w-full items-center justify-center px-11 sm:pointer-fine:h-8 sm:px-8",
         caption_label: "select-none text-heading-sm",
         month_grid: "w-full border-collapse",
         weekdays: "flex",
