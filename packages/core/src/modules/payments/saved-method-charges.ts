@@ -68,6 +68,7 @@ import {
   isOpenCommandStatus,
   OPEN_COMMAND_STATUSES,
   PENDING_RECHECK_SECONDS,
+  refreshFromLedger,
   settleCommandFromLedger,
   type CommandAttemptRow,
   type SavedMethodPaymentOutcomeKind,
@@ -219,8 +220,10 @@ async function replay(db: Database, row: AttemptRow): Promise<Replayed | null> {
     current = (await readAttempt(db, row.attemptKey)) ?? row;
   }
   if (current.status !== "created" && current.status !== "pending") return null;
-  const stored = storedOutcome(current);
-  if (!stored) throw new ServiceUnavailableError("The recorded payment outcome is unreadable. Try again.");
+  const recorded = storedOutcome(current);
+  if (!recorded) throw new ServiceUnavailableError("The recorded payment outcome is unreadable. Try again.");
+  // Closed by the batch that landed its payment: the ledger says what it became.
+  const stored = current.status === "created" ? await refreshFromLedger(db, current, recorded) : recorded;
   return { outcome: { ...stripRef(stored), replayed: true }, recheck: current.status === "pending" && commandDue(current) };
 }
 

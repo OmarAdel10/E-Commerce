@@ -65,6 +65,11 @@
  * SKU's on-hand there) are one batch, and the SKU's read-back rides at the end
  * of the commit batch: 9 calls, 17 statements. Run alone, the case pays 6 more
  * for the cold RBAC reconciliation marker (15).
+ *
+ * Payment webhook (2026-10-24): +2 statements, no call. The event claim
+ * checks the event's legacy key in its own insert batch (exact event ids,
+ * one round trip), and the batch that lands a payment closes the
+ * off-session commands it settles (39 statements, 25 calls).
  */
 import type { WorkersPlan } from "@scalius/shared/plan-limits";
 
@@ -119,7 +124,7 @@ export const BUDGETS: Record<WorkersPlan, Record<string, Budget>> = {
     "order-lifecycle": { d1Calls: 34, d1Statements: 80, externalFetches: 0, rowsWritten: 74, rowsRead: 73, fullScans: 26 },
     "bulk-run-chunk": { d1Calls: 7, d1Statements: 195, externalFetches: 0, rowsWritten: 1142, rowsRead: 295, fullScans: 7 },
     "order-3-line-commit-tracking": { d1Calls: 45, d1Statements: 108, externalFetches: 3, rowsWritten: 153, rowsRead: 102, fullScans: 28 },
-    "payment-webhook-confirmed": { d1Calls: 25, d1Statements: 37, externalFetches: 1, rowsWritten: 14, rowsRead: 31, fullScans: 1 },
+    "payment-webhook-confirmed": { d1Calls: 25, d1Statements: 39, externalFetches: 1, rowsWritten: 14, rowsRead: 31, fullScans: 1 },
   },
   paid: {
     "staff-sign-in": { d1Calls: 6, d1Statements: 6, externalFetches: 0, rowsWritten: 4, rowsRead: 8, fullScans: 0 },
@@ -153,6 +158,6 @@ export const BUDGETS: Record<WorkersPlan, Record<string, Budget>> = {
     "order-lifecycle": { d1Calls: 34, d1Statements: 80, externalFetches: 0, rowsWritten: 74, rowsRead: 73, fullScans: 26 },
     "bulk-run-chunk": { d1Calls: 7, d1Statements: 195, externalFetches: 0, rowsWritten: 1142, rowsRead: 295, fullScans: 7 },
     "order-3-line-commit-tracking": { d1Calls: 45, d1Statements: 108, externalFetches: 3, rowsWritten: 153, rowsRead: 102, fullScans: 28 },
-    "payment-webhook-confirmed": { d1Calls: 25, d1Statements: 37, externalFetches: 1, rowsWritten: 14, rowsRead: 31, fullScans: 1 },
+    "payment-webhook-confirmed": { d1Calls: 25, d1Statements: 39, externalFetches: 1, rowsWritten: 14, rowsRead: 31, fullScans: 1 },
   },
 };

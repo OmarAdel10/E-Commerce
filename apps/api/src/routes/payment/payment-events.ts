@@ -22,7 +22,7 @@ import {
 } from "@scalius/core/modules/payments";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
 import { NotFoundError, ServiceUnavailableError, ValidationError } from "../../utils/api-error";
-import { claimWebhookEvent, resolveWebhookEventId } from "../../utils/webhook-idempotency";
+import { claimProviderEvent } from "../../utils/webhook-idempotency";
 import { afterResponse, executionContextOf, type BackgroundCaller } from "../../background/after-response";
 import { withPaymentProviderDeadline } from "./payment-provider-deadline";
 
@@ -47,26 +47,30 @@ export async function claimAndApplyPaymentEvent(input: {
   event: PaymentEvent;
   source: string;
 }): Promise<PaymentEventClaimResult> {
-  const { db, event } = input;
-  const eventId = await resolveWebhookEventId(db, input.provider, event.eventType, event.eventId);
+  const { db } = input;
+  const { claim, payload } = await claimPaymentEvent(db, input);
+  if (!claim.claimed) return { status: "duplicate", existingStatus: claim.existing?.status ?? "unknown" };
+
+  const env = input.caller.env;
+  await afterResponse(input.caller, `${input.provider} payment event`, async () => {
+    const { applyClaimedPaymentEvent } = await import("../../background/payment-events");
+    await applyClaimedPaymentEvent(db, env, executionContextOf(input.caller), { id: claim.id, attempts: 1, payload });
+  });
+  return { status: "accepted" };
+}
+
+/** The one claim of a provider event, under its exact identity, with the event as the row's payload. */
+function claimPaymentEvent(db: Database, input: { provider: string; event: PaymentEvent; source: string }) {
+  const { event } = input;
   const payload = { provider: input.provider, event };
-  const claim = await claimWebhookEvent(db, {
-    id: eventId,
+  return claimProviderEvent(db, { provider: input.provider, eventType: event.eventType, sourceEventId: event.eventId }, {
     provider: input.provider,
     eventType: PAYMENT_EVENT_TYPES[event.kind],
     orderId: event.orderId,
     status: "processing",
     result: { source: input.source, sourceEventId: event.eventId },
     payload,
-  });
-  if (!claim.claimed) return { status: "duplicate", existingStatus: claim.existing?.status ?? "unknown" };
-
-  const env = input.caller.env;
-  await afterResponse(input.caller, `${input.provider} payment event`, async () => {
-    const { applyClaimedPaymentEvent } = await import("../../background/payment-events");
-    await applyClaimedPaymentEvent(db, env, executionContextOf(input.caller), { id: eventId, attempts: 1, payload });
-  });
-  return { status: "accepted" };
+  }).then((claim) => ({ claim, payload }));
 }
 
 /**
@@ -83,21 +87,10 @@ export async function claimAndApplyPaymentEventNow(input: {
   event: PaymentEvent;
   source: string;
 }): Promise<"processed" | "manual_reconciliation" | "retrying" | "failed" | "duplicate"> {
-  const { db, event } = input;
-  const eventId = await resolveWebhookEventId(db, input.provider, event.eventType, event.eventId);
-  const payload = { provider: input.provider, event };
-  const claim = await claimWebhookEvent(db, {
-    id: eventId,
-    provider: input.provider,
-    eventType: PAYMENT_EVENT_TYPES[event.kind],
-    orderId: event.orderId,
-    status: "processing",
-    result: { source: input.source, sourceEventId: event.eventId },
-    payload,
-  });
+  const { claim, payload } = await claimPaymentEvent(input.db, input);
   if (!claim.claimed) return "duplicate";
   const { applyClaimedPaymentEvent } = await import("../../background/payment-events");
-  return applyClaimedPaymentEvent(db, input.env, input.ctx, { id: eventId, attempts: 1, payload });
+  return applyClaimedPaymentEvent(input.db, input.env, input.ctx, { id: claim.id, attempts: 1, payload });
 }
 
 /** The request as gateways read it: the exact body text, header names lowercased. */

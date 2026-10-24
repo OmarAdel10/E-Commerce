@@ -30,8 +30,7 @@ import { requestCourierProviders } from "../../plugins/providers/courier";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
 import { sendOrderStatusChangeNotification } from "../../utils/order-notifications";
 import {
-  resolveWebhookEventId,
-  claimWebhookEvent,
+  claimProviderEvent,
   markWebhookEventFailed,
   markWebhookEventProcessed,
 } from "../../utils/webhook-idempotency";
@@ -169,15 +168,14 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
   if (!shipment) return accepted(c, reply, { received: true, ignored: true });
 
   if (verification.status === "note") {
-    const eventId = await resolveWebhookEventId(db, courier.id, "courier.note", `${externalId}:${verification.eventId}`);
-    const claim = await claimWebhookEvent(db, {
-      id: eventId,
+    const claim = await claimProviderEvent(db, { provider: courier.id, eventType: "courier.note", sourceEventId: `${externalId}:${verification.eventId}` }, {
       provider: courier.id,
       eventType: "courier.note",
       orderId: shipment.orderId,
       status: "processing",
       result: { externalId },
     });
+    const eventId = claim.id;
     if (!claim.claimed) return accepted(c, reply, { received: true, duplicate: true });
     try {
       await db.update(deliveryShipments).set({
@@ -199,15 +197,14 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
     ? `${externalId}:${verification.eventId}`
     : `${externalId}:${tracking.status}:${tracking.rawStatus}:${tracking.updatedAt}`;
   const eventType = `courier.${tracking.status}`;
-  const eventId = await resolveWebhookEventId(db, courier.id, eventType, sourceEventId);
-  const claim = await claimWebhookEvent(db, {
-    id: eventId,
+  const claim = await claimProviderEvent(db, { provider: courier.id, eventType, sourceEventId }, {
     provider: courier.id,
     eventType,
     orderId: shipment.orderId,
     status: "processing",
     result: { externalId, rawStatus: tracking.rawStatus },
   });
+  const eventId = claim.id;
   if (!claim.claimed) {
     return accepted(c, reply, { received: true, duplicate: true, status: claim.existing?.status ?? "unknown" });
   }

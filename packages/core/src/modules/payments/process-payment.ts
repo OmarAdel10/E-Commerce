@@ -28,7 +28,7 @@ import {
 } from "../inventory";
 import type { PaymentType, ProcessPaymentParams } from "./types";
 import { buildPaymentReviewHoldInsert, PAYMENT_REVIEW_METADATA_KEY } from "./payment-review";
-import { convergePaymentCommandsAfterFact } from "./command-attempts";
+import { buildSettlePendingCommands, convergePaymentCommandsAfterFact } from "./command-attempts";
 
 /** A payment row's metadata: the caller's facts, plus the provider's review when it flagged the payment. */
 function paymentMetadataJson(params: Pick<ProcessPaymentParams, "metadata" | "review">): string | null {
@@ -384,20 +384,14 @@ export function acceptsProviderPayment(
  *
  * Idempotent: a provider reference is credited at most once. `retryable: false`
  * failures need manual reconciliation; other failures should be retried.
- * Once the payment is recorded, the off-session commands it settles (a
- * pending charge or capture of this reference) are closed
- * (command-attempts.ts).
+ * The batch that records the payment also closes the pending off-session
+ * commands it settles (a charge, capture or void of this reference:
+ * command-attempts.ts).
  */
 export async function processPaymentConfirmed(
   db: Database,
   params: ProcessPaymentParams
-): Promise<ConfirmedPaymentResult> {
-  const result = await applyConfirmedPayment(db, params);
-  if (result.success) await convergePaymentCommandsAfterFact(db, commandFactOf(params));
-  return result;
-}
-
-interface ConfirmedPaymentResult {
+): Promise<{
   success: boolean;
   error?: string;
   retryable?: boolean;
@@ -405,16 +399,7 @@ interface ConfirmedPaymentResult {
   paymentType?: PaymentType;
   /** The payment was recorded, but the order's released stock could not be reserved again: staff must resolve it. */
   inventoryShortfall?: true;
-}
-
-function commandFactOf(params: ProcessPaymentParams) {
-  return { orderId: params.orderId, provider: params.provider, providerRef: params.providerRef, correlationId: params.correlationId ?? null };
-}
-
-async function applyConfirmedPayment(
-  db: Database,
-  params: ProcessPaymentParams
-): Promise<ConfirmedPaymentResult> {
+}> {
   try {
     const shipmentClaim = await db
       .select({
@@ -812,6 +797,21 @@ async function applyConfirmedPayment(
         })).statement);
       }
 
+      // Off-session commands waiting for this payment end with it.
+      batchStatements.push(buildSettlePendingCommands(db, {
+        orderId: params.orderId,
+        provider: params.provider,
+        providerRef: params.providerRef,
+        correlationId: params.correlationId ?? null,
+        landed: sql`EXISTS (
+          SELECT 1 FROM order_payments
+          WHERE id = ${paymentId} AND order_id = ${params.orderId} AND status = ${PaymentRecordStatus.SUCCEEDED}
+        ) AND EXISTS (
+          SELECT 1 FROM orders AS landed_order
+          WHERE landed_order.id = ${params.orderId} AND landed_order.version = ${nextVersion}
+        )`,
+      }));
+
       // An open order whose stock was released (before payment events were
       // tied to the current attempt, a provider cancel released it) holds
       // nothing: reserve it again in this batch, so the stock and the money
@@ -1184,19 +1184,13 @@ export async function releaseAuthorization(
  *
  * Idempotent on UNIQUE(provider, provider_ref). An open checkout whose
  * released stock is gone keeps the authorization recorded but is not placed
- * (`inventoryShortfall`: staff resolve it). Once it is recorded, a pending
- * manual-capture charge of this reference is closed `authorized`.
+ * (`inventoryShortfall`: staff resolve it). The batch also closes a pending
+ * manual-capture charge of this reference (`authorized`).
  */
 export async function processPaymentAuthorized(
   db: Database,
   params: ProcessPaymentParams,
-): Promise<AuthorizedPaymentResult> {
-  const result = await applyAuthorizedPayment(db, params);
-  if (result.success) await convergePaymentCommandsAfterFact(db, commandFactOf(params));
-  return result;
-}
-
-interface AuthorizedPaymentResult {
+): Promise<{
   success: boolean;
   error?: string;
   retryable?: boolean;
@@ -1205,12 +1199,7 @@ interface AuthorizedPaymentResult {
   /** The authorization placed an open checkout (incomplete → pending). */
   placed?: boolean;
   inventoryShortfall?: true;
-}
-
-async function applyAuthorizedPayment(
-  db: Database,
-  params: ProcessPaymentParams,
-): Promise<AuthorizedPaymentResult> {
+}> {
   try {
     const order = await db
       .select({
@@ -1360,6 +1349,18 @@ async function applyAuthorizedPayment(
         )`,
       })).statement);
     }
+    // A manual-capture charge waiting for this authorization ends with it.
+    statements.push(buildSettlePendingCommands(db, {
+      orderId: params.orderId,
+      provider: params.provider,
+      providerRef: params.providerRef,
+      correlationId: params.correlationId ?? null,
+      chargesOnly: true,
+      landed: sql`EXISTS (
+        SELECT 1 FROM order_payments
+        WHERE id = ${paymentId} AND order_id = ${params.orderId} AND status = ${PaymentRecordStatus.AUTHORIZED}
+      )`,
+    }));
     try {
       await safeBatch(db, statements);
     } catch (error) {

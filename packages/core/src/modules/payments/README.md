@@ -219,9 +219,9 @@ with descriptor capabilities: `vault` (`chargeSavedMethod`,
   another command of the order calls its provider) the order takes no other
   charge. Events go through the one `webhook_events` claim and the kernel, as
   webhooks do.
-- **Convergence** (`command-attempts.ts`): the kernel settles the open
-  commands a fact names (provider reference or correlation id) from the
-  payment row it wrote; replays, new charges and the minute sweep
+- **Convergence** (`command-attempts.ts`): the batch that lands a payment
+  closes the pending commands it names (provider reference or correlation
+  id), and a failure settles the ones it names after its write; replays, new charges and the minute sweep
   (`reconcilePaymentCommand`, inside the payment-event drain) settle what the
   ledger already decided, look referenced payments up (`queryPayment`) and
   expire a command three days after its last answer. A dead invocation's

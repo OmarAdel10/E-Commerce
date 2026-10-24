@@ -73,6 +73,56 @@ export function commandAttemptKeyCondition(): SQL {
   return sql`(substr(${key}, 1, 8) IN ('pcharge_', 'capture:') OR substr(${key}, 1, 5) = 'void:')`;
 }
 
+/**
+ * The statement, for the kernel's own batch, that closes the `pending`
+ * commands a landed payment settles (named by its provider reference, or by
+ * the correlation id for one answered without a reference), only if
+ * `landed` holds in that batch: the payment and its commands move together,
+ * at no extra round trip. The row keeps its stored `pending` outcome; a
+ * replay reads what it became from the ledger (`refreshFromLedger`).
+ * `uncertain` rows are left to the readers (they carry no outcome yet).
+ */
+export function buildSettlePendingCommands(
+  db: Database,
+  input: { orderId: string; provider: string; providerRef: string; correlationId?: string | null; chargesOnly?: boolean; landed: SQL },
+) {
+  const attempts = paymentSessionAttempts;
+  return db.update(attempts).set({
+    status: "created",
+    providerSessionId: sql`COALESCE(${attempts.providerSessionId}, ${input.providerRef})`,
+    claimId: null,
+    claimExpiresAt: null,
+    lastError: null,
+    updatedAt: sql`unixepoch()`,
+  }).where(and(
+    eq(attempts.orderId, input.orderId),
+    eq(attempts.gateway, input.provider),
+    eq(attempts.status, "pending"),
+    input.chargesOnly ? sql`substr(${attempts.attemptKey}, 1, 8) = 'pcharge_'` : commandAttemptKeyCondition(),
+    input.correlationId
+      ? sql`(${attempts.providerSessionId} = ${input.providerRef} OR ${attempts.providerCorrelationId} = ${input.correlationId})`
+      : eq(attempts.providerSessionId, input.providerRef),
+    input.landed,
+  ));
+}
+
+/**
+ * A closed command whose recorded outcome is still `pending` (the kernel
+ * closed it in the batch that landed its payment): what the payment row
+ * under its reference says it became.
+ */
+export async function refreshFromLedger(db: Database, row: CommandAttemptRow, stored: StoredCommandOutcome): Promise<StoredCommandOutcome> {
+  const kind = commandKindOf(row.attemptKey);
+  const providerRef = row.providerSessionId ?? stored.providerRef;
+  if (!kind || stored.outcome !== "pending" || !providerRef) return stored;
+  const payment = await db.select({ id: orderPayments.id, orderId: orderPayments.orderId, status: orderPayments.status })
+    .from(orderPayments)
+    .where(and(eq(orderPayments.paymentMethod, row.gateway), eq(orderPayments.providerRef, providerRef)))
+    .get();
+  const verdict = payment && payment.orderId === row.orderId ? commandOutcomeFromLedger(kind, payment.status) : null;
+  return verdict ? { ...stored, ...verdict, paymentId: payment!.id, providerRef } : stored;
+}
+
 export function isOpenCommandStatus(status: string): boolean {
   return (OPEN_COMMAND_STATUSES as readonly string[]).includes(status);
 }

@@ -1,6 +1,6 @@
 import { and, asc, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import { webhookEvents } from "@scalius/database/schema";
-import type { Database } from "@scalius/database/client";
+import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import { sha256Hex } from "@scalius/shared/hash";
 import { duePaymentCommandProbes, onlinePaymentMethodCondition } from "@scalius/core/modules/payments";
 
@@ -112,30 +112,59 @@ function storedSourceEvent(row: { payload: string | null; result: string | null 
   return null;
 }
 
+const LEGACY_EVENT_GUARD = "webhook_event_legacy_key_held";
+
 /**
- * The key to claim an event under: its row under the legacy key when that row
- * is this very event (its stored event id is exactly this one; a row that
- * stored none is taken as it, as before), else the exact key. A distinct
- * event that only shared the legacy key gets a row of its own.
+ * Claim a provider event once, under its exact key (`buildWebhookEventId`),
+ * in one round trip while no row holds its legacy key. When one does, that
+ * row is this very event when its stored event id is exactly this one (a
+ * row that stored none is taken as it, as before): the claim goes to that
+ * row, so a redelivery of an event claimed before exact keys applies
+ * nothing again. A distinct event that only shared the legacy key gets a row
+ * of its own. The result names the row's id.
  */
-export async function resolveWebhookEventId(
+export async function claimProviderEvent(
   db: Database,
-  provider: string,
-  eventType: string,
-  sourceEventId: string,
-): Promise<string> {
-  const legacyId = legacyWebhookEventId(provider, eventType, sourceEventId);
+  key: { provider: string; eventType: string; sourceEventId: string },
+  claim: Omit<WebhookEventClaim, "id">,
+  options: WebhookEventClaimOptions = {},
+): Promise<WebhookEventClaimResult & { id: string }> {
+  const id = await buildWebhookEventId(key.provider, key.eventType, key.sourceEventId);
+  const legacyId = legacyWebhookEventId(key.provider, key.eventType, key.sourceEventId);
+  try {
+    await safeBatch(db, [
+      buildBatchGuard(db, sql`NOT EXISTS (SELECT 1 FROM ${webhookEvents} WHERE ${webhookEvents.id} = ${legacyId})`, LEGACY_EVENT_GUARD),
+      db.insert(webhookEvents).values(claimRow({ ...claim, id })),
+    ]);
+    return { id, claimed: true };
+  } catch (error) {
+    // The exact key is taken (a redelivery): the claim reads that row as usual.
+    if (!isBatchGuardError(error, LEGACY_EVENT_GUARD)) return { id, ...await claimWebhookEvent(db, { ...claim, id }, options) };
+  }
   const legacy = await db
     .select({ provider: webhookEvents.provider, payload: webhookEvents.payload, result: webhookEvents.result })
     .from(webhookEvents)
     .where(eq(webhookEvents.id, legacyId))
     .get();
-  if (legacy && legacy.provider === provider) {
-    const stored = storedSourceEvent(legacy);
-    const same = !stored || (stored.eventId === sourceEventId && (stored.eventType === undefined || stored.eventType === eventType));
-    if (same) return legacyId;
-  }
-  return buildWebhookEventId(provider, eventType, sourceEventId);
+  const stored = legacy ? storedSourceEvent(legacy) : null;
+  const same = legacy?.provider === key.provider
+    && (!stored || (stored.eventId === key.sourceEventId && (stored.eventType === undefined || stored.eventType === key.eventType)));
+  const claimedId = same ? legacyId : id;
+  return { id: claimedId, ...await claimWebhookEvent(db, { ...claim, id: claimedId }, options) };
+}
+
+function claimRow(claim: WebhookEventClaim) {
+  return {
+    id: claim.id,
+    provider: claim.provider,
+    eventType: claim.eventType,
+    orderId: claim.orderId ?? null,
+    status: claim.status ?? "processing",
+    result: serializeResult(claim.result),
+    payload: serializeResult(claim.payload),
+    attempts: claim.payload === undefined ? 0 : 1,
+    processedAt: sql`unixepoch()`,
+  };
 }
 
 export async function claimWebhookEvent(
@@ -147,17 +176,7 @@ export async function claimWebhookEvent(
   const processingLeaseSeconds = options.processingLeaseSeconds ?? DEFAULT_WEBHOOK_PROCESSING_LEASE_SECONDS;
 
   try {
-    await db.insert(webhookEvents).values({
-      id: claim.id,
-      provider: claim.provider,
-      eventType: claim.eventType,
-      orderId: claim.orderId ?? null,
-      status,
-      result: serializeResult(claim.result),
-      payload: serializeResult(claim.payload),
-      attempts: claim.payload === undefined ? 0 : 1,
-      processedAt: sql`unixepoch()`,
-    });
+    await db.insert(webhookEvents).values(claimRow(claim));
 
     return { claimed: true };
   } catch (insertError) {
