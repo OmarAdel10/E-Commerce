@@ -875,7 +875,7 @@ export async function processPaymentConfirmed(
     return inventoryShortfall ? { success: true, paymentType, inventoryShortfall: true } : { success: true, paymentType };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Payment processing error";
-    console.error(`[process-payment] Error for order ${params.orderId}:`, err);
+    console.error(`[process-payment] Error for order ${params.orderId}:`, err instanceof Error ? err.name : "error");
     return { success: false, error: message };
   }
 }
@@ -1131,7 +1131,7 @@ async function applyFailedPayment(
     }
     return { applied: true };
   } catch (err: unknown) {
-    console.error(`[process-payment] Failed payment recording error:`, err);
+    console.error(`[process-payment] Failed payment recording error for order ${orderId}:`, err instanceof Error ? err.name : "error");
     throw err;
   }
 }
@@ -1377,7 +1377,7 @@ export async function processPaymentAuthorized(
       ...(inventoryShortfall ? { inventoryShortfall: true as const } : {}),
     };
   } catch (err: unknown) {
-    console.error(`[process-payment] Authorization error for order ${params.orderId}:`, err instanceof Error ? err.message : "error");
+    console.error(`[process-payment] Authorization error for order ${params.orderId}:`, err instanceof Error ? err.name : "error");
     return { success: false, error: err instanceof Error ? err.message : "Payment processing error" };
   }
 }

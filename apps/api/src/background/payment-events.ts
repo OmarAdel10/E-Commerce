@@ -171,7 +171,7 @@ async function applyPaymentEvent(
       });
       if (!result.success) {
         if (result.retryable === false) {
-          console.warn(`[payments] ${provider} payment confirmation for order ${event.orderId} requires manual reconciliation: ${result.error ?? "unknown error"}`);
+          console.warn(`[payments] ${provider} payment confirmation for order ${event.orderId} requires manual reconciliation; the reason is on its event row`);
           return { status: "manual_reconciliation", result: { ...refs, outcome: "manual_reconciliation", error: result.error ?? null } };
         }
         throw new Error(`${provider} payment confirmation failed for order ${event.orderId}: ${result.error ?? "unknown error"}`);
@@ -241,7 +241,7 @@ async function applyPaymentEvent(
       });
       if (!result.success) {
         if (result.retryable === false) {
-          console.warn(`[payments] ${provider} authorization for order ${event.orderId} requires manual reconciliation: ${result.error ?? "unknown error"}`);
+          console.warn(`[payments] ${provider} authorization for order ${event.orderId} requires manual reconciliation; the reason is on its event row`);
           return { status: "manual_reconciliation", result: { ...refs, outcome: "manual_reconciliation", error: result.error ?? null } };
         }
         throw new Error(`${provider} authorization failed for order ${event.orderId}: ${result.error ?? "unknown error"}`);
