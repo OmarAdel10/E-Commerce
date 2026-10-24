@@ -5,7 +5,7 @@ export const appsMessages = defineMessages({
   en: {
     // Tracking
     trackingTitle: "Other tracking",
-    trackingDescription: "Your own tracking code and Cloudflare Web Analytics. Google, Facebook and TikTok have their own cards.",
+    trackingDescription: "Your own tracking code and Cloudflare Web Analytics. They run in the customer's browser only.",
     noOtherTracking: "No other tracking yet.",
     addTracking: "Add tracking",
     editTracking: "Edit {name}",
@@ -43,7 +43,7 @@ export const appsMessages = defineMessages({
 
     // Facebook & Instagram
     facebookTitle: "Facebook & Instagram",
-    facebookDescription: "Send your orders to Meta so your ads learn what sells.",
+    facebookDescription: "Send your orders to Meta so your ads learn what sells. Showing your products on Facebook and Instagram is in Sales channels.",
     connection: "Connection",
     connectionOn: "On · Pixel {pixel}",
     notSetUp: "Not set up",
@@ -56,7 +56,7 @@ export const appsMessages = defineMessages({
     sendToMeta: "Send sales to Meta",
     sendToMetaHelp: "Needs the pixel ID and an access token.",
     pixelFromTag: "From your Meta pixel.",
-    noMetaTag: "No Meta pixel yet. It counts visits in the customer's browser.",
+    noMetaTag: "No Meta pixel yet.",
     addMetaTag: "Add Meta pixel",
     needsPixelAndToken: "Add the pixel ID and access token to turn this on.",
     recentEvents: "Recent events",
@@ -93,7 +93,7 @@ export const appsMessages = defineMessages({
   },
   bn: {
     trackingTitle: "অন্যান্য ট্র্যাকিং",
-    trackingDescription: "আপনার নিজের ট্র্যাকিং কোড ও Cloudflare Web Analytics। Google, Facebook ও TikTok-এর আলাদা কার্ড আছে।",
+    trackingDescription: "আপনার নিজের ট্র্যাকিং কোড ও Cloudflare Web Analytics। এগুলো শুধু কাস্টমারের ব্রাউজারে চলে।",
     noOtherTracking: "এখনো অন্য কোনো ট্র্যাকিং নেই।",
     addTracking: "ট্র্যাকিং যোগ করুন",
     editTracking: "{name} এডিট করুন",
@@ -130,7 +130,7 @@ export const appsMessages = defineMessages({
     custom: "কাস্টম কোড",
 
     facebookTitle: "ফেসবুক ও ইনস্টাগ্রাম",
-    facebookDescription: "মেটাকে আপনার অর্ডার পাঠান, যাতে আপনার অ্যাড বুঝতে পারে কী বিক্রি হয়।",
+    facebookDescription: "মেটাকে আপনার অর্ডার পাঠান, যাতে আপনার অ্যাড বুঝতে পারে কী বিক্রি হয়। ফেসবুক ও ইনস্টাগ্রামে প্রোডাক্ট দেখানো সেলস চ্যানেল-এ।",
     connection: "কানেকশন",
     connectionOn: "চালু · পিক্সেল {pixel}",
     notSetUp: "সেট আপ করা হয়নি",
@@ -143,7 +143,7 @@ export const appsMessages = defineMessages({
     sendToMeta: "মেটাতে বিক্রি পাঠান",
     sendToMetaHelp: "পিক্সেল আইডি ও অ্যাক্সেস টোকেন লাগবে।",
     pixelFromTag: "আপনার মেটা পিক্সেল থেকে।",
-    noMetaTag: "এখনো মেটা পিক্সেল নেই। এটি কাস্টমারের ব্রাউজারে ভিজিট গোনে।",
+    noMetaTag: "এখনো মেটা পিক্সেল নেই।",
     addMetaTag: "মেটা পিক্সেল যোগ করুন",
     needsPixelAndToken: "চালু করতে পিক্সেল আইডি ও অ্যাক্সেস টোকেন দিন।",
     recentEvents: "সাম্প্রতিক ইভেন্ট",

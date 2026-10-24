@@ -105,16 +105,7 @@ const SCRIPT_MARKS: Partial<Record<string, ProviderMarkId>> = {
 };
 const PLACEMENTS: readonly Placement[] = ["head", "body_start", "body_end"];
 
-/**
- * The tags each destination card owns (Integrations: Google, Facebook and
- * Instagram, TikTok). The Tracking card keeps the rest: your own code and
- * Cloudflare Web Analytics.
- */
-export const DESTINATION_SCRIPT_TYPES = {
-  ga4: ["google_analytics", "google_tag_manager"],
-  meta: ["facebook_pixel"],
-  tiktok: ["tiktok_pixel"],
-} as const satisfies Record<string, readonly AnalyticsScriptType[]>;
+/** The tags no destination card owns (`DESTINATION_SCRIPT_TYPES`): your own code and Cloudflare Web Analytics. */
 export const OTHER_SCRIPT_TYPES: readonly AnalyticsScriptType[] = ["custom", "cloudflare_web_analytics"];
 
 function scriptType(type: string): AnalyticsScriptType {

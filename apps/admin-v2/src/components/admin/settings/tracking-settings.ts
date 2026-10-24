@@ -13,6 +13,7 @@ import type { ConsentRegime } from "@scalius/shared/tracking-consent";
 import { apiData, type ApiBody, type ApiResult } from "~/lib/api";
 import type { SettingsPrivacyMessageKey } from "~/i18n/settings-privacy";
 import { sameFormValue } from "~/lib/form-values";
+import type { AnalyticsScriptType } from "~/lib/analytics-script-types";
 
 type TrackingSettings = ApiResult<typeof getApiV1AdminSettingsTracking>;
 export type TrackingHealth = ApiResult<typeof getApiV1AdminAnalyticsTrackingHealth>;
@@ -130,6 +131,44 @@ export function privacyProblems(values: PrivacyValues, ids: TagIds = {}): Partia
   if (pixelCode && !PIXEL_CODE.test(pixelCode)) problems["tiktok-pixel-code"] = "pixelCodeInvalid";
   if (values.tiktok.isEnabled && (!(pixelCode || ids.tiktok) || !values.tiktok.accessToken.trim())) problems["tiktok-enabled"] = "tiktokNeeds";
   return problems;
+}
+
+/**
+ * Each destination hears about the store two ways: the tag or pixel in the
+ * customer's browser, and the store's own server (Measurement Protocol,
+ * Conversions API, Events API). The browser is on with an active tag; the
+ * server once it is turned on with its ID and secret.
+ */
+/**
+ * The tags each destination owns (Google, Facebook and Instagram, TikTok).
+ * The Other tracking card keeps the rest: your own code and Cloudflare Web
+ * Analytics.
+ */
+export const DESTINATION_SCRIPT_TYPES = {
+  ga4: ["google_analytics", "google_tag_manager"],
+  meta: ["facebook_pixel"],
+  tiktok: ["tiktok_pixel"],
+} as const satisfies Record<Destination, readonly AnalyticsScriptType[]>;
+
+export type BrowserChannel = "on" | "off" | "missing";
+export type ServerChannel = "on" | "test" | "off" | "missing";
+export type DestinationStatus = "both" | "browser" | "server" | "none";
+
+export function browserChannel(scripts: readonly Pick<ScriptSummary, "type" | "isActive">[], types: readonly string[]): BrowserChannel {
+  const tags = scripts.filter((script) => types.includes(script.type));
+  return tags.some((script) => script.isActive) ? "on" : tags.length > 0 ? "off" : "missing";
+}
+
+/** `ready`: its ID and secret are saved; `saved`: something is (switched off, not never set up). */
+export function serverChannel({ enabled, ready, saved, testMode }: { enabled: boolean; ready: boolean; saved: boolean; testMode: boolean }): ServerChannel {
+  if (enabled && ready) return testMode ? "test" : "on";
+  return enabled || saved ? "off" : "missing";
+}
+
+export function destinationStatus(browser: BrowserChannel, server: ServerChannel): DestinationStatus {
+  const viaBrowser = browser === "on";
+  const viaServer = server === "on" || server === "test";
+  return viaBrowser && viaServer ? "both" : viaBrowser ? "browser" : viaServer ? "server" : "none";
 }
 
 export const PRIVACY_DEFAULTS: PrivacyValues = {
