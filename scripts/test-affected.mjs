@@ -43,6 +43,12 @@ export const RUN_EVERYTHING = [
 /** Inputs outside the module graph, and the test files they select (path prefixes or exact files). */
 export const PATH_RULES = [
   {
+    // The policy discovers native-store consumers with filesystem reads, outside the import graph.
+    name: "native PostgreSQL test-store lifetimes",
+    when: [/\.test\.(?:c|m)?[jt]sx?$/, /^packages\/database\/src\/testing\/postgres-native\.ts$/],
+    run: ["packages/database/__tests__/native-postgres-lifetime-policy.test.ts"],
+  },
+  {
     name: "migrations",
     when: [/^packages\/database\/migrations[^/]*\//, /^packages\/database\/src\/migration-artifacts\.ts$/],
     run: ["packages/database/__tests__/", "packages/core/src/modules/", "apps/api/src/cache-dvc."],
