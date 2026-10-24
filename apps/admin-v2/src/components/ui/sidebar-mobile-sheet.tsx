@@ -14,9 +14,10 @@ interface SidebarMobileSheetProps {
 /**
  * The navigation drawer (phones, tablets, narrow laptops): the same near-black
  * panel as on a wide window, sliding in from the start side (the left; the
- * right in a right-to-left language) over a dimmed page. Escape, the overlay and the
- * panel's own close button dismiss it, and focus goes back to whatever
- * opened it (the top bar's Menu button has no Dialog.Trigger to return to).
+ * right in a right-to-left language) over a dimmed page. Escape, Back (the
+ * browser's or Android's gesture, `back-closes.ts`), the overlay and the
+ * panel's own close button dismiss it, and focus goes back to whatever opened
+ * it (the top bar's Menu button has no Dialog.Trigger to return to).
  */
 export function SidebarMobileSheet({ open, onOpenChange, label, children }: SidebarMobileSheetProps) {
   const opener = React.useRef<HTMLElement | null>(null);

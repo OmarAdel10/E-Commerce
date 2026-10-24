@@ -41,6 +41,51 @@ const inFlyout = (target: EventTarget | null) => target instanceof Element && ta
 const keyboardFocus = (element: Element) => element.matches(":focus-visible");
 
 /**
+ * Between the panel, the rail and the settings list the navigation takes its
+ * new width at once and the page column lays out once, in its new place.
+ * Only the canvas' start edge then travels from where it was: a canvas that
+ * grew is clipped back to its old edge and the clip opens; one that shrank
+ * paints its old start with a shadow of its own shape, which retracts. Both
+ * are paint, not layout, so the end edge and everything aligned to it (the
+ * store menu, the bell, a page's end-aligned buttons) never move. The search
+ * pill, centred in the top bar, slides from where it was. Never on first
+ * paint, not at all with reduced motion. It lives here, loaded with the
+ * desktop navigation, since nothing slides before the first change.
+ */
+function useColumnSlide(frame: RefObject<HTMLElement | null>, state: string) {
+  const shown = useRef(state);
+  const before = useRef<{ canvas: DOMRect; pill?: DOMRect } | null>(null);
+  // Where the canvas and the pill are, read before React changes the page (a
+  // render precedes its commit).
+  if (state !== shown.current && frame.current) {
+    const canvas = document.querySelector("[data-shell-canvas]");
+    before.current = canvas ? { canvas: canvas.getBoundingClientRect(), pill: document.querySelector("[data-topbar-search]")?.getBoundingClientRect() } : null;
+  }
+  useLayoutEffect(() => {
+    shown.current = state;
+    const was = before.current;
+    before.current = null;
+    const canvas = document.querySelector<HTMLElement>("[data-shell-canvas]");
+    if (!was || !frame.current || !canvas?.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timing = { duration: 200, easing: "ease-out" };
+    const now = canvas.getBoundingClientRect();
+    // The start edge is the left one, or the right one in a right-to-left page.
+    const left = now.left - was.canvas.left;
+    const right = now.right - was.canvas.right;
+    const style = getComputedStyle(canvas);
+    if (left < 0 || right > 0) {
+      const round = `round ${style.borderStartStartRadius}`;
+      canvas.animate([{ clipPath: `inset(0 ${Math.max(right, 0)}px 0 ${Math.max(-left, 0)}px ${round})` }, { clipPath: `inset(0 ${round})` }], timing);
+    } else if (left > 0 || right < 0) {
+      canvas.animate([{ boxShadow: `${left > 0 ? -left : -right}px 0 0 0 ${style.backgroundColor}` }, { boxShadow: `0 0 0 0 ${style.backgroundColor}` }], timing);
+    }
+    const pill = document.querySelector<HTMLElement>("[data-topbar-search]");
+    const shift = was.pill && pill ? was.pill.left - pill.getBoundingClientRect().left : 0;
+    if (pill && shift) pill.animate([{ transform: `translateX(${shift}px)` }, { transform: "none" }], timing);
+  }, [frame, state]);
+}
+
+/**
  * The desktop navigation's overlays, for the rail and the 240px panel alike,
  * loaded with the navigation: Shopify's flyouts and the tooltip.
  *
@@ -62,7 +107,14 @@ const keyboardFocus = (element: Element) => element.matches(":focus-visible");
  * collapse shortcut) on hover or keyboard focus, beside it on the page's side.
  * Both keep their own state: a hover re-renders them, not the navigation.
  */
-export default function NavFlyouts({ frame, nav, inSettings }: { frame: RefObject<HTMLElement | null>; nav: VisibleNavItem[]; inSettings: boolean }) {
+export default function NavFlyouts({ frame, nav, inSettings, state }: {
+  frame: RefObject<HTMLElement | null>;
+  nav: VisibleNavItem[];
+  inSettings: boolean;
+  /** The navigation's shape: panel, rail or settings. */
+  state: string;
+}) {
+  useColumnSlide(frame, state);
   const [open, setOpen] = useState<Open | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -323,7 +375,7 @@ function Flyout({ ref, item, inSettings, fresh }: { ref: RefObject<HTMLDivElemen
       )}
     >
       {ownPage ? null : (
-        <p data-flyout-title="" aria-hidden className="flex h-11 shrink-0 items-center px-2 text-nav font-semibold md:h-7">
+        <p data-flyout-title="" aria-hidden className="flex h-11 shrink-0 items-center px-2 text-nav font-semibold md:pointer-fine:h-7">
           {title}
         </p>
       )}

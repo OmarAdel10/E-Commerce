@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { Languages, LogOut, SunMoon, UserRound } from "lucide-react";
+import { CircleHelp, Languages, LogOut, SunMoon, UserRound } from "lucide-react";
 import { toast } from "~/lib/toast";
 import {
   DropdownMenu,
@@ -12,12 +12,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTheme, type ThemePreference } from "@/components/admin/layout/ThemeProvider";
+import { useShell } from "@/components/admin/layout/shell";
 import { broadcastAdminSignOut } from "@/components/auth/AdminSessionSync";
 import { clearAdminRouteContextCache } from "@/lib/admin-route-context";
 import { withDashboardBasePath } from "@/lib/dashboard-base-path";
 import { LOCALES, setLocale, useLocale, useMessages, type Locale } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import type { UserMenuUser } from "./UserMenu";
+
+// The help menu's items, for phones (the top bar's Help button shows from md): loaded when first shown.
+const HelpItems = lazy(() => import("@/components/admin/layout/HelpMenu").then((module) => ({ default: module.HelpItems })));
 
 /** The account menu itself; `UserMenu` loads it when the account button is first used. */
 export default function UserMenuContent({ user, side, children, defaultOpen }: {
@@ -29,6 +33,7 @@ export default function UserMenuContent({ user, side, children, defaultOpen }: {
   const t = useMessages(shellMessages);
   const locale = useLocale();
   const { preference, setPreference } = useTheme();
+  const { setHelpOpen } = useShell();
   const [signingOut, setSigningOut] = useState(false);
 
   const signOut = async () => {
@@ -91,6 +96,17 @@ export default function UserMenuContent({ user, side, children, defaultOpen }: {
           <DropdownMenuRadioItem value="system">{t("themeSystem")}</DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
+        {/* Below md the top bar has no Help button: its menu lives here, as in Shopify's store menu. */}
+        <div className="md:hidden">
+          <div className="flex items-center gap-2 px-2 pb-1 pt-1.5 text-body text-muted-foreground">
+            <CircleHelp className="size-4" aria-hidden />
+            {t("help")}
+          </div>
+          <Suspense fallback={null}>
+            <HelpItems onShortcuts={() => setHelpOpen(true)} />
+          </Suspense>
+          <DropdownMenuSeparator />
+        </div>
         <DropdownMenuItem
           variant="destructive"
           disabled={signingOut}

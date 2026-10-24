@@ -18,29 +18,39 @@ function Outside({ children }: { children: ReactNode }) {
 }
 
 /**
- * Shopify's help menu: where to ask and report, then the keyboard shortcuts.
- * Both links leave the dashboard, so they say where they go and carry the
- * external-link icon (there is no help site of our own to link yet).
- * Loads when the help button is first used, off the shell's first download.
+ * Where to ask and report, then the keyboard shortcuts (only on a device with
+ * a mouse or trackpad: `data-keyboard-only`). Both links leave the dashboard,
+ * so they say where they go and carry the external-link icon (there is no help
+ * site of our own to link yet). The help menu shows them, and so does the
+ * store menu on phones, where the top bar has no room for Help.
  */
+export function HelpItems({ onShortcuts }: { onShortcuts: () => void }) {
+  const t = useMessages(helpMessages);
+  return (
+    <>
+      <DropdownMenuItem asChild>
+        <a href={HELP_LINKS.questions} target="_blank" rel="noopener noreferrer"><Outside>{t("questions")}</Outside></a>
+      </DropdownMenuItem>
+      <DropdownMenuItem asChild>
+        <a href={HELP_LINKS.problem} target="_blank" rel="noopener noreferrer"><Outside>{t("problem")}</Outside></a>
+      </DropdownMenuItem>
+      <DropdownMenuItem data-keyboard-only="" onSelect={onShortcuts} aria-keyshortcuts="?">{t("shortcuts")}</DropdownMenuItem>
+    </>
+  );
+}
+
+/** Shopify's help menu. Loads when the help button is first used, off the shell's first download. */
 export default function HelpMenu({ open, onOpenChange, trigger, onShortcuts }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trigger: ReactNode;
   onShortcuts: () => void;
 }) {
-  const t = useMessages(helpMessages);
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem asChild>
-          <a href={HELP_LINKS.questions} target="_blank" rel="noopener noreferrer"><Outside>{t("questions")}</Outside></a>
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <a href={HELP_LINKS.problem} target="_blank" rel="noopener noreferrer"><Outside>{t("problem")}</Outside></a>
-        </DropdownMenuItem>
-        <DropdownMenuItem data-keyboard-only="" onSelect={onShortcuts} aria-keyshortcuts="?">{t("shortcuts")}</DropdownMenuItem>
+        <HelpItems onShortcuts={onShortcuts} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

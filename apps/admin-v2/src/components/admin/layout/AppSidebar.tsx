@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
@@ -36,38 +36,15 @@ function historyIndex(state: unknown): number {
 }
 
 /**
- * The navigation takes its new width in one step and the page column beside
- * it (`data-shell-column`: top bar and canvas) slides from where it was into
- * its new place, a 200ms transform. So the page lays out once per change,
- * not on every frame as a width transition does. Never on first paint, and
- * not at all with reduced motion.
- */
-function useColumnSlide(frame: RefObject<HTMLDivElement | null>, state: string) {
-  const width = useRef<number | null>(null);
-  useLayoutEffect(() => {
-    const element = frame.current;
-    // The phone drawer has no frame: the next desktop change starts afresh.
-    if (!element) return void (width.current = null);
-    const previous = width.current;
-    const next = element.offsetWidth;
-    width.current = next;
-    const column = element.parentElement?.querySelector<HTMLElement>(":scope > [data-shell-column]");
-    if (previous === null || previous === next || !column?.animate || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const shift = (previous - next) * (getComputedStyle(element).direction === "rtl" ? -1 : 1);
-    column.animate([{ transform: `translateX(${shift}px)` }, { transform: "none" }], { duration: 200, easing: "ease-out" });
-  }, [frame, state]);
-}
-
-/**
  * Shopify's navigation on the near-black frame. From 1100px: a 240px panel
  * (wordmark and collapse button, the sections, Settings) or, collapsed with ⌘B,
  * a 56px icon rail with tooltips; on both, a section with sub-pages opens a
  * flyout of them (NavFlyouts.tsx);
  * Settings swaps the panel for the settings list beside the rail. Narrower
  * (phones, tablets, a 1024px laptop) the same panel is a drawer that lists every
- * section with its sub-pages open (no accordions). Between states the page
- * column slides (`useColumnSlide`) and a new panel slides in; neither moves on
- * first paint.
+ * section with its sub-pages open (no accordions). Between states the
+ * canvas' start edge slides (`useColumnSlide`, NavFlyouts.tsx) and a new
+ * panel slides in; neither moves on first paint.
  * Search, notifications and the store menu live in the canvas' top bar.
  */
 export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
@@ -97,8 +74,11 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
 
   const navState = inSettings ? "settings" : collapsed ? "rail" : "panel";
   const frame = useRef<HTMLDivElement>(null);
-  useColumnSlide(frame, desktop ? navState : "drawer");
   const closeDrawer = () => setDrawerOpen(false);
+  // The panel takes over from 1100px: the drawer closes, so narrowing again (or turning a tablet) never reopens it.
+  useEffect(() => {
+    if (desktop) setDrawerOpen(false);
+  }, [desktop, setDrawerOpen]);
   const panel = (drawer: boolean) =>
     inSettings ? (
       <Suspense fallback={null}>
@@ -136,7 +116,7 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
           </nav>
         ) : null}
         <Suspense fallback={null}>
-          <NavFlyouts frame={frame} nav={nav} inSettings={inSettings} />
+          <NavFlyouts frame={frame} nav={nav} inSettings={inSettings} state={navState} />
         </Suspense>
       </div>
     </>
@@ -159,7 +139,7 @@ function PanelTop({ onClose }: { onClose?: () => void }) {
         current={false}
         aria-label={t("home")}
         onClick={onClose}
-        className="flex h-11 items-center rounded-lg px-2 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring md:h-8"
+        className="flex h-11 items-center rounded-lg px-2 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring md:pointer-fine:h-8"
       >
         <Wordmark />
       </ShellLink>
@@ -197,8 +177,9 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
   const groups = [...new Set(nav.flatMap((item) => (item.group ? [item.group] : [])))];
   const drawer = onClose !== undefined;
   const list = useRef<HTMLDivElement>(null);
+  // The drawer opens with the current page in the middle of the list, the pages around it in view.
   useEffect(() => {
-    if (drawer) list.current?.querySelector<HTMLElement>("[aria-current=page]")?.scrollIntoView?.({ block: "nearest" });
+    if (drawer) list.current?.querySelector<HTMLElement>("[aria-current=page]")?.scrollIntoView?.({ block: "center" });
   }, [drawer]);
 
   const renderItem = (item: VisibleNavItem) => {
@@ -260,18 +241,28 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
       {/* Only the list scrolls; Settings stays reachable on short screens. */}
       <div ref={list} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
         <ul className="flex flex-col gap-0.5">{ungrouped.map(renderItem)}</ul>
-        {groups.map((group) => (
-          <div key={group} className="mt-4">
-            <p className="flex h-7 items-center gap-1 px-2 text-caption font-medium text-sidebar-muted-foreground">
-              {t(group)}
-              <ChevronRight className="size-3 rtl:rotate-180" aria-hidden />
-            </p>
-            <ul className="flex flex-col gap-0.5">{nav.filter((item) => item.group === group).map(renderItem)}</ul>
-          </div>
-        ))}
+        {groups.map((group) => {
+          const items = nav.filter((item) => item.group === group);
+          // Shopify's "Sales channels ›": the label opens the group's own settings; without that page it is a plain label.
+          const to = items[0]?.groupTo;
+          return (
+            <div key={group} className="mt-4">
+              {to ? (
+                <ShellLink to={to} current={false} onClick={onClose} className={cn(NAV_ROW, "gap-1 text-caption font-medium text-sidebar-muted-foreground")}>
+                  {t(group)}
+                  <ChevronRight className="size-3! rtl:rotate-180" aria-hidden />
+                </ShellLink>
+              ) : (
+                <p className="flex h-7 items-center px-2 text-caption font-medium text-sidebar-muted-foreground">{t(group)}</p>
+              )}
+              <ul className="flex flex-col gap-0.5">{items.map(renderItem)}</ul>
+            </div>
+          );
+        })}
       </div>
+      {/* Settings stays put under the list, a rule between them (as above the settings panel's user row), so a row the list cuts off never looks to run under it. */}
       {showSettings ? (
-        <div className="shrink-0 px-2 pb-2">
+        <div className="shrink-0 border-t border-sidebar-border p-2">
           <ShellLink to={SETTINGS_ITEM.to} current={false} onClick={onClose} className={NAV_ROW}>
             <SETTINGS_ITEM.icon aria-hidden />
             <span className="truncate">{t("settings")}</span>

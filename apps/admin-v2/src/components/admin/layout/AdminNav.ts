@@ -120,8 +120,13 @@ export interface VisibleNavItem {
   icon: LucideIcon;
   children: NavLink[];
   group?: ShellKey;
+  /** Where the group label leads ("Sales channels ›" → the sales channels settings), when this staff member may open it. */
+  groupTo?: string;
   badge?: NavBadge;
 }
+
+/** A group label's own page: Shopify's "Sales channels ›" opens the store's sales channels. */
+const GROUP_PAGES: Partial<Record<ShellKey, string>> = { salesChannels: "/admin/settings/sales-channels" };
 
 /** An active app's page (`useAppNavPages`): listed under the section its placement names. */
 export interface AppNavLink {
@@ -156,7 +161,9 @@ export function visibleNav(canOpen: (path: string) => boolean, appPages: readonl
       .map((page): NavLink => ({ key: item.key, to: page.to, label: page.title }));
     const children = [...(item.children ?? []).filter((child) => canOpen(child.to)), ...appLinks];
     const to = item.to && canOpen(item.to) ? item.to : children[0]?.to;
-    return to ? [{ key: item.key, to, icon: item.icon, children, group: item.group, badge: item.badge }] : [];
+    const groupPage = item.group ? GROUP_PAGES[item.group] : undefined;
+    const groupTo = groupPage && canOpen(groupPage) ? groupPage : undefined;
+    return to ? [{ key: item.key, to, icon: item.icon, children, group: item.group, groupTo, badge: item.badge }] : [];
   });
 }
 

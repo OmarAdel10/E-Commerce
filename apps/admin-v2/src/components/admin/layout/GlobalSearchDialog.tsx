@@ -25,7 +25,8 @@ import { getApiV1AdminSearchGlobal } from "@scalius/api-client/sdk";
 import { formatPhoneForDisplay } from "@scalius/shared/phone-input";
 import { getStoreRegion } from "~/lib/store-time-zone";
 import { formatOrderNumber } from "@scalius/shared/order-utils";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useDebounce } from "~/hooks/use-debounce";
 import { apiData } from "~/lib/api";
@@ -36,6 +37,7 @@ import { recordNounMessages } from "~/i18n/record-nouns";
 import { LOCALES, setLocale, useLocale, useMessages } from "~/i18n";
 import { navKeywordMessages } from "~/i18n/nav-keywords";
 import { shellMessages } from "~/i18n/shell";
+import { resourceMessages } from "~/i18n/resource";
 import { settingsNavMessages } from "~/i18n/settings";
 import { customersMessages } from "~/i18n/customers";
 import { customerTitle } from "~/lib/customer-title";
@@ -131,6 +133,7 @@ function remember(entry: Entry) {
  */
 export function GlobalSearchDialog({ nav, canOpen, goKeys, open, setOpen }: GlobalSearchProps & { open: boolean; setOpen: (open: boolean) => void }) {
   const t = useMessages(shellMessages);
+  const resourceT = useMessages(resourceMessages);
   const customerT = useMessages(customersMessages);
   const settingsPage = useMessages(settingsNavMessages);
   const settingsCard = useMessages(settingsSearchMessages);
@@ -322,7 +325,19 @@ export function GlobalSearchDialog({ nav, canOpen, goKeys, open, setOpen }: Glob
       <DialogContent variant="palette" aria-describedby={undefined}>
         <DialogTitle className="sr-only">{t("search")}</DialogTitle>
         <Command shouldFilter={false} loop>
-          <CommandInput value={query} onValueChange={setQuery} placeholder={t("searchPlaceholder")} />
+          {/* iOS search's Cancel, on phones and touch screens: there is no Escape key to close it with. */}
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder={t("searchPlaceholder")}
+            end={(
+              <DialogClose asChild>
+                <Button variant="link" size="sm" className="-me-2.5 hidden shrink-0 max-sm:inline-flex pointer-coarse:inline-flex">
+                  {resourceT("cancel")}
+                </Button>
+              </DialogClose>
+            )}
+          />
           <CommandList className="max-h-96">
             <CommandEmpty>{loading || term !== lookupTerm ? t("searching") : t("searchNothing")}</CommandEmpty>
             {recent.length ? <CommandGroup heading={t("recent")}>{recent.map(renderItem)}</CommandGroup> : null}

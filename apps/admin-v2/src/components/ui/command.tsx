@@ -16,7 +16,8 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
   );
 }
 
-function CommandInput({ className, ...props }: React.ComponentProps<typeof CommandPrimitive.Input>) {
+/** `end`: a control after the field, on the same row (the search palette's Cancel). */
+function CommandInput({ className, end, ...props }: React.ComponentProps<typeof CommandPrimitive.Input> & { end?: React.ReactNode }) {
   return (
     <div data-slot="command-input-wrapper" className="flex h-11 items-center gap-2 border-b px-3">
       <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
@@ -28,6 +29,7 @@ function CommandInput({ className, ...props }: React.ComponentProps<typeof Comma
         )}
         {...props}
       />
+      {end}
     </div>
   );
 }
@@ -76,7 +78,7 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-body outline-hidden data-[disabled=true]:pointer-events-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 sm:min-h-9 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
+        "relative flex min-h-11 cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-body outline-hidden data-[disabled=true]:pointer-events-none data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 sm:pointer-fine:min-h-9 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-muted-foreground",
         className,
       )}
       {...props}

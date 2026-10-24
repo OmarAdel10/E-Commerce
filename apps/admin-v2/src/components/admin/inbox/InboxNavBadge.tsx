@@ -3,9 +3,9 @@ import { formatNumber, useMessages } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import { inboxSummaryQueryOptions } from "~/lib/api-query-options/inbox";
 
-/** Unread incoming messages: the one summary read behind the panel's badge and the rail's dot. */
-export function useInboxUnread(): number {
-  const { data } = useQuery(inboxSummaryQueryOptions());
+/** Unread incoming messages: the one summary read behind the panel's badge and the rail's and Menu's dots (`enabled`: this staff member sees the Inbox). */
+export function useInboxUnread(enabled = true): number {
+  const { data } = useQuery({ ...inboxSummaryQueryOptions(), enabled });
   return data?.unread ?? 0;
 }
 
