@@ -26,21 +26,24 @@ export interface InvoiceOrderSource extends InvoiceOrderSnapshot {
   deletedAt: number | null;
 }
 
-/** Money given back on the order so far (major units), for invoices issued before a refund. */
-export async function readOrderRefundedAmount(db: Database, orderId: string): Promise<number> {
+function completedRefundCondition(orderId: string) {
+  return and(
+    eq(orderPayments.orderId, orderId),
+    eq(orderPayments.paymentType, "refund"),
+    eq(orderPayments.status, PaymentRecordStatus.REFUNDED),
+  );
+}
+
+/** Completed refunds in minor units; the issued snapshot owns currency precision. */
+export async function readOrderRefundedMinor(db: Database, orderId: string): Promise<number> {
   const row = await db
     .select({
       refundedMinor: sql<number>`COALESCE(SUM(${orderPayments.amountMinor}), 0)`,
-      decimals: sql<number>`(SELECT ${orders.currencyDecimalPlaces} FROM ${orders} WHERE ${orders.id} = ${orderId})`,
     })
     .from(orderPayments)
-    .where(and(
-      eq(orderPayments.orderId, orderId),
-      eq(orderPayments.paymentType, "refund"),
-      eq(orderPayments.status, PaymentRecordStatus.REFUNDED),
-    ))
+    .where(completedRefundCondition(orderId))
     .get();
-  return fromMinor(Number(row?.refundedMinor) || 0, Number(row?.decimals ?? 2));
+  return Number(row?.refundedMinor) || 0;
 }
 
 export async function readInvoiceOrderSource(
@@ -75,17 +78,16 @@ export async function readInvoiceOrderSource(
       fulfillmentStatus: orders.fulfillmentStatus,
       paymentTermsDays: orders.paymentTermsDays,
       paymentDueAt: orders.paymentDueAt,
-      // The buyer's exemption the order was priced with (its tax snapshot, 0178).
-      taxExempt: sql<number | null>`(SELECT ${orderTaxSnapshots.taxExempt} FROM ${orderTaxSnapshots} WHERE ${orderTaxSnapshots.orderId} = ${orders.id})`,
-      taxExemptionId: sql<string | null>`(SELECT ${orderTaxSnapshots.taxExemptionId} FROM ${orderTaxSnapshots} WHERE ${orderTaxSnapshots.orderId} = ${orders.id})`,
+      // Bind the requested order: Drizzle unqualifies columns in a single-table
+      // selection, which would resolve an outer id against the inner table.
+      taxExempt: sql<number | null>`(SELECT ${orderTaxSnapshots.taxExempt} FROM ${orderTaxSnapshots} WHERE ${orderTaxSnapshots.orderId} = ${orderId})`,
+      taxExemptionId: sql<string | null>`(SELECT ${orderTaxSnapshots.taxExemptionId} FROM ${orderTaxSnapshots} WHERE ${orderTaxSnapshots.orderId} = ${orderId})`,
       createdAt: sql<number>`CAST(${orders.createdAt} AS INTEGER)`,
       updatedAt: sql<number>`CAST(${orders.updatedAt} AS INTEGER)`,
       deletedAt: sql<number | null>`CAST(${orders.deletedAt} AS INTEGER)`,
       refundedMinor: sql<number>`COALESCE((
         SELECT SUM(${orderPayments.amountMinor}) FROM ${orderPayments}
-        WHERE ${orderPayments.orderId} = ${orders.id}
-          AND ${orderPayments.paymentType} = 'refund'
-          AND ${orderPayments.status} = ${PaymentRecordStatus.REFUNDED}
+        WHERE ${completedRefundCondition(orderId)}
       ), 0)`,
     })
     .from(orders)

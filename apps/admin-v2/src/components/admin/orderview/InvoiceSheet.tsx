@@ -3,11 +3,13 @@
 import type { getApiV1AdminOrdersByIdInvoice } from "@scalius/api-client/sdk";
 import { formatOrderNumber } from "@scalius/shared/order-utils";
 import { formatPhoneForDisplay } from "@scalius/shared/phone-input";
+import { invoiceRefundSummary } from "@scalius/shared/invoice-refunds";
+import { fromMinor } from "@scalius/shared/money";
 import { getStoreRegion } from "~/lib/store-time-zone";
 import { unixToDate } from "@scalius/shared/timestamps";
 import { mediaImageUrl } from "@scalius/shared/media-variants";
 import { formatDateTime, formatNumber, useMessages } from "~/i18n";
-import { orderDetailMessages } from "~/i18n/order-detail";
+import { orderInvoiceMessages as orderDetailMessages } from "~/i18n/order-invoice";
 import { orderMessages, paymentMethodLabel, paymentStatusLabel } from "~/i18n/orders";
 import type { ApiResult } from "~/lib/api";
 import {
@@ -46,7 +48,9 @@ export function InvoiceSheet({ document, packingSlip = false }: { document: Invo
   const o = useMessages(orderMessages);
   const { order, businessInfo } = document;
   const saved = resolveSavedOrderMoneySummary(order);
-  const money = (major: number) => (saved ? formatSavedMajorAmount(major, saved) : formatNumber(major, { maximumFractionDigits: 2 }));
+  const refunds = invoiceRefundSummary(document);
+  const decimals = refunds.decimalPlaces;
+  const money = (major: number) => (saved ? formatSavedMajorAmount(major, saved) : formatNumber(major, { maximumFractionDigits: decimals }));
   const minor = (amount: number) => formatSavedMinorAmount(amount, saved!);
   const delivery = resolveDeliveryMethodPresentation(order, saved);
   const discount = order.discountAmount ?? 0;
@@ -54,8 +58,6 @@ export function InvoiceSheet({ document, packingSlip = false }: { document: Invo
   const paymentTerms = order.paymentTerms ?? null;
   const dueAt = paymentTerms ? new Date(paymentTerms.dueAt) : null;
   const businessName = invoiceBusinessName(document);
-  const refunded = Number(order.refundedAmount ?? 0);
-  const refundedSinceIssue = Number(document.refundedSinceIssue ?? 0);
   const businessLines = [
     businessInfo.companyName && businessInfo.legalName ? businessInfo.legalName : null,
     businessInfo.addressLine1,
@@ -66,10 +68,9 @@ export function InvoiceSheet({ document, packingSlip = false }: { document: Invo
     businessInfo.email,
     businessInfo.taxId ? `${t("invoice.taxId")}: ${businessInfo.taxId}` : null,
   ].filter(Boolean);
-  const decimals = saved?.decimalPlaces ?? 2;
   // The order's own billing address (0119); null when the delivery address bills or there is none.
   const billingLines = formatBillingAddressLines(order, countryName);
-  const amount = (minorAmount: number) => (saved ? minor(minorAmount) : money(minorAmount / 10 ** decimals));
+  const amount = (minorAmount: number) => (saved ? minor(minorAmount) : money(fromMinor(minorAmount, decimals)));
   const discountSummary = summarizeOrderDiscounts({
     discounts: order.discounts ?? [],
     shippingMinor: saved ? saved.shippingMinor : Math.round(order.shippingCharge * 10 ** decimals),
@@ -204,25 +205,25 @@ export function InvoiceSheet({ document, packingSlip = false }: { document: Invo
         ))}
         <div className="grand">
           <dt>{t("summary.total")}</dt>
-          <dd>{saved ? minor(saved.totalMinor) : money(order.totalAmount)}</dd>
+          <dd>{amount(refunds.totalMinor)}</dd>
         </div>
-        {refunded > 0 ? (
+        {refunds.refundedMinor > 0 ? (
           <div>
             <dt>{t("payment.refunded")}</dt>
-            <dd>−{money(refunded)}</dd>
+            <dd>−{amount(refunds.refundedMinor)}</dd>
           </div>
         ) : null}
         {/* An issued invoice stays as issued; later refunds follow it as their own line. */}
-        {refundedSinceIssue > 0 ? (
+        {refunds.refundedSinceIssueMinor > 0 ? (
           <div>
             <dt>{t("invoice.refundedSinceIssue")}</dt>
-            <dd>−{money(refundedSinceIssue)}</dd>
+            <dd>−{amount(refunds.refundedSinceIssueMinor)}</dd>
           </div>
         ) : null}
-        {refunded + refundedSinceIssue > 0 ? (
+        {refunds.totalRefundedMinor > 0 ? (
           <div className="strong">
             <dt>{t("invoice.netPaid")}</dt>
-            <dd>{money(Math.max(0, order.totalAmount - refunded - refundedSinceIssue))}</dd>
+            <dd>{amount(refunds.netTotalMinor)}</dd>
           </div>
         ) : null}
       </dl>}

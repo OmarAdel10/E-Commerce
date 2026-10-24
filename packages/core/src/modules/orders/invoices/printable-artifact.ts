@@ -6,6 +6,7 @@ import { formatOrderNumber } from "@scalius/shared/order-utils";
 import { ServiceUnavailableError } from "../../../errors";
 import { commerceCalendarDateKey } from "@scalius/shared/commerce-time";
 import { formatAmount, moneyLocale } from "@scalius/shared/money-format";
+import { invoiceRefundSummary } from "@scalius/shared/invoice-refunds";
 
 export const MAX_PRINTABLE_INVOICE_BYTES = 65_536;
 
@@ -119,8 +120,7 @@ export function renderPrintableInvoice(
       : null,
   ].filter((value): value is string => Boolean(value)).join(" · ");
   const discountMinor = order.discountAmountMinor ?? Math.round((order.discountAmount ?? 0) * (10 ** decimals));
-  const totalMinor = order.totalAmountMinor ?? Math.round(order.totalAmount * (10 ** decimals));
-  const refundedMinor = Math.round((order.refundedAmount ?? 0) * (10 ** decimals));
+  const { totalMinor, refundedMinor, refundedSinceIssueMinor, totalRefundedMinor, netTotalMinor } = invoiceRefundSummary(document);
 
   const output = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${html(document.status === "issued" ? `Invoice ${document.invoiceNumber}` : `Draft invoice ${formatOrderNumber(order.orderNumber, order.id)}`)}</title><style>
@@ -130,7 +130,7 @@ export function renderPrintableInvoice(
 <div><strong>${html(document.invoiceNumber ?? "Draft")}</strong><p>${date}</p><p>Order ${html(formatOrderNumber(order.orderNumber, order.id))}</p></div></header>
 <section class="meta"><div><strong>Bill to</strong>${billTo}</div><div><strong>${shipToHeading}</strong><p>${shipToText}</p><p>Payment: ${html(order.paymentMethod?.toUpperCase())} (${html(order.paymentStatus)})</p>${terms}</div></section>
 <table><thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>
-<section class="totals"><div><span>Subtotal</span><span>${formatMoney(subtotalMinor, order.currencyCode, decimals, true)}</span></div><div><span>${html(shippingLabel)}${shippingDetails ? `<small>${html(shippingDetails)}</small>` : ""}</span><span>${formatMoney(shippingMinor, order.currencyCode, decimals, true)}</span></div>${discountMinor > 0 ? `<div><span>Discount</span><span>-${formatMoney(discountMinor, order.currencyCode, decimals, true)}</span></div>` : ""}<div><span>${html(order.taxLabel || "Tax")}</span><span>${formatMoney(order.taxAmountMinor, order.currencyCode, decimals, true)}</span></div><div class="total"><span>Total</span><span>${formatMoney(totalMinor, order.currencyCode, decimals, true)}</span></div>${refundedMinor > 0 ? `<div><span>Refunded</span><span>-${formatMoney(refundedMinor, order.currencyCode, decimals, true)}</span></div><div class="total"><span>Net</span><span>${formatMoney(totalMinor - refundedMinor, order.currencyCode, decimals, true)}</span></div>` : ""}</section>
+<section class="totals"><div><span>Subtotal</span><span>${formatMoney(subtotalMinor, order.currencyCode, decimals, true)}</span></div><div><span>${html(shippingLabel)}${shippingDetails ? `<small>${html(shippingDetails)}</small>` : ""}</span><span>${formatMoney(shippingMinor, order.currencyCode, decimals, true)}</span></div>${discountMinor > 0 ? `<div><span>Discount</span><span>-${formatMoney(discountMinor, order.currencyCode, decimals, true)}</span></div>` : ""}<div><span>${html(order.taxLabel || "Tax")}</span><span>${formatMoney(order.taxAmountMinor, order.currencyCode, decimals, true)}</span></div><div class="total"><span>Total</span><span>${formatMoney(totalMinor, order.currencyCode, decimals, true)}</span></div>${refundedMinor > 0 ? `<div><span>Refunded</span><span>-${formatMoney(refundedMinor, order.currencyCode, decimals, true)}</span></div>` : ""}${refundedSinceIssueMinor > 0 ? `<div><span>Refunded since issue</span><span>-${formatMoney(refundedSinceIssueMinor, order.currencyCode, decimals, true)}</span></div>` : ""}${totalRefundedMinor > 0 ? `<div class="total"><span>Total after refunds</span><span>${formatMoney(netTotalMinor, order.currencyCode, decimals, true)}</span></div>` : ""}</section>
 <footer><p>${html(businessInfo.invoiceFooterText)}</p><p>This is a computer-generated invoice and does not require a signature.</p></footer></main></body></html>`;
 
   if (new TextEncoder().encode(output).byteLength > MAX_PRINTABLE_INVOICE_BYTES) {

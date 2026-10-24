@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { fromMinor, toMinor } from "@scalius/shared/money";
 
 import { safeBatch, type Database } from "@scalius/database/client";
 import {
@@ -15,7 +16,7 @@ import {
   ValidationError,
 } from "@scalius/core/errors";
 import { getBusinessSettings } from "../../settings";
-import { readInvoiceOrderSource, readOrderRefundedAmount } from "./order-reader";
+import { readInvoiceOrderSource, readOrderRefundedMinor } from "./order-reader";
 import {
   INVOICE_RENDER_VERSION,
   INVOICE_SNAPSHOT_SCHEMA_VERSION,
@@ -150,11 +151,14 @@ export async function getInvoiceDocument(
 ): Promise<InvoiceDocument | null> {
   const issued = await readIssuedByOrder(db, orderId);
   if (issued) {
-    // The issued document is fixed; later refunds print under it (R3-ORD-07).
+    // Keep the issued snapshot fixed; annotate later refunds in its currency.
     const document = await parseStoredInvoice(issued);
-    const refunded = await readOrderRefundedAmount(db, orderId);
-    const later = Math.round((refunded - (document.order.refundedAmount ?? 0)) * 100) / 100;
-    return later > 0 ? { ...document, refundedSinceIssue: later } : document;
+    const refundedMinor = await readOrderRefundedMinor(db, orderId);
+    const decimals = document.order.currencyDecimalPlaces ?? 2;
+    const laterMinor = refundedMinor - toMinor(document.order.refundedAmount ?? 0, decimals);
+    return laterMinor > 0
+      ? { ...document, refundedSinceIssue: fromMinor(laterMinor, decimals) }
+      : document;
   }
 
   const [order, businessInfo] = await Promise.all([
