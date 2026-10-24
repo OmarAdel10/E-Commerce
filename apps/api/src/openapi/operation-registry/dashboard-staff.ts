@@ -25,6 +25,14 @@ export const DASHBOARD_STAFF_OPERATIONS = {
     batch: "forbidden",
     limits: { response: 16_384 },
   },
+  "dashboard.account.language.get": {
+    exposure: "excluded",
+    reason: "The dashboard language is the signed-in staff member's own interface preference; agents and apps read and write in their own language.",
+  },
+  "dashboard.account.language.update": {
+    exposure: "excluded",
+    reason: "Choosing the dashboard language is the signed-in staff member's own interface preference.",
+  },
   "dashboard.account.shortcuts.get": { limits: { response: 16_384 } },
   "dashboard.account.shortcuts.update": {
     revision: "required",

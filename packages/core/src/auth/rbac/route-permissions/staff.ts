@@ -98,6 +98,10 @@ export const STAFF_ROUTE_PERMISSIONS: RoutePermissionMap = {
     GET: { allowAnyAdmin: true },
     PUT: { allowAnyAdmin: true },
   },
+  "/api/v1/admin/auth/language": {
+    GET: { allowAnyAdmin: true },
+    PUT: { allowAnyAdmin: true },
+  },
   "/api/v1/admin/auth/scanner-link": {
     POST: {
       allOf: [PERMISSIONS.PRODUCTS_VIEW, PERMISSIONS.PRODUCTS_ADJUST_STOCK],

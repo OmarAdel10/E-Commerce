@@ -169,7 +169,7 @@ Under `/api/v1/admin`. Rules from `rbac/route-permissions/staff.ts`.
 | `POST /auth/users` (invite), `POST /auth/users/{id}/resend-setup`, `DELETE /auth/users/{id}` (revoke invite), `POST /auth/users/{id}/suspension`, `POST /auth/users/{id}/remove` | `team.manage` |
 | `GET /rbac/roles`, `GET /rbac/roles/{id}`, `GET /rbac/permissions` | `team.view` or `team.manage_roles` |
 | `POST /rbac/roles`, `PUT` and `DELETE /rbac/roles/{id}`, `POST` and `DELETE /rbac/user-roles`, `POST` and `DELETE /rbac/user-permissions` | `team.manage_roles` |
-| `POST /auth/change-password`, `POST /auth/update-profile`, `GET` and `PUT /auth/shortcuts`, `/auth/2fa/*`, `GET /auth/account-security`, `GET /auth/sessions`, `DELETE /auth/sessions` and `/{commandId}`, `GET /rbac/my-permissions` | Any signed-in person |
+| `POST /auth/change-password`, `POST /auth/update-profile`, `GET` and `PUT /auth/shortcuts`, `GET` and `PUT /auth/language`, `/auth/2fa/*`, `GET /auth/account-security`, `GET /auth/sessions`, `DELETE /auth/sessions` and `/{commandId}`, `GET /rbac/my-permissions` | Any signed-in person |
 | `POST /auth/scanner-link` | `products.view` and `products.adjust_stock` |
 
 Rules that code enforces:

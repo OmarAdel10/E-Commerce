@@ -32,8 +32,11 @@ import {
 import { noDeletingMediaReferences } from "@scalius/core/modules/media-references";
 import {
     deleteStaffPreferencesStatement,
+    readStaffLanguage,
     readStaffShortcuts,
+    STAFF_LANGUAGES,
     STAFF_SHORTCUT_PATH_MAX_LENGTH,
+    writeStaffLanguage,
     writeStaffShortcuts,
 } from "@scalius/core/modules/settings";
 import {
@@ -1164,6 +1167,50 @@ const updateStaffShortcutsRoute = createRoute({
 app.openapi(updateStaffShortcutsRoute, async (c) => {
     const { expectedRevision, shortcuts } = c.req.valid("json");
     return ok(c, await writeStaffShortcuts(c.get("db"), c.get("user").id, shortcuts, expectedRevision));
+});
+
+// ── Dashboard language (per staff member; follows them to every browser) ──
+
+const staffLanguagePayload = z.object({ language: z.enum(STAFF_LANGUAGES).nullable() });
+
+const getStaffLanguageRoute = createRoute({
+    method: "get",
+    path: "/language",
+    operationId: "dashboard.account.language.get",
+    tags: ["Admin - Auth Management"],
+    summary: "Get your dashboard language",
+    description: "The language you chose for the dashboard, or null when you never chose one (each browser then keeps its own).",
+    responses: {
+        200: { description: "Dashboard language", content: { "application/json": { schema: successEnvelope(staffLanguagePayload) } } },
+        ...errorResponses,
+    },
+});
+
+app.openapi(getStaffLanguageRoute, async (c) => {
+    c.header("Cache-Control", "private, no-store");
+    return ok(c, { language: await readStaffLanguage(c.get("db"), c.get("user").id) });
+});
+
+const updateStaffLanguageRoute = createRoute({
+    method: "put",
+    path: "/language",
+    operationId: "dashboard.account.language.update",
+    tags: ["Admin - Auth Management"],
+    summary: "Save your dashboard language",
+    description: "Every browser you sign in to shows the dashboard in this language. The last choice wins; saying it twice changes nothing.",
+    request: {
+        body: { content: { "application/json": { schema: z.object({ language: z.enum(STAFF_LANGUAGES) }) } }, required: true },
+    },
+    responses: {
+        200: { description: "Dashboard language saved", content: { "application/json": { schema: successEnvelope(z.object({ language: z.enum(STAFF_LANGUAGES) })) } } },
+        ...errorResponses,
+    },
+});
+
+app.openapi(updateStaffLanguageRoute, async (c) => {
+    const { language } = c.req.valid("json");
+    c.header("Cache-Control", "private, no-store");
+    return ok(c, { language: await writeStaffLanguage(c.get("db"), c.get("user").id, language) });
 });
 
 const createScannerLinkRoute = createRoute({

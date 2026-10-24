@@ -17,6 +17,7 @@ import {
   SETTINGS_DOCUMENT_ROW_KEY,
   type SettingsDocument,
 } from "../../settings-store";
+import { staffLanguageDocumentKey } from "./staff-language";
 import { staffSetupGuideDocumentKey } from "./staff-setup-guide";
 
 export const STAFF_SHORTCUTS_MAX_ENTRIES = 80;
@@ -109,10 +110,10 @@ export async function writeStaffShortcuts(
   return { shortcuts: written.value.shortcuts, revision: written.revision };
 }
 
-/** Drops a staff member's own preferences (shortcuts, setup guide); batch it with the removal that ends their access. */
+/** Drops a staff member's own preferences (shortcuts, setup guide, language); batch it with the removal that ends their access. */
 export function deleteStaffPreferencesStatement(db: Database, userId: string) {
   return db.delete(settingsTable).where(and(
     eq(settingsTable.key, SETTINGS_DOCUMENT_ROW_KEY),
-    inArray(settingsTable.category, [staffShortcutsDocumentKey(userId), staffSetupGuideDocumentKey(userId)]),
+    inArray(settingsTable.category, [staffShortcutsDocumentKey(userId), staffSetupGuideDocumentKey(userId), staffLanguageDocumentKey(userId)]),
   ));
 }

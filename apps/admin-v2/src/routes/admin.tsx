@@ -87,7 +87,7 @@ function AdminLayout() {
   const reach = useStoreReach();
   const sidebarNav = useMemo(() => withoutUnusedPages(nav, reach), [nav, reach]);
   useWarmEverydayRouteCode(canOpen);
-  // Back closing overlays: started after the first render.
+  // Back closing overlays, and the staff member's own language: started after the first render.
   useEffect(() => void import("@/components/admin/layout/shell-after-paint").then(({ startAfterPaint }) => startAfterPaint()), []);
   // The theme editor is a workspace of its own (Shopify's): the frame steps aside.
   // So is the new-store setup step (Shopify's "Tell us about your store").

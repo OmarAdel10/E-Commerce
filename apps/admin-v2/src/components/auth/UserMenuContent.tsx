@@ -78,7 +78,14 @@ export default function UserMenuContent({ user, side, children, defaultOpen }: {
           <Languages className="size-4" aria-hidden />
           {t("language")}
         </div>
-        <DropdownMenuRadioGroup value={locale} onValueChange={(value) => setLocale(value as Locale)}>
+        <DropdownMenuRadioGroup
+          value={locale}
+          onValueChange={(value) => {
+            setLocale(value as Locale);
+            // Saved to the account, so every browser this person signs in to follows.
+            void import("~/lib/account-language").then(({ saveAccountLocale }) => saveAccountLocale(value as Locale));
+          }}
+        >
           {LOCALES.map((option) => (
             <DropdownMenuRadioItem key={option.value} value={option.value} lang={option.value}>
               {option.label}

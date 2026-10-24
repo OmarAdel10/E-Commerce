@@ -52,6 +52,7 @@ Font: Inter at weights 450 (normal), 550 (`font-medium`) and 650 (`font-semibold
 - Write when something happened as `ListDate` does ("Just now", "41 min ago", "Today at 3:42 PM", "Oct 3 at 3:42 PM", "Oct 3, 2025"). Write a date field with `DateInput`, its month as a word ("Oct 7, 2026"). Never a numeric date ("07/10/2026"), and never `<input type="date">`.
 - Write a stored phone number with `formatPhoneForDisplay(phone, getStoreRegion())` (`@scalius/shared/phone-input`): the store country's national format ("01712-345678" in Bangladesh), another country's with its code set apart.
 - Order and payment status words are the storefront's (`status-vocabulary.test.ts` checks them). An unpaid cash-on-delivery order is "Due on delivery".
+- The dashboard language belongs to the staff member, not the browser: a choice in the store menu or the search palette is saved to their account (`lib/account-language.ts`, `GET`/`PUT /admin/auth/language`), and every browser paints in its own last language, then takes the account's.
 - Bangla (`<html lang="bn">`, set before paint) switches the same classes to the Bangla sizes and loads Noto Sans Bengali. Controls size to their line, so vowel signs never clip, and buttons grow instead of truncating. Truncate only with CSS (`truncate`, `line-clamp-*`), never by slicing strings. Keep Latin digits in inputs, SKUs, phones and IDs.
 
 ## Rules

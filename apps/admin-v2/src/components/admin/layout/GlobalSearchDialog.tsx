@@ -200,7 +200,11 @@ export function GlobalSearchDialog({ nav, canOpen, goKeys, open, setOpen }: Glob
       }),
       ...settings.shortcuts.flatMap((entry): Entry[] => {
         if (entry.card === "dashboardLanguage") {
-          return [{ id: "run:language", label: t("switchLanguage", { language: other.label }), icon: Languages, run: () => setLocale(other.value) }];
+          return [{ id: "run:language", label: t("switchLanguage", { language: other.label }), icon: Languages, run: () => {
+            setLocale(other.value);
+            // Saved to the account, so every browser this person signs in to follows.
+            void import("~/lib/account-language").then(({ saveAccountLocale }) => saveAccountLocale(other.value));
+          } }];
         }
         if (entry.card === "dashboardAppearance") {
           return [{ id: "run:appearance", label: t(theme === "dark" ? "switchToLight" : "switchToDark"), icon: SunMoon, run: toggleTheme }];

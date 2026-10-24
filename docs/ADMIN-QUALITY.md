@@ -31,7 +31,7 @@ Exit code 1 when a gating finding is not in `scripts/admin-quality/allowlist.jso
 2. **Finds the routes.** It reads `FileRoutesByTo` in `apps/admin-v2/src/routeTree.gen.ts`: one entry for each URL a person can open. A new screen is audited with no list to edit.
 3. **Fills the route parameters.** For `$productId`, `$orderId` and the others it reads one real id from the API list endpoint of the resource (`scripts/admin-quality/params.mjs`). When a store has no row of a kind, the route is listed as skipped with the reason. Routes that need a token or a live request are skipped on purpose (`SKIPPED_ROUTES` in `routes.mjs`).
 4. **Opens the surfaces.** `scripts/admin-quality/surfaces.json` lists dialogs, sheets and menus. Each item has a route, small named steps (`press`, `click`, `fill`, `wait`) and a `waitFor` selector. A step with `measure` is timed as an interaction. A surface with `"modal": true` also checks that Tab stays inside it. Add `"locales": ["en"]` to a surface whose selector uses English text.
-5. **Audits each page.** One page per route, width and language. The language is set in the browser storage before the page starts (`scalius.dashboard.locale`).
+5. **Audits each page.** One page per route, width and language. The language is set in the browser storage before the page starts (`scalius.dashboard.locale`), and the test admin's own saved language (`GET /api/v1/admin/auth/language`, which a dashboard otherwise follows) answers "none chosen", so the run's language stands.
 
 ## Rules
 

@@ -97,6 +97,10 @@ async function workerContext(browser, { storageState, locale, publicPage, baseOr
   await context.addInitScript(CLS_INIT);
   await context.addInitScript(TIMING_INIT);
   await context.route((url) => !url.href.startsWith(baseOrigin), (route) => route.abort());
+  // The run picks the language: the test admin's own saved choice (which follows them to every browser) is not read.
+  await context.route((url) => url.pathname.endsWith("/api/v1/admin/auth/language"), (route) => (
+    route.request().method() === "GET" ? route.fulfill({ json: { success: true, data: { language: null } } }) : route.continue()
+  ));
   return context;
 }
 

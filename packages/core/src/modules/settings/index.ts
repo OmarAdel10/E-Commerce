@@ -12,5 +12,6 @@ export * from "./business-settings.service";
 export * from "./emi-settings.service";
 export * from "./store-money";
 export * from "./phone-country-policy";
+export * from "./staff-language";
 export * from "./staff-setup-guide";
 export * from "./staff-shortcuts";
