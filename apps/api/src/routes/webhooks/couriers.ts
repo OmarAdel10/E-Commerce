@@ -30,7 +30,7 @@ import { requestCourierProviders } from "../../plugins/providers/courier";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
 import { sendOrderStatusChangeNotification } from "../../utils/order-notifications";
 import {
-  buildWebhookEventId,
+  resolveWebhookEventId,
   claimWebhookEvent,
   markWebhookEventFailed,
   markWebhookEventProcessed,
@@ -169,7 +169,7 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
   if (!shipment) return accepted(c, reply, { received: true, ignored: true });
 
   if (verification.status === "note") {
-    const eventId = buildWebhookEventId(courier.id, "courier.note", `${externalId}:${verification.eventId}`);
+    const eventId = await resolveWebhookEventId(db, courier.id, "courier.note", `${externalId}:${verification.eventId}`);
     const claim = await claimWebhookEvent(db, {
       id: eventId,
       provider: courier.id,
@@ -199,7 +199,7 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
     ? `${externalId}:${verification.eventId}`
     : `${externalId}:${tracking.status}:${tracking.rawStatus}:${tracking.updatedAt}`;
   const eventType = `courier.${tracking.status}`;
-  const eventId = buildWebhookEventId(courier.id, eventType, sourceEventId);
+  const eventId = await resolveWebhookEventId(db, courier.id, eventType, sourceEventId);
   const claim = await claimWebhookEvent(db, {
     id: eventId,
     provider: courier.id,

@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import { webhookEvents } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
+import { sha256Hex } from "@scalius/shared/hash";
 import { duePaymentCommandProbes, onlinePaymentMethodCondition } from "@scalius/core/modules/payments";
 
 /**
@@ -65,7 +66,27 @@ function serializeResult(result: unknown): string | null {
   return JSON.stringify(result);
 }
 
-export function buildWebhookEventId(
+/**
+ * A provider event's claim key: the exact (provider, event type, event id)
+ * tuple, hashed into a bounded key with no delimiter to confuse. Provider
+ * event ids are opaque: `Pay-A` and `pay-a`, `a.b` and `a-b` are different
+ * events. A provider id names one gateway or courier of this store (one
+ * account each), so events dedupe only within it.
+ */
+export async function buildWebhookEventId(
+  provider: string,
+  eventType: string,
+  sourceEventId: string,
+): Promise<string> {
+  return `whe2:${await sha256Hex(JSON.stringify([provider, eventType, sourceEventId]))}`;
+}
+
+/**
+ * The key events were claimed under before exact keys: lower-cased with
+ * punctuation collapsed, so distinct events could share it. Only read, so an
+ * event claimed under it still finds its own row on a redelivery.
+ */
+export function legacyWebhookEventId(
   provider: string,
   eventType: string,
   sourceEventId: string,
@@ -75,6 +96,46 @@ export function buildWebhookEventId(
     .replace(/[^a-z0-9:_-]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function storedSourceEvent(row: { payload: string | null; result: string | null }): { eventType?: unknown; eventId?: unknown } | null {
+  for (const text of [row.payload, row.result]) {
+    if (!text) continue;
+    try {
+      const parsed = JSON.parse(text) as { event?: { eventType?: unknown; eventId?: unknown }; sourceEventId?: unknown };
+      if (parsed.event && typeof parsed.event.eventId === "string") return parsed.event;
+      if (typeof parsed.sourceEventId === "string") return { eventId: parsed.sourceEventId };
+    } catch {
+      // Not JSON: it names no event.
+    }
+  }
+  return null;
+}
+
+/**
+ * The key to claim an event under: its row under the legacy key when that row
+ * is this very event (its stored event id is exactly this one; a row that
+ * stored none is taken as it, as before), else the exact key. A distinct
+ * event that only shared the legacy key gets a row of its own.
+ */
+export async function resolveWebhookEventId(
+  db: Database,
+  provider: string,
+  eventType: string,
+  sourceEventId: string,
+): Promise<string> {
+  const legacyId = legacyWebhookEventId(provider, eventType, sourceEventId);
+  const legacy = await db
+    .select({ provider: webhookEvents.provider, payload: webhookEvents.payload, result: webhookEvents.result })
+    .from(webhookEvents)
+    .where(eq(webhookEvents.id, legacyId))
+    .get();
+  if (legacy && legacy.provider === provider) {
+    const stored = storedSourceEvent(legacy);
+    const same = !stored || (stored.eventId === sourceEventId && (stored.eventType === undefined || stored.eventType === eventType));
+    if (same) return legacyId;
+  }
+  return buildWebhookEventId(provider, eventType, sourceEventId);
 }
 
 export async function claimWebhookEvent(

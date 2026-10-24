@@ -22,7 +22,7 @@ import {
 } from "@scalius/core/modules/payments";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
 import { NotFoundError, ServiceUnavailableError, ValidationError } from "../../utils/api-error";
-import { buildWebhookEventId, claimWebhookEvent } from "../../utils/webhook-idempotency";
+import { claimWebhookEvent, resolveWebhookEventId } from "../../utils/webhook-idempotency";
 import { afterResponse, executionContextOf, type BackgroundCaller } from "../../background/after-response";
 import { withPaymentProviderDeadline } from "./payment-provider-deadline";
 
@@ -48,7 +48,7 @@ export async function claimAndApplyPaymentEvent(input: {
   source: string;
 }): Promise<PaymentEventClaimResult> {
   const { db, event } = input;
-  const eventId = buildWebhookEventId(input.provider, event.eventType, event.eventId);
+  const eventId = await resolveWebhookEventId(db, input.provider, event.eventType, event.eventId);
   const payload = { provider: input.provider, event };
   const claim = await claimWebhookEvent(db, {
     id: eventId,
@@ -84,7 +84,7 @@ export async function claimAndApplyPaymentEventNow(input: {
   source: string;
 }): Promise<"processed" | "manual_reconciliation" | "retrying" | "failed" | "duplicate"> {
   const { db, event } = input;
-  const eventId = buildWebhookEventId(input.provider, event.eventType, event.eventId);
+  const eventId = await resolveWebhookEventId(db, input.provider, event.eventType, event.eventId);
   const payload = { provider: input.provider, event };
   const claim = await claimWebhookEvent(db, {
     id: eventId,

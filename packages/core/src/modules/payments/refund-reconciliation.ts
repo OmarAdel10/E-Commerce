@@ -9,6 +9,7 @@ import {
 } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
 import { getDecimalPlaces } from "@scalius/shared/currency";
+import { sha256Hex } from "@scalius/shared/hash";
 import { fromMinor } from "@scalius/shared/money";
 import { presentedSettlement } from "@scalius/shared/money-chain";
 import {
@@ -150,8 +151,14 @@ function isConstraintError(error: unknown): boolean {
   return /constraint|unique|primary key/i.test(message);
 }
 
-function sanitizeIdPart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 96);
+/**
+ * A provider's id inside a local row id: as it is when it is already
+ * key-safe (rows imported before keep their ids), else hashed, so two
+ * provider ids that differ only in punctuation or past 96 characters never
+ * share a row.
+ */
+async function idPart(value: string): Promise<string> {
+  return /^[A-Za-z0-9_-]{1,96}$/.test(value) ? value : `h${(await sha256Hex(value)).slice(0, 40)}`;
 }
 
 function parseJsonObject(value: string | null): Record<string, unknown> {
@@ -513,10 +520,10 @@ async function insertExternalRefundAttempt(
   },
 ): Promise<string> {
   const provider = params.sourcePayment.paymentMethod;
-  const refundIdPart = sanitizeIdPart(params.refund.id);
+  const refundIdPart = await idPart(params.refund.id);
   const refundPaymentId = `refund_${provider}_external_${refundIdPart}`;
   const attemptId = `rfa_${provider}_external_${refundIdPart}`;
-  const refundGroupId = `${provider}_external_${sanitizeIdPart(params.sourcePayment.orderId)}_${refundIdPart}`;
+  const refundGroupId = `${provider}_external_${await idPart(params.sourcePayment.orderId)}_${refundIdPart}`;
   const sourceTransactionId = params.sourcePayment.providerSecondaryRef ?? params.sourcePayment.providerRef;
   const metadata = JSON.stringify({
     source: EXTERNAL_REFUND_SOURCE,
