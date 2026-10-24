@@ -68,6 +68,7 @@ import { OfficialProviderMark, PROVIDER_MARKS, type ProviderMarkId } from "./pro
 import { AppIcon } from "~/components/admin/apps/AppIcon";
 import { appProviderSetupPath } from "~/components/admin/apps/app-sections";
 import { SettingsLoadFailure } from "./SettingsLoadFailure";
+import { InlineError } from "~/components/admin/states/InlineError";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { MoneyInput, useWholeUnitPrices } from "../shared/MoneyInput";
 import { AppProviderConnectionNote, ProvidedByChip } from "./AppProviderStatus";
@@ -709,13 +710,15 @@ export function PaymentMethodsCard() {
           </div>
         </>
       }
-    />
+    >
+      <PaymentOptionsFields />
+    </SettingsCard>
   );
 }
 
 // ── Checkout payment options (checkout flow: mode + advance) ────────────
 
-export function PaymentOptionsCard() {
+function PaymentOptionsFields() {
   const t = useMessages(paymentsMessages);
   const canEdit = useCanEditPayments();
   const methods = useQuery(paymentMethodsQuery);
@@ -740,8 +743,8 @@ export function PaymentOptionsCard() {
       wholeTaka,
     });
   const { values, setValue, isLoaded, isLoadError, refetch } = useCheckoutFlowForm((draft) => issuesFor(draft).length === 0, t("optionsTitle"));
-  if (isLoadError) return <SettingsLoadFailure title={t("loadFlow")} onRetry={refetch} />;
-  if (!isLoaded) return <SettingsCardLoading />;
+  if (isLoadError) return <InlineError title={t("loadFlow")} onRetry={() => void refetch()} />;
+  if (!isLoaded) return null;
 
   const issues = issuesFor(values);
   // The first offered method whose limits the advance misses words the range message.
@@ -761,7 +764,8 @@ export function PaymentOptionsCard() {
     ["gateways_only", "modeOnline", "modeOnlineDesc"],
   ] as const;
   return (
-    <SettingsCard id="paymentOptions" title={t("optionsTitle")}>
+    <section id="paymentOptions" aria-labelledby="payment-options-title" className="space-y-4">
+      <h3 id="payment-options-title" className="text-heading-sm">{t("optionsTitle")}</h3>
       <RadioGroup
         value={values.checkoutMode}
         disabled={!canEdit}
@@ -811,6 +815,6 @@ export function PaymentOptionsCard() {
       {issues.map((issue) => (
         <p key={issue} role="alert" className="text-body text-destructive">{t(issue, limits)}</p>
       ))}
-    </SettingsCard>
+    </section>
   );
 }

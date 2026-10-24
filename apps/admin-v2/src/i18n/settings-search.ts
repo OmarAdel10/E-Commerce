@@ -1,4 +1,5 @@
 import { defineMessages } from "./index";
+import { salesChannelNamesMessages } from "./sales-channel-names";
 
 /**
  * Settings search: one entry per settings card. `{card}` is the name shown in
@@ -27,8 +28,8 @@ export const settingsSearchMessages = defineMessages({
     warrantyPolicies: "Warranty policies",
     warrantyPoliciesTerms: "warranty guarantee replacement repair service months",
     paymentMethods: "Payment methods",
-    paymentMethodsTerms: "cod cash on delivery bkash nagad rocket sslcommerz stripe card gateway webhook",
-    paymentOptions: "Checkout payment options",
+    paymentMethodsTerms: "cod cash on delivery bkash nagad rocket sslcommerz stripe card gateway webhook advance deposit partial payment cod only online only",
+    paymentOptions: "How customers pay",
     paymentOptionsTerms: "advance deposit partial payment cod only online only",
     emiPlans: "EMI on card payment",
     emiPlansTerms: "emi instalment installment monthly bank card plan",
@@ -102,7 +103,7 @@ export const settingsSearchMessages = defineMessages({
     customerDataTerms: "consent choices match signals limited data use",
     google: "Google Analytics",
     googleTerms: "ga4 gtag tag manager gtm measurement protocol server events test mode debug conversions",
-    facebook: "Facebook & Instagram",
+    facebook: salesChannelNamesMessages.en["channel.sc_meta"],
     facebookTerms: "meta conversions api capi pixel server events test events",
     tiktok: "TikTok",
     tiktokTerms: "tiktok pixel events api server events test events",
@@ -171,8 +172,8 @@ export const settingsSearchMessages = defineMessages({
     warrantyPolicies: "ওয়ারেন্টি পলিসি",
     warrantyPoliciesTerms: "ওয়ারেন্টি গ্যারান্টি রিপ্লেসমেন্ট মেরামত সার্ভিস মাস",
     paymentMethods: "পেমেন্ট পদ্ধতি",
-    paymentMethodsTerms: "ক্যাশ অন ডেলিভারি বিকাশ নগদ রকেট কার্ড ওয়েবহুক",
-    paymentOptions: "চেকআউটের পেমেন্ট অপশন",
+    paymentMethodsTerms: "ক্যাশ অন ডেলিভারি বিকাশ নগদ রকেট কার্ড ওয়েবহুক অগ্রিম আংশিক পেমেন্ট",
+    paymentOptions: "ক্রেতারা যেভাবে পেমেন্ট করবেন",
     paymentOptionsTerms: "অগ্রিম আংশিক পেমেন্ট",
     emiPlans: "কার্ডে কিস্তি (EMI)",
     emiPlansTerms: "ইএমআই কিস্তি মাসিক ব্যাংক কার্ড প্ল্যান",
@@ -246,7 +247,7 @@ export const settingsSearchMessages = defineMessages({
     customerDataTerms: "সম্মতি পছন্দ ম্যাচ সিগন্যাল",
     google: "গুগল অ্যানালিটিক্স",
     googleTerms: "গুগল পিক্সেল ট্যাগ টেস্ট মোড",
-    facebook: "ফেসবুক ও ইনস্টাগ্রাম",
+    facebook: salesChannelNamesMessages.bn["channel.sc_meta"],
     facebookTerms: "মেটা পিক্সেল টেস্ট কোড",
     tiktok: "টিকটক",
     tiktokTerms: "টিকটক পিক্সেল টেস্ট ইভেন্ট কোড",

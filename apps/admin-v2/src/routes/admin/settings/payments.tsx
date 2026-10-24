@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   PaymentMethodsCard,
-  PaymentOptionsCard,
 } from "~/components/admin/settings/PaymentsSettings";
 import { SettingsPage } from "~/components/admin/settings/SettingsPage";
 import { EmiPlansCard } from "~/components/admin/settings/EmiPlansCard";
@@ -40,7 +39,6 @@ function PaymentsPage() {
   return (
     <SettingsPage page="payments" readOnly={!canEdit}>
       <PaymentMethodsCard />
-      <PaymentOptionsCard />
       <EmiPlansCard />
     </SettingsPage>
   );

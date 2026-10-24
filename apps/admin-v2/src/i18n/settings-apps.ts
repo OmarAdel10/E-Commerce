@@ -1,6 +1,7 @@
 import { defineMessages } from "./index";
+import { salesChannelNamesMessages } from "./sales-channel-names";
 
-/** Settings → Apps: tracking, Facebook & Instagram, courier fraud check, scanner. */
+/** Settings → Apps: tracking, Facebook and Instagram, courier fraud check, scanner. */
 export const appsMessages = defineMessages({
   en: {
     // Tracking
@@ -41,8 +42,8 @@ export const appsMessages = defineMessages({
     cloudflare_web_analytics: "Cloudflare Web Analytics",
     custom: "Custom code",
 
-    // Facebook & Instagram
-    facebookTitle: "Facebook & Instagram",
+    // Facebook and Instagram
+    facebookTitle: salesChannelNamesMessages.en["channel.sc_meta"],
     facebookDescription: "Send your orders to Meta so your ads learn what sells. Showing your products on Facebook and Instagram is in Sales channels.",
     connection: "Connection",
     connectionOn: "On · Pixel {pixel}",
@@ -129,7 +130,7 @@ export const appsMessages = defineMessages({
     cloudflare_web_analytics: "Cloudflare Web Analytics",
     custom: "কাস্টম কোড",
 
-    facebookTitle: "ফেসবুক ও ইনস্টাগ্রাম",
+    facebookTitle: salesChannelNamesMessages.bn["channel.sc_meta"],
     facebookDescription: "মেটাকে আপনার অর্ডার পাঠান, যাতে আপনার অ্যাড বুঝতে পারে কী বিক্রি হয়। ফেসবুক ও ইনস্টাগ্রামে প্রোডাক্ট দেখানো সেলস চ্যানেল-এ।",
     connection: "কানেকশন",
     connectionOn: "চালু · পিক্সেল {pixel}",

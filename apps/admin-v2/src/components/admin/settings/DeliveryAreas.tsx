@@ -347,7 +347,7 @@ export function DeliveryAreasManager() {
           </Tabs>
         }
         action={
-          <div className="flex gap-2">
+          <>
             {canEdit && bangladesh ? (
               // The Bangladesh pack loads the places and refreshes them from Pathao's live list.
               <Button asChild variant="outline">
@@ -372,7 +372,7 @@ export function DeliveryAreasManager() {
             >
               <LocationForm key={`${country}-${level}`} country={country} level={level} location={null} />
             </SettingsDialog>
-          </div>
+          </>
         }
         rows={
           <>

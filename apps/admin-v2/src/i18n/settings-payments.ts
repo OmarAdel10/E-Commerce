@@ -82,7 +82,7 @@ export const paymentsMessages = defineMessages({
     removeBlocked: "Checkout needs another payment method before {method} can be removed. Turn one on first.",
     keysRemoved: "Keys removed",
 
-    optionsTitle: "Checkout payment options",
+    optionsTitle: "How customers pay",
     modeAll: "All methods you turned on",
     modeAllDesc: "Customers choose how to pay.",
     modeCod: "Cash on delivery only",
@@ -186,7 +186,7 @@ export const paymentsMessages = defineMessages({
     removeBlocked: "{method} মুছে ফেলার আগে চেকআউটে আরেকটি পেমেন্ট মেথড চালু করুন।",
     keysRemoved: "কী মুছে ফেলা হয়েছে",
 
-    optionsTitle: "চেকআউটের পেমেন্ট অপশন",
+    optionsTitle: "ক্রেতারা যেভাবে পেমেন্ট করবেন",
     modeAll: "চালু করা সব পদ্ধতি",
     modeAllDesc: "কাস্টমার পেমেন্টের উপায় বেছে নেয়।",
     modeCod: "শুধু ক্যাশ অন ডেলিভারি",

@@ -37,7 +37,7 @@ function CardHeading({ heading, action, className }: { heading: React.ReactNode;
     <div className={cn("@container p-4", className)}>
       <div className="flex flex-col items-start gap-3 @md:flex-row @md:justify-between">
         <div className="min-w-0 self-stretch @md:flex-1">{heading}</div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 @md:shrink-0">{action}</div> : null}
       </div>
     </div>
   );

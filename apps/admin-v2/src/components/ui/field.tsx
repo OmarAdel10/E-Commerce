@@ -98,17 +98,17 @@ export function ChoiceField({ id, label, help, error, control, controlAt = "star
   className?: string;
 }) {
   return (
-    <div data-slot="field" className={cn("flex min-w-0 items-start gap-2", controlAt === "end" && "justify-between gap-3", className)}>
-      {/* The control sits on the label's first line (rule 10). */}
-      <div data-slot="field-control" className={cn("flex h-lh shrink-0 items-center text-body", controlAt === "end" && "order-last")}>{control}</div>
-      <div className="flex min-w-0 flex-col gap-1">
+    <div data-slot="field" className={cn("grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1", controlAt === "end" && "grid-cols-[minmax(0,1fr)_auto] gap-x-3", className)}>
+      {/* The labelled row, including a wrapped label, is the boundary above its note. */}
+      <div data-slot="field-control" className="col-span-2 grid grid-cols-subgrid items-start">
+        <div className={cn("flex h-lh shrink-0 items-center text-body", controlAt === "end" && "order-last")}>{control}</div>
         <Label data-slot="field-label" htmlFor={id}>{label}</Label>
-        {error ? (
-          <p data-slot="field-error" id={`${id}-error`} className="text-body text-destructive">{error}</p>
-        ) : help ? (
-          <p data-slot="choice-help" id={`${id}-help`} className="text-body text-muted-foreground">{help}</p>
-        ) : null}
       </div>
+      {error ? (
+        <p data-slot="field-error" id={`${id}-error`} className={cn("col-start-2 text-body text-destructive", controlAt === "end" && "col-start-1")}>{error}</p>
+      ) : help ? (
+        <p data-slot="field-help" id={`${id}-help`} className={cn("col-start-2 text-body text-muted-foreground", controlAt === "end" && "col-start-1")}>{help}</p>
+      ) : null}
     </div>
   );
 }

@@ -84,7 +84,7 @@ export function CustomDataSettings() {
           </div>
         }
         action={
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             <SearchableSelect
               id="custom-data-owner"
               value={ownerType}
@@ -96,7 +96,7 @@ export function CustomDataSettings() {
               options={CUSTOM_FIELD_OWNER_TYPES.map((owner) => ({ value: owner, label: t(`owner.${owner}` as CustomFieldMessageKey) }))}
             />
             {canEdit ? <Button type="button" onClick={() => setEditing({ definition: null })}>{t("addField")}</Button> : null}
-          </div>
+          </>
         }
         rows={definitions.length === 0 ? (
           <div className="space-y-1 px-4 py-6 text-center">
