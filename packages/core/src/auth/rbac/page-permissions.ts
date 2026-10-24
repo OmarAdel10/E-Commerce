@@ -209,9 +209,9 @@ const DYNAMIC_PAGE_PERMISSIONS: Array<{
   pattern: RegExp;
   config: PagePermissionConfig;
 }> = [
-  // OAuth connection consent is an authority mutation, not a read-only page.
+  // AI connection consent, change approval and browser handoff can exercise authority.
   {
-    pattern: /^\/admin\/settings\/agent-access\/authorize\/[^/]+$/,
+    pattern: /^\/admin\/settings\/agent-access\/(?:authorize|approve|continue)\/[^/]+$/,
     config: { permission: PERMISSIONS.AGENT_ACCESS_MANAGE },
   },
 
