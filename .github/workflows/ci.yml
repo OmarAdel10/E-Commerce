@@ -6,8 +6,9 @@ on:
   push:
     branches: [cloudflare-only, mono-repo, main]
   workflow_dispatch:
-  # The whole private suite, sharded, once a week (and on demand above): a
-  # push runs only the tests its change can reach.
+  # The whole private suite, sharded, and every rule's proof, PostgreSQL
+  # included, once a week (and on demand above): a push runs only the tests
+  # and rule proofs its change can reach.
   schedule:
     - cron: "17 3 * * 1"
 
@@ -65,23 +66,84 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Rulebook check
-        # The rulebook lives only in the private repository (rules/ is stripped from the export).
-        if: ${{ github.event.repository.private }}
-        run: node rules/cli.mjs check
-
-      - name: Affected tests
-        # The suite lives only in the private repository; the public export carries no tests.
-        # A push tests what changed since the commit it replaced (a pull request, since its
-        # base); the full suite runs in the sharded job below. A rewritten history falls back
-        # to the parent commit.
+      - name: Change base
+        # A push is judged against the commit it replaced, a pull request against its base;
+        # a rewritten history falls back to the parent commit. The full suite runs in the
+        # sharded job below.
         if: ${{ github.event.repository.private && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
         env:
           BEFORE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: |
           base="$BEFORE"
           git rev-parse --verify --quiet "$base^{commit}" >/dev/null || base=HEAD~1
-          pnpm test:affected --base "$base"
+          echo "CHANGE_BASE=$base" >> "$GITHUB_ENV"
+
+      - name: Rulebook check
+        # The rulebook lives only in the private repository (rules/ is stripped from the export).
+        # Against the change base it also holds the changed rules to their revisions and quality
+        # bars, and fails a new unmapped production file in a harvested domain.
+        if: ${{ github.event.repository.private }}
+        run: |
+          if [ -n "${CHANGE_BASE:-}" ]; then
+            node rules/cli.mjs check --base "$CHANGE_BASE"
+            node rules/cli.mjs coverage --enforce --base "$CHANGE_BASE"
+          else
+            node rules/cli.mjs check
+            node rules/cli.mjs coverage --enforce
+          fi
+
+      - name: Rule impact
+        # A change to a file a rule cites in `code` edits that rule in the same push, or a commit
+        # says why it still holds (`Rule-Unchanged: <rule-id> <reason>`). The base commit's CLI
+        # judges a change to the CLI itself, so a change cannot waive its own gate; a base CLI
+        # that cannot run this check (exit 2) gives way to this commit's, with a warning.
+        id: impact
+        if: ${{ github.event.repository.private && env.CHANGE_BASE != '' }}
+        run: |
+          judge() {
+            node rules/cli.mjs impact --base "$CHANGE_BASE" --enforce || return $?
+            node rules/cli.mjs impact --base "$CHANGE_BASE" --json > "$RUNNER_TEMP/impact.json"
+          }
+          status=0
+          if git diff --quiet "$CHANGE_BASE" HEAD -- rules/cli.mjs rules/rulebook.mjs; then
+            judge || status=$?
+          else
+            git checkout "$CHANGE_BASE" -- rules/cli.mjs rules/rulebook.mjs
+            judge || status=$?
+            git checkout HEAD -- rules/cli.mjs rules/rulebook.mjs
+            if [ "$status" -eq 2 ]; then
+              echo "::warning::The base commit's rules/cli.mjs cannot judge this change; this commit's CLI does."
+              status=0
+              judge || status=$?
+            fi
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
+          echo "rules=$(node -p 'require(process.env.RUNNER_TEMP + "/impact.json").run.join(" ")')" >> "$GITHUB_OUTPUT"
+          echo "postgres=$(node -p 'require(process.env.RUNNER_TEMP + "/impact.json").postgres')" >> "$GITHUB_OUTPUT"
+
+      - name: PostgreSQL for the cited proofs
+        # Started only when a proof to run needs it (about 20 s); PostgreSQL 15 is the oldest
+        # supported major. A proof that needs it without this step fails as not run.
+        if: ${{ steps.impact.outputs.postgres == 'true' }}
+        run: |
+          docker run -d --name postgres -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:15
+          for _ in $(seq 1 60); do docker exec postgres pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && break; sleep 1; done
+          docker exec postgres pg_isready -U postgres -h 127.0.0.1
+          echo "SCALIUS_TEST_POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres" >> "$GITHUB_ENV"
+
+      - name: Affected tests
+        # The suite lives only in the private repository; the public export carries no tests.
+        # A push tests what changed since its change base.
+        if: ${{ github.event.repository.private && env.CHANGE_BASE != '' }}
+        run: pnpm test:affected --base "$CHANGE_BASE"
+
+      - name: Cited rule proofs
+        # The proofs of every rule the change can break, invariants and scenarios included,
+        # under their own configs: a skip, a flake or a missing PostgreSQL run fails.
+        if: ${{ steps.impact.outputs.rules != '' }}
+        env:
+          RULES: ${{ steps.impact.outputs.rules }}
+        run: node rules/cli.mjs test $RULES --strict --require postgres
 
       - name: Build
         run: pnpm build
@@ -108,6 +170,21 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4]
+    # The PostgreSQL suites skip without a server; here they run (15, the oldest supported major).
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h 127.0.0.1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SCALIUS_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v7
 
@@ -123,3 +200,41 @@ jobs:
 
       - name: Test
         run: pnpm test:ci --shard=${{ matrix.shard }}/4
+
+  rulebook-proof:
+    name: Rulebook proof
+    # Every rule's cited tests, the real-runtime invariants and the scenarios included, each
+    # under its own config and on PostgreSQL too: the one place every rule is proven. A skip,
+    # a test that passes only alone, or a PostgreSQL test that did not run fails it.
+    if: ${{ github.event.repository.private && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h 127.0.0.1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SCALIUS_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify every rule
+        run: node rules/cli.mjs verify --strict --require postgres --max-workers 3
