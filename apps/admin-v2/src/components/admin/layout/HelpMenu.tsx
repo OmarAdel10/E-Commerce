@@ -40,7 +40,7 @@ export default function HelpMenu({ open, onOpenChange, trigger, onShortcuts }: {
         <DropdownMenuItem asChild>
           <a href={HELP_LINKS.problem} target="_blank" rel="noopener noreferrer"><Outside>{t("problem")}</Outside></a>
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onShortcuts} aria-keyshortcuts="?">{t("shortcuts")}</DropdownMenuItem>
+        <DropdownMenuItem data-keyboard-only="" onSelect={onShortcuts} aria-keyshortcuts="?">{t("shortcuts")}</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

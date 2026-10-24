@@ -891,6 +891,17 @@ body.editor-fullscreen-active [data-slot="dialog-content"] {
   outline-offset: -2px;
 }
 
+/* Keyboard hints (the search palette's G-key keys, the ⌘K caps, a tooltip's
+   shortcut, the help menu's shortcuts list) belong to a device with a mouse or
+   trackpad: a phone or a touch-only tablet shows none of them. The shortcuts
+   list itself keeps its keys. */
+@media not (any-pointer: fine) {
+  kbd:not([data-shortcut-list] kbd),
+  [data-keyboard-only] {
+    display: none;
+  }
+}
+
 /* Focus code moved to the page region (lib/page-focus.ts) draws no ring around
    it: the rule above is unlayered, so the region's `outline-none` utility can't
    win. Tab or Skip to content still ring the page. */

@@ -63,7 +63,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const rows = (Object.keys(EDITOR_SHORTCUTS) as EditorShortcut[]).map((id) => [t(`shortcut_${id}`), (EDITOR_SHORTCUTS[id] as readonly EditorCombo[]).map(caps)] as const);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-editor-shortcuts>
+      <DialogContent data-editor-shortcuts data-shortcut-list="">
         <DialogHeader>
           <DialogTitle>{t("shortcuts")}</DialogTitle>
         </DialogHeader>

@@ -139,6 +139,7 @@ export function ShortcutsDialog({
       }}
     >
       <DialogContent
+        data-shortcut-list=""
         aria-describedby={undefined}
         onEscapeKeyDown={(event) => {
           // Esc while recording keeps the shortcut; otherwise it closes the dialog.

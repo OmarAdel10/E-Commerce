@@ -296,7 +296,7 @@ export function EditorTopBar({
               </DropdownMenuItem>
             ) : null}
             {onOpenPreview ? <DropdownMenuItem onSelect={onOpenPreview}><ExternalLink aria-hidden="true" />{t("preview")}</DropdownMenuItem> : null}
-            <DropdownMenuItem onSelect={onShortcuts}><Keyboard aria-hidden="true" />{t("shortcuts")}</DropdownMenuItem>
+            <DropdownMenuItem data-keyboard-only="" onSelect={onShortcuts}><Keyboard aria-hidden="true" />{t("shortcuts")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" disabled={!canDiscard} onSelect={onDiscard}><Trash2 aria-hidden="true" />{t("discard")}</DropdownMenuItem>
           </DropdownMenuContent>
