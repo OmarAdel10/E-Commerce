@@ -18,7 +18,8 @@ export function Mark() {
  * The full wordmark (white letters, green arrow) for the expanded panel. The
  * navigation frame is near-black in both themes, so this one file serves both.
  * One file per pixel density, each drawn at its exact size (trimmed of the
- * source's padding), so the letters stay sharp at 1x, 2x and 3x.
+ * source's padding), so the letters stay sharp at 1x, 2x and 3x. Sign-in
+ * draws its own (`routes/auth.tsx`), so neither page ships the other's.
  */
 export function Wordmark() {
   return (
