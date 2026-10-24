@@ -66256,6 +66256,108 @@ export type PutApiV1AdminAuthShortcutsResponses = {
 
 export type PutApiV1AdminAuthShortcutsResponse = PutApiV1AdminAuthShortcutsResponses[keyof PutApiV1AdminAuthShortcutsResponses];
 
+export type GetApiV1AdminAuthLanguageData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/auth/language';
+};
+
+export type GetApiV1AdminAuthLanguageErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type GetApiV1AdminAuthLanguageError = GetApiV1AdminAuthLanguageErrors[keyof GetApiV1AdminAuthLanguageErrors];
+
+export type GetApiV1AdminAuthLanguageResponses = {
+    /**
+     * Dashboard language
+     */
+    200: {
+        success: true;
+        data: {
+            language: 'en' | 'bn' | null;
+        };
+    };
+};
+
+export type GetApiV1AdminAuthLanguageResponse = GetApiV1AdminAuthLanguageResponses[keyof GetApiV1AdminAuthLanguageResponses];
+
+export type PutApiV1AdminAuthLanguageData = {
+    body: {
+        language: 'en' | 'bn';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/auth/language';
+};
+
+export type PutApiV1AdminAuthLanguageErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type PutApiV1AdminAuthLanguageError = PutApiV1AdminAuthLanguageErrors[keyof PutApiV1AdminAuthLanguageErrors];
+
+export type PutApiV1AdminAuthLanguageResponses = {
+    /**
+     * Dashboard language saved
+     */
+    200: {
+        success: true;
+        data: {
+            language: 'en' | 'bn';
+        };
+    };
+};
+
+export type PutApiV1AdminAuthLanguageResponse = PutApiV1AdminAuthLanguageResponses[keyof PutApiV1AdminAuthLanguageResponses];
+
 export type PostApiV1AdminAuthScannerLinkData = {
     body?: never;
     path?: never;
