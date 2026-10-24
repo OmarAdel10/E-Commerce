@@ -1,5 +1,6 @@
 // The market an order is placed in (MARKETS-DESIGN D4, step 3a): the market
-// selling to its shipping country, else the backup market. Every order writer records it
+// selling to its resolved country (shipping, or billing for an addressless order),
+// else the backup market. Every order writer records it
 // in the order insert (`orders.market_id`), as the SQL twin below, so placing
 // an order reads nothing more than it did before markets.
 import { BACKUP_MARKET_ID } from "@scalius/database/schema";
@@ -11,9 +12,9 @@ import {
 import { sql, type SQL } from "drizzle-orm";
 
 /**
- * The order's market id: the market of its shipping country (the address
- * snapshot's `shipping_country_code`), else the backup market. An order that
- * ships nothing (pickup, digital) has no shipping country.
+ * The order's market id for its resolved market country, else the backup
+ * market. Callers choose the shipping country for delivery or the billing
+ * country for an addressless order; no country selects the backup market.
  */
 export function orderMarketId(matrix: MarketMatrix, shippingCountry: string | null): string {
     return resolveMarket(matrix, { surface: "checkout", shippingCountry }).market?.id ?? BACKUP_MARKET_ID;
@@ -21,7 +22,7 @@ export function orderMarketId(matrix: MarketMatrix, shippingCountry: string | nu
 
 /**
  * `orderMarketId` as a scalar for the order insert: the active market that
- * sells to the shipping country, else the backup market (which always
+ * sells to the resolved market country, else the backup market (which always
  * exists). It binds no parameter (the order insert is near D1's 100), so the
  * country must be an ISO code; anything else resolves to the backup market.
  */

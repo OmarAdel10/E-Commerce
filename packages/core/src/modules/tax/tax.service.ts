@@ -269,6 +269,8 @@ export interface StorefrontTaxQuoteInput {
     destination: TaxDestination;
     /** Which address `destination` is when it has one (`taxAddressSource`); default the shipping address. */
     addressSource?: "shipping" | "billing";
+    /** Frozen pricing-market country before cart transforms; null selects the backup market. */
+    pricingMarketCountry?: string | null;
     lines: StorefrontTaxQuoteLineInput[];
     shippingMinor: number;
     /** Manual order-level discount (admin orders), in minor units. */
@@ -345,17 +347,19 @@ export async function calculateStorefrontTaxQuote(
             lines: input.lines.filter((line) => line.discountExempt !== true),
         });
 
-    // The order's market is its taxed address's country: the shipping
-    // country, or the billing country of an order that ships nothing (no
-    // address: the backup market).
+    // A transform can change which address determines tax jurisdiction without
+    // changing the market that priced the cart. Other callers retain their
+    // address-based market resolution when no pricing authority was supplied.
     const destination = input.destination;
-    const shippingCountry = destination.city || destination.countryCode ? taxCountryOf(destination) : null;
+    const pricingCountry = input.pricingMarketCountry !== undefined
+        ? input.pricingMarketCountry
+        : destination.city || destination.countryCode ? taxCountryOf(destination) : null;
     return quoteTax({
         currencyCode: currency.code,
         decimalPlaces: currency.decimalPlaces,
         priceIncrementMinor: currency.priceIncrementMinor,
         settings: authority.settings,
-        pricesIncludeTax: pricesIncludeTaxFor(authority.markets, shippingCountry),
+        pricesIncludeTax: pricesIncludeTaxFor(authority.markets, pricingCountry),
         classes: authority.classes,
         regions: authority.regions,
         rates: authority.rates,

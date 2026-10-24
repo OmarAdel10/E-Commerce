@@ -66,6 +66,8 @@ export interface OrderPlan {
     /** The channel whose publications the order sold from and whose locations hold its stock (MARKETS-DESIGN D6). */
     salesChannelId: string;
     order: OrderFacts;
+    /** Checkout's selected market, protected by the channel's authority fence. */
+    marketCountry?: string | null;
     lines: readonly OrderLine[];
     taxQuote: TaxQuote;
     /** App discounts on the lines (checkout functions), recorded as immutable `app_discount` facts. */
@@ -408,11 +410,10 @@ function orderRowStatements(db: Database, plan: OrderPlan, customer: OrderCustom
         channel: plan.channel,
         channelSource: plan.channelSource ?? null,
         salesChannelId: salesChannelIdValue(plan.salesChannelId),
-        // The market of the shipping country, else the backup market, read
-        // inside this insert (MARKETS-DESIGN D4); a channel's authority fence
-        // covers a market change between its quote and this commit.
-        // An order that ships nothing is placed in its billing country, where it is taxed.
-        marketId: orderMarketIdSql(orderShippingCountry(od) ?? (
+        // Checkout retains its selected market through transforms; other channels
+        // derive it from their final shipping/billing facts. The channel's fence
+        // protects the active market lookup inside this insert.
+        marketId: orderMarketIdSql(plan.marketCountry !== undefined ? plan.marketCountry : orderShippingCountry(od) ?? (
             plan.taxQuote.jurisdiction?.addressSource === "billing" ? od.billingCountryCode ?? null : null
         )),
         createdAt: sql`unixepoch()`,

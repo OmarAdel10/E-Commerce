@@ -78,7 +78,7 @@ export interface CheckoutPricingDelivery {
 }
 
 export interface StorefrontCheckoutPricingInput {
-  cartValidation: Pick<StorefrontCartValidationResult, "items" | "subtotalMinor" | "hasFreeDeliveryProduct" | "pricingSegmentIds"> & {
+  cartValidation: Pick<StorefrontCartValidationResult, "items" | "subtotalMinor" | "hasFreeDeliveryProduct" | "pricingSegmentIds" | "marketContext"> & {
     /** The cart's currency (its market's): every amount is priced in it (MARKETS-DESIGN step 6). */
     money?: PresentmentMoney;
   };
@@ -311,6 +311,7 @@ export async function priceStorefrontCheckout(
         customerId: input.customerId,
         // An order that ships nothing is placed in its billing country, where it is taxed.
         marketCountry: appCartMarketCountry(appDestination, input.billing?.countryCode),
+        market: cartValidation.marketContext,
         // The apps' declared reads for every point this cart is asked at ride the same batch.
         apps,
         points: ["cart.validate", "checkout.discounts", "checkout.shipping_rates", "checkout.payment_methods", PLUGIN_EXTENSION_RUN],
@@ -431,6 +432,9 @@ export async function priceStorefrontCheckout(
   const taxAddress = addressSource === "shipping" ? delivery.address : null;
   const billing = addressSource === "billing" ? input.billing! : null;
   const taxQuoteInput = {
+    // Inclusion follows the prices' retained market; jurisdiction follows
+    // the final components' destination, even when an app changed fulfilment.
+    pricingMarketCountry: cartValidation.marketContext?.country,
     destination: {
       city: taxAddress?.city ?? null,
       zone: taxAddress?.zone ?? null,
@@ -508,7 +512,7 @@ export function assertNoCheckoutRuleErrors(ruleErrors: readonly CheckoutRuleErro
 export async function checkStorefrontCartRules(
   db: Database,
   input: {
-    cartValidation: Pick<StorefrontCartValidationResult, "items" | "pricingSegmentIds">;
+    cartValidation: Pick<StorefrontCartValidationResult, "items" | "pricingSegmentIds" | "marketContext">;
     /** The chosen delivery, when the cart has one: apps see its region. */
     delivery: (Pick<CheckoutPricingDelivery, "cityName" | "zoneName" | "fulfilment"> & {
       address?: Pick<NonNullable<CheckoutPricingDelivery["address"]>, "countryCode"> | null;
@@ -532,6 +536,7 @@ export async function checkStorefrontCartRules(
     variantIds: cartValidation.items.map((item) => item.variantId),
     customerId: input.customerId,
     marketCountry: appCartMarketCountry(destination),
+    market: cartValidation.marketContext,
     apps,
     points: ["cart.validate", PLUGIN_EXTENSION_RUN],
     attributes: input.attributes,
@@ -576,6 +581,8 @@ export async function previewStorefrontAppDiscounts(
   db: Database,
   input: {
     apps: CheckoutAppFunctions | undefined;
+    /** A validated cart or the preview page's resolved presence. */
+    marketContext?: FunctionCart["market"];
     currency: PricingCurrency;
     lines: ReadonlyArray<{ lineId: string; productId: string; variantId: string; unitPriceMinor: number; quantity: number; giftCard?: boolean }>;
     platformAllocation: TaxDiscountAllocationInput | undefined;
@@ -592,8 +599,9 @@ export async function previewStorefrontAppDiscounts(
   const facts = await loadAppFunctionCartFacts(db, {
     productIds: input.lines.map((line) => line.productId),
     variantIds: input.lines.map((line) => line.variantId),
-    // A preview knows no address: the backup market.
+    // Use the same selected market as the preview's prices when known.
     marketCountry: null,
+    market: input.marketContext,
     apps,
     points: ["checkout.discounts"],
   });

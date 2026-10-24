@@ -30,6 +30,7 @@ import type { StorefrontCartItemIssue, StorefrontCartValidationItem } from "./ca
 import { ValidationError } from "@scalius/core/errors";
 import {
     createStorefrontCheckoutAuthorityReadPlan,
+    assertStorefrontCheckoutAuthorityRevision,
     type StorefrontCheckoutAuthorityInput,
     type StorefrontCheckoutAuthoritySnapshot,
 } from "./authority";
@@ -89,7 +90,7 @@ export async function loadStorefrontCheckoutReads<TResponse>(
         // With a transform the first pass is what the transform sees: catalogue
         // prices, as on the cart page (`validateStorefrontCartItems`). The
         // apps price the lines once, as the order holds them.
-        return { linePricer: () => (transformer ? undefined : linePricer), deferSubmittedPriceCheck: () => transformer !== undefined };
+        return { linePricer: () => (transformer ? undefined : linePricer), beforeTransform: () => transformer !== undefined, deferSubmittedPriceCheck: () => transformer !== undefined };
     });
     // A replayed attempt resolves nothing new.
     if (!transformer || reads.existingAttempt) return reads;
@@ -107,22 +108,26 @@ export async function loadStorefrontCheckoutReads<TResponse>(
     const again = await readCheckoutOnce<TResponse>(
         db,
         identity,
-        transform ? { ...authorityInput, items: transform.items } : authorityInput,
+        { ...authorityInput, items: transform?.items ?? buyerItems, marketAuthority: first.cartValidation.marketAuthority },
         credentialEncryptionKey,
         { ...options, apps: () => reads.apps, beforePrepare: undefined },
         () => ({ linePricer: () => linePricer }),
     );
-    if (!transform) return again;
+    // The frozen market belongs to the first authority revision. Never accept
+    // newer policy/catalog facts while retaining an older market or FX rate.
+    if (again.existingAttempt) return again;
     return {
         ...again,
-        transform,
+        ...(transform ? { transform } : {}),
         authority() {
             let snapshot: StorefrontCheckoutAuthoritySnapshot;
             try {
                 snapshot = again.authority();
             } catch (error) {
-                throw remapTransformedIssues(error, transform, buyerItems);
+                throw transform ? remapTransformedIssues(error, transform, buyerItems) : error;
             }
+            assertStorefrontCheckoutAuthorityRevision(snapshot.authorityRevision, first.authorityRevision);
+            if (!transform) return snapshot;
             const buyerView = presentTransformedCart(snapshot.cartValidation, transform, buyerItems);
             if (!buyerView.valid) {
                 throw new ValidationError("Some items in your cart need attention.", { itemIssues: buyerView.issues });
@@ -191,7 +196,7 @@ async function readCheckoutOnce<TResponse>(
     authorityInput: CheckoutReadsAuthorityInput,
     credentialEncryptionKey: string | undefined,
     options: CheckoutReadsOptions,
-    bind: (apps: CheckoutAppFunctions, customerId: PromiseLike<string | null>) => Pick<StorefrontCheckoutAuthorityInput, "linePricer" | "deferSubmittedPriceCheck">,
+    bind: (apps: CheckoutAppFunctions, customerId: PromiseLike<string | null>) => Pick<StorefrontCheckoutAuthorityInput, "linePricer" | "beforeTransform" | "deferSubmittedPriceCheck">,
 ): Promise<StorefrontCheckoutReads<TResponse>> {
     const session = options.session
         ? await hashCustomerSessionToken(options.session.token, options.session.hashKey)
@@ -204,13 +209,14 @@ async function readCheckoutOnce<TResponse>(
     const customerId: PromiseLike<string | null> = options.session !== undefined
         ? { then: (onFulfilled, onRejected) => Promise.resolve(signedInCustomerId).then(onFulfilled, onRejected) }
         : { then: (onFulfilled, onRejected) => Promise.resolve(authorityInput.customerId ?? null).then(onFulfilled, onRejected) };
-    let bound: Pick<StorefrontCheckoutAuthorityInput, "linePricer" | "deferSubmittedPriceCheck" | "purchaseOptions"> = {};
+    let bound: Pick<StorefrontCheckoutAuthorityInput, "linePricer" | "beforeTransform" | "deferSubmittedPriceCheck" | "purchaseOptions"> = {};
     const plan = createStorefrontCheckoutAuthorityReadPlan(db, {
         ...authorityInput,
         customerId,
         linePricer: () => bound.linePricer?.(),
         purchaseOptions: () => bound.purchaseOptions?.(),
         deferSubmittedPriceCheck: () => bound.deferSubmittedPriceCheck?.() ?? false,
+        beforeTransform: () => bound.beforeTransform?.() ?? false,
     });
     const contact: OrderContact = { phone: authorityInput.customerPhone, email: authorityInput.customerEmail ?? null };
     const variantIds = [...new Set(authorityInput.items

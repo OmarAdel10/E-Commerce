@@ -103,6 +103,8 @@ interface AgentStorefrontCartState {
   hasFreeDeliveryProduct: boolean;
   /** The buyer's segments that priced the cart (never presented). */
   pricingSegmentIds?: CartValidation["pricingSegmentIds"];
+  /** Internal line-pricing authority, stripped by the shared cart presenter. */
+  marketContext?: CartValidation["marketContext"];
   delivery?: DeliveryPreflight;
   /** The cart's currency and its rate (MARKETS-DESIGN step 6). */
   money: CartValidation["money"];
@@ -614,6 +616,7 @@ function agentCartMarket(db: Database, row: ContextRow) {
   return {
     placing: true,
     shippingCountryCode: row.countryCode,
+    shippingMethodId: row.shippingMethodId,
     billingCountryCode: row.countryCode,
     customerId: {
       then<TResult1 = string | null, TResult2 = never>(
@@ -697,6 +700,7 @@ async function loadAgentStorefrontCart(
     ...(validation.pricingSegmentIds ? { pricingSegmentIds: validation.pricingSegmentIds } : {}),
     ...(delivery ? { delivery } : {}),
     // The cart's currency: its market's (MARKETS-DESIGN step 6).
+    marketContext: validation.marketContext,
     money: validation.money,
     currencyCode: validation.money.currencyCode,
     decimalPlaces: validation.money.decimalPlaces,
@@ -806,6 +810,7 @@ async function quoteAgentStorefrontDiscount(
   );
   const preview = await previewStorefrontAppDiscounts(db, {
     apps,
+    marketContext: projection.marketContext,
     currency: {
       code: projection.money.currencyCode,
       decimalPlaces: projection.money.decimalPlaces,

@@ -1,6 +1,6 @@
 import type { Database } from "@scalius/database/client";
 import { withGiftCardRecipientFields } from "@scalius/shared/gift-card-recipient";
-import { DEFAULT_SHIPPING_PROFILE_ID, products, productVariants } from "@scalius/database/schema";
+import { BACKUP_MARKET_ID, DEFAULT_SHIPPING_PROFILE_ID, products, productVariants } from "@scalius/database/schema";
 import { DEFAULT_CURRENCY, getDecimalPlaces, normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
 import { resolvePriceIncrementMinor } from "@scalius/shared/currency-policy";
 import { discountedPriceMinor, fromMinor, toMinor } from "@scalius/shared/money";
@@ -50,6 +50,7 @@ import {
     resolveCheckoutPriceScope,
     resolveCheckoutSkuPrice,
     type CheckoutMarketSignals,
+    type CheckoutMarketAuthority,
     type CheckoutPriceScope,
 } from "../price-lists";
 import {
@@ -214,6 +215,10 @@ export interface StorefrontCartValidationResult {
      * whole order with it.
      */
     money: PresentmentMoney;
+    /** Resolved once with line pricing, then reused by every checkout app hook. */
+    marketContext?: { id: string; country: string | null };
+    /** Internal authority retained when apps replace the original SKUs. */
+    marketAuthority?: CheckoutMarketAuthority;
     valid: boolean;
     issues: StorefrontCartItemIssue[];
     items: StorefrontCartValidatedItem[];
@@ -261,6 +266,7 @@ export interface StorefrontCartProductRow {
     name: string;
     /** Every active market's pricing (`marketPricingMatrixSql`), the same on every row. */
     pricingMatrix?: string | null;
+    selectedDeliveryKind?: string | null;
     isActive: boolean;
     priceMinor: number;
     discountBps: number;
@@ -424,6 +430,7 @@ export function selectStorefrontCartProductRows(
     db: Database,
     productIds: readonly string[],
     salesChannelId: string = ONLINE_STORE_CHANNEL_ID,
+    shippingMethodId?: string | null,
 ) {
     const productIdSet = JSON.stringify([...new Set(productIds)]);
     return db
@@ -448,6 +455,8 @@ export function selectStorefrontCartProductRows(
             customizationSchema: products.customizationSchema,
             // Every active market's pricing, in a statement checkout already runs.
             pricingMatrix: marketPricingMatrixSql(),
+            // A pickup has no shipping-country market, even if an old address remains.
+            ...(shippingMethodId ? { selectedDeliveryKind: sql<string | null>`(SELECT kind FROM shipping_methods WHERE id = ${shippingMethodId} AND is_active = 1 AND deleted_at IS NULL)` } : {}),
         })
         .from(products)
         .where(
@@ -558,6 +567,8 @@ export function resolveStorefrontCartValidationFromRows(
         decimalPlaces: getDecimalPlaces(shopCurrencyCode),
         priceIncrementMinor: shopIncrementMinor,
     });
+    const marketAuthority = options.priceScope ? { market: options.priceScope.market, country: options.priceScope.country ?? null, atSeconds: options.priceScope.atSeconds } : undefined;
+    const marketContext = options.priceScope ? { id: options.priceScope.market?.id ?? BACKUP_MARKET_ID, country: options.priceScope.country ?? null } : undefined;
     const decimalPlaces = money.decimalPlaces;
     const priceIncrementMinor = money.incrementMinor;
     const presentShopAmount = (shopMinor: number) => presentShopMinor(money, shopMinor);
@@ -565,6 +576,7 @@ export function resolveStorefrontCartValidationFromRows(
     if (items.length === 0) {
         return markTrustedStorefrontCartValidationResult({
             money,
+            ...(marketContext ? { marketContext, marketAuthority } : {}),
             valid: true,
             issues: [],
             items: [],
@@ -588,6 +600,7 @@ export function resolveStorefrontCartValidationFromRows(
     if (malformedVariantIssues.length > 0) {
         return markTrustedStorefrontCartValidationResult({
             money,
+            ...(marketContext ? { marketContext, marketAuthority } : {}),
             valid: false,
             issues: malformedVariantIssues,
             items: [],
@@ -910,6 +923,7 @@ export function resolveStorefrontCartValidationFromRows(
     const pricingSegmentIds = [...(options.priceScope?.segmentIds ?? [])].sort();
     return markTrustedStorefrontCartValidationResult({
         money,
+        ...(marketContext ? { marketContext, marketAuthority } : {}),
         valid: issues.length === 0,
         issues,
         items: validatedItems,
@@ -1046,10 +1060,11 @@ export async function validateStorefrontCartItems(
     if (!options.transformer) return validateCartLines(db, items, options);
     // The apps see the cart priced once (before their own prices), then the
     // rewritten lines are read and validated like any cart.
-    const preliminary = await validateCartLines(db, items, { ...options, linePricer: undefined, deferSubmittedPriceCheck: true });
+    const preliminary = await validateCartLines(db, items, { ...options, linePricer: undefined, beforeTransform: true });
     const transform = await options.transformer(items, preliminary);
-    if (!transform) return validateCartLines(db, items, options);
-    const result = await validateCartLines(db, transform.items, options);
+    const finalOptions = { ...options, market: { ...options.market, authority: preliminary.marketAuthority } };
+    if (!transform) return validateCartLines(db, items, finalOptions);
+    const result = await validateCartLines(db, transform.items, finalOptions);
     result.transform = transform;
     return result;
 }
@@ -1064,6 +1079,7 @@ async function validateCartLines(
         market?: CheckoutMarketSignals;
         salesChannelId?: string;
         linePricer?: AppLinePricer;
+        beforeTransform?: boolean;
         deferSubmittedPriceCheck?: boolean;
         purchaseOptions?: ReadonlyMap<string, string>;
     },
@@ -1071,7 +1087,7 @@ async function validateCartLines(
     const productIds = [...new Set(items.map((item) => item.productId))];
     const variantIds = [...new Set(items.map((item) => item.variantId))];
     const [productRows, variantRows, bundleRows] = await Promise.all([
-        selectStorefrontCartProductRows(db, productIds, options.salesChannelId),
+        selectStorefrontCartProductRows(db, productIds, options.salesChannelId, options.market?.shippingMethodId),
         selectStorefrontCartVariantRows(db, productIds, variantIds, options.salesChannelId),
         selectActiveProductBundleRows(db, productIds),
     ]);
@@ -1097,7 +1113,7 @@ async function validateCartLines(
         variantRows as StorefrontCartVariantRow[],
         mediaByProduct,
         (bundleRows ?? []) as ProductBundleRow[],
-    ));
+    ), options.beforeTransform ? "before_transform" : "final");
 }
 
 /**
@@ -1112,7 +1128,7 @@ export function presentStorefrontCartValidation(
     propertiesHashes: readonly string[] = [],
 ) {
     // Bundle savings are checkout discounts: the tax quote shows them.
-    const { subtotalMinor, items, bundles: _bundles, money, transform: _transform, pricingSegmentIds: _pricingSegmentIds, ...rest } = result;
+    const { subtotalMinor, items, bundles: _bundles, money, marketContext: _marketContext, marketAuthority: _marketAuthority, transform: _transform, pricingSegmentIds: _pricingSegmentIds, ...rest } = result;
     // Amounts are in the cart's currency (its market's), with its places.
     decimalPlaces = money?.decimalPlaces ?? decimalPlaces;
     return {

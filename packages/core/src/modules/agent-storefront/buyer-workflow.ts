@@ -21,6 +21,9 @@ import {
   buildCheckoutAttemptIdentity,
   commitStorefrontOrderPayload,
   createAtomicCheckoutAttempt,
+  createAppLinePricer,
+  createCartTransformer,
+  checkoutPurchaseOptions,
   createStorefrontOrder,
   createTrustedStorefrontCheckoutPolicySnapshot,
   loadStorefrontCheckoutAuthority,
@@ -400,6 +403,12 @@ export async function submitAgentStorefrontCheckout(
   // The same rule as storefront checkout: the delivery preflight in the
   // authority read decides whether a method and an address are needed (a
   // pickup rate needs no address; a cart with nothing physical needs neither).
+  const customerId = lazyValue(() => liveContextCustomer(db, owned).then((customer) => customer?.id ?? null));
+  const appContext = {
+    channel: "agent" as const, customerId, attributes,
+    destination: owned.countryCode ? { country: owned.countryCode, city: null, zone: null } : null,
+    discountCodes: owned.discountCode ? [owned.discountCode] : [],
+  };
   const appPayments = await resolveAppPaymentUsability(db, paymentProviders.gateways, options.credentialEncryptionKey);
   const authority = await withCheckoutStage("AGENT_CHECKOUT_AUTHORITY", () =>
     loadStorefrontCheckoutAuthority(db, {
@@ -423,7 +432,10 @@ export async function submitAgentStorefrontCheckout(
       // nothing physical is billed at the context's country; the signed-in
       // buyer is read only when a segment price list applies.
       billingCountryCode: owned.countryCode,
-      customerId: lazyValue(() => liveContextCustomer(db, owned).then((customer) => customer?.id ?? null)),
+      customerId,
+      linePricer: () => createAppLinePricer(db, apps, appContext),
+      transformer: createCartTransformer(db, apps, appContext),
+      purchaseOptions: () => checkoutPurchaseOptions(apps),
     }, options.credentialEncryptionKey, appPayments));
   if (!authority.cartValidation.valid) {
     throw new ValidationError("Some items in the storefront cart need attention.", {
@@ -502,6 +514,9 @@ export async function submitAgentStorefrontCheckout(
       price: fromMinor(item.unitPriceMinor, storeDecimalPlaces),
       productName: item.productName,
       variantLabel: item.variantLabel,
+      properties: item.properties,
+      ...(item.cartKey ? { cartKey: item.cartKey } : {}),
+      ...(item.purchaseOption ? { purchaseOption: item.purchaseOption.id } : {}),
     })),
     discountCodes: owned.discountCode ? [owned.discountCode] : [],
     shippingCharge: fromMinor(delivery.shippingMinor, storeDecimalPlaces),

@@ -204,6 +204,8 @@ export async function loadAppFunctionCartFacts(
     customerId?: string | null;
     /** `appCartMarketCountry()` of the cart: names its market (null: the backup market). */
     marketCountry: string | null;
+    /** The line-pricing authority; supplied by checkout so every hook sees one market. */
+    market?: FunctionCart["market"];
     /** The apps whose declared reads at `points` ride this batch. */
     apps?: Pick<CheckoutAppFunctions, "readRequests" | "reads"> | undefined;
     points?: readonly PluginRunPoint[];
@@ -239,8 +241,8 @@ export async function loadAppFunctionCartFacts(
         SELECT ${customerTagLinks.tag} AS tag FROM ${customerTagLinks}
         WHERE ${customerTagLinks.customerId} = ${customers.id} ORDER BY ${customerTagLinks.tag} LIMIT 50) AS tag_link)`,
     }).from(customers).where(and(eq(customers.id, customerId ?? ""), isNull(customers.deletedAt))),
-    // The order's market, in the same batch: one more statement, no more waves.
-    db.select({ id: orderMarketIdSql(input.marketCountry) }).from(sql`(SELECT 1) AS order_market_scope`),
+    // Legacy/direct callers may have no priced cart. Checkout reuses its scope.
+    ...(input.market ? [] : [db.select({ id: orderMarketIdSql(input.marketCountry) }).from(sql`(SELECT 1) AS order_market_scope`)]),
   ];
   const cache = input.apps?.reads;
   const reads = cache && input.apps?.readRequests && input.points?.length
@@ -270,7 +272,7 @@ export async function loadAppFunctionCartFacts(
     skus: new Map(),
     variants: new Map(),
     customer: null,
-    market: { id: marketRows[0]?.id ?? BACKUP_MARKET_ID, country: input.marketCountry },
+    market: input.market ?? { id: marketRows?.[0]?.id ?? BACKUP_MARKET_ID, country: input.marketCountry },
   };
   for (const row of productRows) {
     // The product's own category first, then its ancestors nearest first.

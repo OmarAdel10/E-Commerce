@@ -495,6 +495,7 @@ export async function commitStorefrontOrderPayload(
         channel,
         salesChannelId: defaultOrderSalesChannelId(channel),
         order: payload.orderData,
+        marketCountry: payload.marketCountry,
         lines: payload.items,
         taxQuote: payload.taxQuote,
         appDiscounts: payload.appDiscounts,

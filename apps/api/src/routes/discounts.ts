@@ -167,6 +167,7 @@ app.openapi(validateDiscountRoute, async (c) => {
   );
   // Apps' discounts stack after the platform's, exactly as at checkout.
   const apps = previewStorefrontAppDiscounts(db, {
+    marketContext: market ? { id: market.marketId, country: null } : undefined,
     apps: createCheckoutAppFunctions({
       env: c.env,
       ctx: getOptionalExecutionContext(c) as ExecutionContext | undefined,

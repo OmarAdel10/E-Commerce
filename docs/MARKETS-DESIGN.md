@@ -766,8 +766,10 @@ for an order that ships, and its D1 calls and statements do not change.
 **Tax** (`tax/region-match.ts`, `taxAddressSource()`): an order that ships
 is taxed at its shipping address, a pickup order where it is collected (the
 origin), and an order that ships nothing at its billing address (else the
-origin). The order's market is the market of the taxed address's country.
-The quote records `jurisdiction.addressSource`, and the order's tax
+origin). Checkout selects its pricing market from the initial buyer cart before
+app transforms: delivery uses shipping, pickup uses backup, and an addressless
+cart uses billing. Components retain this pricing market even if their final
+tax address source differs. The quote records `jurisdiction.addressSource`, and the order's tax
 snapshot keeps it in `order_tax_snapshots.address_source` (an SQL
 literal). The tax quote takes `billingCountryCode`, `billingAdminArea` and
 `billingPostalCode`.
@@ -863,12 +865,17 @@ only while a list is live. Feeds, Product JSON-LD, search, quick add and
 recommendations show the same prices. In an FX market, price filters are
 inverted exactly.
 
-**Checkout.** Cart validation, the tax quote, the order, agent carts and
-staff orders price lines in the order's market: the shipping country when a
-physical line ships, else the billed country, else the backup market. The
-cart page uses the buyer's country, else the presence. Market pricing and
-list prices ride in statements checkout already runs. Segment membership is
-read only when a segment list applies to the cart.
+**Checkout.** The initial buyer cart selects one pricing market before app
+transforms: physical delivery uses the shipping country (including the existing
+Bangladesh default for legacy requests), pickup uses backup, and an addressless
+cart uses billing or backup. The cart page may use its presence before an address.
+Every transform pass, app hook, tax quote and committed order retains the selected
+market, currency, rate and pricing instant, even if components change fulfilment.
+Final delivery and tax still follow the components. Transformed SKUs resolve their
+own segment eligibility. Composed placement refuses authority changes between
+passes; the commit fence refuses later changes. Staff orders derive their market
+from their final shipping/billing facts. Market pricing, list prices and pickup
+kind ride existing reads; segment membership is read only for applicable lists.
 
 **DVC.** New kind `pl`: `pl:<market>` (pricing columns, active public
 lists) and `pl:<market>:<product>` (their prices). Drafts and segment lists
@@ -877,7 +884,7 @@ advance nothing. A list's next start or end bounds a cached entry
 seed store has an FX market and four lists.
 
 **Dashboard.** Products → Price lists (Medusa's price lists): the lists with
-state, type, SKU count and schedule; create (market, segment or sale); an
+state, type, SKU count and schedule; create (market, segment, sale or override); an
 editor with details, status, priority, schedule and a paged SKU price
 table; a price grid sheet (loaded on first use) with compare-at prices and
 up to four quantity breaks per SKU, at most 100 SKUs per save. Settings →

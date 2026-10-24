@@ -104,6 +104,7 @@ export function createCartTransformer(
             variantIds: valid.map((item) => item.variantId),
             customerId,
             marketCountry: appCartMarketCountry(context.destination ?? null),
+            market: preliminary.marketContext,
             apps,
             points: ["cart.transform"],
             attributes,

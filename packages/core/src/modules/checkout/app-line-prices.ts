@@ -1,8 +1,9 @@
+import { ValidationError } from "@scalius/core/errors";
 import { validateCheckoutAttributes } from "./attributes";
 // App line prices (`cart.line_prices`, packages/plugin-sdk/docs/apps.md): a checkout
 // function's unit price for a cart line takes the app place in
-// `resolvePrice()` (purchase option > sale > segment > market list > app >
-// FX > base), so B2B contract and tiered prices replace the catalogue price
+// `resolvePrice()` (purchase option > override > the lower of sale and
+// segment > market list > app > FX > base), so B2B contract and tiered prices replace the catalogue price
 // while market and price-list rules stay authoritative, and a purchase
 // option (a subscription, a rental) is priced by the app that offers it.
 //
@@ -17,11 +18,12 @@ import { validateCheckoutAttributes } from "./attributes";
 //   prices a line wins it.
 // - A line bought with a purchase option is priced only by the app that
 //   declares the option, and that price outranks every list; another app's
-//   answer for it is skipped and logged. Without the owner's answer the
-//   line keeps its one-time price.
-// - A one-time line priced by a sale, segment or market list keeps that
+//   answer for it is skipped and logged. Without the owner's valid answer
+//   checkout is refused, including when the app fails open for other lines.
+// - A one-time line priced by an override, segment or market list keeps that
 //   price: the answer is skipped and logged for the merchant. So is a
-//   gift-card line (money) and a line that is not in the cart.
+//   gift-card line (money) and a line that is not in the cart. Sale lines
+//   accept offers so the resolver can keep the lower sale or app price.
 // - The price rounds half-up to the market's price increment and is never
 //   zero; buyer-input surcharges are added on top.
 //
@@ -43,6 +45,7 @@ import { roundToIncrementMinor } from "@scalius/shared/money";
 import { purchaseOptionAppId } from "@scalius/shared/plugins/ids";
 import { buildStorefrontTaxAllocationLineId } from "../tax";
 import {
+    CHECKOUT_APP_UNAVAILABLE_REASON,
     appCartMarketCountry,
     buildAppFunctionCart,
     loadAppFunctionCartFacts,
@@ -69,8 +72,8 @@ const NO_APP_LINE_PRICING: AppLinePricing = { prices: new Map(), adjustments: ne
  */
 export type AppLinePricer = (preliminary: StorefrontCartValidationResult) => Promise<AppLinePricing>;
 
-/** Sources whose price an app may replace: lists stay authoritative. */
-const APP_PRICEABLE_SOURCES: ReadonlySet<ResolvedPriceSource> = new Set(["fx", "base"]);
+/** Ordinary app offers participate under sales; override, segment and market lists stay authoritative. */
+const APP_PRICEABLE_SOURCES: ReadonlySet<ResolvedPriceSource> = new Set(["sale", "fx", "base"]);
 
 export interface AppLinePricerContext {
     channel: FunctionCart["channel"];
@@ -100,6 +103,7 @@ export function createAppLinePricer(
             variantIds: items.map((item) => item.variantId),
             customerId,
             marketCountry: appCartMarketCountry(context.destination ?? null),
+            market: preliminary.marketContext,
             apps,
             points: ["cart.line_prices"],
             attributes,
@@ -163,6 +167,10 @@ export function resolveAppLinePrices(
                 apps?.report(result.pluginId, "cart.line_prices", `A price names line ${answer.lineId}, which is not in the cart; it was skipped.`);
                 continue;
             }
+            if (!Number.isSafeInteger(answer.unitPriceMinor) || answer.unitPriceMinor <= 0) {
+                apps?.report(result.pluginId, "cart.line_prices", `Line ${answer.lineId} has an invalid app price; it was skipped.`);
+                continue;
+            }
             if (prices.has(item.index)) continue;
             if (item.isGiftCard) continue;
             const option = item.purchaseOption?.id ?? null;
@@ -182,7 +190,26 @@ export function resolveAppLinePrices(
             prices.set(item.index, { amountMinor: answer.unitPriceMinor, pluginId: result.pluginId });
         }
     }
+    assertPurchaseOptionPrices(items, prices);
     return prices;
+}
+
+/** A purchase option is its owner's offer; the one-time price is never a fallback. */
+function assertPurchaseOptionPrices(
+    items: ReadonlyArray<Pick<StorefrontCartValidatedItem, "index" | "purchaseOption">>,
+    prices: ReadonlyMap<number, AppLinePrice>,
+): void {
+    for (const item of items) {
+        const option = item.purchaseOption?.id;
+        if (!option) continue;
+        const price = prices.get(item.index);
+        if (!price || price.purchaseOption !== option || price.pluginId !== purchaseOptionAppId(option)
+            || !Number.isSafeInteger(price.amountMinor) || price.amountMinor <= 0) {
+            throw new ValidationError("We can't confirm this purchase option's price right now. Please try again in a few minutes.", {
+                reason: CHECKOUT_APP_UNAVAILABLE_REASON,
+            });
+        }
+    }
 }
 
 /** Each line's add-ons, by line index (see the rules above). */
@@ -231,10 +258,19 @@ export async function resolveCartWithAppLinePrices(
         appAdjustments?: ReadonlyMap<number, ResolvedLineProperty[]>;
         deferSubmittedPriceCheck?: boolean;
     }) => StorefrontCartValidationResult,
+    phase: "before_transform" | "final" = "final",
 ): Promise<StorefrontCartValidationResult> {
-    if (!pricer) return resolve({});
+    // Transform inputs are catalogue facts, not an orderable quote. Only the
+    // final pass asks the owner and must prove every purchase-option price.
+    if (phase === "before_transform") return resolve({ deferSubmittedPriceCheck: true });
+    if (!pricer) {
+        const result = resolve({});
+        assertPurchaseOptionPrices(result.items, NO_APP_LINE_PRICING.prices);
+        return result;
+    }
     const preliminary = resolve({ deferSubmittedPriceCheck: true });
     const { prices, adjustments } = await pricer(preliminary);
+    assertPurchaseOptionPrices(preliminary.items, prices);
     return resolve({
         ...(prices.size > 0 ? { appPrices: prices } : {}),
         ...(adjustments.size > 0 ? { appAdjustments: adjustments } : {}),

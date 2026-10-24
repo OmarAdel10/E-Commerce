@@ -53,8 +53,9 @@ import {
   selectDeliveryRateRowsByIds,
 } from "../delivery";
 import { createStorefrontTaxAuthorityReadPlan, type StorefrontTaxAuthoritySnapshot } from "../tax";
-import { resolveCheckoutPriceScope } from "../price-lists";
+import { resolveCheckoutPriceScope, type CheckoutMarketAuthority } from "../price-lists";
 import { resolveCartWithAppLinePrices, type AppLinePricer } from "./app-line-prices";
+import type { CartTransformer } from "./cart-transform";
 import {
   ga4MeasurementDocument,
   ga4ServerEnabled,
@@ -92,6 +93,9 @@ export interface StorefrontCheckoutAuthorityInput {
     shippingAdminArea?: string | null;
     shippingPostalCode?: string | null;
     shippingMethodId?: string | null;
+    /** Server-only market selection retained across app transforms. */
+    marketAuthority?: CheckoutMarketAuthority;
+    beforeTransform?: () => boolean;
     shippingRateToken?: string | null;
     cod?: boolean;
     calculatedRates?: CalculatedRateOptions;
@@ -112,6 +116,8 @@ export interface StorefrontCheckoutAuthorityInput {
      * cart is priced: after the read, which also says which apps are active.
      */
     linePricer?: () => AppLinePricer | undefined;
+    /** Direct authority loads use the same preliminary/final phases as composed checkout reads. */
+    transformer?: CartTransformer;
     /** The purchase options the active apps declare (`checkoutPurchaseOptions`), known once the read has answered. */
     purchaseOptions?: () => ReadonlyMap<string, string> | undefined;
     /**
@@ -416,6 +422,8 @@ export function createStorefrontCheckoutAuthorityBatchReadPlan(
                 signals: {
                     placing: true,
                     shippingCountryCode: input.shippingCountryCode,
+                    pickup: shippingRows.find((row) => row.id === input.shippingMethodId)?.kind === "pickup",
+                    authority: input.marketAuthority,
                     billingCountryCode: input.billingCountryCode,
                     customerId: input.customerId,
                 },
@@ -440,13 +448,15 @@ export function createStorefrontCheckoutAuthorityBatchReadPlan(
                         variantRows,
                         mediaByProduct,
                         bundleRows,
-                    ));
+                    ), input.beforeTransform?.() ? "before_transform" : "final");
                     if (!cartValidation.valid) {
                         throw new ValidationError("Some items in your cart need attention.", {
                             itemIssues: cartValidation.issues,
                         });
                     }
-                    const deliveryPreflight = await resolveStorefrontDeliveryPreflightWithRates(
+                    // A transform may remove or add physical components. Only its
+                    // final cart can validate delivery or ask a carrier for a rate.
+                    const deliveryPreflight = input.beforeTransform?.() ? null : await resolveStorefrontDeliveryPreflightWithRates(
                         db,
                         {
                             shippingCountryCode: input.shippingCountryCode,
@@ -471,7 +481,10 @@ export function createStorefrontCheckoutAuthorityBatchReadPlan(
                             authorityRevision,
                             currency,
                             cartValidation,
-                            deliveryPreflight,
+                            get deliveryPreflight() {
+                                if (!deliveryPreflight) throw new ValidationError("A preliminary checkout cannot be placed before its final delivery check.");
+                                return deliveryPreflight;
+                            },
                             checkoutSettings: {
                                 guestCheckoutEnabled: site.guestCheckoutEnabled,
                                 checkoutMode: site.checkoutMode,
@@ -547,12 +560,31 @@ export function createStorefrontCheckoutAuthorityReadPlan(
     };
 }
 
+/** A retained pricing market must never cross a checkout authority revision. */
+export function assertStorefrontCheckoutAuthorityRevision(current: number, original: number): void {
+    if (current !== original) {
+        throw new ValidationError("Checkout details changed while the order was being placed. Return to your cart to review them and try again.");
+    }
+}
+
 export async function loadStorefrontCheckoutAuthority(
     db: Database,
     input: StorefrontCheckoutAuthorityInput,
     credentialEncryptionKey?: string,
     appPayments?: AppPaymentUsability,
 ): Promise<StorefrontCheckoutAuthoritySnapshot> {
+    if (input.transformer) {
+        const first = await loadStorefrontCheckoutAuthority(db, {
+            ...input, transformer: undefined, linePricer: undefined, beforeTransform: () => true,
+        }, credentialEncryptionKey, appPayments);
+        const transform = await input.transformer(input.items, first.cartValidation);
+        const final = await loadStorefrontCheckoutAuthority(db, {
+            ...input, transformer: undefined, beforeTransform: undefined,
+            items: transform?.items ?? input.items, marketAuthority: first.cartValidation.marketAuthority,
+        }, credentialEncryptionKey, appPayments);
+        assertStorefrontCheckoutAuthorityRevision(final.authorityRevision, first.authorityRevision);
+        return final;
+    }
     const plan = createStorefrontCheckoutAuthorityReadPlan(db, input);
     let results: unknown[];
     try {

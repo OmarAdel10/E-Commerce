@@ -796,6 +796,7 @@ export async function createStorefrontOrder(
         })),
         {
             inventoryPool: data.inventoryPool,
+            market: { placing: true, shippingMethodId: data.shippingMethodId, shippingCountryCode: data.shippingCountryCode, billingCountryCode: data.billingCountryCode, customerId: customerIdentity?.customerId ?? null },
             currencyCode: requestCurrency.code,
             priceIncrementMinor: requestCurrency.priceIncrementMinor,
             // A line's purchase option must be one an active app offers.
@@ -1098,6 +1099,7 @@ export async function createStorefrontOrder(
 
     const commitPayload = {
         checkoutToken,
+        marketCountry: cartValidation.marketContext?.country,
         checkoutAuthorityRevision: checkoutPolicySnapshot?.authorityRevision ?? null,
         checkoutSideEffects: {
             orderCreatedNotification:

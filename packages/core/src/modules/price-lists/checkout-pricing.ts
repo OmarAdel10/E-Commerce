@@ -15,6 +15,7 @@
 import type { Database } from "@scalius/database/client";
 import { BACKUP_MARKET_ID } from "@scalius/database/schema";
 import { getDecimalPlaces } from "@scalius/shared/currency";
+import { DELIVERY_HIERARCHY_COUNTRY } from "@scalius/shared/markets";
 import {
     applicablePriceListPrices,
     isPriceListLive,
@@ -29,7 +30,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { customerSegmentMembership, readSegmentDefinitions } from "../customers";
 import { currentStoreTimeZone } from "../../utils/store-time-zone";
 import { marketFxConversion, marketListPricesSql, MarketPricesUnavailableError, parseMarketListPrices } from "./market-pricing";
-import { marketCurrencyIncrementMinor, marketPresentment, shopPresentment, type PresentmentMoney } from "@scalius/shared/presentment";
+import { isMarketFxRateFresh, marketCurrencyIncrementMinor, marketPresentment, shopPresentment, type PresentmentMoney } from "@scalius/shared/presentment";
 
 /** One active market as checkout prices in it. */
 export interface PricingMarket {
@@ -170,10 +171,19 @@ export function pricingMarketOf(markets: readonly PricingMarket[], signals: Pric
     return backup;
 }
 
+/** The first buyer-cart pass selects this authority; transforms retain it. */
+export interface CheckoutMarketAuthority {
+    market: PricingMarket | null;
+    country: string | null;
+    atSeconds: number;
+}
+
 /** Everything checkout needs to price one cart's lines in its market. */
 export interface CheckoutPriceScope {
     /** Null: the store has no market row (before 0112): base prices. */
     market: PricingMarket | null;
+    /** The one country authority used to price the lines and every app hook. */
+    country?: string | null;
     /** The presentment currency (the market's) and its increment. */
     currencyCode: string;
     incrementMinor: number;
@@ -264,6 +274,11 @@ export interface CheckoutMarketSignals {
     /** The page's subfolder presence (the cart page). */
     presence?: string | null;
     shippingCountryCode?: string | null;
+    /** Selected delivery choice, read with the existing product/authority rows. */
+    shippingMethodId?: string | null;
+    pickup?: boolean;
+    /** Retained across transform passes, never accepted from the buyer. */
+    authority?: CheckoutMarketAuthority;
     billingCountryCode?: string | null;
     /** The quote or the order: the order's market rule applies. */
     placing?: boolean;
@@ -280,6 +295,7 @@ interface PricingProductRow {
     id: string;
     isGiftCard: boolean;
     pricingMatrix?: string | null;
+    selectedDeliveryKind?: string | null;
 }
 
 interface PricingVariantRow {
@@ -297,20 +313,23 @@ export function checkoutMarketCountry(
 ): string | null {
     const shipping = signals.shippingCountryCode?.trim().toUpperCase() || null;
     const billing = signals.billingCountryCode?.trim().toUpperCase() || null;
-    if (!signals.placing) return shipping;
+    const pickup = signals.pickup ?? productRows[0]?.selectedDeliveryKind === "pickup";
+    if (!signals.placing) return pickup ? null : shipping;
     const products = new Map(productRows.map((row) => [row.id, row]));
     const variants = new Map(variantRows.map((row) => [row.id, row]));
     const shipsPhysical = items.some((item) =>
         variants.get(item.variantId)?.fulfillmentKind === "physical" && products.get(item.productId)?.isGiftCard !== true);
-    return shipsPhysical ? shipping : billing;
+    // Legacy delivery requests omit the country for Bangladesh's place tree;
+    // use the same default as delivery preflight before any hook observes it.
+    return shipsPhysical ? (pickup ? null : shipping ?? DELIVERY_HIERARCHY_COUNTRY) : billing;
 }
 
 /**
  * The price scope of one checkout: its market (from the markets read with
  * the cart's products), the buyer's segments when a segment list of that
  * market prices one of the cart's SKUs (then one statement per segment), and
- * the instant it prices at. Null when nothing can price away from base
- * prices: no FX market and no list price on the cart's SKUs.
+ * the instant it prices at. The scope is retained even without price lists
+ * or FX so app hooks use the same resolved market without another read.
  */
 export async function resolveCheckoutPriceScope(
     db: Database,
@@ -325,20 +344,21 @@ export async function resolveCheckoutPriceScope(
 ): Promise<CheckoutPriceScope | null> {
     const markets = parseMarketPricingMatrix(input.productRows[0]?.pricingMatrix, input.currency);
     const listRows = input.variantRows.flatMap((row) => parseMarketListPrices(row.listPrices));
-    const ownCurrency = markets.some((market) => market.money === null || market.money.currencyCode !== input.currency.code);
-    if (!ownCurrency && !markets.some((market) => market.fx !== null) && listRows.length === 0) return null;
-    const country = checkoutMarketCountry(input.items, input.productRows, input.variantRows, input.signals);
-    const market = pricingMarketOf(markets, country
+    const authority = input.signals.authority;
+    const country = authority ? authority.country : checkoutMarketCountry(input.items, input.productRows, input.variantRows, input.signals);
+    const pickup = input.signals.pickup ?? input.productRows[0]?.selectedDeliveryKind === "pickup";
+    const market = authority ? authority.market : pricingMarketOf(markets, country
         ? { countryCode: country }
-        : { presence: input.signals.placing ? null : input.signals.presence });
-    const atSeconds = input.atSeconds ?? Math.floor(Date.now() / 1_000);
+        : { presence: input.signals.placing || pickup ? null : input.signals.presence });
+    const atSeconds = authority?.atSeconds ?? input.atSeconds ?? Math.floor(Date.now() / 1_000);
     const segments = market ? segmentListIds(market.id, listRows, atSeconds) : [];
     const shop = { code: input.currency.code, decimalPlaces: getDecimalPlaces(input.currency.code), priceIncrementMinor: input.currency.incrementMinor };
     // A market in its own currency without a usable rate is refused, never priced unconverted.
-    if (market && market.money === null) throw new MarketPricesUnavailableError();
+    if (market && (market.money === null || !isMarketFxRateFresh(market.money, atSeconds))) throw new MarketPricesUnavailableError();
     const money = market?.money ?? shopPresentment(shop);
     return {
         market,
+        country,
         currencyCode: money.currencyCode,
         incrementMinor: money.incrementMinor,
         money,

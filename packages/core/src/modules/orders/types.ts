@@ -653,6 +653,8 @@ export interface OrderLine {
 /** Prepared, server-authoritative storefront order data committed synchronously by checkout. */
 export interface StorefrontOrderCommitPayload {
     checkoutToken: string;
+    /** The initial buyer cart's selected market country; null deliberately selects backup. */
+    marketCountry?: string | null;
     /** Read-to-commit fence for catalog, delivery, tax, and checkout policy facts. */
     checkoutAuthorityRevision: number | null;
     /** Buyer-independent async work proven deliverable by the checkout authority snapshot. */
