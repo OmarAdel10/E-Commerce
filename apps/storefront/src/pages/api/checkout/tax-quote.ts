@@ -17,8 +17,10 @@ import {
   isDeliveryRateUnavailable,
   parseTaxQuoteCartIssues,
   refusedDeliveryRates,
+  refusedForItems,
   unavailableDeliveryLocation,
   type DeliveryLocationLevel,
+  type ItemsDeliveryRefusal,
 } from "@/lib/checkout/tax-quote-error-contract";
 import { getCustomerSessionTokenFromCookie } from "../../../lib/customer-session-cookie";
 import { buyerUiLocaleHeaders } from "@/lib/buyer-ui/locale";
@@ -161,6 +163,7 @@ export const POST: APIRoute = async ({ request }) => {
       let ruleErrors: CartRuleError[] | null = null;
       let deliveryRateUnavailable = false;
       let visibleRates: QuotedShippingRate[] | null = null;
+      let itemsRefusal: ItemsDeliveryRefusal | null = null;
       let locationGone: DeliveryLocationLevel | null = null;
       try {
         const text = await readBoundedBody(
@@ -172,6 +175,7 @@ export const POST: APIRoute = async ({ request }) => {
         ruleErrors = cartRuleRefusal(payload);
         deliveryRateUnavailable = isDeliveryRateUnavailable(payload);
         visibleRates = refusedDeliveryRates(payload);
+        itemsRefusal = refusedForItems(payload);
         locationGone = unavailableDeliveryLocation(payload);
       } catch {
         itemIssues = [];
@@ -190,6 +194,11 @@ export const POST: APIRoute = async ({ request }) => {
                     reason: DELIVERY_RATE_UNAVAILABLE_REASON,
                     // The options still offered, when a store app hid the chosen one.
                     ...(visibleRates ? { shippingRates: visibleRates } : {}),
+                    // The options these items can't take and their weight, so
+                    // the cart says why (too heavy) instead of "no delivery".
+                    ...(itemsRefusal
+                      ? { unavailableRates: itemsRefusal.rates, weightGrams: itemsRefusal.weightGrams }
+                      : {}),
                   },
                 }
               : locationGone
