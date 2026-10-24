@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent, type RefObject } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
@@ -11,7 +11,7 @@ import { useMessages } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import { SETTINGS_ITEM, activeNavChild, isSectionActive, matchesPath, type VisibleNavItem } from "./AdminNav";
 import { NAV_ICON_BUTTON, NAV_ROW, NAV_PANEL_QUERY } from "./nav-button";
-import { ariaKeys, comboCaps, SHORTCUTS } from "./shortcuts";
+import { ariaKeys } from "./shortcuts";
 import { Mark, Wordmark } from "./brand";
 import { ShellLink } from "./ShellLink";
 import { useShell } from "./shell";
@@ -21,8 +21,8 @@ const SettingsPanel = lazy(() => import("./SettingsPanel").then((module) => ({ d
 const SidebarMobileSheet = lazy(() =>
   import("@/components/ui/sidebar-mobile-sheet").then((module) => ({ default: module.SidebarMobileSheet })),
 );
-// The collapsed rail's flyouts: requested when the rail first draws, ready long before a hover's intent delay ends.
-const RailFlyouts = lazy(() => import("./RailFlyout"));
+// The desktop navigation's flyouts and tooltip (NavFlyouts.tsx): requested when it first draws.
+const NavFlyouts = lazy(() => import("./NavFlyouts"));
 
 interface SidebarProps {
   nav: VisibleNavItem[];
@@ -35,79 +35,11 @@ function historyIndex(state: unknown): number {
   return typeof index === "number" ? index : 0;
 }
 
-interface TipState {
-  label: string;
-  keys: boolean;
-  /** The button's edge facing the page: its right, or its left in a right-to-left language. */
-  edge: number;
-  rtl: boolean;
-  y: number;
-}
-
-/**
- * One tooltip for the whole navigation (Shopify's dark one), fixed to the
- * right of the hovered or keyboard-focused `data-tip` button (the frame clips
- * its own overflow, so it can't live inside): the button's accessible name
- * and, for `data-tip="keys"` (the collapse toggle), its shortcut.
- */
-function useNavTooltip() {
-  // The tooltip keeps its own state: a hover re-renders it alone, not the navigation under it.
-  const setTip = useRef<(tip: TipState | null) => void>(() => undefined);
-  const show = (event: PointerEvent | FocusEvent) => {
-    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-tip]");
-    if (event.type === "focus" && !target?.matches(":focus-visible")) return;
-    // Touch has no hover: a tap never leaves a tooltip behind.
-    if ("pointerType" in event && event.pointerType === "touch") return;
-    if (!target) return setTip.current(null);
-    const box = target.getBoundingClientRect();
-    const rtl = getComputedStyle(target).direction === "rtl";
-    setTip.current({ label: target.getAttribute("aria-label") ?? "", keys: target.dataset.tip === "keys", edge: rtl ? box.left : box.right, rtl, y: box.top + box.height / 2 });
-  };
-  const hide = () => setTip.current(null);
-  const handlers = { onPointerOver: show, onPointerLeave: hide, onFocus: show, onBlur: hide, onClick: hide };
-  return { handlers, tooltip: <NavTooltip bind={setTip} /> };
-}
-
-const sameTip = (a: TipState | null, b: TipState | null) =>
-  a === b || (a !== null && b !== null && a.label === b.label && a.keys === b.keys && a.edge === b.edge && a.y === b.y);
-
-function NavTooltip({ bind }: { bind: RefObject<(tip: TipState | null) => void> }) {
-  const [tip, setTip] = useState<TipState | null>(null);
-  const box = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    bind.current = (next) => setTip((current) => (sameTip(current, next) ? current : next));
-  }, [bind]);
-  // 8px beside the button, on the page's side: measured before paint, since in a
-  // right-to-left language the tooltip ends there and its width decides where it starts.
-  useLayoutEffect(() => {
-    if (tip && box.current) box.current.style.setProperty("--tip-x", `${tip.rtl ? tip.edge - 8 - box.current.offsetWidth : tip.edge + 8}px`);
-  }, [tip]);
-  if (!tip) return null;
-  return (
-    <span
-      ref={box}
-      aria-hidden
-      style={{ "--tip-y": `${tip.y}px` } as CSSProperties}
-      className="pointer-events-none fixed left-(--tip-x) top-(--tip-y) z-50 flex -translate-y-1/2 items-center gap-2 whitespace-nowrap rounded-lg bg-topbar px-2 py-1 text-body text-topbar-foreground shadow-popover"
-    >
-      {tip.label}
-      {tip.keys ? (
-        <span className="flex gap-1">
-          {comboCaps(SHORTCUTS.navigation.combos[0]).map((cap) => (
-            <kbd key={cap} className="border-topbar-hover bg-topbar-subdued text-caption">
-              {cap}
-            </kbd>
-          ))}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
 /**
  * Shopify's navigation on the near-black frame. From 1100px: a 240px panel
  * (wordmark and collapse button, the sections, Settings) or, collapsed with ⌘B,
- * a 56px icon rail with tooltips and, for sections with sub-pages, flyouts;
+ * a 56px icon rail with tooltips; on both, a section with sub-pages opens a
+ * flyout of them (NavFlyouts.tsx);
  * Settings swaps the panel for the settings list beside the rail. Narrower
  * (phones, tablets, a 1024px laptop) the same panel is a drawer that lists every
  * section with its sub-pages open (no accordions). The width eases
@@ -139,7 +71,7 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
     else void router.navigate({ to: "/admin" });
   };
 
-  const { handlers, tooltip } = useNavTooltip();
+  const frame = useRef<HTMLDivElement>(null);
   const closeDrawer = () => setDrawerOpen(false);
   const panel = (drawer: boolean) =>
     inSettings ? (
@@ -162,7 +94,7 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
   return (
     <>
       <div
-        {...handlers}
+        ref={frame}
         data-nav=""
         data-nav-state={inSettings ? "settings" : collapsed ? "rail" : "panel"}
         className={cn(
@@ -180,8 +112,10 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
             {panel(false)}
           </nav>
         ) : null}
+        <Suspense fallback={null}>
+          <NavFlyouts frame={frame} nav={nav} inSettings={inSettings} />
+        </Suspense>
       </div>
-      {tooltip}
     </>
   );
 }
@@ -250,6 +184,7 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
     return (
       <li key={item.key} className="group/item relative">
         <ShellLink
+          data-flyout={!drawer && !open && item.children.length > 0 ? item.key : undefined}
           to={item.to}
           preload="intent"
           current={open && !activeChild}
@@ -326,17 +261,16 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
 
 /**
  * The collapsed navigation: every section as an icon, groups set apart by a
- * rule. A section with sub-pages shows them in a flyout (`RailFlyout`), the
- * others a tooltip.
+ * rule. A section with sub-pages shows them in a flyout, the others a
+ * tooltip (both NavFlyouts.tsx).
  */
 function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSettings: boolean; inSettings: boolean }) {
   const t = useMessages(shellMessages);
   const path = useLocation({ select: (location) => location.pathname });
   const { toggleCollapsed } = useShell();
-  const rail = useRef<HTMLElement>(null);
   let lastGroup: string | undefined;
   return (
-    <nav ref={rail} aria-label={t("mainNavigation")} className="flex h-full w-14 shrink-0 flex-col items-center pb-2">
+    <nav aria-label={t("mainNavigation")} className="flex h-full w-14 shrink-0 flex-col items-center pb-2">
       <div className="flex h-14 shrink-0 items-center">
         {inSettings ? (
           <ShellLink to="/admin" current={false} aria-label={t("home")} className={NAV_ICON_BUTTON}>
@@ -385,9 +319,6 @@ function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSe
           <SETTINGS_ITEM.icon aria-hidden />
         </ShellLink>
       ) : null}
-      <Suspense fallback={null}>
-        <RailFlyouts rail={rail} nav={nav} inSettings={inSettings} />
-      </Suspense>
     </nav>
   );
 }
