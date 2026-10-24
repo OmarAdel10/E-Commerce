@@ -184,9 +184,14 @@ const PAGE_PERMISSION_MAP: Record<string, PagePermissionConfig> = {
     ],
   },
   "/admin/settings/policies": { permission: PERMISSIONS.SETTINGS_GENERAL_VIEW },
+  // Customer privacy: the cookie banner (tracking settings) and what customers allow.
+  "/admin/settings/privacy": { anyOf: [PERMISSIONS.ANALYTICS_VIEW, PERMISSIONS.SETTINGS_GENERAL_VIEW] },
+  // Sales channels: where products are published (store settings).
+  "/admin/settings/sales-channels": { permission: PERMISSIONS.SETTINGS_GENERAL_VIEW },
   "/admin/settings/custom-data": { permission: PERMISSIONS.SETTINGS_GENERAL_VIEW },
-  "/admin/settings/warranty-policies": { permission: PERMISSIONS.PRODUCTS_EDIT },
   "/admin/settings/integrations": { anyOf: [...INTEGRATIONS_PAGE_PERMISSIONS] },
+  // Warranty policies, opened from Settings → Policies.
+  "/admin/settings/policies/warranty": { permission: PERMISSIONS.PRODUCTS_EDIT },
   "/admin/settings/webhooks": { permission: PERMISSIONS.WEBHOOKS_VIEW },
   "/admin/settings/customer-accounts": {
     permission: PERMISSIONS.SETTINGS_GENERAL_VIEW,
@@ -323,6 +328,12 @@ const DYNAMIC_PAGE_PERMISSIONS: Array<{
   {
     pattern: /^\/admin\/settings\/markets\/[^/]+$/,
     config: { permission: PERMISSIONS.SETTINGS_GENERAL_VIEW },
+  },
+
+  // One customer message, opened from Settings → Notifications: as the page.
+  {
+    pattern: /^\/admin\/settings\/notifications\/[^/]+$/,
+    config: { anyOf: [PERMISSIONS.SETTINGS_NOTIFICATIONS_EDIT, PERMISSIONS.SETTINGS_GENERAL_VIEW] },
   },
 
   // Staff and roles: one page each, opened from Settings → Users.
