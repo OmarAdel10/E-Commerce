@@ -1,11 +1,11 @@
 // Price lists (docs/MARKETS-DESIGN.md D5, migration 0120): fixed prices per
-// market, customer segment or sale, with a schedule, a priority and quantity
+// market, customer segment, sale or override, with a schedule, a priority and quantity
 // breaks (Medusa's price lists, Shopify's catalogs, Vendure's per-channel
 // prices). Base prices stay on product_variants in the shop currency (the
 // backup market). The one precedence that turns these rows into a price is
 // `resolvePrice()` in @scalius/shared/market-pricing.
 //
-// - `market` and `sale` lists price a non-backup market for every buyer; the
+// - `market`, `sale` and `override` lists price a non-backup market for every buyer; the
 //   backup market sells at base prices, so the root catalogue never varies.
 // - `segment` lists price members of one customer segment in one market
 //   (any market, the backup included); only signed-in checkout, staff orders
@@ -22,7 +22,7 @@ import { customerSegments } from "./customer-marketing";
 import { productVariants } from "./products";
 
 /** Mirrors `PRICE_LIST_KINDS` in `@scalius/shared/market-pricing`. */
-export const PRICE_LIST_KINDS = ["market", "segment", "sale"] as const;
+export const PRICE_LIST_KINDS = ["market", "segment", "sale", "override"] as const;
 export const PRICE_LIST_STATUSES = ["draft", "active"] as const;
 
 export const priceLists = sqliteTable("price_lists", {
@@ -40,7 +40,7 @@ export const priceLists = sqliteTable("price_lists", {
     /** Inclusive start and exclusive end (epoch seconds); null is unbounded. */
     startsAt: integer("starts_at", { mode: "timestamp" }),
     endsAt: integer("ends_at", { mode: "timestamp" }),
-    /** Among lists of one kind, the higher priority wins (then the lower amount). */
+    /** Higher priority wins within a kind; sales choose the lowest rounded price before priority. */
     priority: integer("priority").notNull().default(0),
     /** Optimistic concurrency of the list and its prices. */
     revision: integer("revision").notNull().default(1),
@@ -52,7 +52,7 @@ export const priceLists = sqliteTable("price_lists", {
     check("price_lists_id_shape", sql`substr(${table.id}, 1, 3) = 'pl_' AND length(${table.id}) BETWEEN 6 AND 40`),
     check("price_lists_name_length", sql`${table.name} = trim(${table.name}) AND length(${table.name}) BETWEEN 1 AND 80`),
     check("price_lists_description_length", sql`${table.description} IS NULL OR length(${table.description}) BETWEEN 1 AND 300`),
-    check("price_lists_kind_check", sql`${table.kind} IN ('market', 'segment', 'sale')`),
+    check("price_lists_kind_check", sql`${table.kind} IN ('market', 'segment', 'sale', 'override')`),
     check("price_lists_status_check", sql`${table.status} IN ('draft', 'active')`),
     check("price_lists_segment_kind", sql`(${table.kind} = 'segment') = (${table.segmentId} IS NOT NULL)`),
     check("price_lists_schedule", sql`${table.startsAt} IS NULL OR ${table.endsAt} IS NULL OR ${table.endsAt} > ${table.startsAt}`),

@@ -19,6 +19,7 @@ import { ProviderError } from "@scalius/shared/plugins/providers";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import { resolveAppProvider, type AppProviders } from "../../integrations/provider-port";
+import { allocateTaxDocumentRefund } from "./refund-documents";
 
 export type TaxDocumentOutcome = "done" | "failed" | "skipped" | "dead" | "deferred" | "busy";
 
@@ -35,6 +36,21 @@ const due = or(
     and(inArray(taxDocumentCommands.status, ["pending", "failed"]), lte(taxDocumentCommands.nextAttemptAt, sql`unixepoch()`)),
     and(eq(taxDocumentCommands.status, "processing"), lte(taxDocumentCommands.claimExpiresAt, sql`unixepoch()`)),
 );
+
+// Shared by candidate selection and atomic claims so blocked refunds cannot
+// monopolize a bounded maintenance page ahead of independent work.
+const allocationTurn = sql`(${taxDocumentCommands.operation} <> 'refund'
+        OR ${taxDocumentCommands.allocationSnapshot} IS NOT NULL
+        OR (NOT EXISTS (SELECT 1 FROM tax_document_commands AS allocating
+            WHERE allocating.order_id = ${taxDocumentCommands.orderId}
+              AND allocating.id <> ${taxDocumentCommands.id}
+              AND allocating.operation = 'refund' AND allocating.allocation_snapshot IS NULL
+              AND allocating.status = 'processing' AND allocating.claim_expires_at > unixepoch())
+          AND NOT EXISTS (SELECT 1 FROM tax_document_commands AS earlier
+            WHERE earlier.order_id = ${taxDocumentCommands.orderId}
+              AND earlier.operation = 'refund' AND earlier.allocation_snapshot IS NULL AND earlier.status <> 'dead'
+              AND (earlier.created_at < ${taxDocumentCommands.createdAt}
+                OR (earlier.created_at = ${taxDocumentCommands.createdAt} AND earlier.id < ${taxDocumentCommands.id})))))`;
 
 export interface TaxDocumentDrainResult {
     scanned: number;
@@ -54,8 +70,8 @@ export async function drainTaxDocumentCommands(
 ): Promise<TaxDocumentDrainResult> {
     const rows = await db.select({ id: taxDocumentCommands.id })
         .from(taxDocumentCommands)
-        .where(due)
-        .orderBy(asc(taxDocumentCommands.nextAttemptAt))
+        .where(and(due, allocationTurn))
+        .orderBy(asc(taxDocumentCommands.nextAttemptAt), asc(taxDocumentCommands.createdAt), asc(taxDocumentCommands.id))
         .limit(Math.max(1, Math.min(options.limit, MAX_DRAIN_LIMIT)));
     const result: TaxDocumentDrainResult = { scanned: rows.length, done: 0, failed: 0, skipped: 0, dead: 0, deferred: 0, busy: 0 };
     for (const row of rows) result[await processTaxDocumentCommand(db, row.id, apps)] += 1;
@@ -73,7 +89,8 @@ export async function processTaxDocumentCommandsForOrder(
 ): Promise<TaxDocumentOutcome[]> {
     const rows = await db.select({ id: taxDocumentCommands.id, operation: taxDocumentCommands.operation })
         .from(taxDocumentCommands)
-        .where(and(eq(taxDocumentCommands.orderId, orderId), due));
+        .where(and(eq(taxDocumentCommands.orderId, orderId), due))
+        .orderBy(asc(taxDocumentCommands.createdAt), asc(taxDocumentCommands.id));
     const ordered = [...rows].sort((left, right) => Number(right.operation === "commit") - Number(left.operation === "commit"));
     const outcomes: TaxDocumentOutcome[] = [];
     for (const row of ordered) outcomes.push(await processTaxDocumentCommand(db, row.id, apps));
@@ -92,13 +109,15 @@ export async function processTaxDocumentCommand(
     apps: AppProviders | undefined,
 ): Promise<TaxDocumentOutcome> {
     const claimId = `taxc_${crypto.randomUUID().replace(/-/g, "")}`;
+    // Unallocated refunds of one order serialize until their exact allocation
+    // is durable. Already allocated retries retain their original input.
     const claim = db.update(taxDocumentCommands).set({
         status: "processing",
         claimId,
         claimExpiresAt: sql`unixepoch() + ${LEASE_SECONDS}`,
         attempts: sql`${taxDocumentCommands.attempts} + 1`,
         updatedAt: sql`unixepoch()`,
-    }).where(and(eq(taxDocumentCommands.id, commandId), due)).returning();
+    }).where(and(eq(taxDocumentCommands.id, commandId), due, allocationTurn)).returning();
     // The order's commit, read with the claim: a void or refund follows it.
     const commit = db.select({ id: taxDocumentCommands.id, status: taxDocumentCommands.status })
         .from(taxDocumentCommands)
@@ -107,11 +126,19 @@ export async function processTaxDocumentCommand(
             sql`${taxDocumentCommands.orderId} = (SELECT ${taxDocumentCommands.orderId} FROM ${taxDocumentCommands} WHERE ${taxDocumentCommands.id} = ${commandId})`,
         ))
         .limit(1);
-    const [claimed, commitRows] = await db.batch([claim, commit]);
+    // Lock the order's durable commit row before evaluating the claim.
+    // PostgreSQL row locks serialize competing claims even if a newly settled
+    // refund sorts before the current one; no business order version changes.
+    const orderLock = db.update(taxDocumentCommands).set({ updatedAt: sql`${taxDocumentCommands.updatedAt}` }).where(and(
+        eq(taxDocumentCommands.operation, "commit"),
+        sql`${taxDocumentCommands.orderId} = (SELECT ${taxDocumentCommands.orderId} FROM ${taxDocumentCommands} WHERE ${taxDocumentCommands.id} = ${commandId})`,
+    ));
+    const [, claimed, commitRows] = await db.batch([orderLock, claim, commit]);
     const row = claimed[0];
     if (!row) return "busy";
     let attempt: Attempt;
     try {
+        if (!await allocateTaxDocumentRefund(db, row)) return "busy";
         attempt = await attemptCommand(row, commitRows[0]?.status ?? null, apps);
     } catch (error) {
         attempt = failureOf(error);

@@ -106,6 +106,8 @@ export const webhookSubscriptions = sqliteTable("webhook_subscriptions", {
     pluginId: text("plugin_id"),
     createdAt: integer("created_at").notNull().default(UNIX_NOW),
     updatedAt: integer("updated_at").notNull().default(UNIX_NOW),
+    /** Event ids already committed in the creation second; captured atomically on creation. */
+    eventStartExclusions: text("event_start_exclusions").notNull().default("[]"),
 }, (table) => [
     index("webhook_subscriptions_status_idx").on(table.status, table.createdAt),
     index("webhook_subscriptions_plugin_idx").on(table.pluginId),
@@ -119,6 +121,7 @@ export const webhookSubscriptions = sqliteTable("webhook_subscriptions", {
     check("webhook_subscriptions_description_length", sql`${table.description} IS NULL OR length(${table.description}) <= 200`),
     check("webhook_subscriptions_failure_streak_nonnegative", sql`${table.failureStreak} >= 0`),
     check("webhook_subscriptions_version_positive", sql`${table.version} >= 1`),
+    check("webhook_subscriptions_event_start_exclusions_array", sql`json_valid(${table.eventStartExclusions}) AND json_type(${table.eventStartExclusions}) = 'array'`),
 ]);
 
 export const WEBHOOK_DELIVERY_STATUSES = [

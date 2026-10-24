@@ -884,6 +884,8 @@ const CACHE_DEP_TABLE_RULES = {
       "revision", "updated_at", "installed_by", "activated_by", "installed_at", "activated_at", "failure_reason",
       // 0125: lifecycle bookkeeping no buyer read shows.
       "migrated_version", "signer_key_id", "storage_bytes", "storage_measured_at", "breach_count", "last_breach_at",
+      // Private event-start bookkeeping; it cannot change cached storefront app output.
+      "event_start_exclusions",
     ],
     note: "Storefront app output (sections, product blocks, scripts) and the checkout's app payment methods read the installation's status, version, grant, manifest and settings.",
     rules: everyChange(own("plg", "plugin_id")),

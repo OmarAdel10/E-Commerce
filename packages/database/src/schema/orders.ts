@@ -902,7 +902,7 @@ export const taxDocumentCommands = sqliteTable("tax_document_commands", {
     calculationId: text("calculation_id").notNull(),
     /** The refund payment (`order_payments.id`) a `refund` reverses; null otherwise. */
     refundId: text("refund_id"),
-    /** A refund's amount, tax included, and the tax in it; null otherwise. */
+    /** A refund's amount, tax included; its tax is provisional until allocationSnapshot is set. Null otherwise. */
     amountMinor: integer("amount_minor"),
     taxMinor: integer("tax_minor"),
     status: text("status", {
@@ -918,6 +918,8 @@ export const taxDocumentCommands = sqliteTable("tax_document_commands", {
     lastError: text("last_error"),
     createdAt: integer("created_at").notNull().default(UNIX_NOW),
     updatedAt: integer("updated_at").notNull().default(UNIX_NOW),
+    /** Exact refund allocation, persisted before dispatch; null until allocated (0188). */
+    allocationSnapshot: text("allocation_snapshot"),
 }, (table) => [
     index("tax_document_commands_due_idx").on(table.status, table.nextAttemptAt),
     index("tax_document_commands_claim_idx").on(table.status, table.claimExpiresAt),
@@ -972,7 +974,10 @@ export const orderPayments = sqliteTable("order_payments", {
     updatedAt: integer("updated_at", { mode: "timestamp" })
         .notNull()
         .default(UNIX_NOW),
+    /** Whether settlement was reported by the provider or assumed from presentment (0188). */
+    settlementProvenance: text("settlement_provenance", { enum: ["reported", "assumed"] }).notNull().default("assumed"),
 }, (table) => [
+    check("order_payments_settlement_provenance_check", sql`${table.settlementProvenance} IN ('reported', 'assumed')`),
     index("order_payments_order_id_idx").on(table.orderId),
     index("order_payments_refund_sum_idx").on(table.orderId, table.paymentType, table.status, table.amountMinor)
       .where(sql`${table.paymentType} = 'refund' AND ${table.status} = 'refunded'`),
@@ -1168,11 +1173,14 @@ export const paymentSessionAttempts = sqliteTable("payment_session_attempts", {
     lastError: text("last_error"),
     createdAt: integer("created_at").notNull().default(UNIX_NOW),
     updatedAt: integer("updated_at").notNull().default(UNIX_NOW),
+    /** First admitted hosted-provider call; retries keep this epoch-second marker. */
+    providerStartedAt: integer("provider_started_at"),
 }, (table) => [
     uniqueIndex("payment_session_attempts_attempt_key_unique").on(table.attemptKey),
     index("payment_session_attempts_order_id_idx").on(table.orderId),
     index("payment_session_attempts_status_claim_idx").on(table.status, table.claimExpiresAt),
     index("payment_session_attempts_provider_session_idx").on(table.gateway, table.providerSessionId),
+    check("payment_session_attempts_provider_started_nonnegative", sql`${table.providerStartedAt} IS NULL OR ${table.providerStartedAt} >= 0`),
     // Manual migration 0063 also creates this partial unique index (not expressible in Drizzle):
     // payment_session_attempts_live_order_singleflight ON (order_id, gateway, payment_type) WHERE status = 'processing'
 ]);

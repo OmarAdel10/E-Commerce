@@ -57,6 +57,8 @@ export const pluginInstallations = sqliteTable("plugin_installations", {
     activatedBy: text("activated_by").references(() => user.id, { onDelete: "set null" }),
     installedAt: integer("installed_at").notNull().default(UNIX_NOW),
     activatedAt: integer("activated_at"),
+    /** Event ids already committed in the first approval second; retained across later approvals. */
+    eventStartExclusions: text("event_start_exclusions").notNull().default("[]"),
     updatedAt: integer("updated_at").notNull().default(UNIX_NOW),
     /** The newest data update (`manifest.migrations`) that ran; the host runs newer ones before the app's next run. */
     migratedVersion: integer("migrated_version").notNull().default(0),
@@ -82,6 +84,7 @@ export const pluginInstallations = sqliteTable("plugin_installations", {
     check("plugin_installations_failure_reason", sql`${table.failureReason} IS NULL OR length(${table.failureReason}) BETWEEN 1 AND 500`),
     check("plugin_installations_settings_json", jsonObject(table.settingsJson, 131072)),
     check("plugin_installations_revision_positive", sql`${table.revision} >= 1`),
+    check("plugin_installations_event_start_exclusions_array", sql`json_valid(${table.eventStartExclusions}) AND json_type(${table.eventStartExclusions}) = 'array'`),
     // The 0125 columns are added in place (no table rebuild, so the cache
     // dependency triggers stay); their writers keep them in range.
 ]);
