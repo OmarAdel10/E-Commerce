@@ -21,6 +21,7 @@ import {
   cleanupExpiredCustomerAuthOtpChallenges,
   cleanupExpiredCustomerAuthOtpRateLimits,
   cleanupExpiredCustomerSessions,
+  customerErasureDueProbes,
 } from "@scalius/core/modules/customers";
 import {
   cleanupExpiredScannerTokenClaims,
@@ -701,6 +702,15 @@ export const BACKGROUND_DRAINS: ReadonlyArray<DueProbedDrain & { run(context: Sw
     async run({ db, env, executionCtx }) {
       const { drainPaymentEvents } = await import("./background/payment-events");
       return drainPaymentEvents(db, env, executionCtx);
+    },
+  },
+  {
+    // Customer erasure's image deletes and saved-method detaches, retried with backoff (background/customer-erasure.ts).
+    name: "customer_erasure_drain",
+    due: (db) => customerErasureDueProbes(db),
+    async run({ db, env, executionCtx }) {
+      const { drainCustomerErasure } = await import("./background/customer-erasure");
+      return drainCustomerErasure(db, env, { ctx: executionCtx });
     },
   },
   {

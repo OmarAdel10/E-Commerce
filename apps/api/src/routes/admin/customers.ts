@@ -50,6 +50,7 @@ import { customerEnvelope, readCustomerResource } from "./customer-resource";
 import { staffSavedPaymentMethod, staffSavedPaymentMethodSchema } from "../../schemas/saved-payment-methods";
 import { listCustomerPaymentMethods, removeCustomerPaymentMethod } from "@scalius/core/modules/payments";
 import { requestPaymentProviders } from "../../plugins/providers/payment";
+import { drainCustomerErasureAfterResponse } from "../../background/customer-erasure";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
 import { timestampSchema, nullableTimestampSchema, optionalNullableTimestampSchema } from "../../schemas/timestamps";
 const app = new OpenAPIHono<{ Bindings: Env }>();
@@ -440,7 +441,11 @@ const eraseResultSchema = z.object({
     erased: z.boolean().openapi({ description: "False when the customer was already erased: nothing changed." }),
     mergedRecords: z.number().int().openapi({ description: "Guest records merged into this customer, erased with it." }),
     orders: z.number().int().openapi({ description: "Orders whose contact and addresses were scrubbed. Their money, lines and region stay." }),
-    files: z.number().int().openapi({ description: "The buyer's conversation images deleted from storage." }),
+    pending: z.object({
+        files: z.number().int().openapi({ description: "The buyer's conversation images still to delete from storage." }),
+        paymentMethods: z.number().int().openapi({ description: "Saved payment methods still to detach at their provider. They can no longer be charged." }),
+    }).openapi({ description: "Work outside the database that is recorded and runs in the background, retried until it is done. Erasing the customer again resumes it." }),
+    complete: z.boolean().openapi({ description: "True only when nothing is pending: every image is deleted and every saved method detached." }),
 }).openapi("CustomerErasureResult");
 
 const eraseCustomerRoute = createRoute({
@@ -449,7 +454,7 @@ const eraseCustomerRoute = createRoute({
     path: "/{id}/erase",
     tags: ["Admin - Customers"],
     summary: "Erase a customer's personal data",
-    description: "The right to erasure for a customer who ordered. Scrubs the customer's contact and every guest record merged into it; deletes their addresses, sign-in identities, sessions, saved payment methods (detached at their provider first), marketing consents, push subscriptions and app roles; scrubs the contact, recipient, street lines, phones and notes on their orders (money, lines and region stay for the books); gives their reviews the fallback name; and erases their words and images in conversations. The record is retired and cannot be restored. Emits `customer.erased` so apps erase their copies. Refused while an order is still in progress. Only a Super Admin may erase (an agent only for a Super Admin owner); it cannot be undone.",
+    description: "The right to erasure for a customer who ordered. Scrubs the customer's contact and every guest record merged into it; deletes their addresses, sign-in identities, sessions, saved payment methods, marketing consents, push subscriptions and app roles; scrubs the contact, recipient, street lines, phones and notes on their orders (money, lines and region stay for the books); gives their reviews the fallback name; and erases their words and images in conversations. The record is retired and cannot be restored. Emits `customer.erased` so apps erase their copies. Refused while an order is still in progress, and then nothing changes anywhere. Deleting the images from storage and detaching the saved methods at their provider run after the erasure commits, in the background, retried until done (`pending`); erasing again resumes them. Only a Super Admin may erase (an agent only for a Super Admin owner); it cannot be undone.",
     request: {
         params: z.object({ id: z.string().min(1).max(128) }),
     },
@@ -468,17 +473,10 @@ app.openapi(eraseCustomerRoute, async (c) => {
     }
     const { id } = c.req.valid("param");
     const db = c.get("db");
-    // Detach saved methods at their provider while the references still exist; erasure deletes them either way.
-    const methods = await listCustomerPaymentMethods(db, id, { kind: "staff" });
-    for (const method of methods) {
-        await removeCustomerPaymentMethod(db, {
-            methodId: method.id,
-            actor: { kind: "customer", customerId: id },
-            providers: () => requestPaymentProviders(c),
-            encryptionKey: getCredentialEncryptionKey(c.env as unknown as Record<string, unknown>),
-        }).catch(() => undefined);
-    }
-    const result = await eraseCustomer(db, { customerId: id, actorId: actor.id, files: c.env.BUCKET ?? null });
+    // The erasure decides and commits first (a refusal touches nothing); its storage and
+    // provider work is recorded in that commit and runs after the response, then by the cron.
+    const result = await eraseCustomer(db, { customerId: id, actorId: actor.id });
+    if (!result.complete) await drainCustomerErasureAfterResponse(c, db, result.customerId);
     return ok(c, result);
 });
 

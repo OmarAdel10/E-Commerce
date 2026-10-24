@@ -1303,6 +1303,13 @@
       "when": 1792740000000,
       "tag": "0185_shipping_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "6",
+      "when": 1792750000000,
+      "tag": "0186_customer_erasure_tasks",
+      "breakpoints": true
     }
   ]
 }

@@ -1148,6 +1148,7 @@ export const CACHE_DEP_EXEMPT_TABLES: Readonly<Record<string, string>> = {
   order_events: PRIVATE,
   payment_session_attempts: PRIVATE,
   customer_payment_methods: PRIVATE,
+  customer_erasure_tasks: PRIVATE,
   order_holds: PRIVATE,
   payment_plans: PRIVATE,
   cod_tracking: PRIVATE,

@@ -14,6 +14,7 @@ export * from "./catalog";
 export * from "./media";
 export * from "./markets";
 export * from "./customers";
+export * from "./customer-erasure";
 export * from "./customer-marketing";
 export * from "./orders";
 export * from "./fulfilment";

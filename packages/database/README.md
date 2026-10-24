@@ -144,6 +144,8 @@ Migration 0183 makes "every sales channel sells from at least one active locatio
 
 Migration 0185 adds shipping profiles: `shipping_profiles` (the seeded default `shp_default`, a fixed free flag, a default weight), `shipping_profile_rates` (a profile's fee, weight band, order-value band and free-over behind one `shipping_methods` option) and `products.shipping_profile_id` (NULL: the default profile). Products with `free_delivery = 1` move to a seeded `shp_free_delivery`; `products.free_delivery` stays as the profile's mirror, guarded on insert and update, and a free profile takes no rates. Both tables advance `ship`; `cdep_products_upd` is reinstalled with the new column (`CACHE_DEP_SUPERSEDED_COLUMNS` keeps the 0122 text compilable for intermediate PostgreSQL schemas).
 
+Migration 0186 adds `customer_erasure_tasks`: the work a customer erasure records in its scrub batch and runs after it commits, one row a buyer image to delete from storage (`delete_file`, the R2 key) and one a saved method to detach at its provider (`detach_payment_method`, the gateway and its reference). Rows are drained after the response and by the minute cron and deleted once done; `next_attempt_at` is the backoff and the claim lease, `last_error` a short code. No triggers; private to the cache (`cache-deps.ts`).
+
 Migration 0184 drops `delivery_providers.last_test_attempt_at`, `last_test_success_at`, `last_test_failure_at` and `last_test_success_fingerprint`: a courier's connection test is kept by its app provider (`system_kv`, `apps/api/src/plugins/provider-connection.ts`) and read into its readiness `connection`; the columns were written by `dashboard.delivery_providers.test` and read by nothing.
 
 | Path | Content |
