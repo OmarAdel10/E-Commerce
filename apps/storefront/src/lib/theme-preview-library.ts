@@ -3,6 +3,7 @@ import { presenceOfPath, stripPresencePath } from "@scalius/shared/markets";
 import { parsePluginSurfaceKey } from "@scalius/shared/plugins/storefront";
 import { STOREFRONT_SECTION_RENDERERS, storefrontSectionDefault, type StorefrontPreviewScope, type StorefrontSection, type StorefrontSectionType } from "@scalius/shared/storefront-theme";
 import { normalizeThemePreviewRoutePath } from "./theme-preview-route";
+import { serializeJsonForInlineScript } from "./safe-json";
 
 export function readLibrarySelection(url: URL): { section: StorefrontSection; scope: StorefrontPreviewScope; path: string; presence: string | null; nonce: string } | null {
   if ([...url.searchParams.keys()].some((key) => !["section", "page", "v"].includes(key))
@@ -53,7 +54,7 @@ export function libraryPreviewScript(origin: string, nonce: string): string {
       const units = [...document.querySelectorAll('[data-home-render-unit]')];
       const visible = units.some(drawn);
       const failed = document.querySelector('[data-library-render-failed]') !== null;
-      parent.postMessage({type: 'scalius:library-preview', v: ${JSON.stringify(nonce)}, state: failed ? 'failed' : visible ? 'ready' : 'empty'}, ${JSON.stringify(origin)});
+      parent.postMessage({type: 'scalius:library-preview', v: ${serializeJsonForInlineScript(nonce)}, state: failed ? 'failed' : visible ? 'ready' : 'empty'}, ${serializeJsonForInlineScript(origin)});
     };
     window.addEventListener('load', ready, {once: true});
   })();`;

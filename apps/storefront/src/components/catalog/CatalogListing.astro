@@ -24,6 +24,7 @@ import CatalogShelves from "./CatalogShelves.astro";
 import CatalogViewSelect from "./CatalogViewSelect.astro";
 import CatalogViewToggle from "./CatalogViewToggle.astro";
 import { catalogViewStorageKey } from "@/lib/catalog-paging";
+import { serializeJsonForInlineScript } from "@/lib/safe-json";
 import {
   DEFAULT_PRODUCT_LIST_PAGE_SIZE,
   PRODUCT_LIST_SHOW_ALL_PARAM,
@@ -234,7 +235,7 @@ const shelves = presentation.shelves && landing
   : [];
 const showViewToggle = piece("grid-list-toggle") && (products.length > 1 || (shelves.length > 0 && shelfProducts.length > 1));
 const shelfViewStorageKey = catalogViewStorageKey(kind === "search" ? "search" : "browse");
-const shelfRestoreScript = `(function(s){try{var f=s.previousElementSibling,v=localStorage.getItem(${JSON.stringify(shelfViewStorageKey)});if(v==="grid"||v==="list")f.setAttribute("data-catalog-results",v)}catch(e){}})(document.currentScript)`;
+const shelfRestoreScript = `(function(s){try{var f=s.previousElementSibling,v=localStorage.getItem(${serializeJsonForInlineScript(shelfViewStorageKey)});if(v==="grid"||v==="list")f.setAttribute("data-catalog-results",v)}catch(e){}})(document.currentScript)`;
 const phoneDefaultView = results === "list" || (results !== "quick" && presentation.phoneLayout === "list-row") ? "list" : "grid";
 const showPhoneBar = showSort || showFilters || showViewToggle;
 const paging = shelves.length > 0 ? "numbered" : presentation.paging;

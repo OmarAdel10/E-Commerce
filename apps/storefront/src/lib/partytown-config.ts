@@ -9,6 +9,7 @@
  * into a worker that has no receiver.
  */
 import type { AnalyticsConfig } from "@/lib/api/types";
+import { serializeJsonForInlineScript } from "./safe-json";
 
 /**
  * Proxies known third-party analytics scripts through the same-origin
@@ -97,7 +98,7 @@ export function buildPartytownBootstrap(
   forward: readonly string[],
   loaderPath: string,
 ): string {
-  return `!function(w,d,p,a){(w.partytown=w.partytown||{}).forward=a.slice();var q=w.__scaliusPtq=w.__scaliusPtq||[],x=function(n){for(var s=n.split('.'),o=w,i=0;i<s.length-1;i++)o=o[s[i]]||(o[s[i]]=s[i+1]==='push'?[]:{});var k=s[s.length-1],f=o[k];o[k]=function(){var r=[].slice.call(arguments);q.push([n,r]);if(n==='dataLayer.push'&&typeof f==='function')return f.apply(o,r)}};a.forEach(x);var l=0,h=function(){if(l)return;l=1;var s=d.createElement('script');s.src=p;s.async=true;s.onload=function(){var b=q.splice(0);b.forEach(function(e){for(var s=e[0].split('.'),o=w,i=0;i<s.length-1;i++)o=o&&o[s[i]];var f=o&&o[s[s.length-1]];if(typeof f==='function')f.apply(o,e[1])})};d.head.appendChild(s)},r=w.requestAnimationFrame||function(f){return setTimeout(f,16)},g=function(){r(function(){r(h)})};d.readyState==='complete'?g():w.addEventListener('load',g,{once:true});['pointerdown','keydown','touchstart'].forEach(function(e){w.addEventListener(e,h,{once:true,passive:true})});setTimeout(h,4000)}(window,document,${JSON.stringify(
+  return `!function(w,d,p,a){(w.partytown=w.partytown||{}).forward=a.slice();var q=w.__scaliusPtq=w.__scaliusPtq||[],x=function(n){for(var s=n.split('.'),o=w,i=0;i<s.length-1;i++)o=o[s[i]]||(o[s[i]]=s[i+1]==='push'?[]:{});var k=s[s.length-1],f=o[k];o[k]=function(){var r=[].slice.call(arguments);q.push([n,r]);if(n==='dataLayer.push'&&typeof f==='function')return f.apply(o,r)}};a.forEach(x);var l=0,h=function(){if(l)return;l=1;var s=d.createElement('script');s.src=p;s.async=true;s.onload=function(){var b=q.splice(0);b.forEach(function(e){for(var s=e[0].split('.'),o=w,i=0;i<s.length-1;i++)o=o&&o[s[i]];var f=o&&o[s[s.length-1]];if(typeof f==='function')f.apply(o,e[1])})};d.head.appendChild(s)},r=w.requestAnimationFrame||function(f){return setTimeout(f,16)},g=function(){r(function(){r(h)})};d.readyState==='complete'?g():w.addEventListener('load',g,{once:true});['pointerdown','keydown','touchstart'].forEach(function(e){w.addEventListener(e,h,{once:true,passive:true})});setTimeout(h,4000)}(window,document,${serializeJsonForInlineScript(
     loaderPath,
-  )},${JSON.stringify(forward)});`;
+  )},${serializeJsonForInlineScript(forward)});`;
 }

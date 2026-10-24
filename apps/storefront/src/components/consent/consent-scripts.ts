@@ -19,6 +19,7 @@ import {
   CONSENT_COOKIE_MAX_AGE_SECONDS,
   type ConsentRegime,
 } from "@scalius/shared/tracking-consent";
+import { serializeJsonForInlineScript } from "@/lib/safe-json";
 
 export const CONSENT_BANNER_ID = "scalius-consent";
 export const MARKETING_SCRIPT_ATTRIBUTE = "data-scalius-consent";
@@ -40,14 +41,14 @@ export function consentBootScript(regime: ConsentRegime, options: { google: bool
     "c.regime=R;c.stored=!!m;w.__scaliusConsent=c;" +
     google +
     'if(!m&&R!=="link_only")d.documentElement.setAttribute("data-consent-banner","")' +
-    `}(window,document,${JSON.stringify(regime)});`
+    `}(window,document,${serializeJsonForInlineScript(regime)});`
   );
 }
 
 /** The runtime script: buttons, cookie, Consent Mode updates and the marketing tags. */
 export const CONSENT_RUNTIME_SCRIPT =
   "!function(w,d){" +
-  `var B=d.getElementById(${JSON.stringify(CONSENT_BANNER_ID)});if(!B)return;` +
+  `var B=d.getElementById(${serializeJsonForInlineScript(CONSENT_BANNER_ID)});if(!B)return;` +
   'var P=d.getElementById("scalius-consent-choices"),M=d.querySelector("[data-consent-manage]"),' +
   'secure=location.protocol==="https:"?"; Secure":"",' +
   "C=function(){return w.__scaliusConsent||{analytics:false,marketing:false,saleOfData:false}};" +

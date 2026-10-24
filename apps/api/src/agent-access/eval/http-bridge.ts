@@ -80,9 +80,9 @@ export async function startMcpHttpBridge(options: { env: Env; ctx: ExecutionCont
           }
           response.writeHead(200, { "Content-Type": "application/json" });
           response.end(JSON.stringify(Array.isArray(body) ? replies : replies[0]));
-        } catch (error) {
+        } catch {
           response.writeHead(400, { "Content-Type": "application/json" });
-          response.end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: String(error) } }));
+          response.end(JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid JSON-RPC request" } }));
         }
       })();
     });

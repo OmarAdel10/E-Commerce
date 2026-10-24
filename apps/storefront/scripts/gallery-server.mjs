@@ -84,17 +84,27 @@ function storefrontRoutes() {
   };
   walk(pagesDir);
   return files
-    .map((file) => {
-      const names = [];
-      const route = file.replace(/\.(astro|ts)$/, "").replace(/\/index$/, "") || "/";
-      const source = route.split("/").map((segment) => {
-        const rest = /^\[\.\.\.(\w+)\]$/.exec(segment);
-        if (rest) { names.push(rest[1]); return "(.*)"; }
-        return segment.replace(/\[(\w+)\]/g, (_, name) => { names.push(name); return "([^/]+)"; }).replace(/\./g, "\\.");
-      }).join("/");
-      return { pattern: new RegExp(`^${source || "/"}/?$`), module: `/src/pages${file}`, names, dynamic: names.length };
-    })
+    .map(storefrontRoute)
     .sort((left, right) => left.dynamic - right.dynamic);
+}
+
+/** Compile Astro route placeholders; every other filename character is literal. */
+export function storefrontRoute(file) {
+  const names = [];
+  const route = file.replace(/\.(astro|ts)$/, "").replace(/\/index$/, "") || "/";
+  const source = route.split("/").map((segment) => {
+    const rest = /^\[\.\.\.(\w+)\]$/.exec(segment);
+    if (rest) { names.push(rest[1]); return "(.*)"; }
+    let literalAndParams = "";
+    let cursor = 0;
+    for (const match of segment.matchAll(/\[(\w+)\]/g)) {
+      literalAndParams += RegExp.escape(segment.slice(cursor, match.index)) + "([^/]+)";
+      names.push(match[1]);
+      cursor = match.index + match[0].length;
+    }
+    return literalAndParams + RegExp.escape(segment.slice(cursor));
+  }).join("/");
+  return { pattern: new RegExp(`^${source || "/"}/?$`), module: `/src/pages${file}`, names, dynamic: names.length };
 }
 
 /** The storefront page or endpoint for a path (`/navigation/panels`, `/api/reviews/<id>/mine`), or null. */
@@ -264,8 +274,9 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
         return sendJson(response, 200, { entries: gallery.galleryIndex(origin) });
       }
       if (url.pathname === GALLERY_PREFIX || url.pathname === `${GALLERY_PREFIX}/`) {
+        const html = gallery.galleryIndexHtml();
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-        return response.end(gallery.galleryIndexHtml());
+        return response.end(html);
       }
       if (url.pathname.startsWith(`${GALLERY_PREFIX}/media/`)) {
         const media = gallery.galleryMedia(decodeURIComponent(url.pathname.slice(`${GALLERY_PREFIX}/media/`.length)));
@@ -344,8 +355,8 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
       return response.end(html ?? Buffer.from(await rendered.arrayBuffer()));
     } catch (error) {
       if (!quiet) console.error(`[gallery] ${url.pathname}:`, error);
-      if (!response.headersSent) response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-      response.end(String(error?.stack ?? error));
+      if (!response.headersSent) response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      response.end("Unable to render gallery page.");
     }
   };
   return {
