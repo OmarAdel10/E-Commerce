@@ -43,6 +43,12 @@ export const RUN_EVERYTHING = [
 /** Inputs outside the module graph, and the test files they select (path prefixes or exact files). */
 export const PATH_RULES = [
   {
+    // The clock policy reads code under these roots, including non-test support harnesses.
+    name: "SQLite fixture clocks",
+    when: [/^(?:apps|packages|tests)\/.*\.[cm]?[jt]sx?$/],
+    run: ["packages/database/__tests__/sqlite-clock.test.ts"],
+  },
+  {
     // The policy discovers native-store consumers with filesystem reads, outside the import graph.
     name: "native PostgreSQL test-store lifetimes",
     when: [/\.test\.(?:c|m)?[jt]sx?$/, /^packages\/database\/src\/testing\/postgres-native\.ts$/],
