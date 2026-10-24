@@ -6,6 +6,10 @@ on:
   push:
     branches: [cloudflare-only, mono-repo, main]
   workflow_dispatch:
+  # The whole private suite, sharded, once a week (and on demand above): a
+  # push runs only the tests its change can reach.
+  schedule:
+    - cron: "17 3 * * 1"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -18,11 +22,11 @@ jobs:
   quality-gates:
     name: Quality Gates
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -66,10 +70,18 @@ jobs:
         if: ${{ github.event.repository.private }}
         run: node rules/cli.mjs check
 
-      - name: Test
+      - name: Affected tests
         # The suite lives only in the private repository; the public export carries no tests.
-        if: ${{ github.event.repository.private }}
-        run: pnpm test:ci
+        # A push tests what changed since the commit it replaced (a pull request, since its
+        # base); the full suite runs in the sharded job below. A rewritten history falls back
+        # to the parent commit.
+        if: ${{ github.event.repository.private && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          base="$BEFORE"
+          git rev-parse --verify --quiet "$base^{commit}" >/dev/null || base=HEAD~1
+          pnpm test:affected --base "$base"
 
       - name: Build
         run: pnpm build
@@ -85,3 +97,29 @@ jobs:
 
       - name: Working tree cleanliness
         run: git diff --exit-code
+
+  full-suite:
+    name: Full test suite (${{ matrix.shard }}/4)
+    # The private suite outgrows one runner; four shards finish it in parallel.
+    if: ${{ github.event.repository.private && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.21
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test:ci --shard=${{ matrix.shard }}/4
