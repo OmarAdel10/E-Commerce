@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { MAX_LINE_QUANTITY } from "@scalius/shared/order-limits";
 import { marketingConsentFormValues } from "./marketing-consent";
 /**
@@ -243,8 +244,6 @@ export type QuickCheckoutFieldError =
   | "city"
   | "zone";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** Contact and address problems, checked only when the buyer asks to place the order. */
 export function quickCheckoutFieldErrors(
   form: QuickCheckoutForm,
@@ -261,7 +260,7 @@ export function quickCheckoutFieldErrors(
     errors.push("customerPhone");
   }
   if (emailNeed === "required" && !form.customerEmail) errors.push("customerEmailRequired");
-  else if (emailNeed !== "hidden" && form.customerEmail && !EMAIL_PATTERN.test(form.customerEmail)) errors.push("customerEmail");
+  else if (emailNeed !== "hidden" && form.customerEmail && !isEmailAddress(form.customerEmail)) errors.push("customerEmail");
   const whatsappDigits = form.customerWhatsapp.replace(/\D/g, "");
   if (whatsappDigits && (whatsappDigits.length < 10 || whatsappDigits.length > 15)) errors.push("customerWhatsapp");
   if (mode === "delivery") {

@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * Installed apps' storefront scripts (the layout payload's `appScripts`):
  * scripts of active apps whose hosts a Super Admin approved. Each loads on
@@ -28,7 +29,7 @@ export interface StorefrontAppScript {
 
 /** Which kind of page a storefront path renders ("private": a buyer's page, no app code; null: a page only "all" scripts load on). */
 export function storefrontAppPage(pathname: string): StorefrontAppPage | "private" | null {
-  const path = pathname.replace(/\/+$/, "") || "/";
+  const path = trimTrailingCharacter(pathname, "/") || "/";
   if (path === "/") return "home";
   if (/^\/products\/[^/]+$/.test(path)) return "product";
   if (/^\/(?:categories|brands|collections)\/[^/]+$/.test(path) || /^\/(?:categories|collections|search)$/.test(path)) {

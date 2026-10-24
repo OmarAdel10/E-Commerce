@@ -5,6 +5,7 @@
 // GLOBAL_SEARCH_LIMIT rows. Nothing counts, and nothing scans a large table
 // with LIKE or instr (PostgreSQL, which has no FTS5, uses the bounded
 // fallback the list searches use).
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { and, desc, eq, inArray, isNull, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { Database } from "@scalius/database/client";
 import {
@@ -39,8 +40,6 @@ export interface GlobalSearchResult {
     categories: Array<{ id: string; name: string }>;
     pages: Array<{ id: string; title: string; contentType: string }>;
 }
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Not trashed, as a filter no index may serve. Without table statistics (a
@@ -105,7 +104,7 @@ function anyOf(conditions: Array<SQL | undefined>): SQL | undefined {
 async function searchOrders(db: Database, term: string): Promise<GlobalSearchResult["orders"]> {
     const orderNumber = parseOrderNumberSearch(term);
     const phones = phoneLookupValues(term);
-    const email = EMAIL.test(term) ? term.toLowerCase() : null;
+    const email = isEmailAddress(term) ? term.toLowerCase() : null;
     const rowids = orderNumber === null && phones.length === 0 && !email ? await ftsRowids(db, "orders_fts", term) : [];
     const match = anyOf([
         orderNumber === null ? undefined : eq(orders.orderNumber, orderNumber),
@@ -123,7 +122,7 @@ async function searchOrders(db: Database, term: string): Promise<GlobalSearchRes
 
 async function searchCustomers(db: Database, term: string): Promise<GlobalSearchResult["customers"]> {
     const phones = phoneLookupValues(term);
-    const email = EMAIL.test(term) ? term.toLowerCase() : null;
+    const email = isEmailAddress(term) ? term.toLowerCase() : null;
     const rowids = phones.length === 0 && !email ? await ftsRowids(db, "customers_fts", term) : [];
     const match = anyOf([
         phones.length ? inArray(customers.phone, phones) : undefined,

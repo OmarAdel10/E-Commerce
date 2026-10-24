@@ -9,6 +9,7 @@
 // `skipped`, or `failed` after the last inline attempt) are what the
 // dashboard's delivery log shows.
 
+import { replaceEmailAddresses } from "@scalius/shared/text-scan";
 import type { getDb } from "@scalius/database/client";
 import {
   customerAuthOtpChallenges,
@@ -681,8 +682,7 @@ function buildAuthOtpProviderBlockedReason(reason: string): string {
 }
 
 function redactAuthOtpLogText(value: string): string {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+  return replaceEmailAddresses(value)
     .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]")
     .replace(/\b\d{6}\b/g, "[code]");
 }

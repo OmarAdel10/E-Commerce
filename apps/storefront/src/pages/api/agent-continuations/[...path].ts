@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import type { APIRoute } from "astro";
 import { shouldRejectCrossOriginCookieRequest } from "@scalius/shared/request-origin-guard";
 import { apiFetch } from "@/lib/api/transport";
@@ -36,7 +37,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseAllowedPath(rawPath: string | undefined, method: string): string | null {
-  const normalized = rawPath?.replace(/^\/+|\/+$/g, "") ?? "";
+  const normalized = trimTrailingCharacter((rawPath ?? "").replace(/^\/+/, ""), "/");
   const [continuationId, ...rest] = normalized.split("/");
   if (!CONTINUATION_ID.test(continuationId ?? "")) return null;
   const action = rest.join("/");

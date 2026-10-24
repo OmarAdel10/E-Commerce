@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // Typed app and merchant Objects (`ctx.objects.<type>`): JSON records in
 // `object_records`, queried only through the object's declared indexes so
 // every read is an index range (no table scans, predictable cost on every
@@ -87,7 +88,7 @@ function indexedValue(declaration: ObjectTypeDeclaration, field: string, value: 
   const [whole = "0", fraction = ""] = text.replace(/^-/, "").split(".");
   const combined = whole + fraction;
   const leading = combined.match(/^0*/)?.[0].length ?? 0;
-  const digits = combined.slice(leading).replace(/0+$/, "");
+  const digits = trimTrailingCharacter(combined.slice(leading), "0");
   if (!digits) return "1";
   const exponent = 10000 + whole.length - leading;
   const ordered = negative ? [...digits].map((digit) => String(9 - Number(digit))).join("") : digits;

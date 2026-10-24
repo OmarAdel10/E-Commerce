@@ -6,6 +6,7 @@
 // (RFC 8291). A push service that answers 404 or 410 has dropped the
 // subscription: it is deleted. Endpoints, keys and payloads are never logged.
 
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@scalius/database/client";
 import { pushSubscriptions } from "@scalius/database/schema";
@@ -70,8 +71,8 @@ export function parsePushSubscription(value: unknown): PushSubscriptionInput {
   if (!endpoint || endpoint.length > 2048 || !isAllowedPushEndpoint(endpoint)) {
     throw new ValidationError("This browser's push service is not supported.");
   }
-  const p256dh = typeof input?.keys?.p256dh === "string" ? input.keys.p256dh.replace(/=+$/, "") : "";
-  const auth = typeof input?.keys?.auth === "string" ? input.keys.auth.replace(/=+$/, "") : "";
+  const p256dh = typeof input?.keys?.p256dh === "string" ? trimTrailingCharacter(input.keys.p256dh, "=") : "";
+  const auth = typeof input?.keys?.auth === "string" ? trimTrailingCharacter(input.keys.auth, "=") : "";
   // A 65-byte P-256 point is 87 base64url characters; a 16-byte secret 22.
   if (p256dh.length !== 87 || auth.length !== 22 || !BASE64URL.test(p256dh) || !BASE64URL.test(auth)) {
     throw new ValidationError("The browser sent an invalid push subscription.");

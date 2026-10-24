@@ -1,3 +1,4 @@
+import { replaceEmailAddresses } from "@scalius/shared/text-scan";
 import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
 import type { Database } from "@scalius/database/client";
 import { whatsappDocument } from "../modules/settings";
@@ -244,8 +245,7 @@ function summarizeWhatsAppErrorResponse(value: string, status: number): string {
   }
 
   const message = typeof providerError?.message === "string"
-    ? providerError.message
-      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    ? replaceEmailAddresses(providerError.message)
       .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]")
       .replace(/\s+/g, " ")
       .trim()

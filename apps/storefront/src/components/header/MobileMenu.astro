@@ -1,4 +1,5 @@
 ---
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // A menu drawer from the start edge: the phone menu (`mobile-menu`, the
 // accordion tree or the drill-in levels) and, for the drill-in desktop menu,
 // the computer's "All" drawer (`nav-drawer`, or the phone drawer itself when
@@ -47,7 +48,7 @@ const copy = storefrontCopy(language).chrome;
 const title = titleProp ?? copy.nav.menu;
 const menuHasTrackOrder = (function has(list: NavigationItem[]): boolean {
   return list.some((item) => {
-    const href = item.href?.split(/[?#]/)[0]?.replace(/\/+$/, "");
+    const href = trimTrailingCharacter(item.href?.split(/[?#]/)[0] ?? "", "/");
     return href === "/track-order" || /^track (your )?order$/i.test(item.title.trim()) || has(item.subMenu ?? []);
   });
 })(navigation);

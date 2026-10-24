@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * Which record a detail route shows and where its list is, read from the
  * route's path: `/admin/gift-cards/$giftCardId` is a gift card whose list is
@@ -46,7 +47,7 @@ const RECORDS: Readonly<Record<string, RecordResource>> = {
 
 /** The record a route path shows, or null for a page that is not one record. */
 export function recordResource(fullPath: string): RecordResource | null {
-  const segments = fullPath.replace(/\/+$/, "").split("/");
+  const segments = trimTrailingCharacter(fullPath, "/").split("/");
   let last = -1;
   segments.forEach((segment, index) => {
     if (segment.startsWith("$")) last = index;

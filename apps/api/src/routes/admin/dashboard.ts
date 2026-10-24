@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // src/server/routes/admin/dashboard.ts
 // Admin OpenAPI routes for the Home summary and daily activity.
 //
@@ -265,7 +266,7 @@ async function readSetupSteps(c: Context<{ Bindings: Env }>) {
     const offered = providers
         .filterForCurrency(snapshot.activePaymentMethods.enabledMethods, currency.currencyCode)
         .filter((method) => providers.countryIssue(method, setup.current.countryCode) === null);
-    const storefrontOrigin = platform.storefrontUrl.trim().replace(/\/+$/, "");
+    const storefrontOrigin = trimTrailingCharacter(platform.storefrontUrl.trim(), "/");
     return {
         countryCode,
         setupNeeded: setup.needed,

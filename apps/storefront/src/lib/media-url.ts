@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * Storefront media URL resolution.
  *
@@ -105,7 +106,7 @@ export function getCdnCanonicalHostAliases(): string[] {
 }
 
 function trimTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/, "");
+  return trimTrailingCharacter(value, "/");
 }
 
 /**

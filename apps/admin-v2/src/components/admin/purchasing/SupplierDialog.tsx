@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { PresenceSlot, presenceKey } from "~/lib/realtime/store";
 import { useState } from "react";
 import { toast } from "~/lib/toast";
@@ -19,8 +20,6 @@ import { useSaveSupplier, type Supplier } from "~/lib/api-query-options/purchasi
 import { PurchasingProblemBanner, readPurchasingProblem, type PurchasingProblem } from "./purchasing-problem";
 import { Field, FieldRow } from "~/components/ui/field";
 import { sameFormValue } from "~/lib/form-values";
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface SupplierFields {
   name: string;
@@ -72,12 +71,12 @@ export function SupplierDialog({
 
   const errors = {
     name: touched && !fields.name.trim() ? t("nameRequired") : null,
-    email: touched && fields.email.trim() && !EMAIL.test(fields.email.trim()) ? t("emailInvalid") : null,
+    email: touched && fields.email.trim() && !isEmailAddress(fields.email.trim()) ? t("emailInvalid") : null,
   };
 
   const submit = () => {
     setTouched(true);
-    if (!fields.name.trim() || (fields.email.trim() && !EMAIL.test(fields.email.trim())) || save.isPending) return;
+    if (!fields.name.trim() || (fields.email.trim() && !isEmailAddress(fields.email.trim())) || save.isPending) return;
     setProblem(null);
     const blank = (value: string) => value.trim() || null;
     save.mutate(

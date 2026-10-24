@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { useId, useState } from "react";
 import { Pencil } from "lucide-react";
 import { autoHandleFor } from "./auto-handle";
@@ -104,7 +105,7 @@ export function SearchListingCard({
   const id = useId();
   const [editing, setEditing] = useState(false);
   const { storefrontUrl } = useStorefrontUrl();
-  const origin = (storefrontUrl ?? "").replace(/\/+$/, "");
+  const origin = trimTrailingCharacter((storefrontUrl ?? ""), "/");
   const prefix = PATH_PREFIX[resource];
   const handle = value.handle || autoHandle || "";
   const shownUrl = path === null ? t("addressOnSave") : `${origin}${path ?? `${prefix}${handle}`}`;

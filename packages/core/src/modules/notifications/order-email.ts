@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { countryDisplayName, usesDeliveryHierarchy } from "@scalius/shared/address";
 import { addressRulesFor, formatAddressLines } from "@scalius/shared/address-metadata";
 import type { Database } from "@scalius/database/client";
@@ -337,7 +338,7 @@ export async function readOrderMessageContext(input: OrderMessageInput, db: Data
   const support: Array<{ label: string; href: string }> = [];
   const email = store.business.email.trim();
   const phone = store.business.phone.trim();
-  if (email && /^[^\s@<>?&#]+@[^\s@<>?&#]+\.[^\s@<>?&#]+$/.test(email)) {
+  if (email && isEmailAddress(email, { forbiddenCharacters: "<>?&#" })) {
     support.push({ label: email, href: `mailto:${encodeURIComponent(email)}` });
   }
   if (phone && /^\+?[\d][\d ()-]{5,24}$/.test(phone)) {

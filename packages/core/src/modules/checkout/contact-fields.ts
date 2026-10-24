@@ -2,6 +2,7 @@
 // customer_auth document, read with the checkout authority). The phone's
 // format is validated at the edge; whether the order needs one is the shared
 // contact rule (`orderContactNeeds`). This owns email, WhatsApp and that rule.
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { ValidationError } from "@scalius/core/errors";
 import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
 import {
@@ -57,8 +58,6 @@ export function assertOrderContact(
   }
 }
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
 /**
  * Email: required → must be present; optional → kept when given; hidden →
  * dropped. WhatsApp: kept only in "separate" mode, and only when it differs
@@ -70,7 +69,7 @@ export function resolveCheckoutContact(
   input: { customerPhone: string | null; customerEmail?: string | null; customerWhatsapp?: string | null },
 ): { customerEmail: string | null; customerWhatsapp: string | null } {
   const email = input.customerEmail?.trim().toLowerCase() || null;
-  if (email && !EMAIL.test(email) && settings?.email !== "hidden") {
+  if (email && !isEmailAddress(email, { minSuffixLength: 2 }) && settings?.email !== "hidden") {
     throw new ValidationError("Enter a valid email address.", { field: "customerEmail" });
   }
   const mode = settings?.email ?? "optional";

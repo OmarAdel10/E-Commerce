@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import {
   getDefaultAdminPage as getCoreDefaultAdminPage,
   getPagePermission as getCorePagePermission,
@@ -21,7 +22,7 @@ function toPermissionSet(permissions: PermissionCollection): Set<string> {
 
 function normalizeAdminPath(pathname: string): string {
   if (pathname === "/admin/") return "/admin";
-  return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  return pathname.length > 1 ? trimTrailingCharacter(pathname, "/") : pathname;
 }
 
 export function getAdminPagePermission(

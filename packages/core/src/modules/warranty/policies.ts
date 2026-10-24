@@ -1,3 +1,4 @@
+import { trimTrailingCharacters } from "@scalius/shared/text-scan";
 // Warranty policies (Wave B §5.1): reusable, with immutable revisions. A
 // create inserts the policy and revision 1 in one batch; an edit that changes
 // any buyer-facing field inserts the next revision and points the policy at
@@ -101,7 +102,10 @@ export function normalizeWarrantyPolicyInput(input: {
   }
   let terms: string | null = null;
   if (typeof input.terms === "string") {
-    const cleaned = input.terms.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").trim();
+    const cleaned = input.terms.replace(/\r\n?/g, "\n")
+      .split(/([\n\u2028\u2029])/u)
+      .map((line) => trimTrailingCharacters(line, (character) => character === " " || character === "\t"))
+      .join("").trim();
     if (codePoints(cleaned) > WARRANTY_LIMITS.termsLength) {
       throw new ValidationError(`Keep the terms under ${formatNumber(WARRANTY_LIMITS.termsLength, "en")} characters.`, { field: "terms" });
     }

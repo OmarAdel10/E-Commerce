@@ -2,6 +2,7 @@
 // settings. Every page that can dead-end a buyer (no code channel, a declined
 // request) shows these links, or nothing when the store has none.
 
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { StorefrontBusinessInfo } from "./commerce-structured-data";
 import { compactPhone, formatBdMobile, normalizeBdMobile } from "@scalius/shared/phone-input";
 
@@ -10,8 +11,6 @@ export interface StoreContactLink {
   href: string;
   label: string;
 }
-
-const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
 
 /** Call, WhatsApp (Bangladesh mobile numbers only) and email links, in that order. */
 export function storeContactLinks(
@@ -25,6 +24,6 @@ export function storeContactLinks(
   if (/^\+?\d{6,15}$/.test(dial)) links.push({ kind: "phone", href: `tel:${dial}`, label: formatBdMobile(phone) });
   if (mobile) links.push({ kind: "whatsapp", href: `https://wa.me/${mobile.slice(1)}`, label: "WhatsApp" });
   const email = business?.email?.trim() || "";
-  if (EMAIL.test(email)) links.push({ kind: "email", href: `mailto:${email}`, label: email });
+  if (isEmailAddress(email, { forbiddenCharacters: '<>"' })) links.push({ kind: "email", href: `mailto:${email}`, label: email });
   return links;
 }

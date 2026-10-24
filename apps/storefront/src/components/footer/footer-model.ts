@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * What every footer variant reads, computed once: the footer block's words
  * (tagline, about, the name after ©), the theme's footer logo, identity and
@@ -86,7 +87,7 @@ export function footerModel(input: FooterInput): FooterModel {
     input.menus.map((menu): FooterMenu => ({ ...menu, links: Array.isArray(menu.links) ? menu.links : [] })),
     input.trackOrderLabel,
   );
-  const linkedHrefs = new Set(menus.flatMap((menu) => menu.links.map((link) => (link.href ?? "").replace(/\/+$/, ""))));
+  const linkedHrefs = new Set(menus.flatMap((menu) => menu.links.map((link) => trimTrailingCharacter((link.href ?? ""), "/"))));
   const policyLinks = policies
     .map((policy) => ({ title: policy.title, href: policy.path }))
     .filter((link) => !linkedHrefs.has(link.href));
@@ -102,7 +103,7 @@ export function footerModel(input: FooterInput): FooterModel {
     tagline: words.tagline,
     about: paragraphs(words.about),
     // The line ends with its own ". All rights reserved.": a name ending in "." (Ltd.) keeps one dot.
-    copyrightName: (words.copyright || brandName).replace(/\.+$/, ""),
+    copyrightName: trimTrailingCharacter((words.copyright || brandName), "."),
     menus,
     trackOrderInBottomRow: inBottomRow,
     policyLinks,

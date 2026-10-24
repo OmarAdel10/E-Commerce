@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/plugin-sdk";
 // The Noor header: rotating announcements, then one bar with the menu, the
 // logo and the actions (logo centred between them, or first), mega menus on
 // computers (the roots past the row in a "More" dropdown) and a drawer on
@@ -88,7 +89,7 @@ function storePath(url: string, base: URL): string | null {
   try {
     const target = new URL(value, base);
     if (target.origin !== base.origin) return null;
-    return target.pathname.length > 1 ? target.pathname.replace(/\/+$/, "") : target.pathname;
+    return target.pathname.length > 1 ? trimTrailingCharacter(target.pathname, "/") : target.pathname;
   } catch {
     return null;
   }

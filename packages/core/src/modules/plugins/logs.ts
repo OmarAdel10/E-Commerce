@@ -4,6 +4,7 @@
 // values, e-mail addresses and phone numbers. Host incidents (a throw, a
 // timeout, an invalid output) are written here too, under source `host`.
 
+import { replaceEmailAddresses } from "@scalius/shared/text-scan";
 import type { Database } from "@scalius/database/client";
 import { chunkRowsForD1, safeBatch } from "@scalius/database/client";
 import { pluginLogEntries, type PluginLogLevel } from "@scalius/database/schema";
@@ -41,9 +42,7 @@ export function maskPluginLogText(value: string, secrets: readonly string[] = []
   for (const secret of secrets) {
     if (secret.length >= 4) text = text.split(secret).join("[secret]");
   }
-  return text
-    .replace(/[^\P{Cc}\t\n\r]+/gu, " ")
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+  return replaceEmailAddresses(text.replace(/[^\P{Cc}\t\n\r]+/gu, " "))
     .replace(/\b(bearer|basic)\s+[^\s"',;]+/gi, "$1 [redacted]")
     .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "[redacted]")
     .replace(/\+?\d[\d\s-]{7,}\d/g, "[number]");

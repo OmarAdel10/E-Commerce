@@ -3,6 +3,7 @@
 // staff email, the dashboard preview and test sends all run. Pure (no
 // database), so the dashboard bundle can import it.
 
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { formatDiscountLineLabel } from "@scalius/shared/checkout-language-format";
 import { escapeHtml } from "@scalius/shared/html-escape";
 import { MESSAGE_COPY, type MessageLanguage } from "./message-copy";
@@ -385,14 +386,16 @@ export function resolveNotificationTemplates(
   };
 }
 
-const VARIABLE = /\{\{\s*([^{}]*?)\s*\}\}/g;
+// The body excludes braces; trim its edges after matching so whitespace cannot
+// be divided between overlapping repetitions on a malformed template.
+const VARIABLE = /\{\{([^{}]*)\}\}/g;
 
 /** Variables this event can't fill, as the merchant typed them. */
 export function findUnknownVariables(template: string, event: TemplatedNotificationType): string[] {
   const allowed = new Set<string>(variablesForEvent(event));
   const unknown = new Set<string>();
   for (const match of template.matchAll(VARIABLE)) {
-    const name = match[1] ?? "";
+    const name = (match[1] ?? "").trim();
     if (!allowed.has(name)) unknown.add(name);
   }
   return [...unknown];
@@ -404,11 +407,13 @@ const HOLE = "\uE000";
 /** The spaces and punctuation an empty variable leaves behind close up: "Hi {{customer_name}}, …" → "Hi, …". */
 function closeUp(line: string): string {
   return line
-    .replace(/[([{"“‘][ \t]*\uE000[ \t]*[)\]}"”’]/g, HOLE)
-    .replace(/[ \t]*\uE000[ \t]*(?=[,.;:!?।)\]}])/g, "")
-    .replace(/[ \t]*\uE000[ \t]*/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[([{"“‘][ \t]?\uE000[ \t]?[)\]}"”’]/g, HOLE)
+    .replace(/[ \t]?\uE000[ \t]?(?=[,.;:!?।)\]}])/g, "")
+    .replace(/[ \t]?\uE000[ \t]?/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
     .replace(/([,;:·|–—-])(?:[ \t]*[,;:·|–—-])+/g, "$1")
-    .replace(/[ \t]*[,;:·|–—-]+[ \t]*(?=[.!?।]|$)/g, "")
+    .replace(/[ \t]?[,;:·|–—-][ \t]?(?=[.!?।]|$)/g, "")
     .replace(/^[\s,.;:!?।·|–—-]+/, "")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
@@ -422,7 +427,8 @@ function closeUp(line: string): string {
 function fillLine(line: string, values: NotificationVariableValues): { text: string; blank: boolean } {
   let used = 0;
   let empty = 0;
-  const filled = line.replace(VARIABLE, (_match, name: string) => {
+  const filled = line.replace(VARIABLE, (_match, rawName: string) => {
+    const name = rawName.trim();
     used += 1;
     const raw = Object.hasOwn(values, name) ? values[name as NotificationVariable] : undefined;
     const value = raw?.replace(/[\s\uE000]+/g, " ").trim();
@@ -744,7 +750,7 @@ export function sampleOrderEmail(options: {
   /** The storefront origin, so the preview shows the guest's order link. */
   origin?: string | null;
 }): { subject: string; html: string; text: string } {
-  const origin = options.origin?.replace(/\/+$/, "") || null;
+  const origin = trimTrailingCharacter(options.origin ?? "", "/") || null;
   const values = sampleVariables(options.store.name ?? "", options.language);
   if (isResolvedNotificationType(options.event)) {
     return renderMessageEmail({

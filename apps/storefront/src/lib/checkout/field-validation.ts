@@ -5,6 +5,7 @@
  * message clears as soon as that field is fixed. Untouched fields are never
  * marked invalid.
  */
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { toLatinDigits } from "@scalius/shared/phone-input";
 import type { CheckoutLanguageData } from "@scalius/shared/checkout-language";
 import { formatCheckoutLanguageText } from "@scalius/shared/checkout-language-format";
@@ -18,8 +19,6 @@ import { LOCATION_COUNTRY, isLocationCountry } from "./shipping-country";
 import type { AddressRules } from "@scalius/shared/address";
 import type { BillingAddressField } from "./billing-address";
 import { billingAddressAsked, billingAddressProblems, billingProblemMessage } from "./billing-validation";
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export interface CheckoutField {
   /** Element that receives focus and `aria-invalid`. */
@@ -79,7 +78,7 @@ export function checkoutInformationFields(
   add("customerEmail", "customerEmail-error", () => {
     const email = value(root, "customerEmail");
     if (!email) return root.querySelector("#customerEmail[required]") ? copy.emailRequiredText : "";
-    return EMAIL.test(email) ? "" : copy.emailInvalidText;
+    return isEmailAddress(email, { minSuffixLength: 2 }) ? "" : copy.emailInvalidText;
   });
   add("customerWhatsapp", "customerWhatsapp-error", () => {
     const digits = toLatinDigits(value(root, "customerWhatsapp")).replace(/\D/g, "");

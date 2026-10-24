@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // The kind of page a storefront path renders, as an app component sees it
 // (`StorefrontRenderContext.page.kind`). Apps branch on these values, so each
 // path gets its own kind: a CMS page is "page", the cart is "cart", and every
@@ -27,7 +28,7 @@ export const STOREFRONT_STATIC_SEGMENTS: ReadonlySet<string> = new Set([
 const CMS_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export function pageKind(pathname: string): StorefrontPageKind {
-  const path = pathname.replace(/\/+$/, "") || "/";
+  const path = trimTrailingCharacter(pathname, "/") || "/";
   if (path === "/") return "home";
   if (path.startsWith("/pages/")) return "landing";
   if (path.startsWith("/products/")) return "product";

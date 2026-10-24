@@ -3,6 +3,7 @@
 // notifications document (./documents); a channel can only be newly enabled
 // while its provider is configured and not paused.
 
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { Database } from "@scalius/database/client";
 import { webPushSender } from "./web-push";
 import { ValidationError } from "@scalius/core/errors";
@@ -179,8 +180,6 @@ export async function getAdminNotificationChannels(db: Database): Promise<Notifi
     return (await notificationsDocument.read(db)).adminChannels;
 }
 
-const STAFF_EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
-
 export async function updateAdminNotificationChannels(
     db: Database,
     input: { channels: Record<string, unknown>; emailRecipients: readonly string[] },
@@ -191,7 +190,7 @@ export async function updateAdminNotificationChannels(
     const issues: Array<{ path: Array<string | number>; message: string }> = [];
     input.emailRecipients.forEach((raw, index) => {
         const email = raw.trim().toLowerCase();
-        if (!STAFF_EMAIL_PATTERN.test(email) || email.length > 254) {
+        if (email.length > 254 || !isEmailAddress(email, { forbiddenCharacters: "<>" })) {
             issues.push({ path: ["emailRecipients", index], message: "Enter an email like name@example.com." });
         } else if (!staffEmailRecipients.includes(email)) {
             staffEmailRecipients.push(email);

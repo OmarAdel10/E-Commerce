@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { Fragment, useMemo, useState } from "react";
 import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -129,7 +130,7 @@ function PreferencesCards() {
   const queryClient = useQueryClient();
   const { data, refetch } = useSuspenseQuery(seoSettingsQueryOptions());
   const { storefrontUrl } = useStorefrontUrl();
-  const origin = (storefrontUrl ?? "").replace(/\/+$/, "");
+  const origin = trimTrailingCharacter((storefrontUrl ?? ""), "/");
   const saved = useMemo<Preferences>(() => ({
     homepageTitle: data.homepageTitle,
     homepageMetaDescription: data.homepageMetaDescription,

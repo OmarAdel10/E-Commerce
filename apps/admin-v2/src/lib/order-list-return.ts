@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { useSyncExternalStore } from "react";
 
 /**
@@ -20,7 +21,7 @@ function isSafeListHref(href: string): boolean {
     return false;
   }
   if (url.origin !== "http://admin.invalid") return false;
-  if (!LIST_PATHS.has(url.pathname.replace(/\/+$/, ""))) return false;
+  if (!LIST_PATHS.has(trimTrailingCharacter(url.pathname, "/"))) return false;
   for (const [name, value] of url.searchParams) {
     if (PRIVATE_PARAMS.has(name.toLowerCase())) return false;
     // A phone number or email must never be kept, whatever the param is called.

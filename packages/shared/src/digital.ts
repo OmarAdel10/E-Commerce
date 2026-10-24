@@ -1,3 +1,4 @@
+import { trimTrailingCharacters } from "./text-scan";
 /**
  * Digital products (Wave B §3): delivery limits, upload geometry, download
  * filenames and licence-key import. Pure, shared by the API, the dashboard and
@@ -126,9 +127,10 @@ export function sanitizeDownloadFilename(name: string | null | undefined): strin
     .trim();
   const extensionMatch = EXTENSION.exec(cleaned);
   const extension = extensionMatch ? extensionMatch[0] : "";
-  const stem = cleaned
-    .slice(0, cleaned.length - extension.length)
-    .replace(/^[.\s]+|[.\s]+$/gu, "");
+  const stem = trimTrailingCharacters(
+    cleaned.slice(0, cleaned.length - extension.length).replace(/^[.\s]+/u, ""),
+    (character) => /[.\s]/u.test(character),
+  );
   const safeStem = stem || FALLBACK_FILENAME;
   const room = DOWNLOAD_FILENAME_MAX_LENGTH - codePoints(extension).length;
   const trimmedStem = codePoints(safeStem).slice(0, room).join("").replace(/[.\s]+$/u, "") || FALLBACK_FILENAME;

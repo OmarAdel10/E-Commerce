@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Plus, X } from "lucide-react";
@@ -242,12 +243,11 @@ export function CustomerNotificationsCard() {
   );
 }
 
-const STAFF_EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const STAFF_EMAILS_MAX = 10;
 
 function staffEmailValid(email: string): boolean {
   const trimmed = email.trim();
-  return !trimmed || STAFF_EMAIL.test(trimmed);
+  return !trimmed || isEmailAddress(trimmed, { forbiddenCharacters: "<>" });
 }
 
 export function StaffNotificationsCard() {

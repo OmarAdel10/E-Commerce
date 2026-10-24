@@ -10,6 +10,7 @@
  * test can share the same normalization rules.
  */
 
+import { trimTrailingCharacter } from "./text-scan";
 import { readiness, readinessIssue, type Readiness } from "./readiness";
 import {
   DEFAULT_STORE_TIME_ZONE,
@@ -301,7 +302,7 @@ export function stripDashboardBasePath(pathname: string, basePath: string): stri
  * through here. Returns "" when the base is empty.
  */
 export function joinPlatformUrl(base: string, path: string): string {
-  const trimmedBase = base.trim().replace(/\/+$/g, "");
+  const trimmedBase = trimTrailingCharacter(base.trim(), "/");
   if (!trimmedBase) return "";
   if (!path) return trimmedBase;
   return `${trimmedBase}${path.startsWith("/") ? path : `/${path}`}`;
@@ -315,7 +316,7 @@ export function normalizeMediaBaseUrl(value: unknown): string {
   const parsed = parseHttpUrl(value);
   if (!parsed) return "";
   if (parsed.search || parsed.hash) return "";
-  const pathname = parsed.pathname.replace(/\/+$/g, "");
+  const pathname = trimTrailingCharacter(parsed.pathname, "/");
   return `${parsed.origin}${pathname}`;
 }
 

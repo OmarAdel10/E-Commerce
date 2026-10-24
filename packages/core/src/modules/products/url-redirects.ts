@@ -8,6 +8,7 @@
 // exists never pays for the lookup. Paths are store-relative and have no
 // query or fragment; a chain is collapsed on write (old -> older's target), so
 // a lookup is always one hop.
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { desc, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { urlRedirects } from "@scalius/database/schema";
@@ -40,7 +41,7 @@ export function normalizeRedirectPath(input: string): string | null {
   }
   if (value.startsWith("//") || /[\s\\?#]/.test(value)) return null;
   if (!value.startsWith("/")) value = `/${value}`;
-  if (value.length > 1) value = value.replace(/\/+$/, "");
+  if (value.length > 1) value = trimTrailingCharacter(value, "/");
   if (value === "/" || value.length > URL_REDIRECT_PATH_MAX) return value === "/" ? "/" : null;
   return value;
 }

@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // src/lib/storage.ts
 // Cloudflare R2 storage – replaces AWS S3 SDK
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -44,13 +45,13 @@ export function withPublicMediaUrl<T>(
   callback: () => T,
 ): T {
   return publicMediaUrlContext.run(
-    publicUrl.trim().replace(/\/+$/, ""),
+    trimTrailingCharacter(publicUrl.trim(), "/"),
     callback,
   );
 }
 
 export function getPublicMediaUrl(baseUrl: string, key: string): string {
-  const normalizedBase = baseUrl.trim().replace(/\/+$/, "");
+  const normalizedBase = trimTrailingCharacter(baseUrl.trim(), "/");
   const validatedKey = validateMediaObjectKey(key);
   return normalizedBase ? `${normalizedBase}/${validatedKey}` : validatedKey;
 }

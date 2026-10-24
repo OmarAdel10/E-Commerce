@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -274,7 +275,7 @@ export function parseD1ExecuteSchemaObjects(
       type: row.type,
       name: row.name,
       table: row.tbl_name,
-      sql: `${row.sql.trim().replace(/;+$/, "")};`,
+      sql: `${trimTrailingCharacter(row.sql.trim(), ";")};`,
     } satisfies D1PortableSchemaObject];
   }).sort((left, right) =>
     left.type.localeCompare(right.type) || left.name.localeCompare(right.name));

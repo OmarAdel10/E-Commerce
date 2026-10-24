@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { getCredentialEncryptionKey, requireEncryptionKey } from "../../../utils/encryption-key";
 import {
@@ -780,7 +781,7 @@ const saveEmailSchema = z.object({
     provider: emailProviderChoiceSchema.optional(),
     apiKey: z.string().max(EMAIL_API_KEY_MAX_LENGTH).optional(),
     sender: z.string().max(EMAIL_SENDER_MAX_LENGTH).refine(
-        (value) => value.trim() === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+        (value) => value.trim() === "" || isEmailAddress(value),
         "Sender must be a valid email address",
     ).optional(),
 });
@@ -850,7 +851,7 @@ app.openapi(saveEmailRoute, async (c) => {
                     ...currentEmailSettings,
                     provider: provider ?? currentEmailSettings.provider,
                     sender: nextSender,
-                    senderConfigured: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextSender),
+                    senderConfigured: isEmailAddress(nextSender),
                     resendApiKey: nextResendApiKey,
                     hasResendApiKey: Boolean(nextResendApiKey),
                 },

@@ -1,3 +1,4 @@
+import { trimTrailingCharacters } from "../text-scan";
 // Cell readers shared by every import mapper: header lookup that ignores case
 // and spacing, and the value conventions of Shopify, WooCommerce and Excel
 // (TRUE/FALSE, yes/no, 1/0, Bengali digits, thousands separators, a leading
@@ -95,7 +96,9 @@ export function parseImportDecimal(value: string): ParsedNumber {
   // A minus sign (ASCII or U+2212) before an otherwise valid amount ("-5", "-৳ 1,250"): a number, but below 0.
   const negative = /^[-\u2212]/.test(text);
   if (negative) text = text.slice(1).trimStart();
-  text = text.replace(/^(?:৳|tk\.?|bdt|taka|\$|usd|€|£|rs\.?)\s*/i, "").replace(/\s*(?:৳|tk\.?|bdt|taka)$/i, "");
+  text = text.replace(/^(?:৳|tk\.?|bdt|taka|\$|usd|€|£|rs\.?)\s*/i, "");
+  const suffix = /(?:৳|tk\.?|bdt|taka)$/i.exec(text);
+  if (suffix) text = text.slice(0, suffix.index).trimEnd();
   text = text.replace(/[\s\u00A0\u202F]/g, "");
   if (/^\d{1,3}(,\d{2})+,\d{3}(\.\d+)?$/.test(text)) {
     // Indian/Bangladeshi grouping: 1,25,000
@@ -151,7 +154,7 @@ export function truncateText(value: string, max: number): string {
   const chars = [...value.normalize("NFC")];
   let text = chars.slice(0, max).join("");
   // Never end on a combining sign or hasanta without its letter.
-  text = text.replace(/[ঁ-ঃ়া-্ৗ‌‍]+$/u, "");
+  text = trimTrailingCharacters(text, (character) => /[ঁ-ঃ়া-্ৗ‌‍]/u.test(character));
   return text.slice(0, max).trimEnd();
 }
 

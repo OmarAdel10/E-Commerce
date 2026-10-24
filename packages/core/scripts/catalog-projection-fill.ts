@@ -70,7 +70,7 @@ export function catalogProjectionFillSql(): string[] {
     const db = drizzle(async () => ({ rows: [] }), { schema }) as unknown as Database;
     return catalogProjectionFillStatements(db).map((statement) => {
         const { sql: text, params } = (statement as unknown as { toSQL(): { sql: string; params: unknown[] } }).toSQL();
-        return inlineParameters(text, params).replace(/\s+$/, "");
+        return inlineParameters(text, params).trimEnd();
     });
 }
 

@@ -1,16 +1,16 @@
 // What a dashboard search term is (an email, a phone) and the phone's forms,
 // shared by the order and customer lists.
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { toLatinDigits } from "@scalius/shared/phone-input";
 
 const PHONE_DIGIT_MIN_LENGTH = 4;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Bangla (০–৯) and Arabic digits typed by the merchant read as Latin digits (R2-ORD-14). */
 export { toLatinDigits };
 
 /** A whole email address: matched exactly, never as a prefix of a longer one. */
 export function isEmailSearch(input: string): boolean {
-    return EMAIL_PATTERN.test(input.trim());
+    return isEmailAddress(input.trim());
 }
 
 export function isLikelyPhoneSearch(input: string): boolean {

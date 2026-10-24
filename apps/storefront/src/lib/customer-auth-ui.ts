@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import {
   DEFAULT_CUSTOMER_IDENTITY,
   channelRequestMethod,
@@ -12,8 +13,6 @@ import type { PhoneCountryPolicy } from "@scalius/shared/customer-utils";
 import { isBangladeshNumber, normalizeBdMobile } from "@scalius/shared/phone-input";
 import { validateStorefrontPhone } from "@/lib/phone-country-policy";
 import { SIGN_IN_EN, type SignInCheckCopy } from "@/lib/sign-in-copy";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type { FieldNeed };
 
@@ -39,7 +38,7 @@ export interface CustomerAuthUiModel {
 }
 
 export function isValidEmail(value: string): boolean {
-  return EMAIL_PATTERN.test(value.trim());
+  return isEmailAddress(value.trim());
 }
 
 /**

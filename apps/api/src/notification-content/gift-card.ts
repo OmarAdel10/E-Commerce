@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // Send-time content for `gift_card_issued` (Wave B §4.2, §10): the recipient
 // contact on the card (else the order contact, else the owner's contacts),
 // and the code (decrypted now with the CREDENTIAL_ENCRYPTION_KEY-derived key),
@@ -46,7 +47,7 @@ function storeLink(env: Env): string {
   const base = typeof env.STOREFRONT_URL === "string" ? env.STOREFRONT_URL.trim() : "";
   if (!/^https?:\/\//i.test(base)) return "";
   // The balance page, never a URL carrying the code.
-  return `${base.replace(/\/+$/, "")}/gift-card-balance`;
+  return `${trimTrailingCharacter(base, "/")}/gift-card-balance`;
 }
 
 export async function resolveGiftCardIssuedContent(

@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "./text-scan";
 // Server-side request forgery guard for merchant- or plugin-supplied URLs the
 // API Worker calls (webhook endpoints, later the plugin bridge's http.fetch).
 //
@@ -146,7 +147,7 @@ export function isBlockedIpv6(host: string): boolean {
 }
 
 function isBlockedHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, "");
+  const host = trimTrailingCharacter(hostname.toLowerCase(), ".");
   if (!host) return true;
   if (BLOCKED_HOSTS.has(host)) return true;
   if (BLOCKED_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true;

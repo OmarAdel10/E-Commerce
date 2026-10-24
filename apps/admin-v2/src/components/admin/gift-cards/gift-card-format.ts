@@ -1,5 +1,6 @@
 // Pure presentation rules for the Gift cards pages (Wave B §4, §9.1). No
 // code material ever passes through here: staff see the last 4 only.
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import { commerceCalendarDateKey, commerceCalendarDayBounds } from "@scalius/shared/commerce-time";
 import { getStoreTimeZone } from "~/lib/store-time-zone";
 import { getDecimalPlaces } from "@scalius/shared/currency";
@@ -90,10 +91,8 @@ export function giftCardAmountMinor(amount: number | null, currencyCode: string)
   }
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export function isValidRecipientEmail(value: string): boolean {
-  return EMAIL_PATTERN.test(value.trim());
+  return isEmailAddress(value.trim());
 }
 
 /** A Bangladesh mobile (01XXXXXXXXX in any format) or a full international number. The API checks it again. */

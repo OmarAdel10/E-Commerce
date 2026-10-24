@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import type { NavigationItem } from "@/lib/api";
 
 /**
@@ -19,11 +20,11 @@ export function navigationPathname(href: string | undefined, page: URL): string 
     return null;
   }
   if (url.origin !== page.origin) return null;
-  return url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+  return url.pathname.length > 1 ? trimTrailingCharacter(url.pathname, "/") : url.pathname;
 }
 
 export function navigationCurrent(item: NavigationItem, page: URL): NavigationCurrent {
-  const here = page.pathname.length > 1 ? page.pathname.replace(/\/+$/, "") : page.pathname;
+  const here = page.pathname.length > 1 ? trimTrailingCharacter(page.pathname, "/") : page.pathname;
   if (navigationPathname(item.href, page) === here) return "page";
   return item.subMenu?.some((child) => navigationCurrent(child, page) !== null) ? "section" : null;
 }

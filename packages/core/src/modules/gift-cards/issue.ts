@@ -4,6 +4,7 @@
 // `issue` transaction in the same batch; the ledger is the only thing that
 // ever moves the balance. Recipient details are a delivery target only and
 // never touch `customers`.
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { BatchItem } from "drizzle-orm/batch";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "@scalius/database/client";
@@ -52,8 +53,6 @@ export interface GiftCardIssueInput {
     actor: { type: "system" | "admin"; id: string | null };
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function cleanText(value: unknown, max: number): string | null {
     if (typeof value !== "string") return null;
     const text = value.normalize("NFC").trim();
@@ -74,7 +73,7 @@ export function normalizeGiftCardRecipient(input: {
     if (!input) return null;
     const name = cleanText(input.name, 120);
     const rawEmail = cleanText(input.email, 254)?.toLowerCase() ?? null;
-    const email = rawEmail && EMAIL_PATTERN.test(rawEmail) ? rawEmail : null;
+    const email = rawEmail && isEmailAddress(rawEmail) ? rawEmail : null;
     let phone: string | null = null;
     const rawPhone = cleanText(input.phone, 40);
     if (!email && rawPhone) {
@@ -106,7 +105,7 @@ export function parseGiftCardRecipientStrict(input: {
     if (rawEmail && rawPhone) {
         throw new ValidationError("Send the gift card to an email or a phone number, not both.", { field: "recipient.phone" });
     }
-    if (rawEmail && !EMAIL_PATTERN.test(rawEmail)) {
+    if (rawEmail && !isEmailAddress(rawEmail)) {
         throw new ValidationError("Enter a valid recipient email.", { field: "recipient.email" });
     }
     let phone: string | null = null;

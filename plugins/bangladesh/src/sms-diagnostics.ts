@@ -1,3 +1,5 @@
+import { replaceEmailAddresses } from "@scalius/plugin-sdk";
+
 // What an SMS gateway's refusal means and what of it may be kept. The
 // gateways answer refusals as text; these rules decide whether the same
 // message can pass later (a retry) and strip phone numbers, e-mail addresses
@@ -49,8 +51,7 @@ export function classifySmsProviderFailure(rawStatus: string | undefined, httpSt
 
 /** The gateway's text with contact data and credentials removed, at most 240 characters. */
 export function sanitizeSmsProviderDiagnostic(rawStatus: string | undefined): string | undefined {
-  const sanitized = rawStatus
-    ?.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+  const sanitized = replaceEmailAddresses(rawStatus ?? "")
     .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]")
     .replace(/((?:bearer|token|api[_ -]?key|secret))\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .replace(/\s+/g, " ")

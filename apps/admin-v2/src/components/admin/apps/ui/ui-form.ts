@@ -1,6 +1,7 @@
 // The values and client-side checks of an app's form (inputs in
 // packages/shared/src/plugins/ui.ts). The checks only spare a round trip:
 // the app validates again and may answer `errors` by input name.
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { PluginUiInput, PluginUiJson } from "@scalius/shared/plugins/ui";
 import type { AppUiMessageKey } from "~/i18n/app-ui";
 
@@ -15,7 +16,6 @@ export interface InputProblem {
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function initialInputValue(input: PluginUiInput): InputValue {
   switch (input.type) {
@@ -57,7 +57,7 @@ export function checkInput(input: PluginUiInput, value: InputValue): InputProble
       if (text.trim() === "") return input.required ? { key: "required" } : null;
       if (input.type === "text-field" && input.minLength !== undefined && text.length < input.minLength) return { key: "tooShort", vars: { min: input.minLength } };
       if (input.maxLength !== undefined && text.length > input.maxLength) return { key: "tooLong", vars: { max: input.maxLength } };
-      if (input.type === "text-field" && input.format === "email" && !EMAIL.test(text.trim())) return { key: "notEmail" };
+      if (input.type === "text-field" && input.format === "email" && !isEmailAddress(text.trim())) return { key: "notEmail" };
       if (input.type === "text-field" && input.format === "url" && !isWebAddress(text.trim())) return { key: "notUrl" };
       return null;
     }

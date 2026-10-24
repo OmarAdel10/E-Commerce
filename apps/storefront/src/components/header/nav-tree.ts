@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * The one tree every menu renders from: the theme's navigation source
  * (`blocks.navigation.source`), the merchant's header menu (Online store ->
@@ -205,7 +206,7 @@ export function navigationTargetKey(href: string | undefined): string | null {
   if (!value || value.startsWith("#")) return null;
   try {
     const url = new URL(value, LOCAL_ORIGIN);
-    const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, "") : url.pathname;
+    const path = url.pathname.length > 1 ? trimTrailingCharacter(url.pathname, "/") : url.pathname;
     const origin = url.origin === LOCAL_ORIGIN ? "" : url.origin;
     return `${origin}${path.toLowerCase()}${url.search}`;
   } catch {

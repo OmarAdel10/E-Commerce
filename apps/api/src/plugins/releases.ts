@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // App releases from a registry or an uploaded package (packages/plugin-sdk/docs/apps.md,
 // "Registry"): download, verify, store, then install or update. Every release
 // goes through the same checks before anything is stored:
@@ -149,7 +150,7 @@ export async function fetchRegistryIndex(indexUrl: string): Promise<PluginRegist
 }
 
 function releaseUrl(indexUrl: string, entry: PluginRegistryEntry, file: string): string {
-  return new URL(`${entry.path.replace(/\/+$/, "")}/${file}`, indexUrl).href;
+  return new URL(`${trimTrailingCharacter(entry.path, "/")}/${file}`, indexUrl).href;
 }
 
 // ── Verification ───────────────────────────────────────────────────────────

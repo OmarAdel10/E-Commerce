@@ -1,6 +1,7 @@
 // src/integrations/email/settings.ts
 // Runtime settings for transactional email providers.
 
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { Database } from "@scalius/database/client";
 import { businessDocument, emailDocument, storeDisplayName } from "../../modules/settings";
 import { platformDocument } from "../../modules/platform";
@@ -15,7 +16,6 @@ import { isAppProviderId, resolveAppProvider } from "../provider-port";
 import { BUILT_IN_EMAIL_PROVIDER_IDS, type EmailRuntimeContext, type EmailRuntimeSettings } from "./provider";
 
 const DEFAULT_FROM = "noreply@example.com";
-const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** Stable issue codes for email delivery setup. */
@@ -88,7 +88,7 @@ export async function getEmailRuntimeSettings(
     const resendApiKey = stored.value.resendApiKey || null;
     const provider = stored.value.provider || (resendApiKey ? "resend" : "cloudflare");
     const rawSender = stored.value.sender.trim();
-    const senderConfigured = EMAIL_ADDRESS_PATTERN.test(rawSender);
+    const senderConfigured = isEmailAddress(rawSender);
     const localMailpitUrl = resolveLocalMailpitUrl(context?.env?.LOCAL_MAILPIT_URL);
 
     return {

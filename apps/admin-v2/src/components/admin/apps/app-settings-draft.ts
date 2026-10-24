@@ -3,6 +3,7 @@
 // the body Save sends. A secret is never read back: its draft starts empty,
 // and the body carries it only when it changes (a typed value sets it, null
 // clears it, leaving it out keeps the saved one).
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { AppDetail, AppSettingField, AppSettingValue } from "~/lib/api-query-options/apps";
 import { sameFormValue } from "~/lib/form-values";
 
@@ -25,7 +26,6 @@ export type SettingProblem =
   | { kind: "color" };
 
 const COLOR = /^#[0-9a-f]{6}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SECRET_MAX = 4096;
 
 export function draftFromSettings(settings: AppDetail["settings"]): SettingsDraft {
@@ -88,7 +88,7 @@ export function checkSetting(field: AppSettingField, draft: SettingsDraft, secre
       }
       return value.startsWith("https://") ? null : { kind: "https" };
     case "email":
-      return EMAIL.test(value) ? null : { kind: "email" };
+      return isEmailAddress(value) ? null : { kind: "email" };
     case "color":
       return COLOR.test(value.toLowerCase()) ? null : { kind: "color" };
     default:

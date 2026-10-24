@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // Where the footer's one "Track your order" link goes: the store's Help
 // column when it has one, else the bottom row. A menu that already links
 // /track-order keeps its own link and no second one is added.
@@ -9,7 +10,7 @@ const HELP_MENU_TITLE = /^(?:help|support|customer\s+(?:care|service|support)|рж
 
 function linksTrackOrder(links: readonly FooterMenuLink[]): boolean {
   return links.some((link) =>
-    (link.href ?? "").split(/[?#]/, 1)[0]!.replace(/\/+$/, "") === TRACK_ORDER_PATH
+    trimTrailingCharacter((link.href ?? "").split(/[?#]/, 1)[0]!, "/") === TRACK_ORDER_PATH
     || linksTrackOrder(link.subMenu ?? []));
 }
 

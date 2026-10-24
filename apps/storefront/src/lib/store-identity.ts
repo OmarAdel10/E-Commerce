@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * One store identity for every buyer-facing surface: page titles, Open Graph,
  * schema, header, footer and the mobile menu all read the store name, support
@@ -139,7 +140,7 @@ export function resolveStoreSocialLinks(
       if (!chat) continue;
       href = chat;
     }
-    const key = href.toLowerCase().replace(/\/+$/, "");
+    const key = trimTrailingCharacter(href.toLowerCase(), "/");
     if (seen.has(key)) continue;
     seen.add(key);
     links.push({ ...link, url: href });

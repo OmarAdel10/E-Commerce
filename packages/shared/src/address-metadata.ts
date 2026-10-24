@@ -1,3 +1,4 @@
+import { trimTrailingCharacters } from "./text-scan";
 /**
  * Per-country address rules from the generated libaddressinput table
  * (`address-metadata.data.ts`, `pnpm generate:address-metadata`).
@@ -151,7 +152,7 @@ export function formatAddressLines(
       if (keep) text += token;
     });
     for (const part of text.split("\n")) {
-      const trimmed = part.trim().replace(/^[,\-–\s]+|[,\-–\s]+$/g, "");
+      const trimmed = trimTrailingCharacters(part.trim().replace(/^[,\-–\s]+/u, ""), (character) => /[,\-–\s]/u.test(character));
       if (trimmed) lines.push(trimmed);
     }
   }

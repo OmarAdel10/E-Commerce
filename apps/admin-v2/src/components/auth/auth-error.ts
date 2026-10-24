@@ -1,3 +1,4 @@
+import { isEmailAddress } from "@scalius/shared/text-scan";
 import type { AuthMessageKey } from "~/i18n/auth";
 
 /** A catalog message kept as a key, so it follows a language switch. */
@@ -60,12 +61,10 @@ export function authFailureMessage(
   return { key: pick(failure) ?? "unavailable" };
 }
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 /** The email field's message: empty, or clearly not an address. The server decides the rest. */
 export function emailError(email: string): AuthMessageKey | null {
   if (!email.trim()) return "emailRequired";
-  return EMAIL_SHAPE.test(email.trim()) ? null : "emailInvalid";
+  return isEmailAddress(email.trim()) ? null : "emailInvalid";
 }
 
 /** Same bounds as the API (AUTH_PASSWORD_MIN/MAX_LENGTH in packages/core/src/auth/credential-account.ts). */

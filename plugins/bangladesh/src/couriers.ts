@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/plugin-sdk";
 // The Bangladesh couriers behind the courier port: Pathao and Steadfast.
 // Moved from core (packages/core/src/modules/delivery/couriers/{pathao,
 // steadfast}.ts, status-mapper.ts and the routes/webhooks/{pathao,steadfast}
@@ -170,7 +171,7 @@ interface PathaoAccount {
 
 function pathaoAccount(ctx: PluginContext): PathaoAccount {
   return {
-    baseUrl: requireText(ctx, "pathao_base_url", "Pathao: API address").replace(/\/+$/u, ""),
+    baseUrl: trimTrailingCharacter(requireText(ctx, "pathao_base_url", "Pathao: API address"), "/"),
     clientId: requireText(ctx, "pathao_client_id", "Pathao: client ID"),
     clientSecret: requireText(ctx, "pathao_client_secret", "Pathao: client secret"),
     username: requireText(ctx, "pathao_username", "Pathao: username"),
@@ -502,7 +503,7 @@ const pathao = defineCourierProvider({
 
 function steadfastHeaders(ctx: PluginContext): { baseUrl: string; headers: Record<string, string> } {
   return {
-    baseUrl: requireText(ctx, "steadfast_base_url", "Steadfast: API address").replace(/\/+$/u, ""),
+    baseUrl: trimTrailingCharacter(requireText(ctx, "steadfast_base_url", "Steadfast: API address"), "/"),
     headers: {
       "Api-Key": requireText(ctx, "steadfast_api_key", "Steadfast: API key"),
       "Secret-Key": requireText(ctx, "steadfast_secret_key", "Steadfast: secret key"),

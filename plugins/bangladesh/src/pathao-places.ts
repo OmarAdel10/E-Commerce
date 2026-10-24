@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/plugin-sdk";
 // Pathao's delivery places (cities, zones = thanas, areas) as place dataset
 // entries keyed `pathao:<type>:<id>`, the shape of ../places. Moved from core
 // (packages/core/src/modules/delivery/pathao-location-import.ts) with the
@@ -171,7 +172,7 @@ export class PathaoHttpError extends Error {
 
 /** One token per client (an OAuth password grant), then authorized GETs. */
 export function pathaoLocationClient(account: PathaoAccount, send: PathaoSend) {
-  const base = account.baseUrl.replace(/\/+$/u, "");
+  const base = trimTrailingCharacter(account.baseUrl, "/");
   let token: Promise<string> | null = null;
   const issue = async () => {
     const response = await send(`${base}/aladdin/api/v1/issue-token`, {

@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // Public payment routes for every gateway, mounted at /payment:
 //   POST /{provider}/session    create (or replay) a buyer payment session
 //   POST /{provider}/reconcile  ask the provider whether the session was captured
@@ -192,7 +193,7 @@ async function buildReturnRedirectUrl(
   orderId: string,
   result?: HostedPaymentReturnResult,
 ): Promise<string> {
-  const storefront = (c.env?.STOREFRONT_URL || new URL(c.req.url).origin).replace(/\/+$/, "");
+  const storefront = trimTrailingCharacter((c.env?.STOREFRONT_URL || new URL(c.req.url).origin), "/");
   if (orderId) {
     const order = await c.get("db").select({ id: orders.id }).from(orders).where(eq(orders.id, orderId)).get();
     if (!order) return `${storefront}/checkout?error=invalid_order`;
