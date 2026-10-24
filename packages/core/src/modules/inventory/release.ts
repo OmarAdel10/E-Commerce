@@ -1,7 +1,7 @@
 // Strict ledger-v2 reservation release, prepared for a caller's atomic batch.
 // Decrements reservedStock (and restores preorderStock for pre-order pool).
 
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { inventoryMovements, productVariants } from "@scalius/database/schema";
 import {
   buildBatchGuard,
@@ -255,7 +255,7 @@ async function loadReleaseVariantStates(
       stockVersion: productVariants.stockVersion,
     })
     .from(productVariants)
-    .where(inArray(productVariants.id, variantIds))
+    .where(sql`${productVariants.id} IN (SELECT value FROM json_each(${JSON.stringify(variantIds)}))`)
     .all();
 
   const variants = new Map<string, ReleaseVariantState>(rows.map((row) => [row.id, row]));

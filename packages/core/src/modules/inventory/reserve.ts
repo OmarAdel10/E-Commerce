@@ -17,6 +17,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { resolveTrackedBuyerAvailabilityBand } from "@scalius/shared/buyer-availability";
 import type { StockOperationResult } from "./types";
 import { validatePositiveQuantity } from "./validation";
+import { readStockMovementClaims } from "./stock-movement-claims";
 import {
   buildInventoryLedgerV2Edge,
   getNextReservationGeneration,
@@ -149,6 +150,9 @@ type ReservationMovementClaim = {
   notes: string;
 } & InventoryLedgerV2EdgeFields;
 
+type ReservationMovementIdentity = Pick<ReservationMovementClaim,
+  "id" | "deterministic" | "variantId" | "orderId" | "type" | "quantity" | "reservationGeneration">;
+
 /**
  * Prepare guarded ledger-v2 reservation statements without executing them.
  * This is the checkout composition seam: inventory, order, promotion, outbox,
@@ -206,6 +210,20 @@ export async function prepareStockReservationBatch(
   }
   const variants = variantLoad.variants;
 
+  const trackedEntries = entries.filter((entry) => variants.get(entry.variantId)?.trackInventory !== false);
+  const trackedMovementEntries = movementEntries.filter((entry) => variants.get(entry.variantId)?.trackInventory !== false);
+  const useCurrentTransactionState = Boolean(options.freshOrderIds) &&
+    trackedMovementEntries.every((entry) =>
+      entry.orderId !== undefined && options.freshOrderIds!.has(entry.orderId)
+    );
+  const identities = await buildReservationMovementIdentities(db, trackedMovementEntries, pool, options);
+  // A retry may have consumed the last unit itself. Fresh checkout attempts
+  // already prove no prior claim; all other deterministic reservations check
+  // replay before current policy/capacity and before constructing a new edge.
+  if (!useCurrentTransactionState) {
+    const replay = await resolveCommittedReservationBatch(db, identities, entries, variants, pool);
+    if (replay) return { ...replay, ...NO_RESERVATION_STATEMENTS };
+  }
   const validationErrors = getStockAvailabilityErrors(entries, variants, pool);
   if (validationErrors.length > 0) {
     return {
@@ -216,8 +234,6 @@ export async function prepareStockReservationBatch(
     };
   }
 
-  const trackedEntries = entries.filter((entry) => variants.get(entry.variantId)?.trackInventory !== false);
-  const trackedMovementEntries = movementEntries.filter((entry) => variants.get(entry.variantId)?.trackInventory !== false);
   const results = buildReservationSuccessResults(entries, variants, pool);
   if (trackedEntries.length === 0) {
     return {
@@ -227,17 +243,10 @@ export async function prepareStockReservationBatch(
     };
   }
 
-  const movementClaims = await buildReservationMovementClaims(
-    db,
-    trackedMovementEntries,
-    variants,
-    pool,
-    options,
-  );
-  const useCurrentTransactionState = Boolean(options.freshOrderIds) &&
-    trackedMovementEntries.every((entry) =>
-      entry.orderId !== undefined && options.freshOrderIds!.has(entry.orderId)
-    );
+  const movementClaims = buildReservationMovementClaims(identities, variants, pool);
+  const resolveIdempotentReplay = (error: unknown) => isDuplicateReservationMovementClaimError(error)
+    ? resolveCommittedReservationBatch(db, identities, entries, variants, pool)
+    : Promise.resolve(null);
 
   if (useCurrentTransactionState) {
     const movementQueries = movementClaims.map((claim) =>
@@ -260,14 +269,7 @@ export async function prepareStockReservationBatch(
         // Buyer state reads the counters this batch just wrote.
         ...catalogBuyerStateRefreshStatementsForSkus(db, trackedEntries.map((entry) => entry.variantId)),
       ] as SQLiteBatchItem[],
-      resolveIdempotentReplay: (error) => resolveDuplicateReservationBatch(
-        db,
-        movementClaims,
-        entries,
-        variants,
-        pool,
-        error,
-      ),
+      resolveIdempotentReplay,
       availabilityTransitions: (statementResults) =>
         reservationAvailabilityTransitions(statementResults, entries, variants),
     };
@@ -319,14 +321,7 @@ export async function prepareStockReservationBatch(
       // Buyer state reads the counters this batch just wrote.
       ...catalogBuyerStateRefreshStatementsForSkus(db, trackedEntries.map((entry) => entry.variantId)),
     ] as SQLiteBatchItem[],
-    resolveIdempotentReplay: (error) => resolveDuplicateReservationBatch(
-      db,
-      movementClaims,
-      entries,
-      variants,
-      pool,
-      error,
-    ),
+    resolveIdempotentReplay,
     availabilityTransitions: (statementResults) =>
       reservationAvailabilityTransitions(statementResults, entries, variants),
   };
@@ -344,7 +339,8 @@ export async function reserveStockBatch(
 ): Promise<ReserveStockBatchResult> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const plan = await prepareStockReservationBatch(db, items, pool, options);
-    if (!plan.success || plan.statements.length === 0) return plan;
+    if (!plan.success) return plan;
+    if (plan.statements.length === 0) return { success: true, results: plan.results };
 
     try {
       await safeBatch(db, plan.statements);
@@ -544,18 +540,16 @@ async function loadReservationLedgerGeneration(
   return 1;
 }
 
-async function buildReservationMovementClaims(
+async function buildReservationMovementIdentities(
   db: Database,
   movementEntries: ReservationBatchItem[],
-  variants: Map<string, ReservationVariantState>,
   pool: ReservationPool,
   options: ReserveStockBatchOptions,
-): Promise<ReservationMovementClaim[]> {
-  const claims: ReservationMovementClaim[] = [];
+): Promise<ReservationMovementIdentity[]> {
+  const claims: ReservationMovementIdentity[] = [];
   const type = reservationMovementType(pool);
 
   for (const entry of movementEntries) {
-    const variant = variants.get(entry.variantId)!;
     const reservationKey = entry.reservationKey ?? options.reservationKey;
     const deterministic = Boolean(entry.movementId || (reservationKey && entry.orderId));
     const reservationGeneration = entry.orderId
@@ -578,9 +572,21 @@ async function buildReservationMovementClaims(
           })
         : crypto.randomUUID());
 
+    claims.push({ id, deterministic, variantId: entry.variantId, orderId: entry.orderId, type, quantity: entry.quantity, reservationGeneration });
+  }
+  return claims;
+}
+
+function buildReservationMovementClaims(
+  identities: readonly ReservationMovementIdentity[],
+  variants: Map<string, ReservationVariantState>,
+  pool: ReservationPool,
+): ReservationMovementClaim[] {
+  return identities.map((entry) => {
+    const variant = variants.get(entry.variantId)!;
     const edge = buildInventoryLedgerV2Edge({
       pool,
-      reservationGeneration,
+      reservationGeneration: entry.reservationGeneration,
       before: {
         stock: variant.stock,
         reservedStock: variant.reservedStock,
@@ -597,19 +603,12 @@ async function buildReservationMovementClaims(
       },
     });
 
-    claims.push({
-      id,
-      deterministic,
-      variantId: entry.variantId,
-      orderId: entry.orderId,
-      type,
-      quantity: entry.quantity,
+    return {
+      ...entry,
       notes: `Reserved ${entry.quantity} units (batch)${entry.orderId ? ` for order ${entry.orderId}` : ""}`,
       ...edge,
-    });
-  }
-
-  return claims;
+    };
+  });
 }
 
 function buildReservationMovementInsert(
@@ -850,34 +849,17 @@ function isDuplicateReservationMovementClaimError(err: unknown): boolean {
   );
 }
 
-async function resolveDuplicateReservationBatch(
+async function resolveCommittedReservationBatch(
   db: Database,
-  movementClaims: ReservationMovementClaim[],
+  movementClaims: readonly ReservationMovementIdentity[],
   entries: ReservationBatchItem[],
   variants: Map<string, ReservationVariantState>,
   pool: ReservationPool,
-  err: unknown,
 ): Promise<ReserveStockBatchResult | null> {
   const deterministicClaims = movementClaims.filter((claim) => claim.deterministic);
-  if (
-    deterministicClaims.length === 0 ||
-    deterministicClaims.length !== movementClaims.length ||
-    !isDuplicateReservationMovementClaimError(err)
-  ) {
-    return null;
-  }
-
-  const existingRows = await db
-    .select({
-      id: inventoryMovements.id,
-      variantId: inventoryMovements.variantId,
-      orderId: inventoryMovements.orderId,
-      type: inventoryMovements.type,
-      quantity: inventoryMovements.quantity,
-    })
-    .from(inventoryMovements)
-    .where(inArray(inventoryMovements.id, deterministicClaims.map((claim) => claim.id)))
-    .all();
+  if (deterministicClaims.length === 0 || deterministicClaims.length !== movementClaims.length) return null;
+  const existingRows = await readStockMovementClaims(db, deterministicClaims.map((claim) => claim.id));
+  if (existingRows.length === 0) return null;
   const existingById = new Map(existingRows.map((row) => [row.id, row]));
   const mismatched = deterministicClaims.find((claim) => {
     const row = existingById.get(claim.id);
@@ -885,7 +867,8 @@ async function resolveDuplicateReservationBatch(
       row.variantId !== claim.variantId ||
       row.orderId !== (claim.orderId ?? null) ||
       row.type !== claim.type ||
-      row.quantity !== claim.quantity;
+      row.quantity !== claim.quantity ||
+      row.pool !== pool;
   });
 
   if (mismatched) {
@@ -903,9 +886,19 @@ async function resolveDuplicateReservationBatch(
     };
   }
 
+  const existingByVariant = new Map(existingRows.map((row) => [row.variantId, row]));
   return {
     success: true,
-    results: buildReservationSuccessResults(entries, variants, pool),
+    results: entries.map((entry) => {
+      const row = existingByVariant.get(entry.variantId);
+      const variant = variants.get(entry.variantId)!;
+      return {
+        success: true,
+        variantId: entry.variantId,
+        previousStock: pool === "preorder" ? row?.previousPreorderStock ?? variant.preorderStock : row?.previousStock ?? variant.stock,
+        newStock: pool === "preorder" ? row?.newPreorderStock ?? variant.preorderStock : row?.newStock ?? variant.stock,
+      };
+    }),
   };
 }
 

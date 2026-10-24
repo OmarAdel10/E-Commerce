@@ -1,6 +1,6 @@
 import { inventoryMovements, productVariants } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import {
   buildInventoryLedgerV2Edge,
   type InventoryCounterState,
@@ -81,4 +81,28 @@ export function buildStockMovementClaim(
         ${ledgerVersionKeyRead(edge.stockVersionAfter)}
     `)
     .returning({ id: inventoryMovements.id });
+}
+
+/** Read replay identities and their original result in sequential D1-safe waves. */
+export async function readStockMovementClaims(db: Database, ids: readonly string[]) {
+  const fields = {
+    id: inventoryMovements.id,
+    variantId: inventoryMovements.variantId,
+    orderId: inventoryMovements.orderId,
+    type: inventoryMovements.type,
+    quantity: inventoryMovements.quantity,
+    pool: inventoryMovements.pool,
+    locationId: inventoryMovements.locationId,
+    previousStock: inventoryMovements.previousStock,
+    newStock: inventoryMovements.newStock,
+    previousPreorderStock: inventoryMovements.previousPreorderStock,
+    newPreorderStock: inventoryMovements.newPreorderStock,
+  };
+  const read = (batch: readonly string[]) => db.select(fields).from(inventoryMovements)
+    .where(inArray(inventoryMovements.id, [...batch])).all();
+  const rows: Awaited<ReturnType<typeof read>> = [];
+  for (let index = 0; index < ids.length; index += 90) {
+    rows.push(...await read(ids.slice(index, index + 90)));
+  }
+  return rows;
 }

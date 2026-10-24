@@ -13,6 +13,7 @@ import { ValidationError } from "@scalius/core/errors";
 import type { BatchItem } from "drizzle-orm/batch";
 import { prepareStockReservationBatch, reserveStockBatch, type ReservationBatchItem } from "./reserve";
 import { checkAndAlertLowStock } from "./alerts";
+import { readStockMovementClaims } from "./stock-movement-claims";
 import type { ReservationEntry, StockOperationResult } from "./types";
 import { validatePositiveQuantity } from "./validation";
 import {
@@ -599,17 +600,43 @@ async function applyStrictInventoryTransitionMovements(
         return { movementIds: [], availabilityTransitionVariantIds: [], locationIdByVariant: {} };
     }
 
-    // Deducts leave from the order's location; a regular deduct takes
-    // physical units there, so a shortfall is refused before writing anything.
-    const deductLocation = operation === "deduct"
-        ? await resolveOrderFulfillmentLocation(db, order.fulfillmentLocationId)
-        : null;
-    const restockLocation = operation === "restore" && restockLocationId
-        ? await resolveActiveInventoryLocation(db, restockLocationId)
-        : null;
-
     for (let attempt = 0; attempt < MAX_TRANSITION_RETRIES; attempt++) {
         const variants = await loadTransitionVariantStates(db, order.id, operation, mergedEntries);
+        const identities: InventoryTransitionMovementIdentity[] = [];
+        for (const entry of mergedEntries) {
+            identities.push({
+                id: await createTransitionMovementId({
+                    orderId: order.id,
+                    variantId: entry.variantId,
+                    operation,
+                    pool,
+                    generation: claimKey ? 0 : await loadTransitionMovementGeneration(db, order.id, entry.variantId, operation),
+                    claimKey,
+                }),
+                variantId: entry.variantId,
+                orderId: order.id,
+                type: getTransitionMovementType(operation, pool),
+                quantity: operation === "release" ? -entry.quantity : entry.quantity,
+            });
+        }
+        // Read the claim after the counters: a committed replay may already
+        // have consumed their entire balance. Recognize it before constructing
+        // a new edge or requiring its old location to remain active.
+        if (await resolveCommittedTransitionMovements(db, order.id, operation, identities, mergedEntries)) {
+            await checkLowStockForTransitionEntries(db, mergedEntries);
+            return {
+                movementIds: identities.map((claim) => claim.id),
+                availabilityTransitionVariantIds: mergedEntries.map((entry) => entry.variantId),
+                locationIdByVariant: await committedMovementLocations(db, identities),
+            };
+        }
+
+        const deductLocation = operation === "deduct"
+            ? await resolveOrderFulfillmentLocation(db, order.fulfillmentLocationId)
+            : null;
+        const restockLocation = operation === "restore" && restockLocationId
+            ? await resolveActiveInventoryLocation(db, restockLocationId)
+            : null;
         const availabilityTransitionVariantIds = mergedEntries
             .filter((entry) => {
                 const before = variants.get(entry.variantId)!;
@@ -630,7 +657,7 @@ async function applyStrictInventoryTransitionMovements(
             mergedEntries,
             variants,
             pool,
-            claimKey,
+            identities,
             createdBy,
             deductLocation ?? restockLocation,
         );
@@ -671,14 +698,8 @@ async function applyStrictInventoryTransitionMovements(
             if (isInventoryLevelShortfallError(err) || isInventoryLocationRequiredError(err)) {
                 throw inventoryLocationErrorFrom(err, deductLocation?.name);
             }
-            const duplicateResolved = await resolveDuplicateTransitionMovements(
-                db,
-                order.id,
-                operation,
-                movementClaims,
-                mergedEntries,
-                err,
-            );
+            const duplicateResolved = isDuplicateTransitionMovementClaimError(err)
+                && await resolveCommittedTransitionMovements(db, order.id, operation, movementClaims, mergedEntries);
             if (duplicateResolved) {
                 await checkLowStockForTransitionEntries(db, mergedEntries);
                 return {
@@ -916,6 +937,9 @@ async function loadTransitionVariantStates(
     return variants;
 }
 
+type InventoryTransitionMovementIdentity = Pick<InventoryTransitionMovementClaim,
+    "id" | "variantId" | "orderId" | "type" | "quantity">;
+
 async function buildTransitionMovementClaims(
     db: Database,
     order: InventoryTransitionOrder,
@@ -923,7 +947,7 @@ async function buildTransitionMovementClaims(
     entries: ReservationEntry[],
     variants: Map<string, InventoryVariantState>,
     pool: InventoryPoolName,
-    claimKey?: string,
+    identities: readonly InventoryTransitionMovementIdentity[],
     createdBy: string | null = null,
     namedLocation: InventoryLocationRef | null = null,
 ): Promise<InventoryTransitionMovementClaim[]> {
@@ -960,18 +984,7 @@ async function buildTransitionMovementClaims(
             after: getTransitionCounterStateAfter(operation, entry.quantity, variant, pool),
         });
         claims.push({
-            id: await createTransitionMovementId({
-                orderId: order.id,
-                variantId: entry.variantId,
-                operation,
-                pool,
-                generation: await loadTransitionMovementGeneration(db, order.id, entry.variantId, operation),
-                claimKey,
-            }),
-            variantId: entry.variantId,
-            orderId: order.id,
-            type: getTransitionMovementType(operation, pool),
-            quantity: operation === "release" ? -entry.quantity : entry.quantity,
+            ...identities[claims.length]!,
             notes: getTransitionMovementNotes(order.id, operation, entry.quantity),
             createdBy,
             locationId: locationIdByVariant.get(entry.variantId) ?? null,
@@ -1050,19 +1063,10 @@ async function selectExistingMovementIds(db: Database, ids: readonly string[]): 
 
 async function committedMovementLocations(
     db: Database,
-    claims: readonly InventoryTransitionMovementClaim[],
+    claims: readonly InventoryTransitionMovementIdentity[],
 ): Promise<Record<string, string | null>> {
-    const locations: Record<string, string | null> = {};
-    for (let index = 0; index < claims.length; index += 90) {
-        const rows = await db.select({
-            variantId: inventoryMovements.variantId,
-            locationId: inventoryMovements.locationId,
-        }).from(inventoryMovements)
-            .where(inArray(inventoryMovements.id, claims.slice(index, index + 90).map((claim) => claim.id)))
-            .all();
-        for (const row of rows) locations[row.variantId] = row.locationId;
-    }
-    return locations;
+    const rows = await readStockMovementClaims(db, claims.map((claim) => claim.id));
+    return Object.fromEntries(rows.map((row) => [row.variantId, row.locationId]));
 }
 
 function buildTransitionMovementInsert(
@@ -1502,27 +1506,15 @@ function isDuplicateTransitionMovementClaimError(err: unknown): boolean {
     );
 }
 
-async function resolveDuplicateTransitionMovements(
+async function resolveCommittedTransitionMovements(
     db: Database,
     orderId: string,
     operation: StrictMovementOperation,
-    movementClaims: InventoryTransitionMovementClaim[],
+    movementClaims: readonly InventoryTransitionMovementIdentity[],
     entries: ReservationEntry[],
-    err: unknown,
 ): Promise<boolean> {
-    if (!isDuplicateTransitionMovementClaimError(err)) return false;
-
-    const existingRows = await db
-        .select({
-            id: inventoryMovements.id,
-            variantId: inventoryMovements.variantId,
-            orderId: inventoryMovements.orderId,
-            type: inventoryMovements.type,
-            quantity: inventoryMovements.quantity,
-        })
-        .from(inventoryMovements)
-        .where(inArray(inventoryMovements.id, movementClaims.map((claim) => claim.id)))
-        .all();
+    const existingRows = await readStockMovementClaims(db, movementClaims.map((claim) => claim.id));
+    if (existingRows.length === 0) return false;
     const existingById = new Map(existingRows.map((row) => [row.id, row]));
     const mismatched = movementClaims.find((claim) => {
         const row = existingById.get(claim.id);

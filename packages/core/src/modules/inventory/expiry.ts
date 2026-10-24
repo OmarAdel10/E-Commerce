@@ -3,7 +3,7 @@
 // Designed to be called from the cron's sweep rotation.
 
 import { catalogBuyerStateRefreshStatementsForSkus, effectiveLowStockThresholdSql } from "../products";
-import { eq, and, sql, lt } from "drizzle-orm";
+import { eq, and, sql, lt, type SQL } from "drizzle-orm";
 import {
   inventoryMovements,
   orders,
@@ -78,6 +78,26 @@ async function reservationOrderExists(
   return Boolean(order);
 }
 
+/** Legacy holds have no pool column; their new v2 expiry edge names the inferred pool. */
+function effectiveReservationPoolSql(pool: SQL, reservationType: SQL): SQL<string> {
+  return sql<string>`COALESCE(${pool}, CASE WHEN ${reservationType} = 'preorder_reserved' THEN 'preorder' ELSE 'regular' END)`;
+}
+
+/** V2 identifies the pool explicitly; only legacy rows encode it in stock snapshots. */
+function terminalReservationQuantitySql(reservationType: SQL, alias: "inventory_movements" | "terminal"): SQL<number> {
+  const column = (name: string) => sql.raw(`"${alias}"."${name}"`);
+  return sql<number>`CASE
+    WHEN ${column("type")} = CASE WHEN ${reservationType} = 'preorder_reserved' THEN 'preorder_deducted' ELSE 'deducted' END
+      THEN ${column("quantity")}
+    WHEN ${column("type")} = 'released' AND (
+      ${column("ledger_version")} = 2
+      OR (${reservationType} = 'preorder_reserved' AND ${column("new_stock")} > ${column("previous_stock")})
+      OR (${reservationType} = 'reserved' AND ${column("new_stock")} = ${column("previous_stock")})
+    ) THEN -${column("quantity")}
+    ELSE 0
+  END`;
+}
+
 async function loadReservationOutstandingQuantity(
   db: Database,
   orderId: string,
@@ -86,30 +106,18 @@ async function loadReservationOutstandingQuantity(
   pool: string | null,
   reservationGeneration: number | null,
 ): Promise<number> {
-  const deductionType = reservationType === "preorder_reserved"
-    ? "preorder_deducted"
-    : "deducted";
-  const releasePoolCondition = reservationType === "preorder_reserved"
-    ? sql`${inventoryMovements.newStock} > ${inventoryMovements.previousStock}`
-    : sql`${inventoryMovements.newStock} = ${inventoryMovements.previousStock}`;
   const totals = await db
     .select({
       reservedQuantity: sql<number>`COALESCE(SUM(CASE WHEN ${inventoryMovements.type} = ${reservationType} THEN ${inventoryMovements.quantity} ELSE 0 END), 0)`,
-      terminalQuantity: sql<number>`COALESCE(SUM(CASE
-        WHEN ${inventoryMovements.type} = ${deductionType} THEN ${inventoryMovements.quantity}
-        WHEN ${inventoryMovements.type} = 'released' AND ${releasePoolCondition} THEN -${inventoryMovements.quantity}
-        ELSE 0
-      END), 0)`,
+      terminalQuantity: sql<number>`COALESCE(SUM(${terminalReservationQuantitySql(sql`${reservationType}`, "inventory_movements")}), 0)`,
     })
     .from(inventoryMovements)
     .where(
       and(
         eq(inventoryMovements.orderId, orderId),
         eq(inventoryMovements.variantId, variantId),
-        sql`(
-          (${inventoryMovements.pool} IS NULL AND ${pool} IS NULL)
-          OR ${inventoryMovements.pool} = ${pool}
-        )`,
+        sql`${effectiveReservationPoolSql(sql`${inventoryMovements.pool}`, sql`${reservationType}`)}
+          = ${effectiveReservationPoolSql(sql`${pool}`, sql`${reservationType}`)}`,
         sql`(
           (${inventoryMovements.reservationGeneration} IS NULL AND ${reservationGeneration} IS NULL)
           OR ${inventoryMovements.reservationGeneration} = ${reservationGeneration}
@@ -189,24 +197,12 @@ export async function releaseExpiredReservations(
   // pass is needed.
   const outstandingQuantitySql = sql<number>`(
     SUM(${inventoryMovements.quantity}) - COALESCE((
-      SELECT SUM(CASE
-        WHEN terminal.type = CASE
-          WHEN ${inventoryMovements.type} = 'preorder_reserved' THEN 'preorder_deducted'
-          ELSE 'deducted'
-        END THEN terminal.quantity
-        WHEN terminal.type = 'released' AND (
-          (${inventoryMovements.type} = 'preorder_reserved' AND terminal.new_stock > terminal.previous_stock)
-          OR (${inventoryMovements.type} = 'reserved' AND terminal.new_stock = terminal.previous_stock)
-        ) THEN -terminal.quantity
-        ELSE 0
-      END)
+      SELECT SUM(${terminalReservationQuantitySql(sql`${inventoryMovements.type}`, "terminal")})
       FROM inventory_movements AS terminal
       WHERE terminal.order_id = ${inventoryMovements.orderId}
         AND terminal.variant_id = ${inventoryMovements.variantId}
-        AND (
-          (${inventoryMovements.pool} IS NULL AND terminal.pool IS NULL)
-          OR terminal.pool = ${inventoryMovements.pool}
-        )
+        AND ${effectiveReservationPoolSql(sql`terminal.pool`, sql`${inventoryMovements.type}`)}
+          = ${effectiveReservationPoolSql(sql`${inventoryMovements.pool}`, sql`${inventoryMovements.type}`)}
         AND (
           (${inventoryMovements.reservationGeneration} IS NULL AND terminal.reservation_generation IS NULL)
           OR terminal.reservation_generation = ${inventoryMovements.reservationGeneration}

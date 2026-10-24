@@ -1,6 +1,6 @@
 # Inventory
 
-The `inventory` domain owns SKU stock: reservations, deductions, releases and restores that follow an order, manual adjustments and stocktakes, stock locations, low-stock alerts, and purchasing (suppliers, purchase orders, transfers, unit cost). Every stock change writes one ledger v2 movement in the same batch as the SKU `stockVersion` CAS update. This document is for contributors who change stock writes or read the ledger.
+The `inventory` domain owns SKU stock: reservations, deductions, releases and restores that follow an order, manual adjustments and stocktakes, stock locations, low-stock alerts, and purchasing (suppliers, purchase orders, transfers, unit cost). Every new business stock movement writes a ledger v2 edge in the same batch as the SKU `stockVersion` CAS update; historical v1 rows remain distinguishable. This document is for contributors who change stock writes or read the ledger.
 
 ## Entries and layer
 
@@ -47,11 +47,12 @@ Types: `reserved`, `preorder_reserved`, `released`, `deducted`, `preorder_deduct
 - `getInventoryLedgerHealth()` counts v2 rows and invalid v2 rows. `foldInventoryLedgerV2()` replays events and throws `InventoryLedgerDiscontinuityError` on a gap.
 - The reservation generation numbers one reserve-to-terminal cycle of an order and SKU. A restore uses the generation of the deduction it undoes.
 - A movement that a retry may repeat has a deterministic id (`reservation:<sha256>`, `transition:<sha256>`, `imov_<hash>`, `expiry_release:<order>:<variant>...`). A duplicate claim that matches counts as success. A mismatch fails closed.
-- Write order in one batch: guard statements, the movement `INSERT ... SELECT` gated on the SKU version, the CAS `UPDATE`, then the buyer-state refresh (`catalogBuyerStateRefreshStatementsForSkus`). A lost CAS aborts or compensates the whole batch, so a counter never changes without its movement.
+- Replay lookup reads deterministic identities before capacity checks or building another counter edge: the first write may have exhausted the available quantity. The shared `readStockMovementClaims()` reads at most 90 ids per statement in sequential waves. Fresh checkout attempts prove their identities are new and skip this lookup.
+- Write order in one batch: guard statements, the movement `INSERT ... SELECT` gated on the SKU version, the CAS `UPDATE`, then the buyer-state refresh (`catalogBuyerStateRefreshStatementsForSkus`). A lost CAS aborts or compensates the whole batch. Compensation reverses any applied counters and deletes the provisional movements together, preserving aggregate location stock; it advances stockVersion instead of reusing a version. Deleting a movement by itself is not a supported repair.
 
 ## Order lifecycle
 
-`applyInventoryForStatusChange()` and `applyInventoryForStatusChangeWithImpact()` (`inventory-transitions.ts`) are the only way a status change moves stock. They read `orders.inventory_action` (`none`, `reserved`, `deducted`, `restored`), act once and write the new value. A repeat call does nothing.
+`applyInventoryForStatusChange()` and `applyInventoryForStatusChangeWithImpact()` (`inventory-transitions.ts`) are the only way a status change moves stock. They read `orders.inventory_action` (`none`, `reserved`, `deducted`, `restored`), act once and write the new value. A repeat call does nothing. If stock committed but the later action write failed, its deterministic movement claim permits replay to finish the action without another stock change.
 
 | New order status | Current action | Operation | New action |
 |------------------|----------------|-----------|------------|
@@ -93,7 +94,7 @@ Types: `reserved`, `preorder_reserved`, `released`, `deducted`, `preorder_deduct
 
 ## Reservation expiry
 
-`releaseExpiredReservations(db, maxAgeMinutes = 30, { limit })` frees reservations whose order row never committed. It takes `reserved` and `preorder_reserved` movements older than the age with an `order_id` and no `orders` row, groups them by variant, order, pool and generation, and subtracts deducted and released quantities. It processes at most `limit` groups (default 50, maximum 200), reports `hasMore`, and writes a `released` movement with the counter update in one batch. It never touches an order that exists: a status transition cancels those. The cron runs it in its sweep rotation, `planLimits().maintenance.inventoryExpiryPerRun` groups a run (`apps/api/src/scheduled-maintenance.ts`).
+`releaseExpiredReservations(db, maxAgeMinutes = 30, { limit })` frees reservations whose order row never committed. It takes `reserved` and `preorder_reserved` movements older than the age with an `order_id` and no `orders` row, groups them by variant, order, pool and generation, and subtracts deducted and released quantities. V2 releases identify their pool explicitly; only legacy releases infer it from physical-stock snapshots. It processes at most `limit` groups (default 50, maximum 200), reports `hasMore`, and writes a `released` movement with the counter update in one batch. It never touches an order that exists: a status transition cancels those. The cron runs it in its sweep rotation, `planLimits().maintenance.inventoryExpiryPerRun` groups a run (`apps/api/src/scheduled-maintenance.ts`).
 
 ## Purchasing, transfers and unit cost
 
