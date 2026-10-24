@@ -3,6 +3,8 @@
 // (blank lines split paragraphs). Plain text only; Astro escapes it.
 import { richTextParagraphs } from "@/lib/homepage-sections";
 import Container from "@/components/ui/Container.astro";
+import { currentRequestTheme } from "@/lib/storefront-theme-context";
+import { storefrontCopy } from "@/lib/storefront-copy";
 
 interface Props {
   previewMarks?: boolean;
@@ -12,6 +14,7 @@ interface Props {
 }
 
 const { id, heading, body, previewMarks = false } = Astro.props;
+const copy = storefrontCopy((await currentRequestTheme(Astro.locals)).language).home;
 const title = heading.trim();
 const paragraphs = richTextParagraphs(body);
 const headingId = `home-section-${id}-title`;
@@ -21,7 +24,7 @@ const headingId = `home-section-${id}-title`;
   <section
     class="w-full py-4 md:py-8"
     aria-labelledby={title ? headingId : undefined}
-    aria-label={title ? undefined : "Store information"}
+    aria-label={title ? undefined : copy.aboutStore}
   >
     <Container>
       <div class="max-w-3xl [overflow-wrap:anywhere]">

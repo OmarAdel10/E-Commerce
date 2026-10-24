@@ -141,12 +141,12 @@ export function validateSelection(
   selection: VariantSelection,
   options: ProductOptionDefinition[],
   variants: Variant[],
-): { valid: boolean; error?: string; variant?: Variant; missingOption?: ProductOptionDefinition } {
+): { valid: boolean; reason?: "missing_option" | "unavailable" | "sold_out"; variant?: Variant; missingOption?: ProductOptionDefinition } {
   const missing = options.find((option) => !selection[option.id]);
-  if (missing) return { valid: false, error: `Select ${missing.name}.`, missingOption: missing };
+  if (missing) return { valid: false, reason: "missing_option", missingOption: missing };
   const resolved = resolveExactVariantSelection(variants, selection)?.variant;
-  if (!resolved) return { valid: false, error: "That option combination is unavailable." };
-  if (!isVariantPurchasable(resolved)) return { valid: false, error: "That option combination is out of stock." };
+  if (!resolved) return { valid: false, reason: "unavailable" };
+  if (!isVariantPurchasable(resolved)) return { valid: false, reason: "sold_out" };
   return { valid: true, variant: resolved };
 }
 

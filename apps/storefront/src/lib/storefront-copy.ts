@@ -60,6 +60,19 @@ export interface StorefrontCopy {
   section: {
     viewAll: string;
   };
+  /** A product placed in a page or an article (the [product] shortcode). */
+  productEmbed: {
+    quantity: string;
+    decrease: string;
+    increase: string;
+    buyNow: string;
+    chooseOptions: string;
+    unavailable: string;
+    addFailed: string;
+    added: string;
+  };
+  /** The short page a Buy now link shows while it adds the item and opens checkout (/buy/<slug>). */
+  quickBuy: { title: string; preparing: string; failed: string; continue: string };
   /** Header, menus, drawers and footer (chrome-copy.ts). */
   chrome: ChromeCopy;
   /** The search palette (search-palette-copy.ts). */
@@ -137,6 +150,22 @@ const EN: StorefrontCopy = {
   },
   section: {
     viewAll: "View all",
+  },
+  productEmbed: {
+    quantity: "Quantity",
+    decrease: "Decrease quantity",
+    increase: "Increase quantity",
+    buyNow: "Buy now",
+    chooseOptions: "Choose all options first.",
+    unavailable: "This combination isn't available.",
+    addFailed: "This option could not be added. Refresh the page and try again.",
+    added: "Added to your cart",
+  },
+  quickBuy: {
+    title: "Adding to cart…",
+    preparing: "Adding to cart and preparing checkout…",
+    failed: "Could not prepare quick buy. Returning to cart…",
+    continue: "Continue to checkout",
   },
   chrome: CHROME_EN,
   searchPalette: SEARCH_PALETTE_EN,
@@ -216,6 +245,22 @@ const BN: StorefrontCopy = {
   },
   section: {
     viewAll: "সব দেখুন",
+  },
+  productEmbed: {
+    quantity: "পরিমাণ",
+    decrease: "পরিমাণ কমান",
+    increase: "পরিমাণ বাড়ান",
+    buyNow: "এখনই কিনুন",
+    chooseOptions: "আগে সব অপশন বেছে নিন।",
+    unavailable: "এই বাছাইটি পাওয়া যাচ্ছে না।",
+    addFailed: "এই অপশনটি কার্টে যোগ করা যায়নি। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।",
+    added: "আপনার কার্টে যোগ হয়েছে",
+  },
+  quickBuy: {
+    title: "কার্টে যোগ হচ্ছে…",
+    preparing: "কার্টে যোগ করে চেকআউট প্রস্তুত করা হচ্ছে…",
+    failed: "এখনই কেনা প্রস্তুত করা যায়নি। কার্টে ফিরে যাওয়া হচ্ছে…",
+    continue: "চেকআউটে যান",
   },
   chrome: CHROME_BN,
   searchPalette: SEARCH_PALETTE_BN,

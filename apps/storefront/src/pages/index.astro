@@ -88,9 +88,9 @@ const storeName = resolveStoreDisplayName(
   getAbsoluteStorefrontSeoBaseUrl(),
 );
 // Layout appends the store name, so an unset homepage title is just the name.
-const homepageTitle = seo.homepageTitle || storeName || "Home";
+const homepageTitle = seo.homepageTitle || storeName || catalogCopy(pageLanguage()).breadcrumb.home;
 const homepageMetaDescription = seo.homepageMetaDescription || undefined;
-const homepageHeading = storeName || homepageTitle || "Shop";
+const homepageHeading = storeName || homepageTitle;
 
 const currencySymbol = layoutData?.currency?.symbol ?? DEFAULT_CURRENCY.symbol;
 const currencyCode = layoutData?.currency?.code ?? DEFAULT_CURRENCY.code;

@@ -22,9 +22,12 @@ import { getProductImageUrl, hasProductImage, PRODUCT_IMAGE_FALLBACK, productIma
 import { isVariantAvailable, resolveBuyerVariants } from "@/lib/product-sellable-variants";
 import { roundPriceToPrecision } from "@scalius/shared/price-utils";
 import { pagePath } from "@/lib/presence-url";
+import { pageLanguage } from "@/lib/store-time-zone";
+import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
 
 export default function ProductShortcode({ productData }: { productData: ProductPageData }) {
   const { product, media, variants } = productData;
+  const { productEmbed: copy, card: cardCopy, price: priceCopy } = storefrontCopy(storefrontLanguage(pageLanguage()));
   const images = useMemo(() => media.flatMap((item) => {
     if (item.kind === "image") {
       return [{ id: item.id, mediaId: item.mediaId, url: item.url, alt: item.altText, isPrimary: item.isPrimary }];
@@ -91,7 +94,7 @@ export default function ProductShortcode({ productData }: { productData: Product
   const add = async (redirect: boolean) => {
     if (adding) return;
     if (!matchingVariant || !isVariantAvailable(matchingVariant)) {
-      showToast(options.some((option) => !selection[option.id]) ? "Please select all required options." : "Selected combination is unavailable.", "error");
+      showToast(options.some((option) => !selection[option.id]) ? copy.chooseOptions : copy.unavailable, "error");
       return;
     }
     setAdding(true);
@@ -108,7 +111,7 @@ export default function ProductShortcode({ productData }: { productData: Product
       freeDelivery: product.freeDelivery,
       ...(matchingVariant.fulfillmentKind ? { fulfillmentKind: matchingVariant.fulfillmentKind } : {}),
     }).finally(() => setAdding(false));
-    if (!added) return showToast("This product option could not be added. Please refresh and try again.", "error");
+    if (!added) return showToast(copy.addFailed, "error");
     void import("@/lib/analytics").then(({ trackFbAddToCart }) => {
       trackFbAddToCart({
         content_ids: [matchingVariant.id], content_name: product.name, content_type: "product",
@@ -118,7 +121,7 @@ export default function ProductShortcode({ productData }: { productData: Product
     }).catch((error: unknown) => {
       console.error("Failed to track add to cart:", error);
     });
-    showToast("Added to cart successfully!", "success");
+    showToast(copy.added, "success");
     if (redirect) window.setTimeout(() => { window.location.href = pagePath("/cart"); }, 300);
     else {
       const addedLineKey = await cartLineKeyFor({ id: product.id, variantId: matchingVariant.id }).catch(() => undefined);
@@ -159,7 +162,7 @@ export default function ProductShortcode({ productData }: { productData: Product
         <div className="space-y-4">
           <h3 className="text-xl font-bold text-foreground sm:text-2xl">{product.name}</h3>
           <div className="flex items-center gap-3">
-            <span className="text-2xl font-bold text-destructive sm:text-3xl">{starting ? "From " : ""}{formatBuyerPrice(finalPrice)}</span>
+            <span className="text-2xl font-bold text-destructive sm:text-3xl">{starting ? priceCopy.from(formatBuyerPrice(finalPrice)) : formatBuyerPrice(finalPrice)}</span>
             {matchingVariant && presentation.pricing.hasDiscount ? <span className="text-lg text-muted-foreground line-through">{formatBuyerPrice(originalPrice)}</span> : null}
           </div>
           {options.map((option) => {
@@ -182,26 +185,26 @@ export default function ProductShortcode({ productData }: { productData: Product
             );
           })}
           <div className="flex items-center gap-4">
-            <h4 className="text-sm font-medium text-foreground">Quantity</h4>
+            <h4 className="text-sm font-medium text-foreground">{copy.quantity}</h4>
             <div className="flex items-center">
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setQuantity((value) => Math.max(1, value - 1))}><Minus className="h-4 w-4" /></Button>
-              <Input type="number" value={quantity} readOnly className="h-9 w-14 border-y-0 text-center" />
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setQuantity((value) => value + 1)}><Plus className="h-4 w-4" /></Button>
+              <Button variant="outline" size="icon" className="h-9 w-9" aria-label={copy.decrease} onClick={() => setQuantity((value) => Math.max(1, value - 1))}><Minus className="h-4 w-4" aria-hidden="true" /></Button>
+              <Input type="number" value={quantity} readOnly aria-label={copy.quantity} className="h-9 w-14 border-y-0 text-center" />
+              <Button variant="outline" size="icon" className="h-9 w-9" aria-label={copy.increase} onClick={() => setQuantity((value) => value + 1)}><Plus className="h-4 w-4" aria-hidden="true" /></Button>
             </div>
           </div>
           {needsProductPage ? (
             <div className="pt-2">
               <Button asChild size="lg" className="w-full">
-                <a href={pagePath(`/products/${encodeURIComponent(product.slug)}`)}>View product</a>
+                <a href={pagePath(`/products/${encodeURIComponent(product.slug)}`)}>{cardCopy.viewProduct}</a>
               </Button>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <Button variant="outline" size="lg" disabled={!canAdd || adding} onClick={() => void add(false)}><ShoppingCart className="me-2 h-4 w-4" />Add to Cart</Button>
-              <Button size="lg" disabled={isUnavailable || adding} onClick={() => void add(true)}><Check className="me-2 h-4 w-4" />Buy Now</Button>
+              <Button variant="outline" size="lg" disabled={!canAdd || adding} onClick={() => void add(false)}><ShoppingCart className="me-2 h-4 w-4" aria-hidden="true" />{cardCopy.addToCart}</Button>
+              <Button size="lg" disabled={isUnavailable || adding} onClick={() => void add(true)}><Check className="me-2 h-4 w-4" aria-hidden="true" />{copy.buyNow}</Button>
             </div>
           )}
-          {toast ? <div className={cn("rounded-md p-3 text-sm", toast.type === "success" ? "bg-primary/10 text-primary-ink" : "bg-destructive/10 text-destructive")}>{toast.msg}</div> : null}
+          {toast ? <div role={toast.type === "error" ? "alert" : "status"} className={cn("rounded-md p-3 text-sm", toast.type === "success" ? "bg-primary/10 text-primary-ink" : "bg-destructive/10 text-destructive")}>{toast.msg}</div> : null}
         </div>
       </div>
     </div>

@@ -5,6 +5,8 @@
 // on, product EMI-eligible, a plan applies to its price).
 import { formatMoney } from "@/lib/currency";
 import type { ProductEmiOffer } from "@/lib/api";
+import { catalogCopy } from "@/lib/catalog-copy";
+import { currentRequestTheme } from "@/lib/storefront-theme-context";
 
 interface Props {
   emi: ProductEmiOffer;
@@ -14,8 +16,7 @@ interface Props {
 
 const { emi, currencyCode, currencySymbol } = Astro.props;
 const monthly = formatMoney(emi.monthly, { code: currencyCode, symbol: currencySymbol });
+const copy = catalogCopy((await currentRequestTheme(Astro.locals)).language).product;
 ---
 
-<p class="mt-1 text-sm text-muted-foreground" data-product-emi>
-  EMI on card payment, from <span class="font-medium text-foreground">{monthly}</span>/month
-</p>
+<p class="mt-1 text-sm text-muted-foreground" data-product-emi>{copy.emi(monthly)}</p>

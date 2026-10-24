@@ -182,7 +182,7 @@ const singleCountry = policy.mode === "include" && policy.countries.length === 1
       autocomplete="tel"
       aria-required="true"
       aria-describedby={shownHelp ? "customerPhone-help customerPhone-error" : "customerPhone-error"}
-      placeholder={shownPlaceholder || "Phone number"}
+      placeholder={shownPlaceholder || label}
       class="h-full min-w-0 flex-1 border-none bg-transparent px-3 text-base text-foreground outline-none"
     />
   </div>

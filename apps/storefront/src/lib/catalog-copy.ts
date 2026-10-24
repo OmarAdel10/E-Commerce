@@ -185,6 +185,32 @@ export interface CatalogCopy {
     optionUnavailable: (option: string, value: string) => string;
     /** Announced when a value is chosen. */
     optionSelected: (value: string) => string;
+    /** Add to cart with a set of choices no SKU has. */
+    combinationUnavailable: string;
+    /** The tab list's scroll buttons and its landmark name. */
+    previousTabs: string;
+    moreTabs: string;
+    information: string;
+    brand: string;
+    /** "EMI on card payment, from ৳1,250/month" (`monthly` already formatted). */
+    emi: (monthly: string) => string;
+    compareSimilar: string;
+    compareThese: string;
+    storePolicies: string;
+    recentlyViewed: string;
+    /** Why a quick buy came back to the product page (`?error=`). */
+    quickBuy: {
+      productUnavailable: string;
+      variantRequired: string;
+      variantNotFound: string;
+      outOfStock: string;
+      invalidQuantity: string;
+      quantityUnavailable: string;
+      priceChanged: string;
+      purchaseOptionUnavailable: string;
+      validationUnavailable: string;
+      processingFailed: string;
+    };
   };
   delivery: {
     free: string;
@@ -364,6 +390,28 @@ const EN: CatalogCopy = {
     optionSoldOut: (option, value) => `${option}: ${value}. Sold out.`,
     optionUnavailable: (option, value) => `${option}: ${value}. Not available with the current selection.`,
     optionSelected: (value) => `${value} selected.`,
+    combinationUnavailable: "That combination of options isn't available.",
+    previousTabs: "Previous tabs",
+    moreTabs: "More tabs",
+    information: "Product information",
+    brand: "Brand",
+    emi: (monthly) => `EMI on card payment, from ${monthly}/month`,
+    compareSimilar: "Compare with similar items",
+    compareThese: "Compare these with this item",
+    storePolicies: "Store policies",
+    recentlyViewed: "Recently viewed",
+    quickBuy: {
+      productUnavailable: "This item is not available right now.",
+      variantRequired: "Please choose an available option before buying.",
+      variantNotFound: "That option is no longer available. Please choose another option.",
+      outOfStock: "This item is out of stock right now.",
+      invalidQuantity: "Please choose a valid quantity.",
+      quantityUnavailable: "The requested quantity is not available. Please lower the quantity.",
+      priceChanged: "This item's price changed. Please review it before buying.",
+      purchaseOptionUnavailable: "That way of buying this item is not offered any more. Please choose another.",
+      validationUnavailable: "We could not refresh this item. Please try again.",
+      processingFailed: "We could not prepare this item. Please try again.",
+    },
     sections: "Product sections",
     description: "Description",
     details: "Details",
@@ -551,6 +599,28 @@ const BN: CatalogCopy = {
     optionSoldOut: (option, value) => `${option}: ${value}। স্টক শেষ।`,
     optionUnavailable: (option, value) => `${option}: ${value}। এই বাছাইয়ের সাথে পাওয়া যাচ্ছে না।`,
     optionSelected: (value) => `${value} বাছাই করা হয়েছে।`,
+    combinationUnavailable: "এই অপশনগুলো একসাথে পাওয়া যায় না।",
+    previousTabs: "আগের ট্যাব",
+    moreTabs: "আরও ট্যাব",
+    information: "পণ্যের তথ্য",
+    brand: "ব্র্যান্ড",
+    emi: (monthly) => `কার্ডে পেমেন্টে ইএমআই, মাসে ${monthly} থেকে`,
+    compareSimilar: "একই ধরনের পণ্যের সাথে তুলনা করুন",
+    compareThese: "এগুলোর সাথে এই পণ্যটি তুলনা করুন",
+    storePolicies: "স্টোরের নীতিমালা",
+    recentlyViewed: "সম্প্রতি দেখা পণ্য",
+    quickBuy: {
+      productUnavailable: "এই পণ্যটি এখন পাওয়া যাচ্ছে না।",
+      variantRequired: "কেনার আগে পাওয়া যায় এমন একটি অপশন বেছে নিন।",
+      variantNotFound: "ওই অপশনটি আর পাওয়া যাচ্ছে না। অন্য একটি অপশন বেছে নিন।",
+      outOfStock: "এই পণ্যটি এখন স্টকে নেই।",
+      invalidQuantity: "সঠিক পরিমাণ বেছে নিন।",
+      quantityUnavailable: "এই পরিমাণ এখন পাওয়া যাচ্ছে না। পরিমাণ কমিয়ে দিন।",
+      priceChanged: "এই পণ্যের দাম বদলেছে। কেনার আগে দেখে নিন।",
+      purchaseOptionUnavailable: "এই পণ্যটি ওভাবে আর কেনা যায় না। অন্য একটি উপায় বেছে নিন।",
+      validationUnavailable: "পণ্যটির তথ্য হালনাগাদ করা যায়নি। আবার চেষ্টা করুন।",
+      processingFailed: "পণ্যটি প্রস্তুত করা যায়নি। আবার চেষ্টা করুন।",
+    },
     sections: "পণ্যের অংশ",
     description: "বিবরণ",
     details: "বিস্তারিত",

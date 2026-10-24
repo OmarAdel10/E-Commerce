@@ -4,11 +4,19 @@
 // and a floating "Compare (n)" link opens /compare with them. Without
 // JavaScript every "Add to Compare" is a plain link to the comparison of
 // that product. Rendered by each card that offers Compare and by the
-// compare page; Astro ships the script once per page.
+// compare page; Astro ships the script once per page. Its words are the
+// page's, handed to the script on a hidden element.
+import { currentRequestTheme } from "@/lib/storefront-theme-context";
+import { shopCopy } from "@/lib/storefront-shop-copy";
+
+const copy = shopCopy((await currentRequestTheme(Astro.locals)).language).compare;
 ---
+
+<span hidden data-compare-words data-tray={copy.tray("{count}")} data-add={copy.add} data-added={copy.added}></span>
 
 <script>
   import { logicalPathname, pagePath } from "@/lib/presence-url";
+  import { formatCount } from "@/lib/store-time-zone";
   const KEY = "scalius:compare";
   const MAX = 4;
   const ID = /^[A-Za-z0-9_-]{1,80}$/;
@@ -32,13 +40,14 @@
 
   let ids = read();
   let tray: HTMLAnchorElement | null = null;
+  const words = document.querySelector<HTMLElement>("[data-compare-words]")?.dataset ?? {};
 
   function sync() {
     for (const toggle of document.querySelectorAll<HTMLAnchorElement>("[data-compare-toggle]")) {
       const on = ids.includes(toggle.dataset.compareToggle ?? "");
       toggle.setAttribute("aria-pressed", String(on));
       const label = toggle.querySelector("[data-compare-label]");
-      if (label) label.textContent = on ? "Added to Compare" : "Add to Compare";
+      if (label) label.textContent = (on ? words.added : words.add) ?? "";
     }
     if (ids.length === 0 || logicalPathname(location.pathname) === "/compare") {
       tray?.remove();
@@ -52,7 +61,7 @@
       document.body.append(tray);
     }
     tray.href = pagePath(`/compare?ids=${ids.map(encodeURIComponent).join(",")}`);
-    tray.textContent = `Compare (${ids.length})`;
+    tray.textContent = (words.tray ?? "{count}").replace("{count}", formatCount(ids.length));
   }
 
   // The comparison page's own list becomes the tray's list.

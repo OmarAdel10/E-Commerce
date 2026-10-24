@@ -677,8 +677,9 @@ async function addSelected(redirect: boolean) {
       }),
     );
   }
+  // The page's words, never the check's: the sold-out word, or the one for a choice no SKU has.
   if (!validation.valid || !validation.variant)
-    return showError(validation.error || "That option combination is unavailable.");
+    return showError((validation.reason === "sold_out" ? cache.actions?.dataset.unavailableText : cache.actions?.dataset.combinationUnavailableText) ?? "");
   const inputs = state.buyerInputs?.validate() ?? null;
   if (inputs && !inputs.ok) return;
   const properties = inputs?.ok ? inputs.properties : [];
@@ -712,9 +713,10 @@ async function addSelected(redirect: boolean) {
     ...cartMedia,
     freeDelivery: cache.container.dataset.productFreeDelivery === "true",
   });
-  if (!cartData.valid || !cartData.data)
-    return showError(cartData.errors[0] || "Unable to add this product");
   let failureMessage = cache.actions?.dataset.cartAddFailedText ?? "";
+  // The line's own checks are a developer's words; the buyer reads the page's.
+  if (!cartData.valid || !cartData.data)
+    return showError(validation.variant.availabilityBand === "out_of_stock" ? cache.actions?.dataset.unavailableText ?? failureMessage : failureMessage);
   // An app's option (a subscription) is priced by the app: the line takes the store's price for it.
   const purchaseOption = selectedPurchaseOption();
   let price = cartData.data.price;

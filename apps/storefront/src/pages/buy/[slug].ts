@@ -9,6 +9,7 @@ import { validateCartItems, type CartValidationIssue } from "@/lib/api/orders";
 import type { CartItem, CartItemOption } from "@/store/cart";
 import type { ProductVariant } from "@/lib/api/types";
 import { escapeHtml } from "@scalius/shared/html-escape";
+import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
 import { resolveBuyerVariants } from "@/lib/product-sellable-variants";
 import { calculateVariantPrice } from "@/components/product/lib/pricing-engine";
 import {
@@ -363,17 +364,20 @@ async function quickBuy({
     );
     // Without JavaScript the line cannot reach the browser cart: it goes on
     // in the body of a form to the no-JavaScript checkout instead.
+    const language = storefrontLanguage(layoutData?.storefrontCopy?.languageCode);
+    const words = storefrontCopy(language).quickBuy;
     const noScriptCheckout = quickBuyNoScriptForm(
       { [`quick_buy:${cartItem.id}:${cartItem.variantId}`]: cartItem },
+      words.continue,
     );
 
     const html = `
       <!DOCTYPE html>
-      <html lang="en">
+      <html lang="${language}">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Adding to Cart...</title>
+        <title>${escapeHtml(words.title)}</title>
         <style>
           :root { --primary-color: #059669; /* Fallback primary color */ }
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f3f4f6; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 1rem; box-sizing: border-box; }
@@ -391,7 +395,7 @@ async function quickBuy({
         <div class="card">
           <img src="${escapeHtml(cartImageUrl)}" alt="${escapeHtml(cartItem.name)}" class="product-image">
           <p class="product-name">${escapeHtml(cartItem.name)}</p>
-          <p class="status-text" id="status-text">Adding to cart & preparing checkout...</p>
+          <p class="status-text" id="status-text">${escapeHtml(words.preparing)}</p>
           <div class="loader"><div class="loader-bar"></div></div>
           ${noScriptCheckout}
         </div>
@@ -410,7 +414,7 @@ async function quickBuy({
             console.error('Could not save quick-buy data to session storage.', e);
             const statusText = document.getElementById('status-text');
             if (statusText) {
-              statusText.textContent = 'Could not prepare quick buy. Returning to cart...';
+              statusText.textContent = ${serializeJsonForInlineScript(words.failed)};
             }
             setTimeout(() => {
               window.location.href = '${serverPagePath("/cart?quickBuyStorage=blocked")}';

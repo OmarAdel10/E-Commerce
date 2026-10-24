@@ -6,6 +6,7 @@ import {
 import type { PluginUiButton, PluginUiImageSource, PluginUiNode, PluginUiTarget } from "@scalius/shared/plugins/ui";
 import { formatNumber } from "@scalius/shared/locale-format";
 import { pagePath } from "@/lib/presence-url";
+import { checkoutLanguageBaseCode } from "@scalius/shared/checkout-language-format";
 import { buyerFieldModel } from "./field";
 import { isCartSlot, isCheckoutSlot, readBuyerAttributes, writeBuyerAttribute } from "./state";
 import { runBuyerUiAction, type RunnableAction } from "./actions";
@@ -17,7 +18,12 @@ export interface BuyerUiOptions {
   onChange?: () => void | Promise<void>;
 }
 
-const controlClass = "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/** An app's button whose action did not run, in the page's language (the only words this renderer owns). */
+const ACTION_FAILED = {
+  en: "This action could not be completed. Try again.",
+  bn: "কাজটি সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।",
+} as const;
+const controlClass ="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const toneClasses = {
   neutral: "border-border bg-muted/40", info: "border-border bg-muted/40",
   success: "border-green-200 bg-green-50 text-green-900", warning: "border-amber-200 bg-amber-50 text-amber-900",
@@ -115,7 +121,7 @@ function buttonNode(node: PluginUiButton, block: BuyerUiBlock, options: BuyerUiO
         if (result.message) status.textContent = result.message;
       }
       await options.onChange?.();
-    } catch { status.textContent = "This action could not be completed. Try again."; }
+    } catch { status.textContent = ACTION_FAILED[checkoutLanguageBaseCode(document.documentElement.lang) === "bn" ? "bn" : "en"]; }
     finally { button.disabled = false; }
   });
   wrap.append(button, status); return wrap;

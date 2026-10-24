@@ -42,6 +42,21 @@ export interface ShopCopy {
     /** The empty state when nothing can start one. */
     empty: string;
     continueShopping: string;
+    description: string;
+    /** The table's scroll region and its caption ("Specifications of A, B"). */
+    region: string;
+    caption: (names: string) => string;
+    remove: string;
+    /** A specification outside any group. */
+    other: string;
+    /** Read after a row whose values differ. */
+    differs: string;
+    notListed: string;
+    noSpecs: string;
+    /** The floating link to the comparison: "Compare (3)" (`count` in the page's digits). */
+    tray: (count: string) => string;
+    add: string;
+    added: string;
   };
   cart: {
     popularNow: string;
@@ -90,6 +105,17 @@ const EN: ShopCopy = {
     emptyHow: "Nothing to compare yet. Open a product and use its “Compare with similar items” section to see products side by side.",
     empty: "Nothing to compare yet.",
     continueShopping: "Continue shopping",
+    description: "Compare products side by side: prices and specifications.",
+    region: "Product comparison",
+    caption: (names) => `Specifications of ${names}`,
+    remove: "Remove",
+    other: "Other",
+    differs: "(differs)",
+    notListed: "Not listed",
+    noSpecs: "These products have no specifications listed yet.",
+    tray: (count) => `Compare (${count})`,
+    add: "Add to Compare",
+    added: "Added to Compare",
   },
   cart: {
     popularNow: "Popular now",
@@ -134,6 +160,17 @@ const BN: ShopCopy = {
     emptyHow: "এখনো তুলনা করার কিছু নেই। একটি পণ্য খুলে তার তুলনার অংশ থেকে পণ্যগুলো পাশাপাশি দেখুন।",
     empty: "এখনো তুলনা করার কিছু নেই।",
     continueShopping: "কেনাকাটা চালিয়ে যান",
+    description: "পণ্যগুলো পাশাপাশি তুলনা করুন: দাম ও স্পেসিফিকেশন।",
+    region: "পণ্যের তুলনা",
+    caption: (names) => `${names}-এর স্পেসিফিকেশন`,
+    remove: "সরান",
+    other: "অন্যান্য",
+    differs: "(আলাদা)",
+    notListed: "দেওয়া নেই",
+    noSpecs: "এই পণ্যগুলোর কোনো স্পেসিফিকেশন এখনো দেওয়া নেই।",
+    tray: (count) => `তুলনা (${count})`,
+    add: "তুলনায় যোগ করুন",
+    added: "তুলনায় যোগ হয়েছে",
   },
   cart: {
     popularNow: "এখন জনপ্রিয়",

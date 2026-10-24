@@ -16,6 +16,8 @@ import {
 import { loadPageWithLayout } from "@/lib/page-data";
 import { currentRequestTheme } from "@/lib/storefront-theme-context";
 import { shopCopy } from "@/lib/storefront-shop-copy";
+import { storefrontCopy } from "@/lib/storefront-copy";
+import { formatList } from "@scalius/shared/locale-words";
 import { buildAbsoluteStorefrontSeoUrl } from "@/lib/seo-base-url";
 import { storefrontDataUnavailableResponse } from "@/lib/storefront-unavailable-response";
 import { formatMoney } from "@/lib/currency";
@@ -33,6 +35,7 @@ if (!layoutData || !comparison) {
 
 const { resolved, language } = await currentRequestTheme(Astro.locals);
 const copy = shopCopy(language).compare;
+const words = storefrontCopy(language);
 // The empty state names the way in only where it exists: a product page that lists compare-similar.
 const canStartCompare = resolved.blocks.product.below.includes("compare-similar");
 
@@ -53,7 +56,7 @@ const photo = (product: CompareProduct) =>
 
 <Layout
   title={copy.title}
-  description="Compare products side by side: prices and specifications."
+  description={copy.description}
   layoutData={layoutData}
   canonicalUrl={canonicalUrl}
   noindex={true}
@@ -68,9 +71,9 @@ const photo = (product: CompareProduct) =>
           <a href="/" class="mt-3 inline-flex min-h-11 items-center text-primary underline underline-offset-4">{copy.continueShopping}</a>
         </div>
       ) : (
-        <div class="compare-scroll mt-6" role="region" aria-label="Product comparison" tabindex="0">
+        <div class="compare-scroll mt-6" role="region" aria-label={copy.region} tabindex="0">
           <table class="compare-table">
-            <caption class="sr-only">Specifications of {products.map((product) => product.name).join(", ")}</caption>
+            <caption class="sr-only">{copy.caption(formatList(products.map((product) => product.name), language))}</caption>
             <thead>
               <tr>
                 <td class="compare-label"></td>
@@ -98,23 +101,23 @@ const photo = (product: CompareProduct) =>
                       <a href={`/products/${product.slug}`} class="compare-name">{product.name}</a>
                       {product.brand && <span class="compare-brand">{product.brand.name}</span>}
                       <span class="compare-price">
-                        <span class="sr-only">{discounted ? "Sale price " : "Price "}</span>
-                        {product.priceVaries ? "From " : ""}{money(product.discountedPrice)}
-                        {discounted && <s class="compare-regular"><span class="sr-only">Regular price </span>{money(product.price)}</s>}
+                        <span class="sr-only">{discounted ? words.price.sale : words.price.price} </span>
+                        {product.priceVaries ? words.price.from(money(product.discountedPrice)) : money(product.discountedPrice)}
+                        {discounted && <s class="compare-regular"><span class="sr-only">{words.price.regular} </span>{money(product.price)}</s>}
                       </span>
                       {!product.availableForSale ? (
-                        <span class="compare-action compare-action-muted">Sold out</span>
+                        <span class="compare-action compare-action-muted">{words.stock.soldOut}</span>
                       ) : product.hasVariants ? (
                         <a href={`/products/${product.slug}`} class="compare-action compare-action-outline">
-                          Choose options<span class="sr-only">: {product.name}</span>
+                          {words.card.chooseOptions}<span class="sr-only">: {product.name}</span>
                         </a>
                       ) : (
                         <a href={`/buy/${encodeURIComponent(product.slug)}`} rel="nofollow" data-astro-prefetch="false" class="compare-action">
-                          Buy now<span class="sr-only">: {product.name}</span>
+                          {words.productEmbed.buyNow}<span class="sr-only">: {product.name}</span>
                         </a>
                       )}
                       <a href={withoutProduct(product.id)} rel="nofollow" class="compare-remove">
-                        Remove<span class="sr-only">: {product.name}</span>
+                        {copy.remove}<span class="sr-only">: {product.name}</span>
                       </a>
                     </th>
                   );
@@ -124,7 +127,7 @@ const photo = (product: CompareProduct) =>
             {groups.map((group) => (
               <tbody>
                 <tr class="compare-group">
-                  <th scope="rowgroup" colspan={products.length + 1}>{group.name ?? "Other"}</th>
+                  <th scope="rowgroup" colspan={products.length + 1}>{group.name ?? copy.other}</th>
                 </tr>
                 {group.rows.map((row) => {
                   const differs = products.length > 1 && compareRowDiffers(row.values);
@@ -132,11 +135,11 @@ const photo = (product: CompareProduct) =>
                     <tr class:list={["compare-row", differs && "compare-row-differs"]}>
                       <th scope="row" class="compare-label">
                         {row.name}
-                        {differs && <span class="sr-only"> (differs)</span>}
+                        {differs && <span class="sr-only"> {copy.differs}</span>}
                       </th>
                       {products.map((_, index) => {
                         const value = row.values[index]?.trim();
-                        return <td>{value || <span aria-label="Not listed">—</span>}</td>;
+                        return <td>{value || <span aria-label={copy.notListed}>—</span>}</td>;
                       })}
                     </tr>
                   );
@@ -145,7 +148,7 @@ const photo = (product: CompareProduct) =>
             ))}
           </table>
           {groups.length === 0 && (
-            <p class="mt-4 text-sm text-muted-foreground">These products have no specifications listed yet.</p>
+            <p class="mt-4 text-sm text-muted-foreground">{copy.noSpecs}</p>
           )}
         </div>
       )

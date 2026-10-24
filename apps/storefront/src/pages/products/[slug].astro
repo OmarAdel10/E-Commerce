@@ -61,6 +61,7 @@ import { resourceBindingContext } from "@/lib/setting-bindings";
 import { resolveProductPageTheme } from "@/components/product/lib/product-page-theme";
 import { storeContactLinks } from "@/lib/store-contact";
 import { shopCopy } from "@/lib/storefront-shop-copy";
+import { catalogCopy } from "@/lib/catalog-copy";
 import { galleryStageRatio } from "@/components/product/lib/gallery-images";
 import { productGalleryMainSlot } from "@/components/product/lib/gallery-images";
 import { featuredGalleryItem, productGalleryItems } from "@/components/product/lib/gallery-media";
@@ -143,6 +144,7 @@ const requestTheme = await resolveRequestTheme(Astro, layoutData, resourceBindin
 // The theme editor's preview marks the page's parts so a click selects them.
 const editorMarks = requestTheme.preview !== null;
 const shop = shopCopy(requestTheme.language);
+const productWords = catalogCopy(requestTheme.language).product;
 const templateData = await templateSectionData("product", requestTheme);
 const productTemplate = requestTheme.resolved.pages.templates.product;
 
@@ -268,18 +270,16 @@ const quickBuyNoticeByError: Record<string, string> = {
   customization_required: productPageCopy.customizationNeededText,
   customization_invalid: productPageCopy.customizationInvalidText,
   customization_unavailable: productPageCopy.customizationUnavailableText,
-  product_unavailable: "This item is not available right now.",
-  variant_required: "Please choose an available option before buying.",
-  variant_not_found:
-    "That option is no longer available. Please choose another option.",
-  out_of_stock: "This item is out of stock right now.",
-  invalid_quantity: "Please choose a valid quantity.",
-  quantity_unavailable:
-    "The requested quantity is not available. Please lower the quantity.",
-  price_changed: "This item's price changed. Please review it before buying.",
-  purchase_option_unavailable: "That way of buying this item is not offered any more. Please choose another.",
-  validation_unavailable: "We could not refresh this item. Please try again.",
-  processing_failed: "We could not prepare this item. Please try again.",
+  product_unavailable: productWords.quickBuy.productUnavailable,
+  variant_required: productWords.quickBuy.variantRequired,
+  variant_not_found: productWords.quickBuy.variantNotFound,
+  out_of_stock: productWords.quickBuy.outOfStock,
+  invalid_quantity: productWords.quickBuy.invalidQuantity,
+  quantity_unavailable: productWords.quickBuy.quantityUnavailable,
+  price_changed: productWords.quickBuy.priceChanged,
+  purchase_option_unavailable: productWords.quickBuy.purchaseOptionUnavailable,
+  validation_unavailable: productWords.quickBuy.validationUnavailable,
+  processing_failed: productWords.quickBuy.processingFailed,
 };
 const quickBuyNotice =
   quickBuyNoticeByError[Astro.url.searchParams.get("error") ?? ""] ?? null;
@@ -530,7 +530,7 @@ const productPageProjection = (): StorefrontProductPage => pageProjection ??= pr
   options: productOptions,
   url: productPath,
   breadcrumbs: [
-    { title: "Home", url: "/" },
+    { title: catalogCopy(requestTheme.language).breadcrumb.home, url: "/" },
     ...(productCategory ? [{ title: productCategory.name, url: productCategory.canonicalPath || `/categories/${encodeURIComponent(productCategory.slug)}` }] : []),
     { title: product.name, url: productPath },
   ],
@@ -694,7 +694,7 @@ const productJsonLd =
 
 // BreadcrumbList JSON-LD -- per SEO-02
 const breadcrumbItems = [
-  { "@type": "ListItem", position: 1, name: "Home", item: buildAbsoluteStorefrontSeoUrl("/") },
+  { "@type": "ListItem", position: 1, name: catalogCopy(requestTheme.language).breadcrumb.home, item: buildAbsoluteStorefrontSeoUrl("/") },
   ...(productCategory && productCategoryUrl
     ? [
         {
@@ -847,7 +847,7 @@ const productCategoryAnalytics = productCategory
         case "compare-similar":
           return (
             <ProductCompareSimilar
-              title="Compare with similar items"
+              title={productWords.compareSimilar}
               productId={product.id}
               products={similarProducts}
               currencySymbol={currencySymbol}
@@ -855,9 +855,9 @@ const productCategoryAnalytics = productCategory
             />
           );
         case "policies":
-          return <ProductPolicies title="Store policies" policies={storePolicies} />;
+          return <ProductPolicies title={productWords.storePolicies} policies={storePolicies} />;
         case "recently-viewed":
-          return <ProductRecentlyViewed title="Recently viewed" slug={product.slug} />;
+          return <ProductRecentlyViewed title={productWords.recentlyViewed} slug={product.slug} />;
         case "description":
           return (
             <ProductModule id="description">

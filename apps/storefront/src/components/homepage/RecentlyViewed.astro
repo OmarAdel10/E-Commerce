@@ -9,6 +9,8 @@
 import type { StorefrontSectionOf } from "@scalius/shared/storefront-theme";
 import { recentlyViewedRenderScript } from "@/lib/recently-viewed";
 import Container from "@/components/ui/Container.astro";
+import { catalogCopy } from "@/lib/catalog-copy";
+import { currentRequestTheme } from "@/lib/storefront-theme-context";
 
 interface Props {
   section: StorefrontSectionOf<"recently_viewed">;
@@ -17,7 +19,7 @@ interface Props {
 const { section } = Astro.props;
 const rootId = `home-${section.id}`;
 const headingId = `${rootId}-title`;
-const title = section.settings.title.trim() || "Recently viewed";
+const title = section.settings.title.trim() || catalogCopy((await currentRequestTheme(Astro.locals)).language).product.recentlyViewed;
 ---
 
 <section id={rootId} class="home-section w-full" aria-labelledby={headingId} hidden data-recently-viewed>

@@ -31,6 +31,7 @@ import { describeBuyGetOffer, describeBundleTiers } from "./lib/product-offers";
 import { moneyPlaces, pickBuyerInputCopy } from "./lib/buyer-inputs";
 import { specificationValue } from "./lib/product-page-modules";
 import { catalogCopy } from "@/lib/catalog-copy";
+import { shopCopy } from "@/lib/storefront-shop-copy";
 import { currentRequestTheme } from "@/lib/storefront-theme-context";
 import { getLayoutData } from "@/lib/api/storefront";
 import { getRuntime } from "@/lib/api/runtime";
@@ -90,26 +91,31 @@ const {
   actionCopy: providedCopy = {},
   fulfilmentBadge = null,
   look = CLASSIC_LOOK,
-  stockWords = { inStock: "In stock", lowStock: "Low stock" },
-  soldOutCopy = { note: "This item is sold out right now.", similar: "See similar items" },
+  stockWords: givenStockWords,
+  soldOutCopy: givenSoldOutCopy,
   details = true,
   detailsFeatures = true,
   title = true,
 } = Astro.props;
 
+const { language } = await currentRequestTheme(Astro.locals);
+const catalogWords = catalogCopy(language).product;
+// The store's words unless the page passed its own.
+const shopWords = shopCopy(language).product;
+const stockWords = givenStockWords ?? shopWords.stock;
+const soldOutCopy = givenSoldOutCopy ?? { note: shopWords.soldOutNote, similar: shopWords.seeSimilar };
 const factsColumn = look.facts === "column";
 const savedFacts = (product.attributes ?? []).filter((row) => row.name.trim() && row.value.trim() && row.name.trim().toLowerCase() !== "brand");
 const savedBrand = product.brand?.name?.trim();
 const compactFacts = factsColumn
   ? [
-      ...(savedBrand ? [{ name: "Brand", value: savedBrand, unit: null }] : []),
+      ...(savedBrand ? [{ name: catalogWords.brand, value: savedBrand, unit: null }] : []),
       ...savedFacts.filter((row) => row.keySpec),
       ...savedFacts.filter((row) => !row.keySpec),
     ].slice(0, 5)
   : [];
 
 const pageCopy: CheckoutLanguageData = { ...ENGLISH_CHECKOUT_LANGUAGE_DATA, ...providedCopy };
-const catalogWords = catalogCopy((await currentRequestTheme(Astro.locals)).language).product;
 const actionCopy: ProductActionCopy = pageCopy;
 const formatPrice = (price: number) => formatMoney(price, { code: currencyCode, symbol: currencySymbol });
 
@@ -271,6 +277,7 @@ function optionAriaLabel(
       data-add-to-cart-text={actionCopy.addToCartText}
       data-buy-now-text={actionCopy.buyNowText}
       data-unavailable-text={actionCopy.unavailableText}
+      data-combination-unavailable-text={catalogWords.combinationUnavailable}
       data-choose-option-text={actionCopy.chooseOptionText}
       data-quantity-limit-text={actionCopy.quantityLimitText}
       data-cart-add-failed-text={pageCopy.quickBuyFailedText}

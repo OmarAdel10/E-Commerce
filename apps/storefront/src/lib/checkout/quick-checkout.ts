@@ -83,13 +83,13 @@ function id(form: FormData, name: string): string {
  * form, on to this checkout. With scripts on it is inert and the page's
  * script adds the line to the cart as before.
  */
-export function quickBuyNoScriptForm(cartItems: Record<string, unknown>): string {
+export function quickBuyNoScriptForm(cartItems: Record<string, unknown>, continueLabel: string): string {
   return `<noscript>
           <style>.loader, #status-text { display: none; }</style>
           <form method="post" action="${QUICK_CHECKOUT_PATH}">
             <input type="hidden" name="cartItems" value="${escapeHtml(JSON.stringify(cartItems))}">
             <input type="hidden" name="checkoutId" value="${newQuickCheckoutId()}">
-            <button type="submit" style="width:100%;min-height:44px;border:0;border-radius:0.5rem;background:#111827;color:#fff;font:inherit;font-weight:600;cursor:pointer">Continue to checkout</button>
+            <button type="submit" style="width:100%;min-height:44px;border:0;border-radius:0.5rem;background:#111827;color:#fff;font:inherit;font-weight:600;cursor:pointer">${escapeHtml(continueLabel)}</button>
           </form>
         </noscript>`;
 }
