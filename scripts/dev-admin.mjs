@@ -18,6 +18,7 @@ import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { DEV_PORT_ENV, devOrigins, readDevPorts, syncLocalPlatform } from "./dev-ports.mjs";
+import { localAuthResetSql } from "./dev-admin-reset.mjs";
 import {
   assertLocalUrl,
   assertPassword,
@@ -336,16 +337,7 @@ async function requestJson(method, path, body) {
 
 function resetLocalAuthTables() {
   const dbName = readLocalD1DatabaseName();
-  const sql = [
-    "DELETE FROM admin_fcm_tokens",
-    "DELETE FROM session",
-    "DELETE FROM account",
-    "DELETE FROM verification",
-    "DELETE FROM two_factor",
-    "DELETE FROM user_roles",
-    "DELETE FROM user_permissions",
-    'DELETE FROM "user"',
-  ].join("; ");
+  const sql = localAuthResetSql();
 
   console.log(`Resetting local auth tables in D1 database "${dbName}"...`);
   execFileSync(
