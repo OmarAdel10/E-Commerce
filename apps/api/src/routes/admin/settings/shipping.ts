@@ -351,7 +351,8 @@ const profileSchema = z.object({
     freeDelivery: z.boolean(),
     defaultWeightGrams: z.number().int().nullable(),
     revision: z.number().int(),
-    productCount: z.number().int(),
+    productCount: z.number().int().openapi({ description: "Live products in the profile that ship: a physical SKU, never a gift card." }),
+    unweighedProductCount: z.number().int().openapi({ description: "Of those, products with a physical SKU without a weight: they weigh the profile's default weight, else the store's, else 0 g." }),
     rates: z.array(z.object({
         id: z.string(),
         methodId: z.string(),

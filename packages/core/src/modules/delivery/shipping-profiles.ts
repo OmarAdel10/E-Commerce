@@ -5,9 +5,11 @@
  * profile is in it. A profile is free (its products ship free on every
  * delivery option; fixed at creation) or priced: behind each delivery
  * option it can have its own rates, each with an optional weight band,
- * order-value band and free-over amount. Without its own rates behind an
- * option, a profile's products are priced with the default profile's. The
- * pricing rule itself is `priceDeliveryOption` (profile-pricing.ts).
+ * order-value band and free-over amount. The default profile has none: its
+ * price is each option's own fee and free-over amount, set in the zone.
+ * Without its own rates behind an option, a profile's products are priced
+ * with the default profile's. The pricing rule itself is
+ * `priceDeliveryOption` (profile-pricing.ts).
  */
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -15,6 +17,7 @@ import { nanoid } from "nanoid";
 import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import {
     DEFAULT_SHIPPING_PROFILE_ID,
+    productVariants,
     products,
     shippingMethods,
     shippingProfileRates,
@@ -57,9 +60,19 @@ export interface ShippingProfileView {
     freeDelivery: boolean;
     defaultWeightGrams: number | null;
     revision: number;
-    /** Live products in the profile (the default profile: every product without one). */
+    /**
+     * Live products in the profile that ship (a physical SKU, never a gift
+     * card); the default profile: every such product without one.
+     */
     productCount: number;
+    /** Of those, products with a physical SKU without a weight (they weigh the default weight, else 0 g). */
+    unweighedProductCount: number;
     rates: ShippingProfileRateView[];
+}
+
+/** A live physical SKU of the product the outer statement reads (`extra`: more conditions). */
+function shippedSkus(extra: ReturnType<typeof sql>) {
+    return sql`SELECT 1 FROM ${productVariants} WHERE ${productVariants.productId} = ${products.id} AND ${productVariants.deletedAt} IS NULL AND ${productVariants.fulfillmentKind} = 'physical' ${extra}`;
 }
 
 export async function listShippingProfiles(db: Database, decimalPlaces: number): Promise<ShippingProfileView[]> {
@@ -69,9 +82,13 @@ export async function listShippingProfiles(db: Database, decimalPlaces: number):
             .innerJoin(shippingMethods, eq(shippingMethods.id, shippingProfileRates.methodId))
             .where(isNull(shippingMethods.deletedAt))
             .orderBy(asc(shippingProfileRates.sortOrder), asc(shippingProfileRates.id)),
-        db.select({ profileId: sql<string>`coalesce(${products.shippingProfileId}, ${DEFAULT_SHIPPING_PROFILE_ID})`, count: sql<number>`count(*)` })
+        db.select({
+            profileId: sql<string>`coalesce(${products.shippingProfileId}, ${DEFAULT_SHIPPING_PROFILE_ID})`,
+            count: sql<number>`count(*)`,
+            unweighed: sql<number>`sum(CASE WHEN EXISTS (${shippedSkus(sql`AND ${productVariants.weight} IS NULL`)}) THEN 1 ELSE 0 END)`,
+        })
             .from(products)
-            .where(isNull(products.deletedAt))
+            .where(and(isNull(products.deletedAt), eq(products.isGiftCard, false), sql`EXISTS (${shippedSkus(sql``)})`))
             .groupBy(sql`coalesce(${products.shippingProfileId}, ${DEFAULT_SHIPPING_PROFILE_ID})`),
     ]);
     const money = (minor: number | null) => (minor === null ? null : fromMinor(minor, decimalPlaces));
@@ -83,6 +100,7 @@ export async function listShippingProfiles(db: Database, decimalPlaces: number):
         defaultWeightGrams: profile.defaultWeightGrams ?? null,
         revision: profile.revision,
         productCount: Number(counts.find((row) => row.profileId === profile.id)?.count ?? 0),
+        unweighedProductCount: Number(counts.find((row) => row.profileId === profile.id)?.unweighed ?? 0),
         rates: rates
             .filter((row) => row.shipping_profile_rates.profileId === profile.id)
             .map(({ shipping_profile_rates: rate }) => ({
@@ -262,6 +280,9 @@ export async function updateShippingProfile(
     const defaultWeightGrams = gramsOf(input.defaultWeightGrams, ["defaultWeightGrams"], issues);
     const rates = parseRates(input.rates ?? [], currency, issues);
     if (current.freeDelivery && rates.length > 0) issues.push({ path: ["rates"], message: "A free delivery profile has no rates: its products ship free." });
+    if (id === DEFAULT_SHIPPING_PROFILE_ID && rates.length > 0) {
+        issues.push({ path: ["rates"], message: "General's charge on each delivery option is the option's own charge. Set it in the shipping zone, or give the products that ship differently a profile." });
+    }
     throwIssues(issues);
     await assertLiveMethods(db, rates.map((rate) => rate.methodId));
     try {

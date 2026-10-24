@@ -69,8 +69,8 @@ export const BANDED_RATE_SOURCE = "banded";
 
 /**
  * The options as one product's shipping profile pays them (the checkout's
- * rule): its profile's own rates behind an option, else the default
- * profile's, else the option's fee. One unconditioned rate is a plain fee; a
+ * rule): its profile's own rates behind an option, else the option's fee
+ * (the default profile's price). One unconditioned rate is a plain fee; a
  * price that depends on weight or order value is stated like a calculated
  * one (`BANDED_RATE_SOURCE`), never as a fee that may not apply.
  */
@@ -82,8 +82,7 @@ export function shippingMethodsForProfile(
   const profile = profileId || DEFAULT_SHIPPING_PROFILE_ID;
   return shippingMethods.map((method) => {
     const rates = method.profileRates ?? [];
-    const own = rates.filter((rate) => rate.profileId === profile);
-    const applying = own.length > 0 ? own : rates.filter((rate) => rate.profileId === DEFAULT_SHIPPING_PROFILE_ID);
+    const applying = profile === DEFAULT_SHIPPING_PROFILE_ID ? [] : rates.filter((rate) => rate.profileId === profile);
     if (applying.length === 0) return method;
     const [only] = applying;
     const plain = applying.length === 1 && only!.minWeightGrams === null && only!.maxWeightGrams === null

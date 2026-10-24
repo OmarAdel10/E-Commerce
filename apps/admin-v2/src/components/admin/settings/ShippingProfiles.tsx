@@ -1,11 +1,13 @@
 // Settings → Shipping → Shipping profiles (rules/decisions/2026-10-24-shipping-profiles.md).
 // Each profile shows its products and what they pay behind each delivery
-// option: the zone's charge (General), General's (a profile without its own),
-// its own charges with weight and order-value bands, or free on every option.
+// option: the zone's charge (General, which has no charges of its own),
+// General's (a profile without its own), its own charges with weight and
+// order-value bands, or free on every option.
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "~/lib/toast";
+import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { ChoiceField } from "~/components/ui/field";
@@ -66,6 +68,16 @@ function deliveryOptions(zones: DeliveryZones, t: Messages): DeliveryOption[] {
     ...zones.zones.flatMap((zone) => zone.rates.map((rate) => option(zone.name, rate))),
     ...zones.pickup.rates.map((rate) => option(t("pickupTitle"), rate)),
   ];
+}
+
+/** An option's own charge, General's price: "৳60 · free when General's products total ৳3,000". */
+function useZoneChargeWords() {
+  const t = useMessages(shippingMessages);
+  const { fmt } = useCurrency();
+  return (option: DeliveryOption) => [
+    option.calculated ? t("calculatedCharge") : option.fee === 0 ? t("free") : fmt(option.fee),
+    option.freeOver === null || option.calculated ? null : t("profileZoneFreeOver", { amount: fmt(option.freeOver) }),
+  ].filter(Boolean).join(" · ");
 }
 
 function useRefreshProfiles() {
@@ -191,10 +203,16 @@ export function profileBody(draft: ProfileDraft) {
   };
 }
 
-function ProfileForm({ profile, options }: { profile: ShippingProfile | null; options: DeliveryOption[] }) {
+function ProfileForm({ profile, options, storeWeightGrams }: {
+  profile: ShippingProfile | null;
+  options: DeliveryOption[];
+  /** General's default weight: an unweighed product of another profile weighs it. */
+  storeWeightGrams: number | null;
+}) {
   const t = useMessages(shippingMessages);
   const common = useMessages(settingsMessages);
-  const { fmt, symbol } = useCurrency();
+  const { symbol } = useCurrency();
+  const zoneCharge = useZoneChargeWords();
   const wholeTaka = useWholeUnitPrices();
   const refresh = useRefreshProfiles();
   const [saved] = useState(() => toDraft(profile));
@@ -218,6 +236,12 @@ function ProfileForm({ profile, options }: { profile: ShippingProfile | null; op
     },
     onError: () => toast.error(common("saveFailed")),
   });
+  // Unweighed products weigh nothing in a weight charge when no default weight applies (QA D12).
+  const weighs = draft.rates.some((rate) => rate.minWeightGrams !== null || rate.maxWeightGrams !== null);
+  const unweighed = profile?.unweighedProductCount ?? 0;
+  const unweighedWarning = weighs && unweighed > 0 && draft.defaultWeightGrams === null && storeWeightGrams === null
+    ? t("profileUnweighedWarning", { count: unweighed })
+    : null;
   const update = (key: string, patch: Partial<RateDraft>) =>
     setDraft((current) => ({ ...current, rates: current.rates.map((rate) => (rate.key === key ? { ...rate, ...patch } : rate)) }));
   useSaveBar({
@@ -274,23 +298,38 @@ function ProfileForm({ profile, options }: { profile: ShippingProfile | null; op
       >
         <WeightInput id="profile-weight" className="sm:max-w-48" grams={draft.defaultWeightGrams} onGramsChange={(grams) => setDraft({ ...draft, defaultWeightGrams: grams })} />
       </SettingsField>
-      {draft.freeDelivery ? null : (
+      {isDefault ? (
+        // General's price is each option's own charge, set in the zone: one place states it (QA D4).
+        <section className="space-y-3 border-t border-border pt-4">
+          <div className="space-y-1">
+            <h3 className="text-heading-sm">{t("profileRatesTitle")}</h3>
+            <p className="text-body text-muted-foreground">{t("profileGeneralRatesHelp")}</p>
+          </div>
+          <ul className="space-y-1 text-body">
+            {options.map((option) => (
+              <li key={option.id}>{t("profileOptionCharge", { option: option.label, charge: zoneCharge(option) })}</li>
+            ))}
+          </ul>
+        </section>
+      ) : draft.freeDelivery ? null : (
         <section className="space-y-4 border-t border-border pt-4">
           <div className="space-y-1">
             <h3 className="text-heading-sm">{t("profileRatesTitle")}</h3>
             <p className="text-body text-muted-foreground">{t("profileRatesHelp")}</p>
           </div>
+          {unweighedWarning ? (
+            <Alert variant="warning" role="note">
+              <AlertDescription>{unweighedWarning}</AlertDescription>
+            </Alert>
+          ) : null}
           {options.map((option) => {
             const rates = draft.rates.filter((rate) => rate.methodId === option.id);
             return (
               <fieldset key={option.id} className="space-y-3 border-t border-border pt-4 first-of-type:border-t-0 first-of-type:pt-0">
                 <legend className="text-body font-medium">{option.label}</legend>
                 {rates.length === 0 ? (
-                  <p className="text-body text-muted-foreground">
-                    {isDefault
-                      ? t("profileOptionDefault", { fee: option.calculated ? t("calculatedCharge") : option.fee === 0 ? t("free") : fmt(option.fee) })
-                      : t("profileOptionSame")}
-                  </p>
+                  // General's charge here has no weight limit: a cart of any weight can use the option (QA D6).
+                  <p className="text-body text-muted-foreground">{t("profileOptionSame", { charge: zoneCharge(option) })}</p>
                 ) : null}
                 {rates.map((rate) => (
                   <div key={rate.key} className="space-y-3 rounded-lg border border-border p-3">
@@ -359,6 +398,8 @@ export function ShippingProfilesCard() {
   if (profiles.isError) return <SettingsLoadFailure title={t("loadProfiles")} onRetry={profiles.refetch} />;
   if (!profiles.data || !zones.data) return <SettingsCardLoading />;
   const list = profiles.data;
+  const storeWeightGrams = list.find((profile) => profile.isDefault)?.defaultWeightGrams ?? null;
+  const optionLabel = (methodId: string) => options.find((option) => option.id === methodId)?.label ?? "";
   const summary = (profile: ShippingProfile) => {
     const products = profile.isDefault ? t("profileDefaultProducts") : t("profileProducts", { count: profile.productCount });
     const live = profile.rates.filter((rate) => options.some((option) => option.id === rate.methodId));
@@ -367,7 +408,8 @@ export function ShippingProfilesCard() {
       : live.length === 0
         ? t(profile.isDefault ? "profileZoneRates" : "profileSameAsDefault")
         : live.length <= 2
-          ? live.map(words).join(" · ")
+          // Each charge names its delivery option (QA D11).
+          ? live.map((rate) => t("profileOptionCharge", { option: optionLabel(rate.methodId), charge: words(rate) })).join(" · ")
           : t("profileOwnRates", { count: new Set(live.map((rate) => rate.methodId)).size });
     return `${products} · ${charges}`;
   };
@@ -378,14 +420,14 @@ export function ShippingProfilesCard() {
       description={list.length > 1 ? t("profilesDescription") : t("profilesOne")}
       action={
         <SettingsDialog layout={settingsSheet} title={t("addProfile")} trigger={<Button type="button" variant="outline" size="sm" disabled={!canEdit}>{t("addProfile")}</Button>}>
-          <ProfileForm profile={null} options={options} />
+          <ProfileForm profile={null} options={options} storeWeightGrams={storeWeightGrams} />
         </SettingsDialog>
       }
       rows={list.map((profile) => (
         <SettingsDialog layout={settingsSheet} key={profile.id} title={t("editProfile", { name: profile.name })} trigger={
           <SettingsRow disabled={!canEdit} label={profile.name} value={summary(profile)} />
         }>
-          <ProfileForm profile={profile} options={options} />
+          <ProfileForm profile={profile} options={options} storeWeightGrams={storeWeightGrams} />
         </SettingsDialog>
       ))}
     />

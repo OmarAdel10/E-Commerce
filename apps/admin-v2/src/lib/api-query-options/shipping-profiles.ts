@@ -27,6 +27,7 @@ export interface ShippingProfile {
   defaultWeightGrams: number | null;
   revision: number;
   productCount: number;
+  unweighedProductCount: number;
   rates: ShippingProfileRate[];
 }
 

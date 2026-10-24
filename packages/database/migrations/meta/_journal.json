@@ -1315,7 +1315,7 @@
       "idx": 187,
       "version": "6",
       "when": 1792760000000,
-      "tag": "0187_free_shipping_effect_config",
+      "tag": "0187_shipping_profile_followups",
       "breakpoints": true
     }
   ]

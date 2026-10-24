@@ -6,8 +6,9 @@
  * - a free profile's lines ship free and price nothing;
  * - a profile with its own rates behind the option is priced by them;
  * - every other line (the default profile's, and a profile without rates
- *   behind the option) is priced with the default profile: its rates behind
- *   the option, else the option's own fee and free-over amount.
+ *   behind the option) is priced with the default profile, whose price is
+ *   the option's own fee and free-over amount: the default profile has no
+ *   rates of its own (a row of it is ignored), so the zone states it once.
  * A group's weight band, order-value band and free-over amount count only
  * its own lines. The cheapest rate whose bands hold applies; a group whose
  * rates all miss leaves the option unavailable for the cart. The charge is
@@ -111,12 +112,8 @@ export function deliveryOptionGroups(
     return groups;
 }
 
-/**
- * The lines the option's own fee prices: a carrier option quotes this parcel
- * (empty when the default profile has its own rates behind the option).
- */
+/** The lines the option's own fee prices (the default group): a carrier option quotes this parcel. */
 export function deliveryOptionBaseLines(option: Pick<PricedDeliveryOption, "profileRates">, lines: readonly ShippingLine[]): ShippingLine[] {
-    if ((option.profileRates ?? []).some((rate) => rate.profileId === DEFAULT_SHIPPING_PROFILE_ID)) return [];
     return deliveryOptionGroups(option, lines).get(DEFAULT_SHIPPING_PROFILE_ID) ?? [];
 }
 
@@ -124,7 +121,7 @@ export function deliveryOptionBaseLines(option: Pick<PricedDeliveryOption, "prof
 export function priceDeliveryOption(option: PricedDeliveryOption, lines: readonly ShippingLine[]): DeliveryOptionCharge | null {
     const profileRates = option.profileRates ?? [];
     const ratesOf = (profileId: string): readonly ProfileRateRow[] => {
-        const own = profileRates.filter((rate) => rate.profileId === profileId);
+        const own = profileId === DEFAULT_SHIPPING_PROFILE_ID ? [] : profileRates.filter((rate) => rate.profileId === profileId);
         return own.length > 0
             ? own
             : [{ profileId, feeMinor: option.feeMinor, freeOverMinor: option.freeOverMinor, minWeightGrams: null, maxWeightGrams: null, minSubtotalMinor: null, maxSubtotalMinor: null }];

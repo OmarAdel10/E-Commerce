@@ -23,7 +23,7 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 
 export const CURRENT_DATABASE_SCHEMA = {
   version: 187,
-  name: "0187_free_shipping_effect_config",
+  name: "0187_shipping_profile_followups",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -714,8 +714,8 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   },
   {
     version: 187,
-    name: "0187_free_shipping_effect_config",
-    sourceSha256: "6b15c29efd1f41b8ebb4c69e549c09ef670171f9c76fdf37c7d1546c2c9f3f21",
+    name: "0187_shipping_profile_followups",
+    sourceSha256: "0f6f1000ab108d84a7347bfbd9a3a861479267453eb056e24823305bd1c5f4f4",
   },
 ] as const;
 
