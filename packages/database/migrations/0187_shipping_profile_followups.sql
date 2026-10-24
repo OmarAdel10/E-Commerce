@@ -237,10 +237,7 @@ BEGIN
   ON CONFLICT (`dep`) DO UPDATE SET `seq` = excluded.`seq`;
 END;
 --> statement-breakpoint
-<<<<<<<< HEAD:packages/database/migrations/0187_free_shipping_effect_config.sql
-INSERT INTO scalius_schema_migrations (version, name, source_sha256) VALUES (187, '0187_free_shipping_effect_config', '6b15c29efd1f41b8ebb4c69e549c09ef670171f9c76fdf37c7d1546c2c9f3f21');
-========
 -- The default profile (General) has no rates of its own: its price is each option's own fee.
 DELETE FROM `shipping_profile_rates` WHERE `profile_id` = 'shp_default';
 --> statement-breakpoint
-INSERT INTO scalius_schema_migrations (version, name, source_sha256) VALUES (187, '0187_shipping_profile_followups', '0f6f1000ab108d84a7347bfbd9a3a861479267453eb056e24823305bd1c5f4f4');
+INSERT INTO scalius_schema_migrations (version, name, source_sha256) VALUES (187, '0187_shipping_profile_followups', '215c9898bbaf4ca050d081ca131fdba9fb7480c916e411edcff30d14ee2909dc');

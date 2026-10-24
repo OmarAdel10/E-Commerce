@@ -715,7 +715,7 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   {
     version: 187,
     name: "0187_shipping_profile_followups",
-    sourceSha256: "0f6f1000ab108d84a7347bfbd9a3a861479267453eb056e24823305bd1c5f4f4",
+    sourceSha256: "215c9898bbaf4ca050d081ca131fdba9fb7480c916e411edcff30d14ee2909dc",
   },
 ] as const;
 
