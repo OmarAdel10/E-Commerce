@@ -1,8 +1,9 @@
 // The product list's bulk editor: the selected products and their SKUs in one
 // read, with what the editor changes (status, price and compare-at price of a
-// product without options, on-hand at the default location) and the revisions
-// its writes are checked against. Writes go through the existing guarded
-// routes (the base section, inventory set-stock), never a second write path.
+// product without options, shipping profile, each shipped SKU's weight, on-hand
+// at the default location) and the revisions its writes are checked against.
+// Writes go through the existing guarded routes (the base section, the SKU
+// patch, inventory set-stock), never a second write path.
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { inventoryLevels, inventoryLocations, products, productVariants } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
@@ -20,6 +21,10 @@ export interface ProductBulkEditSku {
     trackInventory: boolean;
     /** On hand at the default location (where editor quantities are booked); null when not tracked. */
     onHand: number | null;
+    /** A physical SKU: it ships, so it has a weight. */
+    ships: boolean;
+    /** Grams; null: no weight (it weighs its profile's default weight, else the store's, else 0 g). */
+    weightGrams: number | null;
 }
 
 export interface ProductBulkEditRow {
@@ -34,6 +39,8 @@ export interface ProductBulkEditRow {
     discountAmount: number;
     /** Options make prices per variant (edited on the product page). */
     hasOptions: boolean;
+    /** The product's shipping profile; null: the default (General). */
+    shippingProfileId: string | null;
     skus: ProductBulkEditSku[];
 }
 
@@ -50,6 +57,7 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
             discountType: products.discountType,
             discountBps: products.discountBps,
             discountAmountMinor: products.discountAmountMinor,
+            shippingProfileId: products.shippingProfileId,
         }).from(products).where(and(inArray(products.id, lookup), isNull(products.deletedAt))),
         db.select({
             id: productVariants.id,
@@ -62,6 +70,8 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
                 JOIN ${inventoryLocations} ON ${inventoryLocations.id} = ${inventoryLevels.locationId}
                 WHERE ${inventoryLevels.variantId} = ${productVariants.id} AND ${inventoryLocations.isDefault} = 1)`,
             stock: productVariants.stock,
+            weight: productVariants.weight,
+            fulfillmentKind: productVariants.fulfillmentKind,
         }).from(productVariants)
             .where(and(inArray(productVariants.productId, lookup), isNull(productVariants.deletedAt)))
             .orderBy(asc(productVariants.productId), asc(productVariants.createdAt), asc(productVariants.id)),
@@ -79,6 +89,8 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
             trackInventory: row.trackInventory,
             // A store that never split stock by location keeps it on the SKU row.
             onHand: row.trackInventory ? row.onHand ?? row.stock : null,
+            ships: row.fulfillmentKind === "physical",
+            weightGrams: row.weight ?? null,
         });
         skusByProduct.set(row.productId, list);
     }
@@ -93,6 +105,7 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
         discountPercentage: (row.discountBps ?? 0) / 100,
         discountAmount: fromMinor(row.discountAmountMinor ?? 0, decimalPlaces),
         hasOptions: optioned.has(row.id),
+        shippingProfileId: row.shippingProfileId ?? null,
         skus: (skusByProduct.get(row.id) ?? []).filter((sku) => !optioned.has(row.id) || sku.label !== null),
     })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }

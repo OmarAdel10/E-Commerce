@@ -595,6 +595,8 @@ const bulkEditSkuSchema = z.object({
     sku: z.string(),
     trackInventory: z.boolean(),
     onHand: z.number().int().nullable().openapi({ description: "On hand at the default location; null when not tracked." }),
+    ships: z.boolean().openapi({ description: "A physical SKU: it ships and has a weight." }),
+    weightGrams: z.number().nullable().openapi({ description: "Grams; null: no weight. Save with dashboard.resources.variants.update." }),
 });
 
 const bulkEditReadRoute = createRoute({
@@ -603,7 +605,7 @@ const bulkEditReadRoute = createRoute({
     operationId: "dashboard.products.bulk_edit_read",
     tags: ["Admin - Products"],
     summary: "Read selected products and their SKUs for the bulk editor",
-    description: `Status, price, compare-at price and per-SKU on-hand of at most ${PRODUCT_BULK_EDIT_MAX} products, with each product's aggregateRevision. Save with dashboard.products.update_section (base) and dashboard.inventory.set_stock.`,
+    description: `Status, price, compare-at price, shipping profile, per-SKU weight and on-hand of at most ${PRODUCT_BULK_EDIT_MAX} products, with each product's aggregateRevision. Save with dashboard.products.update_section (base), dashboard.resources.variants.update (weight) and dashboard.inventory.set_stock.`,
     request: {
         query: z.object({
             ids: z.string().max(PRODUCT_BULK_EDIT_MAX * 64).openapi({ description: `Comma-separated product IDs (at most ${PRODUCT_BULK_EDIT_MAX}).` }),
@@ -623,6 +625,7 @@ const bulkEditReadRoute = createRoute({
                     discountPercentage: z.number(),
                     discountAmount: z.number(),
                     hasOptions: z.boolean(),
+                    shippingProfileId: z.string().nullable().openapi({ description: "Null: the default profile (General). Save with the base section." }),
                     skus: z.array(bulkEditSkuSchema),
                 })),
             })) } },

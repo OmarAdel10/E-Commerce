@@ -63424,6 +63424,10 @@ export type GetApiV1AdminProductsBulkEditResponses = {
                 discountPercentage: number;
                 discountAmount: number;
                 hasOptions: boolean;
+                /**
+                 * Null: the default profile (General). Save with the base section.
+                 */
+                shippingProfileId: string | null;
                 skus: Array<{
                     id: string;
                     label: string | null;
@@ -63433,6 +63437,14 @@ export type GetApiV1AdminProductsBulkEditResponses = {
                      * On hand at the default location; null when not tracked.
                      */
                     onHand: number | null;
+                    /**
+                     * A physical SKU: it ships and has a weight.
+                     */
+                    ships: boolean;
+                    /**
+                     * Grams; null: no weight. Save with dashboard.resources.variants.update.
+                     */
+                    weightGrams: number | null;
                 }>;
             }>;
         };

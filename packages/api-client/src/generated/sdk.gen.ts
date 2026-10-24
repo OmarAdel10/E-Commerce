@@ -6555,7 +6555,7 @@ export const getApiV1AdminProductsByIds = <ThrowOnError extends boolean = false>
 /**
  * Read selected products and their SKUs for the bulk editor
  *
- * Status, price, compare-at price and per-SKU on-hand of at most 50 products, with each product's aggregateRevision. Save with dashboard.products.update_section (base) and dashboard.inventory.set_stock.
+ * Status, price, compare-at price, shipping profile, per-SKU weight and on-hand of at most 50 products, with each product's aggregateRevision. Save with dashboard.products.update_section (base), dashboard.resources.variants.update (weight) and dashboard.inventory.set_stock.
  */
 export const getApiV1AdminProductsBulkEdit = <ThrowOnError extends boolean = false>(options: Options<GetApiV1AdminProductsBulkEditData, ThrowOnError>): RequestResult<GetApiV1AdminProductsBulkEditResponses, GetApiV1AdminProductsBulkEditErrors, ThrowOnError> => (options.client ?? client).get<GetApiV1AdminProductsBulkEditResponses, GetApiV1AdminProductsBulkEditErrors, ThrowOnError>({ url: '/api/v1/admin/products/bulk-edit', ...options });
 

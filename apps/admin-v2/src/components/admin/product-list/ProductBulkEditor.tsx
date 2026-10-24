@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   getApiV1AdminProductsBulkEdit,
   patchApiV1AdminProductsByIdSectionsBySection,
+  patchApiV1AdminResourcesProductsByIdVariantsByVariantId,
   postApiV1AdminInventoryStockSet,
 } from "@scalius/api-client/sdk";
 import { PERMISSIONS } from "@scalius/core/auth/rbac/permissions";
@@ -19,6 +20,9 @@ import { NumberInput } from "~/components/ui/number-input";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table";
 import { MoneyInput } from "~/components/admin/shared/MoneyInput";
+import { WeightInput } from "~/components/admin/product-form/variants/WeightInput";
+import { shippingProfilesQuery } from "~/lib/api-query-options/shipping-profiles";
+import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { Page } from "~/components/admin/resource/Page";
 import { PageHeader } from "~/components/admin/resource/PageHeader";
 import { EmptyState, ErrorState } from "~/components/admin/states";
@@ -38,16 +42,24 @@ type BulkProduct = ApiResult<typeof getApiV1AdminProductsBulkEdit>["products"][n
 interface ProductDraft {
   isActive: boolean;
   pair: PricePair;
+  /** Null: the default profile (General). */
+  profileId: string | null;
   /** SKU id -> on hand. */
   stock: Record<string, number | null>;
+  /** Shipped SKU id -> grams (null: no weight). */
+  weight: Record<string, number | null>;
 }
+
+const DEFAULT_PROFILE = "shp_default";
 
 const draftOf = (product: BulkProduct, salePrice: (price: number, discount: object) => number | null): ProductDraft => {
   const discounted = product.discountType === "flat" ? product.discountAmount > 0 : product.discountPercentage > 0;
   return {
     isActive: product.isActive,
     pair: pairFromStored(product.price, discounted ? salePrice(product.price, product) : null),
+    profileId: product.shippingProfileId,
     stock: Object.fromEntries(product.skus.map((sku) => [sku.id, sku.onHand])),
+    weight: Object.fromEntries(product.skus.filter((sku) => sku.ships).map((sku) => [sku.id, sku.weightGrams])),
   };
 };
 
@@ -55,11 +67,12 @@ const samePair = (a: PricePair, b: PricePair) => a.price === b.price && a.compar
 
 /**
  * Bulk editor (Shopify's "Bulk edit"): the selected products in one grid,
- * status, price and compare-at price of a product without options, and the
- * on-hand quantity of every SKU at the default location. Save sends only the
- * changed cells through the same guarded writes the product page uses (the
- * base section with its revision, a stocktake with its own key) and reports
- * any row that could not be saved; the rest stay saved.
+ * status, price and compare-at price of a product without options, its
+ * shipping profile, the weight of every shipped SKU, and the on-hand quantity
+ * of every SKU at the default location. Save sends only the changed cells
+ * through the same guarded writes the product page uses (the base section
+ * and the SKU patch under the product's revision, a stocktake with its own
+ * key) and reports any row that could not be saved; the rest stay saved.
  */
 export function ProductBulkEditor({ ids }: { ids: string[] }) {
   const t = useMessages(productBulkEditMessages);
@@ -94,6 +107,8 @@ function BulkEditorSkeleton({ rows }: { rows: number }) {
       <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
       <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
       <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
+      <TableCell className="w-44"><Skeleton className="h-9 w-40" /></TableCell>
+      <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
     </TableRow>
   ));
 }
@@ -107,6 +122,14 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   const { hasPermission } = usePermissions();
   const canEdit = hasPermission(PERMISSIONS.PRODUCTS_EDIT);
   const canStock = hasPermission(PERMISSIONS.PRODUCTS_ADJUST_STOCK);
+  // The choices need the profiles list; without it the column shows nothing to pick.
+  const profiles = useQuery({ ...shippingProfilesQuery, enabled: hasPermission(ADMIN_PERMISSIONS.SETTINGS_SHIPPING_METHODS_VIEW) }).data ?? [];
+  const profileOptions = profiles.map((profile) => ({
+    value: profile.id,
+    label: profile.isDefault
+      ? product("shippingProfileDefault", { name: profile.name })
+      : profile.freeDelivery ? product("shippingProfileFree", { name: profile.name }) : profile.name,
+  }));
   const query = useQuery({
     queryKey: [...queryKeys.products.all, "bulk-edit", ids.join(",")],
     queryFn: () => apiData(getApiV1AdminProductsBulkEdit({ query: { ids: ids.join(",") } })),
@@ -128,8 +151,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     const next = edits[product.id];
     if (!next) return false;
     const was = base[product.id]!;
-    return next.isActive !== was.isActive || !samePair(next.pair, was.pair)
-      || product.skus.some((sku) => next.stock[sku.id] !== was.stock[sku.id]);
+    return next.isActive !== was.isActive || !samePair(next.pair, was.pair) || next.profileId !== was.profileId
+      || product.skus.some((sku) => next.stock[sku.id] !== was.stock[sku.id] || next.weight[sku.id] !== was.weight[sku.id]);
   });
   const priceProblem = (product: BulkProduct) => {
     const pair = draft(product.id).pair;
@@ -137,8 +160,10 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     if (pair.price === null || !Number.isFinite(pair.price) || pair.price < 0) return t("bulkEditPriceRequired");
     return storedFromPair(pair, decimalPlaces).problem ? t("bulkEditCompareAtHigher") : null;
   };
+  const weightInvalid = (grams: number | null | undefined) => grams !== null && grams !== undefined && (!Number.isFinite(grams) || grams < 0 || grams > 1_000_000);
   const invalid = changed.some((product) => priceProblem(product) !== null
-    || product.skus.some((sku) => { const value = draft(product.id).stock[sku.id]; return value === null || value === undefined || value < 0; }));
+    || product.skus.some((sku) => { const value = draft(product.id).stock[sku.id]; return value === null || value === undefined || value < 0; })
+    || product.skus.some((sku) => weightInvalid(draft(product.id).weight[sku.id])));
 
   const save = async () => {
     const problems: Record<string, string> = {};
@@ -155,11 +180,22 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
           patch.discountAmount = stored.discounted ? stored.discountAmount : 0;
           patch.discountPercentage = 0;
         }
+        if (next.profileId !== was.profileId) patch.shippingProfileId = next.profileId;
+        let revision = product.aggregateRevision;
         if (Object.keys(patch).length > 0) {
-          await apiData(patchApiV1AdminProductsByIdSectionsBySection({
+          revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
             path: { id: product.id, section: "base" },
-            body: { section: "base", expectedAggregateRevision: product.aggregateRevision, patch } as never,
-          }));
+            body: { section: "base", expectedAggregateRevision: revision, patch } as never,
+          })) as { aggregateRevision: number }).aggregateRevision;
+        }
+        // Each weight under the revision the last write left.
+        for (const sku of product.skus) {
+          if (!sku.ships || next.weight[sku.id] === was.weight[sku.id]) continue;
+          const grams = next.weight[sku.id];
+          revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
+            path: { id: product.id, variantId: sku.id },
+            body: { expectedRevision: revision, weightGrams: grams === null || grams === undefined ? null : Math.round(grams) },
+          }))).product.revision;
         }
         for (const sku of product.skus) {
           const newStock = next.stock[sku.id];
@@ -225,6 +261,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                 <TableHead data-numeric>{t("bulkEditPrice")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditCompareAt")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditOnHand")}</TableHead>
+                <TableHead>{t("bulkEditShippingProfile")}</TableHead>
+                <TableHead data-numeric>{t("bulkEditWeight")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className={cn(pending && !skeletonShown && "invisible")}>
@@ -233,6 +271,17 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                 const next = draft(product.id);
                 const problem = priceProblem(product);
                 const single = !product.hasOptions ? product.skus[0] : undefined;
+                const weightCell = (sku: BulkProduct["skus"][number] | undefined, label: string) => !sku || !sku.ships ? null : (
+                  <WeightInput
+                    className="ms-auto w-28 text-end"
+                    aria-label={t("bulkEditWeightFor", { name: label })}
+                    disabled={!canEdit}
+                    grams={next.weight[sku.id] ?? null}
+                    aria-invalid={weightInvalid(next.weight[sku.id]) || undefined}
+                    onGramsChange={(grams) => change(product.id, { weight: { ...next.weight, [sku.id]: grams } })}
+                  />
+                );
+                const ships = product.skus.some((sku) => sku.ships);
                 const stockCell = (sku: BulkProduct["skus"][number] | undefined, label: string) => !sku ? <span className="text-muted-foreground">—</span>
                   : !sku.trackInventory ? <span className="text-muted-foreground">{t("bulkEditNotTracked")}</span>
                     : (
@@ -295,6 +344,19 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         </>
                       )}
                       <TableCell className="w-32">{product.hasOptions ? null : stockCell(single, product.name)}</TableCell>
+                      <TableCell className="w-44">
+                        {ships && profileOptions.length > 1 ? (
+                          <SearchableSelect
+                            triggerClassName="w-40"
+                            aria-label={t("bulkEditShippingProfileFor", { name: product.name })}
+                            disabled={!canEdit}
+                            value={next.profileId ?? DEFAULT_PROFILE}
+                            onValueChange={(value) => change(product.id, { profileId: value === DEFAULT_PROFILE ? null : value })}
+                            options={profileOptions}
+                          />
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="w-32">{product.hasOptions ? null : weightCell(single, product.name)}</TableCell>
                     </TableRow>
                     {product.hasOptions ? product.skus.map((sku) => (
                       <TableRow key={sku.id}>
@@ -306,6 +368,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         <TableCell />
                         <TableCell />
                         <TableCell className="w-32">{stockCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
+                        <TableCell />
+                        <TableCell className="w-32">{weightCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
                       </TableRow>
                     )) : null}
                   </Fragment>

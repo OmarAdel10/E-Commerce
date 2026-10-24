@@ -224892,7 +224892,7 @@
           "Admin - Products"
         ],
         "summary": "Read selected products and their SKUs for the bulk editor",
-        "description": "Status, price, compare-at price and per-SKU on-hand of at most 50 products, with each product's aggregateRevision. Save with dashboard.products.update_section (base) and dashboard.inventory.set_stock.",
+        "description": "Status, price, compare-at price, shipping profile, per-SKU weight and on-hand of at most 50 products, with each product's aggregateRevision. Save with dashboard.products.update_section (base), dashboard.resources.variants.update (weight) and dashboard.inventory.set_stock.",
         "parameters": [
           {
             "schema": {
@@ -224960,6 +224960,11 @@
                               "hasOptions": {
                                 "type": "boolean"
                               },
+                              "shippingProfileId": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "Null: the default profile (General). Save with the base section."
+                              },
                               "skus": {
                                 "type": "array",
                                 "items": {
@@ -224982,6 +224987,15 @@
                                       "type": "integer",
                                       "nullable": true,
                                       "description": "On hand at the default location; null when not tracked."
+                                    },
+                                    "ships": {
+                                      "type": "boolean",
+                                      "description": "A physical SKU: it ships and has a weight."
+                                    },
+                                    "weightGrams": {
+                                      "type": "number",
+                                      "nullable": true,
+                                      "description": "Grams; null: no weight. Save with dashboard.resources.variants.update."
                                     }
                                   },
                                   "required": [
@@ -224989,7 +225003,9 @@
                                     "label",
                                     "sku",
                                     "trackInventory",
-                                    "onHand"
+                                    "onHand",
+                                    "ships",
+                                    "weightGrams"
                                   ]
                                 }
                               }
@@ -225004,6 +225020,7 @@
                               "discountPercentage",
                               "discountAmount",
                               "hasOptions",
+                              "shippingProfileId",
                               "skus"
                             ]
                           }
