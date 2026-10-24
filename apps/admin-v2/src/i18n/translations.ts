@@ -134,6 +134,7 @@ export const translationsMessages = defineMessages({
     translateWith: "Translate with {provider}",
     machineDone: "Translated: check and save",
     machineFailed: "Couldn't translate",
+    machineSourceChanged: "This text changed. Translate again.",
     machineHelp: "Fills the empty fields. Nothing is saved until you save.",
   },
   bn: {
@@ -262,6 +263,7 @@ export const translationsMessages = defineMessages({
     translateWith: "{provider} দিয়ে অনুবাদ করুন",
     machineDone: "অনুবাদ হয়েছে: দেখে সেভ করুন",
     machineFailed: "অনুবাদ করা যায়নি",
+    machineSourceChanged: "মূল লেখা বা অনুবাদ বদলে গেছে। আবার অনুবাদ করুন।",
     machineHelp: "খালি ঘরগুলো পূরণ করে। সেভ না করা পর্যন্ত কিছু সংরক্ষিত হয় না।",
   },
 });

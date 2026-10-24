@@ -3,8 +3,8 @@
 // reader's language and the store's country (CLDR data, as browsers and
 // Workers ship it), and the text direction, which Intl does not give every
 // browser.
-// Pure, browser-safe and host-locale independent: the host's own locale and
-// zone are never consulted. `scripts/check-source-policies.mjs` keeps Intl
+// Pure and browser-safe: callers choose the locale. An explicit timeZone
+// makes dates host-zone independent; omitted zones use the runtime default. `scripts/check-source-policies.mjs` keeps Intl
 // formatters out of every other file. Lists, plurals, relative times and
 // units are ./locale-words, money amounts ./money-format and the first day of
 // the week ./week-start, so the dashboard's first chunk carries only what every

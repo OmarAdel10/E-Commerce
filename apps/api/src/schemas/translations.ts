@@ -49,12 +49,22 @@ const translationFieldsSchema = z.record(z.string().max(120), z.string().max(200
   description: "Translated text by field (`name`, `description`, `metaTitle`; a menu's links as `item:<id>`). Fields left out or empty fall back to the source.",
 });
 
+const translationSourceDigestSchema = z.record(z.string().max(120), z.string().regex(/^[0-9a-f]{14}$/)).openapi({
+  description: "Digests of the source text observed by the author, as returned by the resource read. A missing or changed translated field refuses a guarded save (409).",
+});
+const translationRevisionSchema = z.string().regex(/^[0-9a-f]{14}$/).nullable().openapi({
+  description: "Opaque content revision of the translation and localized handle. Send the value from the read; null asserts neither exists. A competing change refuses the entire save (409).",
+});
+
 export const translatableResourceSchema = z.object({
   type: z.string(),
   id: z.string(),
   title: z.string().openapi({ description: "The resource's source title." }),
   subtitle: z.string().nullable(),
   source: z.record(z.string(), z.string().nullable()).openapi({ description: "Source text by field." }),
+  sourceDigest: translationSourceDigestSchema,
+  revision: translationRevisionSchema,
+  committedRevision: translationRevisionSchema.optional().openapi({ description: "On a save response only: the revision committed by this request, captured inside its write transaction. It can differ from revision if another edit committed before the response read." }),
   sourceSlug: z.string().nullable().openapi({ description: "The source URL handle (types with handles)." }),
   translation: z.object({
     locale: z.string(),
@@ -81,6 +91,8 @@ export const listTranslatableResourcesQuerySchema = translationContextQuerySchem
 
 export const translationEntrySchema = z.object({
   fields: translationFieldsSchema,
+  sourceDigest: translationSourceDigestSchema.optional(),
+  revision: translationRevisionSchema.optional(),
   slug: z.string().max(100).nullable().optional().openapi({ description: "The localized URL handle; empty or null keeps the source address. Every-market translations only." }),
 });
 

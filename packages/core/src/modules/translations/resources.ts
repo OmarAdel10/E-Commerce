@@ -170,3 +170,27 @@ export async function readMenuItems(db: Database, menuId: string): Promise<Array
 }
 
 export const MENU_ITEM_PREFIX = "item:";
+
+/** Source snapshot checked in the translation's write batch, including a menu's published custom links. */
+export function resourceSourceUnchanged(source: ResourceSource): SQL | null {
+  const table = TABLE_SOURCES[source.type];
+  // Gateway names are immutable code/provider declarations supplied by the caller.
+  if (!table) return null;
+  const columns = Object.entries(table.columns).map(([field, column]) =>
+    sql`${sql.raw(`source_row."${column}"`)} IS json_extract(expected_source.fields, ${`$.${field}`})`);
+  const menuItems = source.type === "menu" ? sql`AND NOT EXISTS (
+      SELECT 1 FROM json_each(expected_source.fields) AS expected_item
+      WHERE substr(expected_item.key, 1, 5) = 'item:' AND NOT EXISTS (
+        SELECT 1 FROM navigation_menu_publication_items AS live_item
+        WHERE live_item.menu_id = source_row.id AND live_item.revision = source_row.published_revision
+          AND live_item.label_mode = 'custom' AND live_item.item_id = substr(expected_item.key, 6)
+          AND live_item.label IS expected_item.value
+      )
+    ) AND (SELECT count(*) FROM navigation_menu_publication_items AS live_item
+      WHERE live_item.menu_id = source_row.id AND live_item.revision = source_row.published_revision AND live_item.label_mode = 'custom')
+      = (SELECT count(*) FROM json_each(expected_source.fields) AS expected_item WHERE substr(expected_item.key, 1, 5) = 'item:')` : sql``;
+  return sql`EXISTS (SELECT 1 FROM ${ident(table.table)} AS source_row
+    CROSS JOIN (SELECT ${JSON.stringify(source.fields)} AS fields) AS expected_source
+    WHERE source_row.id = ${source.id}${table.live ? sql` AND source_row.deleted_at IS NULL` : sql``}
+      AND ${sql.join(columns, sql` AND `)} ${menuItems})`;
+}

@@ -224,7 +224,7 @@ app.openapi(createRoute({
   path: "/{type}/{id}",
   tags: [TAG],
   summary: "Save a resource's translation in a language",
-  description: "Replaces the translation of the resource (and a product's options and option values in `parts`) in the language and market: fields left out or empty fall back to the source. Each field records the source it was translated from, so a later source edit marks it Outdated. `slug` sets the localized web address (every-market translations only); a handle another page of the type uses is refused (409).",
+  description: "Replaces the translation of the resource (and a product's options and option values in `parts`) in the language and market: fields left out or empty fall back to the source. Each field records the source it was translated from, so a later source edit marks it Outdated. Send the sourceDigest and revision returned by the read: stale source or a competing translation/handle edit refuses the whole save (409). These preconditions are optional for legacy clients. `slug` sets the localized web address (every-market translations only); a handle another page of the type uses is refused (409).",
   request: {
     params: resourceParam,
     body: { required: true, content: { "application/json": { schema: saveTranslationSchema } } },
@@ -244,17 +244,21 @@ app.openapi(createRoute({
   if (body.parts?.length && type !== "product") throw new ValidationError("Only a product has parts to translate with it.");
   const db = c.get("db");
   const paymentMethods = type === "payment_method" ? await paymentMethodSources(c) : undefined;
-  await saveTranslations(db, {
+  const committedRevisions = await saveTranslations(db, {
     locale: body.locale,
     marketId: body.marketId ?? null,
     paymentMethods,
     entries: [
-      { type: type as TranslatableResourceType, id, fields: body.fields, ...(body.slug !== undefined ? { slug: body.slug } : {}) },
-      ...(body.parts ?? []).map((part) => ({ type: part.type as TranslatableResourceType, id: part.id, fields: part.fields })),
+      { type: type as TranslatableResourceType, id, fields: body.fields, sourceDigest: body.sourceDigest, revision: body.revision, ...(body.slug !== undefined ? { slug: body.slug } : {}) },
+      ...(body.parts ?? []).map((part) => ({ type: part.type as TranslatableResourceType, id: part.id, fields: part.fields, sourceDigest: part.sourceDigest, revision: part.revision })),
     ],
   });
   const view = await getResourceTranslations(db, type, id, { locale: body.locale, marketId: body.marketId ?? null, paymentMethods });
-  return ok(c, { resource: presentResource(view.resource), parts: view.parts.map(presentResource) });
+  const presentSaved = (resource: TranslatableResource) => {
+    const key = `${resource.type}:${resource.id}`;
+    return { ...presentResource(resource), ...(Object.hasOwn(committedRevisions, key) ? { committedRevision: committedRevisions[key] } : {}) };
+  };
+  return ok(c, { resource: presentSaved(view.resource), parts: view.parts.map(presentSaved) });
 });
 
 app.openapi(createRoute({

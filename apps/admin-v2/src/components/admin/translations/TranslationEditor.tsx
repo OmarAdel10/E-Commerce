@@ -38,6 +38,7 @@ import {
   STATUS_BADGE,
   draftKey,
   rebaseTranslationDraft,
+  rebaseTranslationObservation,
   translationDraftOf,
   isDirty,
   languageName,
@@ -83,6 +84,10 @@ function EditorSkeleton() {
   return <Card className="space-y-4 p-4">{rows}</Card>;
 }
 
+function authorSnapshot(view: ResourceTranslationsView) {
+  return [view.resource, ...view.parts].map(({ type, id, sourceDigest, revision }) => ({ type, id, sourceDigest, revision }));
+}
+
 function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEditorProps & { view: ResourceTranslationsView }) {
   const t = useMessages(translationsMessages);
   const uiLocale = useLocale();
@@ -96,16 +101,25 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
   // draft onto it, keeping every field changed since.
   const [state, setState] = useState(() => {
     const saved = translationDraftOf(view);
-    return { base: saved, draft: saved };
+    return { base: saved, draft: saved, observed: view };
   });
   const latest = useRef(state);
   latest.current = state;
+  const latestView = useRef(view);
+  latestView.current = view;
+  const machineEpoch = useRef(0);
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     const saved = translationDraftOf(view);
-    setState((current) => sameFormValue(current.base, saved)
-      ? current
-      : { base: saved, draft: rebaseTranslationDraft(current.base, current.draft, saved) });
+    setState((current) => {
+      const dirty = !sameFormValue(current.base, current.draft);
+      // Background refresh may rebase unchanged fields, but it cannot certify
+      // text already being edited against a new source or revision.
+      const observed = dirty ? current.observed : view;
+      return sameFormValue(current.base, saved) && observed === current.observed
+        ? current
+        : { base: saved, draft: rebaseTranslationDraft(current.base, current.draft, saved), observed };
+    });
   }, [view]);
   const draft = state.draft.fields;
   const slug = state.draft.slug;
@@ -131,22 +145,36 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
     label: t("translationOf", { title: view.resource.title, language: targetName }),
     fields: { slug: slugId },
     save: async () => {
+      machineEpoch.current += 1;
       const sent = latest.current.draft;
-      const saved = translationDraftOf(await save.mutateAsync(saveBody(view, sent.fields, { locale, marketId, slug: sent.slug.trim() || null })));
+      const observed = latest.current.observed;
+      const result = await save.mutateAsync(saveBody(observed, sent.fields, { locale, marketId, slug: sent.slug.trim() || null }));
+      const saved = translationDraftOf(result);
       // What was typed while the save was on its way stays unsaved.
-      setState((current) => ({ base: saved, draft: rebaseTranslationDraft(sent, current.draft, saved) }));
+      setState((current) => ({ base: saved, draft: rebaseTranslationDraft(sent, current.draft, saved),
+        observed: rebaseTranslationObservation(sent, current.draft, observed, result) }));
     },
-    discard: () => setState((current) => ({ ...current, draft: current.base })),
+    discard: () => {
+      machineEpoch.current += 1;
+      setState((current) => ({ ...current, draft: current.base, observed: view }));
+    },
   });
 
   const onMachineTranslate = () => {
     if (!provider || emptyRows.length === 0) return;
+    const epoch = ++machineEpoch.current;
+    const requestedSnapshot = authorSnapshot(view);
     machine.mutate({
       providerId: provider.id,
       locale,
       texts: emptyRows.slice(0, 100).map((row) => ({ key: draftKey(row), text: row.source, format: row.kind === "html" ? "html" as const : "text" as const })),
     }, {
       onSuccess: (texts) => {
+        if (epoch !== machineEpoch.current) return;
+        if (!sameFormValue(requestedSnapshot, authorSnapshot(latestView.current))) {
+          toast.error(t("machineSourceChanged"));
+          return;
+        }
         setDraft((current) => {
           const next = { ...current };
           for (const text of texts) if (!(next[text.key] ?? "").trim()) next[text.key] = text.text;
@@ -221,13 +249,16 @@ function EditorForm({ type, id, locale, marketId, canEdit, view }: TranslationEd
       cancelLabel={t("cancel")}
       variant="destructive"
       isLoading={remove.isPending}
-      onConfirm={() => remove.mutate({ locale, marketId }, {
-        onSuccess: () => {
-          setDeleting(false);
-          toast.success(t("deleted"));
-        },
-        onError: (error) => toast.error(getServerFnError(error, t("deleteFailed"))),
-      })}
+      onConfirm={() => {
+        machineEpoch.current += 1;
+        remove.mutate({ locale, marketId }, {
+          onSuccess: () => {
+            setDeleting(false);
+            toast.success(t("deleted"));
+          },
+          onError: (error) => toast.error(getServerFnError(error, t("deleteFailed"))),
+        });
+      }}
     />
   );
 

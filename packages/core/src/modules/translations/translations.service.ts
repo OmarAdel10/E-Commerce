@@ -5,14 +5,15 @@
 //
 // A save replaces the translation of one resource in one locale and market
 // (empty fields fall back) and records the digest of the source each field
-// was translated from. Writes are last-write-wins per field set, as
-// Shopify's `translationsRegister`; the database keeps one row per resource,
+// was translated from. Editors submit the source digest and translation revision
+// they observed; batch guards refuse stale source text and competing writes.
+// The database keeps one row per resource,
 // locale and market and every localized handle unique.
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { nanoid } from "nanoid";
 import { localizedSlugs, markets, storeLanguages, translations } from "@scalius/database/schema";
-import { safeBatch, type Database } from "@scalius/database/client";
+import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import {
   MAX_TRANSLATION_FIELDS,
   TRANSLATABLE_RESOURCES,
@@ -24,6 +25,7 @@ import {
   parseTranslationFields,
   translationFieldIssues,
   translationSourceDigest,
+  sourceTextDigest,
   type TranslatableResourceType,
   type TranslationFields,
   type TranslationSource,
@@ -35,6 +37,7 @@ import {
   readMenuItems,
   readProductParts,
   readTableSources,
+  resourceSourceUnchanged,
   type PaymentMethodSource,
   type ResourceSource,
 } from "./resources";
@@ -76,6 +79,10 @@ export interface TranslatableResource {
   subtitle: string | null;
   /** The source text by field (a menu's links as `item:<id>`). */
   source: TranslationSource;
+  /** Digests of the displayed source fields; send them back when saving. */
+  sourceDigest: Record<string, string>;
+  /** Opaque revision of the translation and localized handle; null means neither exists. */
+  revision: string | null;
   /** The source handle (a type with handles). */
   sourceSlug: string | null;
   /** The translation in the requested locale and market, or null. */
@@ -136,13 +143,16 @@ function paymentSources(paymentMethods: readonly PaymentMethodSource[] | undefin
 }
 
 async function withMenuItems(db: Database, sources: ResourceSource[]): Promise<ResourceSource[]> {
-  return Promise.all(sources.map(async (source) => {
-    if (source.type !== "menu") return source;
+  const result: ResourceSource[] = [];
+  // A page may contain 100 menus; serialize their dependent reads within D1's connection cap.
+  for (const source of sources) {
+    if (source.type !== "menu") { result.push(source); continue; }
     const items = await readMenuItems(db, source.id);
     const fields = { ...source.fields };
     for (const item of items) fields[`${MENU_ITEM_PREFIX}${item.id}`] = item.label;
-    return { ...source, fields };
-  }));
+    result.push({ ...source, fields });
+  }
+  return result;
 }
 
 async function readSources(db: Database, type: TranslatableResourceType, ids: readonly string[], paymentMethods?: readonly PaymentMethodSource[]): Promise<ResourceSource[]> {
@@ -151,6 +161,7 @@ async function readSources(db: Database, type: TranslatableResourceType, ids: re
 }
 
 interface StoredTranslation {
+  id: string;
   resourceType: string;
   resourceId: string;
   fields: string;
@@ -158,10 +169,10 @@ interface StoredTranslation {
   updatedAt: Date | null;
 }
 
-async function readStored(db: Database, type: TranslatableResourceType | null, ids: readonly string[], context: { locale: string; marketId: string | null }, types?: readonly string[]) {
-  if (ids.length === 0) return [];
-  const [rows, slugRows] = await Promise.all([
+function storedQueries(db: Database, type: TranslatableResourceType | null, ids: readonly string[], context: { locale: string; marketId: string | null }, types?: readonly string[]) {
+  return [
     db.select({
+      id: translations.id,
       resourceType: translations.resourceType,
       resourceId: translations.resourceId,
       fields: translations.fields,
@@ -179,8 +190,21 @@ async function readStored(db: Database, type: TranslatableResourceType | null, i
         sql`${localizedSlugs.resourceId} IN (SELECT value FROM json_each(${JSON.stringify([...new Set(ids)])}))`,
         eq(localizedSlugs.locale, context.locale),
       )),
-  ]);
+  ] as const;
+}
+
+async function readStored(db: Database, type: TranslatableResourceType | null, ids: readonly string[], context: { locale: string; marketId: string | null }, types?: readonly string[]) {
+  if (ids.length === 0) return [[], []] as const;
+  const [rows, slugRows] = await Promise.all(storedQueries(db, type, ids, context, types));
   return [rows as StoredTranslation[], slugRows] as const;
+}
+
+/** Content revision includes the row identity, so a delete/recreate cannot reuse it. */
+function translationRevision(stored: StoredTranslation | undefined, slug: string | null): string | null {
+  return stored || slug ? sourceTextDigest(JSON.stringify([
+    stored?.id ?? null, stored?.fields ?? null, stored?.sourceDigest ?? null,
+    stored?.updatedAt?.getTime() ?? null, slug,
+  ])) : null;
 }
 
 function present(
@@ -205,6 +229,8 @@ function present(
     title: source.title,
     subtitle: source.subtitle,
     source: source.fields,
+    sourceDigest: JSON.parse(translationSourceDigest(source.fields, Object.keys(source.fields))) as Record<string, string>,
+    revision: translationRevision(stored, context.marketId ? null : slug),
     sourceSlug: isSluggedResourceType(source.type) ? source.slug : null,
     translation,
     slug: context.marketId ? null : slug,
@@ -288,12 +314,18 @@ export interface TranslationEntryInput {
   id: string;
   /** The whole translation: fields left out (or empty) fall back to the source. */
   fields: Record<string, string>;
+  /** Digests observed by the author; a changed or missing submitted field refuses the save. */
+  sourceDigest?: Record<string, string>;
+  /** Observed translation/handle revision; null asserts that neither exists. Omit for legacy writes. */
+  revision?: string | null;
   /** The localized handle (a type with handles, every-market translations only); empty or null removes it. */
   slug?: string | null;
 }
 
 function translationWriteError(error: unknown): unknown {
   if (error instanceof AppError) return error;
+  if (isBatchGuardError(error, "TRANSLATION_SOURCE_CONFLICT")) return new ConflictError("The source text changed while you were translating. Reload it and review your translation.");
+  if (isBatchGuardError(error, "TRANSLATION_REVISION_CONFLICT")) return new ConflictError("This translation changed while you were editing. Reload it and try again.");
   const text = error instanceof Error ? `${error.message} ${String((error as { cause?: unknown }).cause ?? "")}` : String(error);
   if (/LOCALIZED_SLUG_TAKEN/.test(text)) return new ConflictError("Another page of this kind uses this web address. Choose another.");
   if (/localized_slugs/i.test(text) && /UNIQUE|PRIMARY|duplicate/i.test(text)) {
@@ -305,23 +337,27 @@ function translationWriteError(error: unknown): unknown {
 
 /**
  * Saves translations of a resource (and, for a product, its parts) in one
- * language and market, in one batch. Each entry's digest is taken from the
- * source as it is now, so the saved fields are current until the source
- * changes. An entry without fields (and without a handle) deletes the
- * translation.
+ * language and market, in one batch. Observed source digests and revisions
+ * are optional for old clients; the dashboard supplies both. A stale author
+ * snapshot refuses the whole save, including parts and handles. Empty fields
+ * remove the translation, restoring source fallback.
  */
 export async function saveTranslations(
   db: Database,
   input: TranslationContextInput & { entries: readonly TranslationEntryInput[] },
-): Promise<void> {
+): Promise<Record<string, string | null>> {
   const context = cleanContext(input);
-  if (input.entries.length === 0) return;
+  if (input.entries.length === 0) return {};
   if (input.entries.length > MAX_TRANSLATION_ENTRIES_PER_SAVE) {
     throw new ValidationError(`Save at most ${MAX_TRANSLATION_ENTRIES_PER_SAVE} translations at once.`);
   }
   await assertContext(db, context);
   const byType = new Map<TranslatableResourceType, string[]>();
+  const identities = new Set<string>();
   for (const entry of input.entries) {
+    const key = `${entry.type}:${entry.id}`;
+    if (identities.has(key)) throw new ValidationError("A resource may appear only once in a translation save.");
+    identities.add(key);
     if (!(entry.type in TRANSLATABLE_RESOURCES)) throw new ValidationError(`Unknown resource type ${entry.type}.`);
     const issues = translationFieldIssues(entry.type, entry.fields);
     if (issues.length > 0) {
@@ -340,16 +376,10 @@ export async function saveTranslations(
   for (const [type, ids] of byType) {
     for (const source of await readSources(db, type, ids, input.paymentMethods)) sources.set(`${type}:${source.id}`, source);
   }
-  const slugIds = input.entries.filter((entry) => entry.slug !== undefined && isSluggedResourceType(entry.type)).map((entry) => entry.id);
-  const currentSlugs = slugIds.length === 0 || context.marketId ? [] : await db.select({
-    resourceType: localizedSlugs.resourceType,
-    resourceId: localizedSlugs.resourceId,
-    slug: localizedSlugs.slug,
-  }).from(localizedSlugs).where(and(
-    sql`${localizedSlugs.resourceId} IN (SELECT value FROM json_each(${JSON.stringify(slugIds)}))`,
-    eq(localizedSlugs.locale, context.locale),
-  ));
+  const [currentTranslations, currentSlugs] = await readStored(db, null,
+    input.entries.map((entry) => entry.id), context, [...byType.keys()]);
   const writes: SQLiteBatchItem[] = [];
+  const guards: SQLiteBatchItem[] = [];
   for (const entry of input.entries) {
     const source = sources.get(`${entry.type}:${entry.id}`);
     if (!source) throw new NotFoundError("Nothing to translate here: a resource does not exist or is in the trash.");
@@ -360,6 +390,30 @@ export async function saveTranslations(
       eq(translations.locale, context.locale),
       context.marketId ? eq(translations.marketId, context.marketId) : isNull(translations.marketId),
     );
+    const current = currentTranslations.find((row) => row.resourceType === entry.type && row.resourceId === entry.id);
+    const currentSlug = context.marketId ? null : currentSlugs.find((row) => row.resourceType === entry.type && row.resourceId === entry.id)?.slug ?? null;
+    if (entry.sourceDigest !== undefined) {
+      if (Object.keys(fields).some((field) => entry.sourceDigest?.[field] !== sourceTextDigest(source.fields[field] ?? ""))) {
+        throw new ConflictError("The source text changed while you were translating. Reload it and review your translation.");
+      }
+      const unchanged = resourceSourceUnchanged(source);
+      if (unchanged) guards.push(buildBatchGuard(db, unchanged, "TRANSLATION_SOURCE_CONFLICT"));
+    }
+    if (entry.revision !== undefined) {
+      if (entry.revision !== translationRevision(current, currentSlug)) {
+        throw new ConflictError("This translation changed while you were editing. Reload it and try again.");
+      }
+      const rowUnchanged = current
+        ? sql`EXISTS (SELECT 1 FROM ${translations} WHERE ${identity} AND ${translations.id} = ${current.id}
+            AND ${translations.fields} = ${current.fields} AND ${translations.sourceDigest} = ${current.sourceDigest}
+            AND ${eq(translations.updatedAt, current.updatedAt!)})`
+        : sql`NOT EXISTS (SELECT 1 FROM ${translations} WHERE ${identity})`;
+      const slugIdentity = sql`${localizedSlugs.resourceType} = ${entry.type} AND ${localizedSlugs.resourceId} = ${entry.id} AND ${localizedSlugs.locale} = ${context.locale}`;
+      const slugUnchanged = context.marketId ? sql`1 = 1` : currentSlug
+        ? sql`EXISTS (SELECT 1 FROM ${localizedSlugs} WHERE ${slugIdentity} AND ${localizedSlugs.slug} = ${currentSlug})`
+        : sql`NOT EXISTS (SELECT 1 FROM ${localizedSlugs} WHERE ${slugIdentity})`;
+      guards.push(buildBatchGuard(db, sql`${rowUnchanged} AND ${slugUnchanged}`, "TRANSLATION_REVISION_CONFLICT"));
+    }
     if (Object.keys(fields).length === 0) {
       writes.push(db.delete(translations).where(identity) as unknown as SQLiteBatchItem);
     } else {
@@ -402,9 +456,18 @@ export async function saveTranslations(
       }
     }
   }
-  if (writes.length === 0) return;
   try {
-    await safeBatch(db, writes as never);
+    // The response read can race a later writer. Capture our own revisions in
+    // this transaction so an editor retaining in-flight edits cannot adopt theirs.
+    const result = await safeBatch(db, [...guards, ...writes,
+      ...storedQueries(db, null, input.entries.map((entry) => entry.id), context, [...byType.keys()]),
+    ] as never) as unknown as unknown[];
+    const stored = result[result.length - 2] as StoredTranslation[];
+    const slugs = result[result.length - 1] as Array<{ resourceType: string; resourceId: string; slug: string }>;
+    return Object.fromEntries(input.entries.map((entry) => [`${entry.type}:${entry.id}`, translationRevision(
+      stored.find((row) => row.resourceType === entry.type && row.resourceId === entry.id),
+      context.marketId ? null : slugs.find((row) => row.resourceType === entry.type && row.resourceId === entry.id)?.slug ?? null,
+    )]));
   } catch (error) {
     throw translationWriteError(error);
   }

@@ -7,7 +7,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { BACKUP_MARKET_ID, checkoutLanguages, marketPresences, storeLanguages, translations } from "@scalius/database/schema";
-import { safeBatch, type Database } from "@scalius/database/client";
+import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import { MAX_STORE_LANGUAGES, isStoreLocale } from "@scalius/shared/translations";
 import { AppError, ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
 
@@ -27,8 +27,10 @@ export interface StoreLanguage {
   translatedResources: number;
 }
 
-function languageError(error: unknown): unknown {
+export function storeLanguageWriteError(error: unknown): unknown {
   if (error instanceof AppError) return error;
+  if (isBatchGuardError(error, "STORE_LANGUAGE_TOTAL_LIMIT")) return new ValidationError(`A store has at most ${MAX_STORE_LANGUAGE_ROWS} languages. Remove one you don't use first.`);
+  if (isBatchGuardError(error, "STORE_LANGUAGE_PUBLISHED_LIMIT")) return new ValidationError(`A store publishes at most ${MAX_STORE_LANGUAGES} languages. Unpublish one first.`);
   const text = error instanceof Error ? `${error.message} ${String((error as { cause?: unknown }).cause ?? "")}` : String(error);
   if (/STORE_LANGUAGE_IN_USE/.test(text)) return new ConflictError("A market's web address uses this language. Change that market's language first.");
   if (/STORE_LANGUAGE_DEFAULT_REQUIRED/.test(text)) return new ValidationError("The default language is always published. Choose another default language first.");
@@ -79,27 +81,26 @@ export async function getStoreLanguage(db: Database, locale: string): Promise<St
   return language;
 }
 
-async function assertLimits(db: Database, change: { adding: boolean; publishing: boolean }): Promise<void> {
-  const [row] = await db.select({
-    total: sql<number>`count(*)`,
-    published: sql<number>`coalesce(sum(CASE WHEN ${storeLanguages.published} = 1 THEN 1 ELSE 0 END), 0)`,
-  }).from(storeLanguages);
-  if (change.adding && Number(row?.total ?? 0) >= MAX_STORE_LANGUAGE_ROWS) {
-    throw new ValidationError(`A store has at most ${MAX_STORE_LANGUAGE_ROWS} languages. Remove one you don't use first.`);
-  }
-  if (change.publishing && Number(row?.published ?? 0) >= MAX_STORE_LANGUAGES) {
-    throw new ValidationError(`A store publishes at most ${MAX_STORE_LANGUAGES} languages. Unpublish one first.`);
-  }
+/** Guards and their write must share one transaction; a preflight count cannot enforce a cap. */
+function languageLimitGuards(db: Database, locale: string, publish: boolean): SQLiteBatchItem[] {
+  return [
+    buildBatchGuard(db, sql`EXISTS (SELECT 1 FROM ${storeLanguages} WHERE ${storeLanguages.locale} = ${locale})
+      OR (SELECT count(*) FROM ${storeLanguages}) < ${MAX_STORE_LANGUAGE_ROWS}`, "STORE_LANGUAGE_TOTAL_LIMIT"),
+    ...(publish ? [buildBatchGuard(db, sql`EXISTS (SELECT 1 FROM ${storeLanguages} WHERE ${storeLanguages.locale} = ${locale} AND ${storeLanguages.published} = 1)
+      OR (SELECT count(*) FROM ${storeLanguages} WHERE ${storeLanguages.published} = 1) < ${MAX_STORE_LANGUAGES}`, "STORE_LANGUAGE_PUBLISHED_LIMIT")] : []),
+  ];
 }
 
 /** Adds a language (unpublished unless asked): translate first, then publish. */
 export async function addStoreLanguage(db: Database, input: { locale: string; published?: boolean }): Promise<StoreLanguage> {
   const locale = cleanLocale(input.locale);
-  await assertLimits(db, { adding: true, publishing: input.published === true });
   try {
-    await db.insert(storeLanguages).values({ locale, published: input.published === true });
+    await safeBatch(db, [
+      ...languageLimitGuards(db, locale, input.published === true),
+      db.insert(storeLanguages).values({ locale, published: input.published === true }),
+    ] as never);
   } catch (error) {
-    throw languageError(error);
+    throw storeLanguageWriteError(error);
   }
   return getStoreLanguage(db, locale);
 }
@@ -108,13 +109,14 @@ export async function addStoreLanguage(db: Database, input: { locale: string; pu
 export async function setStoreLanguagePublished(db: Database, locale: string, published: boolean): Promise<StoreLanguage> {
   const current = await getStoreLanguage(db, cleanLocale(locale));
   if (current.published === published) return current;
-  if (published) await assertLimits(db, { adding: false, publishing: true });
   try {
-    await db.update(storeLanguages)
-      .set({ published, updatedAt: sql`unixepoch()` })
-      .where(eq(storeLanguages.locale, current.locale));
+    await safeBatch(db, [
+      ...languageLimitGuards(db, current.locale, published),
+      db.update(storeLanguages).set({ published, updatedAt: sql`unixepoch()` })
+        .where(eq(storeLanguages.locale, current.locale)),
+    ] as never);
   } catch (error) {
-    throw languageError(error);
+    throw storeLanguageWriteError(error);
   }
   return getStoreLanguage(db, current.locale);
 }
@@ -122,11 +124,11 @@ export async function setStoreLanguagePublished(db: Database, locale: string, pu
 /** Removes a language with its translations and localized handles. A market's web address must not use it. */
 export async function removeStoreLanguage(db: Database, locale: string): Promise<void> {
   const current = await getStoreLanguage(db, cleanLocale(locale));
-  if (current.presences.length > 0) throw languageError(new Error("STORE_LANGUAGE_IN_USE"));
+  if (current.presences.length > 0) throw storeLanguageWriteError(new Error("STORE_LANGUAGE_IN_USE"));
   try {
     await db.delete(storeLanguages).where(eq(storeLanguages.locale, current.locale));
   } catch (error) {
-    throw languageError(error);
+    throw storeLanguageWriteError(error);
   }
 }
 
@@ -139,7 +141,6 @@ export async function removeStoreLanguage(db: Database, locale: string): Promise
 export async function setDefaultStoreLanguage(db: Database, locale: string): Promise<StoreLanguage> {
   const current = await getStoreLanguage(db, cleanLocale(locale));
   if (current.isDefault) return current;
-  if (!current.published) await assertLimits(db, { adding: false, publishing: true });
   try {
     await safeBatch(db, [
       ...ensureStoreLanguageWrites(db, [current.locale], { publish: true }),
@@ -148,22 +149,26 @@ export async function setDefaultStoreLanguage(db: Database, locale: string): Pro
       ...checkoutCopyFollowsDefaultWrites(db, current.locale),
     ] as never);
   } catch (error) {
-    throw languageError(error);
+    throw storeLanguageWriteError(error);
   }
   return getStoreLanguage(db, current.locale);
 }
 
 /**
- * Writes that make each locale a store language before a presence names it:
- * a new one is added published (a market's web address is meant to be
- * served); `publish` also publishes an existing one (the root's language).
+ * Makes languages available to a presence in its transaction. Draft presences
+ * add unpublished languages; only an explicit publish promotes one. Existing
+ * published languages stay published. Both caps include earlier writes in this batch.
  */
 export function ensureStoreLanguageWrites(db: Database, locales: readonly string[], options: { publish?: boolean } = {}): SQLiteBatchItem[] {
-  return [...new Set(locales.map(cleanLocale))].map((locale) => {
-    const insert = db.insert(storeLanguages).values({ locale, published: true });
-    return (options.publish
-      ? insert.onConflictDoUpdate({ target: storeLanguages.locale, set: { published: true, updatedAt: sql`unixepoch()` } })
-      : insert.onConflictDoNothing({ target: storeLanguages.locale })) as unknown as SQLiteBatchItem;
+  return [...new Set(locales.map(cleanLocale))].flatMap((locale) => {
+    const publish = options.publish === true;
+    const insert = db.insert(storeLanguages).values({ locale, published: publish });
+    return [
+      ...languageLimitGuards(db, locale, publish),
+      (publish
+        ? insert.onConflictDoUpdate({ target: storeLanguages.locale, set: { published: true, updatedAt: sql`unixepoch()` } })
+        : insert.onConflictDoNothing({ target: storeLanguages.locale })) as unknown as SQLiteBatchItem,
+    ];
   });
 }
 

@@ -18,7 +18,7 @@ import {
 } from "@scalius/shared/checkout-language";
 import { SettingsRevisionConflictError } from "@scalius/core/settings-store";
 import { deps } from "@scalius/core/cache-deps";
-import { defaultLanguageFollowsCopyWrites, pageLocaleSql } from "@scalius/core/modules/translations";
+import { defaultLanguageFollowsCopyWrites, pageLocaleSql, storeLanguageWriteError } from "@scalius/core/modules/translations";
 import { presenceLocale } from "@scalius/shared/translations";
 import { publicMarketPresence } from "../utils/public-market";
 import { NotFoundError, ConflictError } from "../utils/api-error";
@@ -201,6 +201,7 @@ function checkoutLanguageConstraintText(error: unknown, depth = 0): string {
 }
 
 function rethrowCheckoutLanguageConstraint(error: unknown): never {
+  error = storeLanguageWriteError(error);
   const message = checkoutLanguageConstraintText(error);
   if (
     /checkout_languages_code_unique|unique constraint failed:\s*checkout_languages\.code|unique constraint.*checkout_languages.*code/i

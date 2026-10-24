@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 // Translate & adapt (docs/MARKETS-DESIGN.md D9): the editor's rows, drafts and
 // save bodies, kept free of React so tests read them directly.
 import { translatableField, type TranslatableResourceType } from "@scalius/shared/translations";
@@ -157,9 +158,11 @@ export function saveBody(
     locale: context.locale,
     marketId: context.marketId,
     fields: fieldsOf(view.resource),
+    sourceDigest: view.resource.sourceDigest,
+    revision: view.resource.revision,
     ...(view.resource.sourceSlug !== null && !context.marketId ? { slug: context.slug ?? "" } : {}),
     ...(partsChanged.length > 0
-      ? { parts: partsChanged.map((part) => ({ type: part.type as "product_option" | "product_option_value", id: part.id, fields: fieldsOf(part) })) }
+      ? { parts: partsChanged.map((part) => ({ type: part.type as "product_option" | "product_option_value", id: part.id, fields: fieldsOf(part), sourceDigest: part.sourceDigest, revision: part.revision })) }
       : {}),
   };
 }
@@ -200,6 +203,34 @@ export function rebaseTranslationDraft(before: TranslationDraft, current: Transl
 }
 
 /**
+ * A save response may already show a newer source or another writer. Retained
+ * in-flight edits keep their observed source and our transaction's revision;
+ * untouched resources adopt the response the merchant is now seeing.
+ */
+export function rebaseTranslationObservation(
+  before: TranslationDraft,
+  current: TranslationDraft,
+  observed: ResourceTranslationsView,
+  saved: ResourceTranslationsView,
+): ResourceTranslationsView {
+  const oldResources = [observed.resource, ...observed.parts];
+  const retain = (resource: TranslatableResource): TranslatableResource => {
+    const old = oldResources.find((entry) => entry.type === resource.type && entry.id === resource.id);
+    if (!old) return resource;
+    const prefix = `${resource.type}:${resource.id}\u0000`;
+    const fields = new Set([...Object.keys(before.fields), ...Object.keys(current.fields)]);
+    const changed = [...fields].filter((key) => key.startsWith(prefix) && (current.fields[key] ?? "") !== (before.fields[key] ?? ""));
+    const changedSlug = resource.type === saved.resource.type && resource.id === saved.resource.id && current.slug !== before.slug;
+    if (changed.length === 0 && !changedSlug) return resource;
+    // A resource is saved as a complete set of fields. Even its unchanged
+    // translation values may have become outdated after our commit.
+    return { ...resource, source: old.source, sourceDigest: old.sourceDigest,
+      revision: resource.committedRevision !== undefined ? resource.committedRevision : old.revision };
+  };
+  return { ...saved, resource: retain(saved.resource), parts: saved.parts.map(retain) };
+}
+
+/**
  * Whether a Translate & adapt navigation keeps the open draft on screen: list
  * paging and search do; another item, kind, language or market opens another
  * draft, so leaving with edits asks first.
@@ -208,7 +239,7 @@ export function translationNavigationKeepsDraft(
   current: { pathname: string; search: unknown },
   next: { pathname: string; search: unknown },
 ): boolean {
-  if (current.pathname.replace(/\/+$/, "") !== next.pathname.replace(/\/+$/, "")) return false;
+  if (trimTrailingCharacter(current.pathname, "/") !== trimTrailingCharacter(next.pathname, "/")) return false;
   const editorOf = (search: unknown) => {
     const value = (search ?? {}) as Record<string, unknown>;
     return [value.type ?? "product", value.id ?? "", value.locale ?? "", value.market ?? ""].map(String).join("\u0000");
