@@ -11,7 +11,7 @@
 // declaration for the dashboard, updates and the load check.
 
 import type { Database } from "@scalius/database/client";
-import { buildBatchGuard, isBatchGuardError, safeBatch } from "@scalius/database/client";
+import { buildBatchGuard, chunkInsertRowsForD1, isBatchGuardError, safeBatch } from "@scalius/database/client";
 import {
   pluginEventDeliveries,
   pluginInstallations,
@@ -68,6 +68,7 @@ import {
   sealPluginSecret,
 } from "./settings-crypto";
 import { syncAppObjectTypes } from "../objects";
+import { captureEventStartExclusions } from "../events";
 
 export interface PluginInstallation {
   pluginId: string;
@@ -481,14 +482,11 @@ function salesChannelStatusStatements(db: Database, pluginId: string, manifest: 
     ))];
 }
 
-/** Registration inserts for `declared` with `features` on, chunked within D1's bound-parameter limit (4 per row). */
+/** Chunk registrations by their compiled row, including bound circuit defaults. */
 function registrationInserts(db: Database, pluginId: string, declared: PluginManifest, features: readonly string[]) {
   const rows = registrationRows(pluginId, pluginManifestWithFeatures(declared, features));
-  const statements = [];
-  for (let start = 0; start < rows.length; start += 24) {
-    statements.push(db.insert(pluginRegistrations).values(rows.slice(start, start + 24)));
-  }
-  return statements;
+  return chunkInsertRowsForD1(rows, (row) => db.insert(pluginRegistrations).values(row))
+    .map((chunk) => db.insert(pluginRegistrations).values(chunk));
 }
 
 function requireSha256(value: string): string {
@@ -656,6 +654,9 @@ export async function activatePlugin(
         // again (after a stop, a failure or an update) keeps the first time,
         // so nothing that happened while it was off falls before it.
         activatedAt: current.grant ? sql`COALESCE(${pluginInstallations.activatedAt}, unixepoch())` : sql`unixepoch()`,
+        eventStartExclusions: current.grant && current.activatedAt !== null
+          ? sql`${pluginInstallations.eventStartExclusions}`
+          : captureEventStartExclusions(),
         revision: sql`${pluginInstallations.revision} + 1`,
         updatedAt: sql`unixepoch()`,
       }).where(eq(pluginInstallations.pluginId, pluginId)),

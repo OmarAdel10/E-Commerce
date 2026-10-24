@@ -11,8 +11,9 @@
 // attempts over about 23 hours; an endpoint failing for a day is disabled
 // (`disabled_reason = failing`), which the dashboard shows as a notice.
 
+import { replaceEmailAddresses } from "@scalius/shared/text-scan";
 import type { Database } from "@scalius/database/client";
-import { chunkRowsForD1, safeBatch } from "@scalius/database/client";
+import { chunkInsertRowsForD1, safeBatch } from "@scalius/database/client";
 import {
   eventOutbox,
   pluginEventDeliveries,
@@ -49,6 +50,7 @@ import {
 } from "./event-outbox";
 import { parseStoredCustomerData, parseStoredTopicFilters, readWebhookSecret, type AppWebhookAccess } from "./webhook-subscriptions";
 import { eventFilterCovered, isPluginHostAllowed } from "@scalius/shared/plugins/manifest";
+import { eventAfterSubscriptionStart } from "./event-start-fence";
 
 export const WEBHOOK_MAX_ATTEMPTS = 8;
 /** Delay after attempt n (1-based) fails; 7 waits over about 22.6 hours. */
@@ -91,8 +93,7 @@ export function newDeliveryId(nowMs = Date.now()): string {
 export function maskResponseExcerpt(text: string, secret?: string | null): string | null {
   let value = text.slice(0, 4 * WEBHOOK_RESPONSE_EXCERPT_LENGTH);
   if (secret) value = value.split(secret).join("[secret]");
-  value = withoutControlCharacters(value)
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+  value = replaceEmailAddresses(withoutControlCharacters(value))
     .replace(/\b(bearer|basic)\s+[^\s"',;]+/gi, "$1 [redacted]")
     .replace(/[A-Za-z0-9_\-+/=]{24,}/g, "[redacted]")
     .replace(/\+?\d[\d\s-]{6,}\d/g, "[number]")
@@ -241,9 +242,6 @@ export function buildWebhookBody(
 
 // ── Fan-out target ────────────────────────────────────────────────────────
 
-/** Bound values per delivery insert row (id, subscription, event, topic, resource type and id). */
-const DELIVERY_INSERT_PARAMETERS_PER_ROW = 6;
-
 export const webhookFanOutTarget: EventFanOutTarget = {
   name: "webhooks",
   async hasSubscribers(db) {
@@ -263,7 +261,7 @@ export const webhookFanOutTarget: EventFanOutTarget = {
       .from(webhookSubscriptions)
       .where(and(
         eq(webhookSubscriptions.status, "active"),
-        lte(webhookSubscriptions.createdAt, event.occurredAt),
+        eventAfterSubscriptionStart(event, webhookSubscriptions.createdAt, webhookSubscriptions.eventStartExclusions),
         sql`(${webhookSubscriptions.pluginId} IS NULL OR EXISTS (
           SELECT 1 FROM ${pluginInstallations}
           WHERE ${pluginInstallations.pluginId} = ${webhookSubscriptions.pluginId} AND ${pluginInstallations.status} = 'active'
@@ -283,7 +281,7 @@ export const webhookFanOutTarget: EventFanOutTarget = {
       resourceType: event.resourceType,
       resourceId: event.resourceId,
     }));
-    for (const chunk of chunkRowsForD1(rows, DELIVERY_INSERT_PARAMETERS_PER_ROW)) {
+    for (const chunk of chunkInsertRowsForD1(rows, (row) => db.insert(webhookDeliveries).values(row))) {
       await db.insert(webhookDeliveries).values(chunk).onConflictDoNothing();
     }
     // A redelivered event re-sends only deliveries still waiting.

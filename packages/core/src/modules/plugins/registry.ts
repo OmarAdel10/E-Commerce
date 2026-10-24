@@ -10,6 +10,7 @@ import type { ProviderKind } from "@scalius/shared/plugins/providers/kinds";
 import { and, asc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { toPluginInstallation, type PluginInstallation } from "./installations";
 import type { FunctionCircuitState } from "./function-circuit";
+import { eventAfterSubscriptionStart, type OutboxEvent } from "../events";
 
 /** The registration's circuit columns, selected beside it (no extra read). */
 const circuitColumns = {
@@ -135,7 +136,7 @@ export async function listActiveFunctionRegistrations(db: Database): Promise<Reg
  * is stopped, failed or waiting for an update's approval keeps its events
  * as held deliveries (event-deliveries.ts), as event demand does.
  */
-export async function listApprovedEventPlugins(db: Database, topic: string): Promise<RegisteredPlugin[]> {
+export async function listApprovedEventPlugins(db: Database, topic: string, event?: Pick<OutboxEvent, "id" | "occurredAt">): Promise<RegisteredPlugin[]> {
   const prefix = topic.split(".", 1)[0];
   const rows = await db.select({ priority: pluginRegistrations.priority, name: pluginRegistrations.name, installation: pluginInstallations })
     .from(pluginRegistrations)
@@ -144,6 +145,7 @@ export async function listApprovedEventPlugins(db: Database, topic: string): Pro
       eq(pluginRegistrations.kind, "event"),
       inArray(pluginRegistrations.name, [topic, `${prefix}.*`, "*"]),
       isNotNull(pluginInstallations.grantJson),
+      event ? eventAfterSubscriptionStart(event, pluginInstallations.activatedAt, pluginInstallations.eventStartExclusions) : undefined,
     ))
     .orderBy(asc(pluginRegistrations.priority), asc(pluginRegistrations.pluginId))
     .all();

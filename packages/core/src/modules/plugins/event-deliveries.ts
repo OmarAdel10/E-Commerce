@@ -34,7 +34,7 @@
 // has due events, and nothing else.
 
 import type { Database } from "@scalius/database/client";
-import { chunkRowsForD1 } from "@scalius/database/client";
+import { chunkInsertRowsForD1 } from "@scalius/database/client";
 import {
   pluginEventDeliveries,
   type PluginEventDeliveryRow,
@@ -48,6 +48,7 @@ import { PluginError } from "./errors";
 import { maskPluginLogText } from "./logs";
 import { HELD_UNTIL } from "./held-deliveries";
 import { hasApprovedEventPlugins, listApprovedEventPlugins, getActivePluginInstallation } from "./registry";
+import { inJsonArray } from "../../utils/in-json-array";
 
 export const PLUGIN_DELIVERY_MAX_ATTEMPTS = 8;
 /** Delay after attempt n (1-based) fails; the same 7 waits over about 22.6 hours as webhooks. */
@@ -63,9 +64,6 @@ const MAX_ERROR_LENGTH = 500;
 const NEVER = HELD_UNTIL;
 const HELD_REASON = "Waiting for the app to run again: it is turned off, failed or waiting for approval.";
 const PRUNE_BATCH_SIZE = 500;
-/** Bound values per delivery insert row (id, plugin, event, topic, resource type and id). */
-const INSERT_PARAMETERS_PER_ROW = 6;
-
 export function pluginDeliveryRetryDelaySeconds(attempts: number): number {
   const index = Math.max(1, Math.min(attempts, PLUGIN_DELIVERY_RETRY_DELAYS_SECONDS.length)) - 1;
   return PLUGIN_DELIVERY_RETRY_DELAYS_SECONDS[index]!;
@@ -87,13 +85,11 @@ export const pluginEventFanOutTarget: EventFanOutTarget = {
   name: "plugins",
   hasSubscribers: (db) => hasApprovedEventPlugins(db),
   async fanOut(db, event) {
-    const subscribers = await listApprovedEventPlugins(db, event.topic);
+    const subscribers = await listApprovedEventPlugins(db, event.topic, event);
     // The approved grant decides, and a plugin first approved after the event never receives it.
     const eligible = subscribers.filter(({ installation }) =>
       installation.grant !== null
-      && topicMatchesAnyFilter(event.topic, installation.grant.events)
-      && installation.activatedAt !== null
-      && installation.activatedAt <= event.occurredAt);
+      && topicMatchesAnyFilter(event.topic, installation.grant.events));
     if (eligible.length === 0) return [];
     const nowMs = Date.now();
     const rows = eligible.map(({ installation }, index) => ({
@@ -104,7 +100,7 @@ export const pluginEventFanOutTarget: EventFanOutTarget = {
       resourceType: event.resourceType,
       resourceId: event.resourceId,
     }));
-    for (const chunk of chunkRowsForD1(rows, INSERT_PARAMETERS_PER_ROW)) {
+    for (const chunk of chunkInsertRowsForD1(rows, (row) => db.insert(pluginEventDeliveries).values(row))) {
       await db.insert(pluginEventDeliveries).values(chunk).onConflictDoNothing();
     }
     // An app that is not running keeps the event until it runs again.
@@ -112,7 +108,7 @@ export const pluginEventFanOutTarget: EventFanOutTarget = {
     if (held.length > 0) {
       await db.update(pluginEventDeliveries).set({ nextAttemptAt: HELD_UNTIL, lastError: HELD_REASON }).where(and(
         eq(pluginEventDeliveries.eventId, event.id),
-        inArray(pluginEventDeliveries.pluginId, held),
+        inJsonArray(pluginEventDeliveries.pluginId, held),
         eq(pluginEventDeliveries.status, "pending"),
         eq(pluginEventDeliveries.attempts, 0),
       ));

@@ -32,6 +32,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { AppError, ConflictError, NotFoundError, ServiceUnavailableError, ValidationError } from "../../errors";
 import { encodeEncryptedCredential, encryptCredentials, readStoredCredentialStrict } from "../../utils/credential-encryption";
+import { captureEventStartExclusions } from "./event-start-fence";
 
 export const WEBHOOK_VERSION_CONFLICT = "webhook_version_conflict";
 
@@ -304,6 +305,8 @@ export async function createWebhookSubscription(
       secretHint: secretHint(secret),
       createdBy: options.actorId,
       pluginId: options.owner?.pluginId ?? null,
+      createdAt: sql`unixepoch()`,
+      eventStartExclusions: captureEventStartExclusions(),
     })
     .returning();
   return { subscription: toWebhookSubscriptionView(rows[0]!), secret };

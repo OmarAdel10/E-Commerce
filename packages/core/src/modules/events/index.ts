@@ -6,6 +6,7 @@ import type { EventFanOutTarget } from "./event-outbox";
 import { webhookFanOutTarget } from "./webhook-delivery";
 
 export * from "./event-outbox";
+export * from "./event-start-fence";
 export * from "./webhook-subscriptions";
 export * from "./webhook-delivery";
 
