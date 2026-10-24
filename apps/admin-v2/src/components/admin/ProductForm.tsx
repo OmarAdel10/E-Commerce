@@ -81,7 +81,7 @@ import { resourceMessages } from "~/i18n/resource";
 import { saveBarMessages } from "~/i18n/save-bar";
 import type { ProductRevisionConflict } from "@/lib/admin-api-conflicts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { shippingProfilesQuery } from "~/lib/api-query-options/settings-screens";
+import { shippingProfilesQuery } from "~/lib/api-query-options/shipping-profiles";
 import { useHasPermission } from "~/contexts/PermissionContext";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { queryKeys } from "@/lib/query-keys";

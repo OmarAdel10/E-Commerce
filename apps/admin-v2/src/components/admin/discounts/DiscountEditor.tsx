@@ -51,7 +51,7 @@ import { AdminApiResponseError } from "~/lib/admin-api-error";
 import { readPromotionRevisionConflict } from "~/lib/admin-api-conflicts";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { discountQueryOptions, discountsQueryOptions, type DiscountRecord } from "~/lib/api-query-options/discounts";
-import { shippingProfilesQuery } from "~/lib/api-query-options/settings-screens";
+import { shippingProfilesQuery } from "~/lib/api-query-options/shipping-profiles";
 import {
   discountFailureText,
   useCreateDiscount,

@@ -2,7 +2,7 @@ import { useWatch, type UseFormReturn } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import type { ShippingProfile } from "~/lib/api-query-options/settings-screens";
+import type { ShippingProfile } from "~/lib/api-query-options/shipping-profiles";
 import { useMessages } from "~/i18n";
 import { giftCardProductMessages } from "~/i18n/gift-card-product";
 import { productMessages } from "~/i18n/products";
