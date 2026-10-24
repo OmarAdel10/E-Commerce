@@ -64,6 +64,8 @@ function constantBreaks(before: unknown, after: unknown): string[] {
       for (const value of was) {
         if (!kept.has(JSON.stringify(value))) problems.push(`storefront.${name}: ${JSON.stringify(value)} was removed.`);
       }
+    } else if (JSON.stringify(was) !== JSON.stringify(now[name])) {
+      problems.push(`storefront.${name}: the constant value changed.`);
     }
   }
   return problems;
@@ -83,7 +85,7 @@ export function protocolBreakingChanges(before: unknown, after: unknown): string
 
   const tiers = record(now.providerTiers);
   for (const [kind, tier] of Object.entries(record(was.providerTiers))) {
-    if (tier === "stable" && kind in tiers && tiers[kind] !== "stable") problems.push(`providerTiers.${kind}: a stable port went back to ${String(tiers[kind])}.`);
+    if (tier === "stable" && tiers[kind] !== "stable") problems.push(`providerTiers.${kind}: a stable port went back to ${String(tiers[kind])}.`);
   }
   const nowProviders = record(now.providers);
   problems.push(...removedKeys("providers", was.providers, now.providers, "stable port"));
@@ -96,7 +98,36 @@ export function protocolBreakingChanges(before: unknown, after: unknown): string
     }
   }
 
-  problems.push(...schemaBreaks("adminUi", was.adminUi, now.adminUi, "request"));
+  // These are the keys emitted by abi.snapshot.test.ts. Legacy adminUi
+  // snapshots remain understood; current UI documents and extension hooks
+  // must not disappear from the semantic check while their snapshot moves.
+  if ("adminUi" in was) problems.push(...schemaBreaks("adminUi", was.adminUi, now.adminUi, "request"));
+  if ("extensions" in was) problems.push(...portBreaks("extensions", was.extensions, now.extensions));
+  if ("ui" in was) {
+    const ui = record(was.ui);
+    const nowUi = record(now.ui);
+    problems.push(...schemaBreaks("ui.document", ui.document, nowUi.document, "request"));
+    const surfaces = record(ui.surfaces);
+    const nowSurfaces = record(nowUi.surfaces);
+    problems.push(...removedKeys("ui.surfaces", surfaces, nowSurfaces, "surface"));
+    for (const [name, surface] of Object.entries(surfaces)) {
+      if (!(name in nowSurfaces)) continue;
+      const previous = record(surface);
+      const next = record(nowSurfaces[name]);
+      for (const field of ["nodes", "actions", "targets"]) {
+        const kept = new Set(Array.isArray(next[field]) ? next[field] : []);
+        for (const value of Array.isArray(previous[field]) ? previous[field] : []) {
+          if (!kept.has(value)) problems.push(`ui.surfaces.${name}.${field}: ${JSON.stringify(value)} was removed.`);
+        }
+      }
+      for (const field of ["maxNodes", "maxDepth", "maxBytes"]) {
+        if (typeof previous[field] === "number" && (typeof next[field] !== "number" || next[field] < previous[field])) {
+          problems.push(`ui.surfaces.${name}.${field}: the limit was removed or tightened.`);
+        }
+      }
+      if (previous.images !== next.images) problems.push(`ui.surfaces.${name}.images: the image policy changed.`);
+    }
+  }
   problems.push(...removedKeys("scopes", was.scopes, now.scopes, "scope"));
 
   const nowErrors = record(now.errors);
@@ -115,6 +146,7 @@ export function protocolBreakingChanges(before: unknown, after: unknown): string
     else if (nowResources[topic] !== resource) problems.push(`events.${topic}: the resource type changed from ${String(resource)} to ${String(nowResources[topic])}.`);
   }
   const nowFacts = record(nowEvents.facts);
+  problems.push(...removedKeys("events.facts", events.facts, nowEvents.facts, "facts schema"));
   for (const [topic, value] of Object.entries(record(events.facts))) {
     if (topic in nowFacts) problems.push(...schemaBreaks(`events.${topic} facts`, value, nowFacts[topic], "response"));
   }

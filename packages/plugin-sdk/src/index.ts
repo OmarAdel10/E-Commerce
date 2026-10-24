@@ -17,6 +17,8 @@
 // functions, cron jobs or provider operations are rejected when the plugin
 // is packed or loaded.
 
+export { replaceEmailAddresses, trimTrailingCharacter } from "@scalius/shared/text-scan";
+
 import type { EventTopic, EventTopicFilter } from "@scalius/shared/events";
 import type {
   FunctionReadRecord,

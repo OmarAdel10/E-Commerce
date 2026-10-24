@@ -296,12 +296,12 @@ export const cartTransformOutputSchema = z.object({
 // ── cart.line_prices ──────────────────────────────────────────────────────
 
 /** Where a line's unit price came from (`resolvePrice()`). */
-export const FUNCTION_PRICE_SOURCES = ["sale", "segment", "market", "fx", "base"] as const;
+export const FUNCTION_PRICE_SOURCES = ["sale", "segment", "market", "fx", "base", "override"] as const;
 
 /**
  * Per line: where its price came from and the bundle it belongs to (an
  * expanded line's components). A one-time line takes an app price only when
- * it is priced at `fx` or `base`: sale, segment and market lists stay
+ * it is priced at `sale`, `fx` or `base`: override, segment and market lists stay
  * authoritative. A line bought with a purchase option takes only its owning
  * app's price, which outranks every list (`resolvePrice()`).
  */
@@ -319,9 +319,10 @@ export const LINE_ADJUSTMENT_MAX_MINOR = 1_000_000_000_000;
 /**
  * `prices`: unit prices in the cart currency's minor units, before
  * buyer-input surcharges (they are added on top), for one-time lines priced
- * at `fx` or `base` and for lines bought with the app's own purchase option
+ * at `sale`, `fx` or `base` and for lines bought with the app's own purchase option
  * (above every list). Several apps: the first in priority order that prices
- * a line wins. A line not named keeps its price.
+ * a line wins. A sale only lowers that offer. An unnamed one-time line keeps
+ * its price; a purchase-option line without its owner's valid price refuses checkout.
  *
  * `adjustments`: add-ons to each unit of a line (an engraving's letters, a
  * gift wrap), applied after the whole price precedence, so sale, segment
