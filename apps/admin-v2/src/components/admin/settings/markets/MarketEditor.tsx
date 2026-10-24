@@ -1,6 +1,6 @@
 // One market (docs/MARKETS-DESIGN.md D4), Shopify's market page: its name
 // and status, Countries, Currency (the store's currency, or the market's own
-// with its manual exchange rate and rate lock, step 6), Pricing (Shopify's
+// with its manual exchange rate and payment-start deadline, step 6), Pricing (Shopify's
 // price adjustment, another market only) and Taxes. The primary market also
 // has the price format. Rarely changed controls (the handle, and another
 // market's own web address and language) sit behind "Web address and
@@ -216,7 +216,8 @@ function money(code: string, minor: number): string {
 /**
  * The currency buyers pay in (Shopify's market currency): the shop currency,
  * or the market's own with its manual exchange rate (1 shop unit = rate
- * market units) and the minutes a placed order keeps it. The backup market
+ * market units) and the time to start payment on a completely unpaid order.
+ * Placed amounts and rates never change. The backup market
  * always sells in the shop currency. The API refuses a currency no active
  * payment method charges, with the reason.
  */

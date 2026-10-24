@@ -103,7 +103,9 @@ replayed or racing confirmation credit an order at most once.
 
 Every row also records settlement (migration 0111, MARKETS-DESIGN D2):
 `settlement_currency`, `settlement_amount_minor`, `settlement_rate` (a decimal
-string) and `exchange_adjustment_minor`. A confirmed payment takes the
+string), `exchange_adjustment_minor` and `settlement_provenance` (0188: `reported` or `assumed`).
+Historical rows and movements without a usable provider report are explicitly assumed; identical
+presentment numbers do not establish what a provider paid out. A confirmed payment takes the
 provider's report when the payment event carries `settlement`
 (`paymentSettlement()` in `@scalius/shared/money-chain`); the adjustment is
 the gain or loss against the order's locked `fx_rate` when it settled in the

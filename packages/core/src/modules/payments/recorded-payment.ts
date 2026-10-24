@@ -238,6 +238,7 @@ export async function recordOrderPayment(
       metadata: sql<string>`${JSON.stringify(metadata)}`.as("metadata"),
       createdAt: sql<Date>`unixepoch()`.as("created_at"),
       updatedAt: sql<Date>`unixepoch()`.as("updated_at"),
+      settlementProvenance: sql<typeof settlement.settlementProvenance>`${settlement.settlementProvenance}`.as("settlement_provenance"),
     }).from(orders).where(orderUnchanged)).onConflictDoNothing({ target: orderPayments.id }) as unknown as SQLiteBatchItem,
     db.update(orders).set({
       paymentStatus: next.paymentStatus,

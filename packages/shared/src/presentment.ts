@@ -15,6 +15,7 @@
  * (shop units per presentment unit), so the order's shop amounts are exact
  * integer conversions at the stored rate. Pure and browser-safe.
  */
+import { assertMinorAmount } from "./money";
 import { currencyExponent, defaultPriceIncrementMinor, type PricingCurrency } from "./currency-policy";
 import {
   convertMinorAtRate,
@@ -24,7 +25,7 @@ import {
   type OrderFxSnapshot,
 } from "./money-chain";
 
-/** Shopify's default checkout rate lock. */
+/** Default window for an unpaid foreign-currency order to start a buyer payment session. */
 export const DEFAULT_FX_LOCK_MINUTES = 30;
 export const MIN_FX_LOCK_MINUTES = 5;
 export const MAX_FX_LOCK_MINUTES = 1_440;
@@ -48,7 +49,7 @@ export interface PresentmentMoney {
   fxSource: string;
   /** When the rate was set (epoch seconds), or null. */
   fxAsOf: number | null;
-  /** How long a placed order keeps this rate (the market's lock, default 30). */
+  /** Minutes after placement to start a new buyer payment session while wholly unpaid. */
   lockMinutes: number;
 }
 
@@ -120,7 +121,7 @@ export function presentmentPricingCurrency(money: PresentmentMoney): PricingCurr
  * the nearest (a fee or threshold never vanishes); zero stays zero.
  */
 export function presentShopMinor(money: PresentmentMoney, shopMinor: number, mode: "nearest" | "down" = "nearest"): number {
-  if (!Number.isSafeInteger(shopMinor)) throw new RangeError("Amounts are safe integers of minor units.");
+  assertMinorAmount(shopMinor);
   if (!isForeignPresentment(money) || shopMinor === 0) return shopMinor;
   const negative = shopMinor < 0;
   const [whole, fraction = ""] = money.rate.split(".");
@@ -136,7 +137,7 @@ export function presentShopMinor(money: PresentmentMoney, shopMinor: number, mod
   let rounded = units * increment;
   if (rounded === 0n && mode === "nearest") rounded = increment;
   const value = Number(rounded);
-  if (!Number.isSafeInteger(value)) throw new RangeError("The converted amount exceeds the supported range.");
+  assertMinorAmount(value);
   return negative ? -value : value;
 }
 
@@ -171,14 +172,16 @@ export function invertFxRate(rate: string): string {
 
 /** A presentment amount in the shop currency at the order's rate (exact, half up). */
 export function shopMinorOf(money: PresentmentMoney, presentmentMinor: number): number {
+  assertMinorAmount(presentmentMinor);
   if (!isForeignPresentment(money)) return presentmentMinor;
   return convertMinorAtRate(presentmentMinor, orderFxRate(money), money.decimalPlaces, money.shopDecimalPlaces);
 }
 
 /**
  * The order's fx snapshot (MARKETS-DESIGN D3): the shop currency, its rate,
- * where the rate came from, when it was set, and until when the order keeps
- * it (`placedAt` + the market's lock). A same-currency order is
+ * where the rate came from, when it was set, and the deadline to start a new
+ * buyer payment session while wholly unpaid (`placedAt` + the market's lock).
+ * The placed order keeps its amounts and rate permanently. A same-currency order is
  * `sameCurrencyFx`: rate "1", no quote, no lock.
  */
 export function presentmentFx(money: PresentmentMoney, placedAt: Date = new Date()): OrderFxSnapshot {
@@ -229,7 +232,8 @@ export function convertStoreCurrencyMinor(
   to: StoreCurrencyRate,
   mode: "down" | "up",
 ): number {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new RangeError("Amounts are non-negative safe integers.");
+  assertMinorAmount(amountMinor);
+  if (amountMinor < 0) throw new RangeError("Amounts are non-negative safe integers.");
   if (from.code === to.code) return amountMinor;
   // amount / 10^fromDp / fromRate × toRate × 10^toDp
   const a = fractionOf(from.rate);
@@ -238,7 +242,7 @@ export function convertStoreCurrencyMinor(
   const top = BigInt(amountMinor) * b.numerator * a.scale * (shift > 0 ? 10n ** BigInt(shift) : 1n);
   const bottom = a.numerator * b.scale * (shift < 0 ? 10n ** BigInt(-shift) : 1n);
   const value = Number(mode === "down" ? top / bottom : (top + bottom - 1n) / bottom);
-  if (!Number.isSafeInteger(value)) throw new RangeError("The converted amount exceeds the supported range.");
+  assertMinorAmount(value);
   return value;
 }
 
@@ -255,4 +259,33 @@ export function crossRate(from: StoreCurrencyRate, to: StoreCurrencyRate): strin
   const integer = digits.slice(0, -12).replace(/^0+(?=\d)/, "");
   const decimals = digits.slice(-12).replace(/0+$/, "");
   return decimals ? `${integer}.${decimals}` : integer;
+}
+
+/** App quotes expire after a day; merchant-entered manual rates have no automatic expiry. */
+export const MAX_APP_FX_RATE_AGE_SECONDS = 24 * 60 * 60;
+
+/** Freshness gates new checkouts only. Placed orders keep their stored rate. */
+export function isMarketFxRateFresh(
+  money: Pick<PresentmentMoney, "fxSource" | "fxAsOf">,
+  atSeconds = Math.floor(Date.now() / 1_000),
+): boolean {
+  if (money.fxSource === MANUAL_FX_SOURCE || money.fxSource === SAME_CURRENCY_FX_SOURCE) return true;
+  return money.fxAsOf !== null && Number.isSafeInteger(money.fxAsOf)
+    && money.fxAsOf <= atSeconds && atSeconds - money.fxAsOf <= MAX_APP_FX_RATE_AGE_SECONDS;
+}
+
+/** The deadline for a new wholly-unpaid foreign-currency session; undefined means unrestricted. */
+export function orderPaymentRateDeadline(order: {
+  currencyCode: string;
+  shopCurrency: string;
+  paidAmountMinor: number;
+  fxLockedUntil: Date | null;
+}): Date | null | undefined {
+  return order.currencyCode === order.shopCurrency || order.paidAmountMinor > 0 ? undefined : order.fxLockedUntil;
+}
+
+/** Expiry refuses a new session, never changes an order or invalidates an existing payment. */
+export function isOrderPaymentRateExpired(order: Parameters<typeof orderPaymentRateDeadline>[0], now = new Date()): boolean {
+  const deadline = orderPaymentRateDeadline(order);
+  return deadline !== undefined && (deadline === null || !Number.isFinite(deadline.getTime()) || deadline.getTime() <= now.getTime());
 }

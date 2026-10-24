@@ -1,7 +1,7 @@
 import type { Database } from "@scalius/database/client";
 import { paymentSessionAttempts } from "@scalius/database/schema";
-import { and, desc, eq, isNull, lte, or, sql, type SQL } from "drizzle-orm";
-import { ConflictError, ServiceUnavailableError } from "@scalius/core/errors";
+import { and, desc, eq, gt, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { AppError, ConflictError, ServiceUnavailableError } from "@scalius/core/errors";
 import { getDecimalPlaces } from "@scalius/shared/currency";
 import { fromMinor } from "@scalius/shared/money";
 import type { PaymentType } from "./types";
@@ -151,6 +151,7 @@ export async function claimPaymentSessionAttempt<TResponse>(
     .values({
       id: createPaymentSessionAttemptId(),
       attemptKey: input.attemptKey,
+      providerStartedAt: null,
       orderId: input.orderId,
       gateway: input.gateway,
       paymentType: input.paymentType,
@@ -264,6 +265,46 @@ export async function claimPaymentSessionAttempt<TResponse>(
   }
 
   throw new ServiceUnavailableError("Payment session attempt state is unavailable. Please try again.");
+}
+
+/**
+ * Admit the provider side effect while this caller owns the claim. A durable
+ * admission survives a lost response or process crash; its exact idempotency
+ * key may recover later. A new key never inherits an earlier key's admission.
+ */
+export async function authorizePaymentSessionDispatch(
+  db: Database,
+  attempt: ClaimedPaymentSessionAttempt,
+  startBefore: Date | null | undefined,
+): Promise<void> {
+  const deadline = startBefore?.getTime();
+  const withinWindow = startBefore === undefined
+    ? sql`1 = 1`
+    : deadline !== undefined && Number.isFinite(deadline)
+      ? sql`unixepoch() < ${Math.floor(deadline / 1_000)}`
+      : sql`1 = 0`;
+  const admitted = await db.update(paymentSessionAttempts).set({
+    providerStartedAt: sql`coalesce(${paymentSessionAttempts.providerStartedAt}, unixepoch())`,
+  }).where(and(
+    eq(paymentSessionAttempts.id, attempt.id),
+    eq(paymentSessionAttempts.attemptKey, attempt.attemptKey),
+    eq(paymentSessionAttempts.claimId, attempt.claimId),
+    eq(paymentSessionAttempts.status, "processing"),
+    gt(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`),
+    or(isNotNull(paymentSessionAttempts.providerStartedAt), withinWindow),
+  )).returning({ id: paymentSessionAttempts.id });
+  if (admitted.length > 0) return;
+  if (startBefore !== undefined && (deadline === undefined || !Number.isFinite(deadline) || deadline <= Date.now())) {
+    throw new AppError(409, "payment_rate_expired", "The payment window for this exchange rate has ended. Place a new order to pay.");
+  }
+  throw new ConflictError("Payment session attempt claim was lost before the provider request started.");
+}
+
+/** Whether this exact provider request was already admitted, including an uncertain outcome. */
+export async function hasStartedPaymentSession(db: Database, attemptKey: string): Promise<boolean> {
+  return Boolean(await db.select({ id: paymentSessionAttempts.id }).from(paymentSessionAttempts)
+    .where(and(eq(paymentSessionAttempts.attemptKey, attemptKey), isNotNull(paymentSessionAttempts.providerStartedAt)))
+    .get());
 }
 
 export async function markPaymentSessionAttemptCreated<TResponse>(
@@ -391,6 +432,7 @@ async function resolveLivePaymentSessionClaim<TResponse>(
     .update(paymentSessionAttempts)
     .set({
       attemptKey: input.attemptKey,
+      providerStartedAt: null,
       orderId: input.orderId,
       gateway: input.gateway,
       paymentType: input.paymentType,

@@ -44,7 +44,7 @@ export interface MarketForm {
   fxRateSource: string;
   /** The currency buyers pay in: the shop currency, or its own (MARKETS-DESIGN step 6). */
   currencyCode: string;
-  /** Minutes a placed order keeps its rate; NaN or null while the typed text is refused. */
+  /** Minutes to start payment on a completely unpaid foreign-currency order; NaN or null while invalid. */
   fxLockMinutes: number | null;
   // Facts the editor shows but never saves.
   isBackup: boolean;

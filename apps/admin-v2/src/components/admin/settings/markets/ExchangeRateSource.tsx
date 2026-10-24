@@ -8,6 +8,8 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { MANUAL_FX_RATE_SOURCE_ID } from "@scalius/shared/market-pricing";
+import { isMarketFxRateFresh, MAX_APP_FX_RATE_AGE_SECONDS } from "@scalius/shared/presentment";
+import { Alert, AlertDescription, AlertTitle } from "~/components/ui/alert";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { listDateLabel } from "~/components/admin/data-table/ListDate";
 import { useMessages } from "~/i18n";
@@ -39,6 +41,10 @@ export function ExchangeRateSource({ values, canEdit, setValues }: {
   ];
   const asOf = values.fxRateAsOf ? new Date(values.fxRateAsOf) : null;
   const saved = source === values.savedFxRateSource && values.fxRate;
+  const needsFreshRate = source === values.savedFxRateSource && !isMarketFxRateFresh({
+    fxSource: source,
+    fxAsOf: asOf ? Math.floor(asOf.getTime() / 1_000) : null,
+  });
   return (
     <>
       <SettingsField id="market-rate-source" label={t("rateSource")} help={source === MANUAL_FX_RATE_SOURCE_ID ? t("rateSourceManualHelp") : t("rateSourceAppHelp")}>
@@ -64,6 +70,16 @@ export function ExchangeRateSource({ values, canEdit, setValues }: {
             : t("rateFromAppOnSave", { app: app?.name ?? source })}
         </p>
       )}
+      {needsFreshRate ? (
+        <Alert variant="warning">
+          <AlertTitle>{t("rateStaleTitle")}</AlertTitle>
+          <AlertDescription>{t("rateStaleHelp", {
+            currency: values.currencyCode,
+            app: app?.name ?? source,
+            hours: MAX_APP_FX_RATE_AGE_SECONDS / 3_600,
+          })}</AlertDescription>
+        </Alert>
+      ) : null}
     </>
   );
 }

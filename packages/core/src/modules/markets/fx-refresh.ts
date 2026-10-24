@@ -4,6 +4,7 @@
 // source and currency, the answer stored on the market with its time. Pages,
 // carts and checkouts read the stored rate only, so a slow or failing
 // provider never delays a buyer: the last rate stays until a new one comes.
+// A rate older than one day cannot start a checkout; placed orders keep theirs.
 //
 // A new rate advances the market's pricing dependency through the market
 // trigger (`fx_rate`), so cached prices follow it; the same rate again only
@@ -14,6 +15,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { safeBatch, type Database } from "@scalius/database/client";
 import { markets } from "@scalius/database/schema";
 import { MANUAL_FX_RATE_SOURCE_ID, type FxRateSource } from "@scalius/shared/market-pricing";
+import { isMarketFxRateFresh } from "@scalius/shared/presentment";
 import { isFxRate } from "@scalius/shared/money-chain";
 import { readStoreCurrency } from "./pricing";
 
@@ -56,12 +58,12 @@ export async function refreshMarketFxRates(
       sources.set(row.fxRateSource, source);
     }
     const answer = await (await source)?.rate(shop, row.currencyCode).catch(() => null) ?? null;
-    if (!answer || !isFxRate(answer.rate)) {
+    const asOf = answer ? Math.floor((answer.asOf?.getTime() ?? Date.now()) / 1_000) : null;
+    if (!answer || !isFxRate(answer.rate) || !isMarketFxRateFresh({ fxSource: row.fxRateSource, fxAsOf: asOf })) {
       result.failed += 1;
       continue;
     }
     if (answer.rate !== row.fxRate) result.changed += 1;
-    const asOf = Math.floor((answer.asOf?.getTime() ?? Date.now()) / 1_000);
     // Only while the market still takes its rate from this source.
     writes.push(db.update(markets)
       .set({ fxRate: answer.rate, fxRateAsOf: asOf, updatedAt: sql`unixepoch()` })

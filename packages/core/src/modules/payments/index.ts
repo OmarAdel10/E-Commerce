@@ -137,6 +137,8 @@ export type { RefundAttemptVisibilityRow } from "./refund-attempt-visibility";
 export {
   buildPaymentSessionAttemptIdentity,
   claimPaymentSessionAttempt,
+  authorizePaymentSessionDispatch,
+  hasStartedPaymentSession,
   listOrderPaymentSessionAttempts,
   markPaymentSessionAttemptCreated,
   markPaymentSessionAttemptFailed,

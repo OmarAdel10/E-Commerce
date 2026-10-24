@@ -69,8 +69,9 @@ default market equal to the current store.
   same-currency order the rate is `1` and the shop amounts equal the
   presentment amounts. Analytics sum shop amounts; nothing ever sums mixed
   currencies.
-- The rate is locked when checkout prices the cart (lock TTL from the market,
-  default 30 minutes); an expired lock re-prices before commit.
+- Placement permanently freezes the order rate and amounts. The market lock (default 30 minutes)
+  is the deadline to start a new buyer payment session on a wholly unpaid foreign-currency order;
+  it never reprices a placed order. Existing sessions and partly-paid balances remain valid.
 
 ## D4. Market
 
@@ -104,7 +105,7 @@ and links from markets to delivery methods and payment methods.
 - Base prices stay on `product_variants` in the shop currency (the backup
   market). Other markets use:
   - **fixed prices** (first-class, Medusa/Vendure/Saleor):
-    `price_lists` (id, kind `market` | `segment` | `sale`, market_id,
+    `price_lists` (id, kind `market` | `segment` | `sale` | `override`, market_id,
     segment_id, starts_at, ends_at, priority, status) and `price_list_prices`
     (price_list_id, variant_id, currency_code, amount_minor,
     compare_at_minor, min_quantity), or
@@ -112,8 +113,10 @@ and links from markets to delivery methods and payment methods.
     source), then the market's price increment and ending (e.g. `.95`,
     whole taka), with optional percentage adjustment (Shopify catalogs).
     Computed at read with the rate as a cache dependency; no stored copies.
-- Precedence, documented once: active sale list > segment list > market list
-  > FX-derived > base; among equals, higher priority, then lowest amount.
+- Precedence, documented once: purchase-option app > override; otherwise a sale
+  only lowers segment > market list > app > FX-derived > base. Among lists of
+  one kind, higher priority wins, then lowest amount; sales choose the lowest
+  rounded amount first.
 - Compare-at lives on the same row; a `prior_price` field can be added for
   Omnibus-style rules later (Saleor keeps it manual, so do we).
 - Quantity breaks are `min_quantity` rows (Medusa), not a separate system.
@@ -810,7 +813,7 @@ free-plan budget scenario and render budget.
 **Schema.** Migration `0120_price_lists` (D1/Turso file, PostgreSQL
 sidecar, ledger digest, schema contract 120, Drizzle snapshot):
 
-- `price_lists`: name, description, kind (`market` | `segment` | `sale`),
+- `price_lists`: name, description, kind (`market` | `segment` | `sale` | `override`),
   market, segment (segment lists only), status (`draft` | `active`),
   `starts_at`/`ends_at`, priority (0 to 1,000) and a revision. A trigger
   keeps market and sale lists off the backup market
@@ -827,11 +830,12 @@ checkout authority revision.
 
 **The rule.** `resolvePrice()` in `@scalius/shared/market-pricing` is the
 one precedence, stated once in its module header: a line's purchase-option
-price from the app that declares the option, then a live sale list, then a
-segment list, then a market list, then an app price (`cart.line_prices`,
-FX and base lines only), then the FX-derived price, then the base price.
-Among lists of one kind the
-higher priority wins, then the lower amount, then the smaller list id. A
+price from the app that declares the option, then an override list. Otherwise
+a sale applies only when it lowers the ordinary price: segment list, then
+market list, then app price (`cart.line_prices`), then FX-derived, then base.
+A purchase option without its owner app's valid price refuses checkout.
+Among sale lists the lowest rounded amount wins, then priority, raw amount and
+list id. Other kinds choose higher priority, then lower amount and smaller list id. A
 list offers its row with the largest `min_quantity` that the quantity
 reaches. A list price replaces the SKU price and its catalogue discount;
 its compare-at (or, for a sale without one, the price without sales) is the
@@ -1167,8 +1171,8 @@ allowlist) adds to `markets`:
   currency. Triggers keep the backup market in the shop currency and a market
   in its own currency in `fx` mode (`MARKET_CURRENCY_INVALID`);
 - `fx_rate_as_of`: when the manual rate was set (an order's `fx_as_of`);
-- `fx_lock_minutes` (5 to 1,440, default 30): how long a placed order keeps
-  its rate (an order's `fx_locked_until`).
+- `fx_lock_minutes` (5 to 1,440, default 30): the payment-start deadline after placement
+  for a wholly unpaid foreign-currency order (`fx_locked_until`). Its amounts and rate never expire.
 
 A change of a market's currency or lock advances the checkout authority
 fence. `customer_order_stats` sums what each customer spent in the shop
@@ -1215,9 +1219,10 @@ cart page uses the presence). The quote returns `fx` (shop currency, rate,
 source, as-of time and the lock an order placed now gets). The order stores
 `fx_rate` as the inverse (shop units per presentment unit, 12 fraction
 digits), `fx_source` `manual`, `fx_as_of` and `fx_locked_until` (placed at +
-the market's lock), and exact shop amounts at that rate. The lock is the
-rate's: a manual rate changes only through the fence, so a quote and its
-commit always price at one rate.
+the market's payment-start window), and exact shop amounts at that rate. A manual rate changes
+only through the fence, so a quote and its commit always price at one rate. Automatic app quotes
+older than 24 hours cannot start a new checkout; failed refreshes keep their original age and the
+dashboard warns. Placed orders retain their rate even after the automatic quote expires.
 
 - Gateways that cannot charge the currency are not offered or accepted.
   Advance (deposit) plans are a shop-currency amount: an order in another

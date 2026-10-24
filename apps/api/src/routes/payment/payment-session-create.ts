@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import type { Context } from "hono";
 import { and, eq, sql } from "drizzle-orm";
 import {
@@ -14,6 +15,7 @@ import {
   PaymentRecordStatus,
   PaymentStatus,
 } from "@scalius/database/schema";
+import { isOrderPaymentRateExpired, orderPaymentRateDeadline } from "@scalius/shared/presentment";
 import { readLinePurchaseOption } from "@scalius/shared/line-properties";
 import { currencyDocument } from "@scalius/core/modules/settings";
 import {
@@ -22,6 +24,8 @@ import {
   isOnlinePaymentMethod,
   buildPaymentSessionAttemptIdentity,
   claimPaymentSessionAttempt,
+  authorizePaymentSessionDispatch,
+  hasStartedPaymentSession,
   markPaymentSessionAttemptCreated,
   markPaymentSessionAttemptFailed,
   type PaymentSessionAttemptProcessingResult,
@@ -153,6 +157,8 @@ type PaymentSessionOrderRow = {
   totalAmountMinor: number;
   currencyCode: string;
   currencyDecimalPlaces: number;
+  shopCurrency: string;
+  fxLockedUntil: Date | null;
   customerId: string | null;
   accountOwnerCustomerId: string | null;
   customerName: string;
@@ -213,6 +219,9 @@ export type CustomerPaymentSessionRecoveryOrder = Pick<
   | "shipmentClaimId"
   | "shipmentClaimExpiresAt"
   | "fulfillmentTypes"
+  | "shopCurrency"
+  | "fxLockedUntil"
+  | "version"
 >;
 
 async function loadCurrentCurrencyCode(db: Database): Promise<string> {
@@ -309,15 +318,7 @@ async function createPaymentSessionForOrder(
   });
 
   const savePaymentMethod = await savePaymentMethodRequest(db, gateway, order, input.proof);
-  const attemptIdentity = await buildPaymentSessionAttemptIdentity({
-    orderId: input.orderId,
-    gateway: gateway.id,
-    paymentType: policy.paymentType,
-    amountMinor,
-    currency,
-    ...identityProof(input.proof),
-    requestContext: { amountMinor, orderVersion: order.version, ...urls },
-  });
+  const attemptIdentity = await paymentSessionIdentity(order, gateway.id, policy, input, urls);
   const correlationId = buildPaymentCorrelationId(input.orderId, policy.paymentType, attemptIdentity.transactionSuffix);
   const attemptClaim = await claimPaymentSessionAttempt<CardSessionResponse | HostedSessionResponse>(db, {
     ...attemptIdentity,
@@ -328,6 +329,9 @@ async function createPaymentSessionForOrder(
 
   let session: Awaited<ReturnType<PaymentGateway["createSession"]>>;
   try {
+    // Commit admission before the side effect: a lost answer can recover under
+    // this exact provider key later, without allowing a fresh expired request.
+    await authorizePaymentSessionDispatch(db, attemptClaim.attempt, orderPaymentRateDeadline(order));
     session = await withPaymentProviderDeadline(gateway.label, (signal, requestTimeoutMs) =>
       gateway.createSession({
         attemptKey: attemptIdentity.attemptKey,
@@ -495,6 +499,19 @@ export async function resolveCustomerPaymentSessionRecovery(
         currentCurrency.getCode,
       );
       await loadCheckoutGatewaySettings(db, encryptionKey, candidate);
+      if (isOrderPaymentRateExpired(order)) {
+        const sessionInput: CreatePaymentSessionInput = {
+          orderId: order.id,
+          paymentType: isBalancePayment ? "balance" : undefined,
+          proof: { kind: "customer_account", customerId: input.expectedCustomerId },
+          returnTarget: { kind: "customer_account" },
+        };
+        const identity = await paymentSessionIdentity(order, candidate.id, policy, sessionInput,
+          buildGatewayUrls(c, candidate.id, sessionInput, policy));
+        if (!await hasStartedPaymentSession(db, identity.attemptKey)) {
+          throw new ValidationError("The payment window for this exchange rate has ended. Place a new order to pay.");
+        }
+      }
 
       return activeRecovery(candidate, policy);
     } catch (error: unknown) {
@@ -524,6 +541,8 @@ async function loadPaymentSessionOrder(
       totalAmountMinor: orders.totalAmountMinor,
       currencyCode: orders.currencyCode,
       currencyDecimalPlaces: orders.currencyDecimalPlaces,
+      shopCurrency: orders.shopCurrency,
+      fxLockedUntil: orders.fxLockedUntil,
       customerId: orders.customerId,
       accountOwnerCustomerId: orders.accountOwnerCustomerId,
       customerName: orders.customerName,
@@ -889,6 +908,21 @@ async function scheduleOrderRecoveryHint(
   await guardedWrite;
 }
 
+function paymentSessionIdentity(
+  order: Pick<PaymentSessionOrderRow, "id" | "version" | "currencyCode">,
+  gateway: string,
+  policy: PaymentSessionPolicy,
+  input: CreatePaymentSessionInput,
+  urls: ReturnType<typeof buildGatewayUrls>,
+) {
+  return buildPaymentSessionAttemptIdentity({
+    orderId: order.id, gateway, paymentType: policy.paymentType,
+    amountMinor: policy.chargeAmountMinor, currency: order.currencyCode,
+    ...identityProof(input.proof),
+    requestContext: { amountMinor: policy.chargeAmountMinor, orderVersion: order.version, ...urls },
+  });
+}
+
 function identityProof(proof: PaymentSessionProof): Pick<Parameters<typeof buildPaymentSessionAttemptIdentity>[0], "receiptToken" | "proof"> {
   if (proof.kind === "receipt") {
     return { receiptToken: proof.receiptToken };
@@ -955,5 +989,5 @@ function buildGatewayUrls(
 function getTrustedApiOrigin(env: { PUBLIC_API_BASE_URL?: string }, requestUrl: string): string {
   const configured = env.PUBLIC_API_BASE_URL?.trim();
   const base = configured || new URL(requestUrl).origin;
-  return base.replace(/\/+$/, "");
+  return trimTrailingCharacter(base, "/");
 }

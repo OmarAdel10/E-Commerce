@@ -10,6 +10,8 @@ import type { Context } from "hono";
 import { createMarket, deleteMarket, getMarket, listMarkets, listOwnMarketCurrencies, readStoreCurrency, updateMarket } from "@scalius/core/modules/markets";
 import { getActivePaymentMethods } from "@scalius/core/modules/payments";
 import { normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
+import { isMarketFxRateFresh } from "@scalius/shared/presentment";
+import { isFxRate } from "@scalius/shared/money-chain";
 import { MANUAL_FX_RATE_SOURCE_ID } from "@scalius/shared/market-pricing";
 import { ValidationError } from "../../../utils/api-error";
 import { appFxRateSource } from "../../../plugins/providers/fx";
@@ -140,15 +142,16 @@ app.openapi(createRoute({
     : current?.currencyCode ?? "BDT";
   // An app sets the rate: it is asked now (the save fails without an answer), and a typed rate is ignored.
   const nextSource = body.fxRateSource ?? current?.fxRateSource ?? MANUAL_FX_RATE_SOURCE_ID;
-  const fxRate = appSource && current
+  const quote = appSource && current
     ? await appFxRateNow(c, body.fxRateSource!, current.shopCurrencyCode, currencyCode)
-    : nextSource === MANUAL_FX_RATE_SOURCE_ID ? manualRate : undefined;
+    : null;
+  const fxRate = quote?.rate ?? (nextSource === MANUAL_FX_RATE_SOURCE_ID ? manualRate : undefined);
   const pricing = marketPricingInput({ priceMode, fxRate, priceAdjustmentPercent, priceRounding, priceEnding }, currencyCode);
   // A market's own currency must be one an active payment method charges.
   const chargeable = body.currencyCode
     ? await chargeableCurrencies(c, db)
     : "any" as const;
-  const { market, priceIncrementChanged } = await updateMarket(db, id, { ...body, ...pricing }, { chargeable });
+  const { market, priceIncrementChanged } = await updateMarket(db, id, { ...body, ...pricing, ...(quote ? { fxRateAsOf: quote.asOf } : {}) }, { chargeable });
   if (priceIncrementChanged) {
     // Card prices in the catalogue projections round to the increment.
     await rebuildCatalogProjectionsAfterWrite(c, c.get("db"), "markets");
@@ -157,14 +160,18 @@ app.openapi(createRoute({
 });
 
 /** The exchange rate app's rate for the market currency now, or the merchant-facing reason it has none. */
-async function appFxRateNow(c: Context<{ Bindings: Env }>, sourceId: string, shopCurrencyCode: string, currencyCode: string): Promise<string> {
+async function appFxRateNow(c: Context<{ Bindings: Env }>, sourceId: string, shopCurrencyCode: string, currencyCode: string): Promise<{ rate: string; asOf: number }> {
   await assertAppProviderInstalled(c.get("db"), "fx", sourceId);
   const source = await appFxRateSource(requestAppProviders(c), sourceId);
   if ("issue" in source) throw new ValidationError(source.issue);
   if (currencyCode === shopCurrencyCode) throw new ValidationError(`This market sells in ${shopCurrencyCode}, the shop currency, so it needs no exchange rate.`);
   const answer = await source.rate(shopCurrencyCode, currencyCode).catch(() => null);
   if (!answer) throw new ValidationError(`${source.label} gave no ${currencyCode} rate. Check the app's settings, or keep manual rates.`);
-  return answer.rate;
+  const asOf = Math.floor((answer.asOf?.getTime() ?? Date.now()) / 1_000);
+  if (!isFxRate(answer.rate) || !isMarketFxRateFresh({ fxSource: sourceId, fxAsOf: asOf })) {
+    throw new ValidationError(`${source.label} gave no recent valid ${currencyCode} rate. Check the app's settings, or keep manual rates.`);
+  }
+  return { rate: answer.rate, asOf };
 }
 
 app.openapi(createRoute({

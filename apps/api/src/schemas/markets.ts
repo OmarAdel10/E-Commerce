@@ -53,7 +53,7 @@ export const marketRecordSchema = z.object({
   fxRate: z.string().nullable().openapi({ description: "The manual exchange rate (market currency per shop currency unit); null uses the rate source. A market in the shop currency converts at 1." }),
   fxRateAsOf: z.string().nullable().openapi({ format: "date-time", description: "When the rate was last set: by the merchant, or taken from the exchange rate app." }),
   fxRateSource: z.string().openapi({ description: "Who sets the rate: `manual` (the merchant) or an exchange rate app provider (`<plugin id>:<provider id>`), whose rate is refreshed on the scheduled tick." }),
-  fxLockMinutes: z.number().int().openapi({ description: "How long a placed order keeps the rate it was quoted (5 to 1,440 minutes)." }),
+  fxLockMinutes: z.number().int().openapi({ description: "Deadline after placement to start a new buyer payment session for a wholly unpaid foreign-currency order (5 to 1,440 minutes). Placed amounts never change." }),
   priceAdjustmentPercent: z.number().openapi({ description: "Raises (positive) or lowers (negative) FX-derived prices by this percentage." }),
   priceRounding: z.number().nullable().openapi({ description: "FX-derived prices round up to this step (major units, such as 10 for 10 taka); null rounds to the price increment." }),
   priceEnding: z.number().nullable().openapi({ description: "What a rounded price ends in within its step (major units: 9 with a step of 10 ends prices in 9); null for none." }),
@@ -85,7 +85,7 @@ export const updateMarketSchema = z.object({
   presence: presenceInputSchema.nullable().optional().openapi({ description: "Backup market: only the root's language. Other markets: the subfolder, or null to remove it." }),
   priceIncrementMinor: z.number().int().positive().max(1_000).optional().openapi({ description: "Backup market only: 1 (minor units) or the currency's whole unit (100 for BDT)." }),
   currencyCode: z.string().trim().length(3).nullable().optional().openapi({ description: "Non-backup markets: the currency it sells in (ISO 4217); null or the shop currency sells in the shop currency. Another currency needs `fxRate` and at least one active payment method that charges it. Open checkouts price again in the new currency." }),
-  fxLockMinutes: z.number().int().min(5).max(1_440).optional().openapi({ description: "Minutes a placed order keeps the rate it was quoted (default 30)." }),
+  fxLockMinutes: z.number().int().min(5).max(1_440).optional().openapi({ description: "Minutes after placement to start a new buyer payment session while wholly unpaid in a foreign currency (default 30). Placed amounts never change." }),
   pricesIncludeTax: z.boolean().optional().openapi({ description: "Whether its prices include tax (checkout and the order's tax read the order's market)." }),
   // How a non-backup market prices (MARKETS-DESIGN D5).
   priceMode: z.enum(["fixed", "fx"]).optional().openapi({ description: "Non-backup markets: `fixed` or `fx` (product prices converted, adjusted and rounded)." }),

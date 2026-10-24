@@ -15,6 +15,7 @@
  * presented. Rates are exact decimal strings and conversions are exact
  * integer arithmetic, rounded once, half up, to a whole minor unit.
  */
+import { assertMinorAmount, MAX_MINOR_AMOUNT } from "./money";
 import { currencyExponent } from "./currency-policy";
 
 /** The rate of a same-currency order or settlement. */
@@ -48,7 +49,7 @@ export function convertMinorAtRate(
   fromDecimalPlaces: number,
   toDecimalPlaces: number,
 ): number {
-  if (!Number.isSafeInteger(amountMinor)) throw new RangeError("Amounts are safe integers of minor units.");
+  assertMinorAmount(amountMinor);
   if (rate === SAME_CURRENCY_FX_RATE && fromDecimalPlaces === toDecimalPlaces) return amountMinor;
   const { numerator, scale } = rateParts(rate);
   const shift = toDecimalPlaces - fromDecimalPlaces;
@@ -56,7 +57,7 @@ export function convertMinorAtRate(
   const bottom = scale * (shift < 0 ? 10n ** BigInt(-shift) : 1n);
   const rounded = (top * 2n + bottom) / (bottom * 2n);
   const value = Number(rounded);
-  if (!Number.isSafeInteger(value)) throw new RangeError("The converted amount exceeds the supported range.");
+  assertMinorAmount(value);
   return amountMinor < 0 ? -value : value;
 }
 
@@ -160,6 +161,8 @@ export function orderMoneyChainColumns(
 
 /** The settlement columns of one `order_payments` movement. */
 export interface PaymentSettlementColumns {
+  /** Whether a usable report supplied the actual settlement, or it was inferred. */
+  settlementProvenance: "reported" | "assumed";
   settlementCurrency: string;
   settlementAmountMinor: number;
   settlementRate: string;
@@ -168,7 +171,9 @@ export interface PaymentSettlementColumns {
 
 /** A movement that settled as presented: same currency, same amount, rate "1". */
 export function presentedSettlement(amountMinor: number, currency: string): PaymentSettlementColumns {
+  assertMinorAmount(amountMinor);
   return {
+    settlementProvenance: "assumed",
     settlementCurrency: currency.trim().toUpperCase(),
     settlementAmountMinor: amountMinor,
     settlementRate: SAME_CURRENCY_FX_RATE,
@@ -186,7 +191,8 @@ export interface ReportedSettlement {
 
 /**
  * The settlement columns of a captured payment. Without a report (or with an
- * unusable one) it settled as presented. A report in another currency keeps
+ * unusable one) it is assumed to have settled as presented, explicitly marked
+ * `assumed`; only a usable settlement report is marked `reported`. A report in another currency keeps
  * its rate (else the rate between the two amounts); when it settled in the
  * order's shop currency, `exchangeAdjustmentMinor` is the gain or loss
  * against the order's locked rate (Shopify's currencyExchangeAdjustment),
@@ -198,14 +204,16 @@ export function paymentSettlement(input: {
   settlement?: ReportedSettlement | null;
   order?: Pick<OrderFxSnapshot, "shopCurrency" | "fxRate"> | null;
 }): PaymentSettlementColumns {
+  assertMinorAmount(input.amountMinor);
   const currency = input.currency.trim().toUpperCase();
   const reported = input.settlement;
-  if (!reported || !Number.isSafeInteger(reported.amountMinor) || reported.amountMinor < 0 || !/^[A-Za-z]{3}$/.test(reported.currency)) {
+  if (!reported || !Number.isSafeInteger(reported.amountMinor) || reported.amountMinor < 0 || reported.amountMinor > MAX_MINOR_AMOUNT || !/^[A-Za-z]{3}$/.test(reported.currency)) {
     return presentedSettlement(input.amountMinor, currency);
   }
   const settlementCurrency = reported.currency.toUpperCase();
   if (settlementCurrency === currency) {
     return {
+      settlementProvenance: "reported",
       settlementCurrency,
       settlementAmountMinor: reported.amountMinor,
       settlementRate: SAME_CURRENCY_FX_RATE,
@@ -223,5 +231,6 @@ export function paymentSettlement(input: {
   const exchangeAdjustmentMinor = order && isFxRate(order.fxRate) && order.shopCurrency.toUpperCase() === settlementCurrency
     ? reported.amountMinor - convertMinorAtRate(input.amountMinor, order.fxRate, from, to)
     : 0;
-  return { settlementCurrency, settlementAmountMinor: reported.amountMinor, settlementRate, exchangeAdjustmentMinor };
+  assertMinorAmount(exchangeAdjustmentMinor);
+  return { settlementProvenance: "reported", settlementCurrency, settlementAmountMinor: reported.amountMinor, settlementRate, exchangeAdjustmentMinor };
 }

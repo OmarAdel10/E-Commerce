@@ -23,7 +23,7 @@ import { currencyExponent, isWholeUnitIncrement } from "./currency-policy";
  * currency such as VND). It keeps every derived amount a safe integer with
  * room to spare: a line is at most this (`isLineAmountInRange`), and an
  * order of 99 such lines plus shipping and tax stays below
- * `Number.MAX_SAFE_INTEGER` (about 9.007 × 10^15) a thousandfold. Every
+ * `Number.MAX_SAFE_INTEGER` (about 9.007 × 10^15) by about tenfold. Every
  * stable `*Minor` input advertises it as its `maximum`; the database columns
  * are 64-bit integers on every provider.
  */
@@ -48,6 +48,13 @@ export class MoneyRangeError extends RangeError {
   constructor(message = "Money amount exceeds the supported range.") {
     super(message);
     this.name = "MoneyRangeError";
+  }
+}
+
+/** Enforce the shared ceiling on stored or derived money, including signed adjustments. */
+export function assertMinorAmount(amountMinor: number): void {
+  if (!Number.isSafeInteger(amountMinor) || Math.abs(amountMinor) > MAX_MINOR_AMOUNT) {
+    throw new MoneyRangeError();
   }
 }
 

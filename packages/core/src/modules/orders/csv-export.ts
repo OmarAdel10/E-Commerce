@@ -5,7 +5,7 @@ import { timeZoneOffsetSeconds } from "@scalius/shared/commerce-time";
 import { formatPhoneForProvider } from "@scalius/shared/customer-utils";
 import { formatOrderNumber } from "@scalius/shared/order-utils";
 import { formatMoney } from "@scalius/shared/currency";
-import { fromMinor } from "@scalius/shared/money";
+import { fromMinor, toMinor } from "@scalius/shared/money";
 import {
   isOrderChannelSourcePreset,
   type OrderChannel,
@@ -220,6 +220,7 @@ export function formatOrderCsvLineProperties(
 
 /** One order in the export: the list row plus its address, lines and delivery facts. */
 export interface OrderCsvRow {
+  currencyDecimalPlaces: number;
   id: string;
   orderNumber: number | null;
   createdAt: unknown;
@@ -328,7 +329,8 @@ function paymentLabel(order: OrderCsvRow): string {
 
 /** What the customer paid before any refund (cash handed to the rider, or online). */
 function amountReceived(order: OrderCsvRow): number {
-  return Math.round((order.paidAmount + order.refundedAmount) * 100) / 100;
+  const places = order.currencyDecimalPlaces;
+  return fromMinor(toMinor(order.paidAmount, places) + toMinor(order.refundedAmount, places), places);
 }
 
 const ORDER_HEADERS = [
