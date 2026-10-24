@@ -13,6 +13,11 @@
  * link, a search result) replaces the entry, so history never keeps it: Back
  * from that page returns to the page under the overlay. Deep links and reloads
  * are untouched: the entry only exists while something is open.
+ *
+ * An overlay kept in the address (`?review=`) already has the router's own
+ * entry, so Back closes it without help: it carries `data-url-overlay` and is
+ * left alone. Stepping back over our entry while the router writes the address
+ * its close asked for would land on the old address and open it again.
  */
 
 let open = 0;
@@ -107,7 +112,7 @@ function onPopState(event: PopStateEvent) {
  * page?", which can itself be on screen because Back was pressed) and never a
  * popover or menu. Radix portals each into its own child of <body>.
  */
-const OVERLAY = ':is([data-slot="dialog-content"], [data-slot="sheet-content"], [role="dialog"][data-nav])[data-state="open"]';
+const OVERLAY = ':is([data-slot="dialog-content"], [data-slot="sheet-content"], [role="dialog"][data-nav])[data-state="open"]:not([data-url-overlay])';
 
 function sync() {
   const was = open;

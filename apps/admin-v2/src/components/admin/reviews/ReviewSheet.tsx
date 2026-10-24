@@ -50,7 +50,8 @@ export function ReviewSheet({
 
   return (
     <Sheet open={reviewId !== null} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent className="flex flex-col sm:max-w-lg">
+      {/* Kept in the address (?review=): the router's own history entry closes it on Back. */}
+      <SheetContent data-url-overlay="" className="flex flex-col sm:max-w-lg">
         <SheetHeader>
           <div className="flex flex-wrap items-center gap-2">
             <SheetTitle>{t("review")}</SheetTitle>
