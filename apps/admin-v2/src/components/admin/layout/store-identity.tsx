@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Store } from "lucide-react";
 import { getApiV1AdminSettingsBusiness } from "@scalius/api-client/sdk";
@@ -26,9 +27,40 @@ export function useStoreIdentity() {
   return {
     canView,
     loaded: Boolean(business.data),
+    /** Both reads have answered (or the name is not this person's to read). */
+    settled: (!canView || business.isFetched) && storefront.isFetched,
     name: business.data?.companyName?.trim() ?? "",
     host: url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
   };
+}
+
+/** "name\nhost": plain text, so a damaged copy can only paint wrong text, once. */
+const REMEMBERED_KEY = "scalius.store.shown";
+
+/**
+ * The store's name and host for the top bar. Until both reads answer, the
+ * ones this browser last showed, so the bar's store button keeps its width
+ * and nothing beside it moves when they arrive (with nothing remembered,
+ * nothing: the host and then the name would move it twice). The remembered
+ * copy is only ever a first paint: the reads replace it, nothing else reads it.
+ */
+export function useShownStoreIdentity() {
+  const store = useStoreIdentity();
+  const [previous] = useState(() => {
+    try {
+      return localStorage.getItem(REMEMBERED_KEY)?.split("\n") ?? [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      if (store.settled) localStorage.setItem(REMEMBERED_KEY, `${store.name}\n${store.host}`);
+    } catch {
+      // Private mode: the next load paints without it.
+    }
+  }, [store.settled, store.name, store.host]);
+  return store.settled ? store : { ...store, name: previous[0] ?? "", host: previous[1] ?? "" };
 }
 
 /** Shopify's store avatar: a coloured square with the name's first character. */

@@ -6,7 +6,7 @@ import { useMessages } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import { TOP_BAR_BUTTON } from "./nav-button";
 import { ariaKeys, comboCaps, SHORTCUTS } from "./shortcuts";
-import { StoreBadge, useStoreIdentity } from "./store-identity";
+import { StoreBadge, useShownStoreIdentity } from "./store-identity";
 import { useShell } from "./shell";
 
 // The bell and its list load after the shell.
@@ -47,7 +47,7 @@ function HelpButton({ label, onShortcuts }: { label: string; onShortcuts: () => 
 export function AdminHeader({ user }: { user: UserMenuUser }) {
   const t = useMessages(shellMessages);
   const { drawerOpen, setDrawerOpen, setSearchOpen, setHelpOpen } = useShell();
-  const store = useStoreIdentity();
+  const store = useShownStoreIdentity();
   const storeLabel = store.name || store.host;
   return (
     <header
