@@ -4,7 +4,7 @@ import { postApiV1AdminOrdersByIdInvoice } from "@scalius/api-client/sdk";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import { useMessages } from "~/i18n";
-import { orderDetailMessages } from "~/i18n/order-detail";
+import { orderInvoiceMessages as orderDetailMessages } from "~/i18n/order-invoice";
 import { apiData, type ApiResult } from "~/lib/api";
 import { orderErrorMessage } from "~/lib/api-mutations/orders";
 

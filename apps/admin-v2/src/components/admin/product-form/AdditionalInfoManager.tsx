@@ -25,7 +25,7 @@ import { cn } from "@scalius/shared/utils";
 import { Form, FormField } from "~/components/ui/form";
 import { getSortableStyle } from "../shared/sortable-style";
 import { translate, useMessages } from "~/i18n";
-import { productMessages } from "~/i18n/products";
+import { productSectionMessages as productMessages } from "~/i18n/product-sections";
 import { Field } from "~/components/ui/field";
 
 export interface RichContentItem {

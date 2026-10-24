@@ -19,7 +19,7 @@ import { queryKeys } from "~/lib/query-keys";
 import { sortedUniqueStrings } from "~/lib/form-values";
 import { getLocale, useMessages } from "~/i18n";
 import { settingsMessages } from "~/i18n/settings";
-import { storeSettingsMessages } from "~/i18n/settings-store";
+import { storeSettingsFieldMessages as storeSettingsMessages } from "~/i18n/settings-store-fields";
 import { SettingsField } from "./SettingsPage";
 
 type Country = CountryPolicy["allowedCountries"][number];

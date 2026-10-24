@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /** The Store details dialogs' fields: they load inside the existing SettingsDialog/save scope when a dialog first opens. */
 import { lazy, Suspense, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -41,7 +42,7 @@ import { queryKeys } from "~/lib/query-keys";
 import { toast } from "~/lib/toast";
 import { useMessages } from "~/i18n";
 import { settingsMessages } from "~/i18n/settings";
-import { storeSettingsMessages } from "~/i18n/settings-store";
+import { storeSettingsFieldMessages as storeSettingsMessages } from "~/i18n/settings-store-fields";
 import { fieldErrorMessages } from "~/i18n/save-bar";
 import { MediaManager } from "../media-manager";
 import { AdminPhoneInput, adminPhoneProblem, normalizeAdminPhone, type PhoneCountryPolicy } from "../shared/AdminPhoneInput";
@@ -371,7 +372,7 @@ async function storefrontAnswers(url: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 8000);
   try {
-    await fetch(`${url.replace(/\/+$/, "")}/health`, { mode: "no-cors", cache: "no-store", credentials: "omit", signal: controller.signal });
+    await fetch(`${trimTrailingCharacter(url, "/")}/health`, { mode: "no-cors", cache: "no-store", credentials: "omit", signal: controller.signal });
     return true;
   } catch {
     return false;

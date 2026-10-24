@@ -36,7 +36,7 @@ import { orderMessages, orderStatusLabel } from "~/i18n/orders";
 import { recordNounMessages } from "~/i18n/record-nouns";
 import { LOCALES, setLocale, useLocale, useMessages } from "~/i18n";
 import { navKeywordMessages } from "~/i18n/nav-keywords";
-import { shellMessages } from "~/i18n/shell";
+import { shellDialogMessages as shellMessages } from "~/i18n/shell-dialogs";
 import { resourceMessages } from "~/i18n/resource";
 import { settingsNavMessages } from "~/i18n/settings";
 import { customersMessages } from "~/i18n/customers";

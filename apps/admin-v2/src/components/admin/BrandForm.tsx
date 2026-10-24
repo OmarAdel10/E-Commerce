@@ -31,7 +31,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { readAdminApiErrorCode } from "@/lib/admin-api-error";
 import { formatNumber, useMessages } from "~/i18n";
 import { brandMessages } from "~/i18n/brands";
-import { CustomFieldsCard } from "./custom-fields/CustomFieldsCard";
+import { LazyCustomFieldsCard } from "./custom-fields/LazyCustomFieldsCard";
 import { AppActionsMenu } from "./apps/ui/AppActions";
 import { AppResourceCards } from "./apps/ui/AppResourceCards";
 import { richTextOrNull } from "~/lib/rich-text-value";
@@ -321,7 +321,7 @@ export function BrandForm({ defaultValues }: { defaultValues?: BrandFormInput })
               />
             </CardContent>
           </Card>
-          {defaultValues?.id ? <CustomFieldsCard ownerType="brand" ownerId={defaultValues.id} canEdit={canSave} /> : null}
+          {defaultValues?.id ? <LazyCustomFieldsCard ownerType="brand" ownerId={defaultValues.id} canEdit={canSave} /> : null}
           {defaultValues?.id ? <AppResourceCards target="brand" id={defaultValues.id} /> : null}
         </div>
       </div>

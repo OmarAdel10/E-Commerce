@@ -1,4 +1,5 @@
 import { defineMessages } from "./index";
+import { giftCardProductSummaryMessages } from "./gift-card-product-summary";
 
 /**
  * The product editor's gift-card switch (the card title is `giftCardProduct`
@@ -7,6 +8,7 @@ import { defineMessages } from "./index";
  */
 export const giftCardProductMessages = defineMessages({
   en: {
+    ...giftCardProductSummaryMessages.en,
     productSwitch: "This product is a gift card",
     productSwitchHelp: "Customers buy a code they spend at checkout.",
     productRuleDenominations: "Each variant is a denomination: its price is the card's value.",
@@ -14,11 +16,11 @@ export const giftCardProductMessages = defineMessages({
     productRuleNoTracking: "Quantity isn't tracked, and discounts and promotions don't apply.",
     productRuleNoGiftCardTender: "A gift card can't pay for another gift card.",
     productSwitchedOn: "Fulfilment is now digital, and the product discount is removed.",
-    fulfilmentForced: "A gift card is always digital: its code is sent by email or SMS.",
     productSummaryOn: "Sold as a gift card: customers get a code by email or SMS.",
     productSummaryOff: "Not a gift card.",
   },
   bn: {
+    ...giftCardProductSummaryMessages.bn,
     productSwitch: "এই পণ্যটি একটি গিফট কার্ড",
     productSwitchHelp: "গ্রাহক একটি কোড কেনেন, যা চেকআউটে খরচ করা যায়।",
     productRuleDenominations: "প্রতিটি ভ্যারিয়েন্ট একটি মূল্যমান: এর দামই কার্ডের মূল্য।",
@@ -26,7 +28,6 @@ export const giftCardProductMessages = defineMessages({
     productRuleNoTracking: "পরিমাণ ট্র্যাক হয় না, আর ডিসকাউন্ট ও প্রোমোশন খাটে না।",
     productRuleNoGiftCardTender: "গিফট কার্ড দিয়ে অন্য গিফট কার্ড কেনা যায় না।",
     productSwitchedOn: "ফুলফিলমেন্ট এখন ডিজিটাল, আর পণ্যের ডিসকাউন্ট সরানো হয়েছে।",
-    fulfilmentForced: "গিফট কার্ড সবসময় ডিজিটাল: এর কোড ইমেইল বা এসএমএসে পাঠানো হয়।",
     productSummaryOn: "গিফট কার্ড হিসেবে বিক্রি হয়: গ্রাহক ইমেইল বা এসএমএসে একটি কোড পান।",
     productSummaryOff: "গিফট কার্ড নয়।",
   },

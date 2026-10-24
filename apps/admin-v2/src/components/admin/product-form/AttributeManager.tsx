@@ -21,7 +21,7 @@ import { cn } from "@scalius/shared/utils";
 import { getServerFnError } from "@/lib/api-helpers";
 import { useCatalogActionPermissions } from "@/hooks/use-catalog-action-permissions";
 import { translate, useMessages } from "~/i18n";
-import { productMessages } from "~/i18n/products";
+import { productAttributeMessages as productMessages } from "~/i18n/product-attributes";
 import { resourceMessages } from "~/i18n/resource";
 import {
   getApiV1AdminAttributes,

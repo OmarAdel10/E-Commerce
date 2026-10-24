@@ -1,4 +1,5 @@
 import { defineMessages } from "./index";
+import { giftCardTenderMessages } from "./gift-card-tenders";
 
 /**
  * Gift cards on the order page: the refund dialog's "Refund to" choice, the
@@ -7,6 +8,7 @@ import { defineMessages } from "./index";
  */
 export const giftCardOrderMessages = defineMessages({
   en: {
+    ...giftCardTenderMessages.en,
     // Refund dialog
     "refundTo.label": "Refund to",
     "refundTo.original": "Original payment",
@@ -17,11 +19,6 @@ export const giftCardOrderMessages = defineMessages({
     "refundTo.description": "The customer gets a gift card for this amount. Items aren't restocked.",
 
     // Payment summary
-    "tender.label": "Gift card •••• {last4}",
-    "tender.released": "{amount} · Released",
-    "tender.refunded": "{amount} · Refunded",
-    "tender.partlyRefunded": "{amount} · {refunded} refunded",
-    "storeCredit.label": "Store credit •••• {last4}",
 
     // Issued cards
     "lines.title": "Gift cards",
@@ -34,6 +31,7 @@ export const giftCardOrderMessages = defineMessages({
     "lines.resendFailed": "Couldn't resend the gift card. Try again.",
   },
   bn: {
+    ...giftCardTenderMessages.bn,
     "refundTo.label": "রিফান্ড যাবে",
     "refundTo.original": "আগের পেমেন্ট মাধ্যমে",
     "refundTo.storeCredit": "স্টোর ক্রেডিট (গিফট কার্ড)",
@@ -42,11 +40,6 @@ export const giftCardOrderMessages = defineMessages({
     "refundTo.issue": "স্টোর ক্রেডিট দিন",
     "refundTo.description": "কাস্টমার এই টাকার একটি গিফট কার্ড পাবেন। স্টক ফেরত যাবে না।",
 
-    "tender.label": "গিফট কার্ড •••• {last4}",
-    "tender.released": "{amount} · ফেরত গেছে",
-    "tender.refunded": "{amount} · রিফান্ড হয়েছে",
-    "tender.partlyRefunded": "{amount} · {refunded} রিফান্ড হয়েছে",
-    "storeCredit.label": "স্টোর ক্রেডিট •••• {last4}",
 
     "lines.title": "গিফট কার্ড",
     "lines.card": "•••• {last4}",

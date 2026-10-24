@@ -26,21 +26,21 @@ const ADMIN_DIR = "apps/admin-v2";
  * Brotli KiB budgets. `entry` is what index.html loads before any route; each
  * route is its full first-render JavaScript (entry included). These are
  * release ceilings: reduce the output to fit rather than raising a budget.
- * Route budgets get ROUTE_HEADROOM_KIB of tolerance so a few hundred bytes of
- * legitimate copy or a shared-chunk regroup do not block a release; real
- * growth past it still fails. The entry chunk stays exact.
+ * Every route keeps ROUTE_MIN_HEADROOM_KIB below its ceiling for shared-chunk
+ * churn. A feature consumes that space only after another dependency is
+ * trimmed. The entry chunk stays exact.
  */
-export const ROUTE_HEADROOM_KIB = 1;
+export const ROUTE_MIN_HEADROOM_KIB = 1.5;
 
 /**
- * The stylesheet gets the routes' tolerance. One Tailwind file compresses as a
+ * The stylesheet keeps its existing tolerance. One Tailwind file compresses as a
  * whole, so its Brotli size swings by tens of bytes when any one rule changes:
  * swapping `left-(--tip-x)` for `inset-s-(--tip-x)` alone added 67 bytes, and
  * a build whose raw CSS shrank by 80 bytes grew by 57 compressed. An exact
  * ceiling made every class change a lottery. Real growth past the slack (a
  * library's styles, a stray utility family) still fails.
  */
-export const STYLESHEET_HEADROOM_KIB = ROUTE_HEADROOM_KIB;
+export const STYLESHEET_HEADROOM_KIB = 1;
 
 export const BUNDLE_BUDGETS = {
   entry: 138,
@@ -122,6 +122,15 @@ export const LAZY_ONLY_MODULES = [
   { name: "html2pdf", pattern: /node_modules\/html2pdf/ },
   { name: "@dnd-kit", pattern: /node_modules\/@dnd-kit\//, only: HOT_ROUTES },
   { name: "libphonenumber-js metadata", pattern: /node_modules\/libphonenumber-js\/.*metadata/, only: HOT_ROUTES },
+  { name: "store settings editing copy", pattern: /\/i18n\/settings-store-fields\.ts$/, only: ["admin/settings/store.tsx"] },
+  { name: "invoice printing copy", pattern: /\/i18n\/order-invoice\.ts$/, only: HOT_ROUTES },
+  { name: "order address editing copy", pattern: /\/i18n\/order-address-edit\.ts$/, only: ["admin/orders/$orderId/index.tsx"] },
+  { name: "shell dialog copy", pattern: /\/i18n\/shell-dialogs\.ts$/ },
+  { name: "product attribute picker copy", pattern: /\/i18n\/product-attributes\.ts$/, only: ["admin/products/new.tsx", "admin/products/$productId/edit.tsx"] },
+  { name: "extra product sections copy", pattern: /\/i18n\/product-sections\.ts$/, only: ["admin/products/new.tsx", "admin/products/$productId/edit.tsx"] },
+  { name: "custom data editor", pattern: /\/custom-fields\/CustomFieldsCard\.tsx$/ },
+  { name: "gift card product editor copy", pattern: /\/i18n\/gift-card-product\.ts$/, only: ["admin/products/new.tsx", "admin/products/$productId/edit.tsx"] },
+  { name: "gift card order dialogs", pattern: /\/i18n\/gift-card-orders\.ts$|\/orderview\/GiftCardLinesCard\.tsx$/, only: ["admin/orders/$orderId/index.tsx"] },
 ];
 
 // ── Route tree ─────────────────────────────────────────────────────────────
@@ -235,8 +244,8 @@ export function validateBundleReport(report, budgets = BUNDLE_BUDGETS) {
   }
   for (const route of report.routes) {
     const budget = budgets.routes[route.route] ?? budgets.routeDefault;
-    if (kib(route.brotliBytes) > budget + ROUTE_HEADROOM_KIB) {
-      failures.push(`${route.route} needs ${kib(route.brotliBytes).toFixed(1)} KiB Brotli to render (budget ${budget} KiB)`);
+    if (kib(route.brotliBytes) > budget - ROUTE_MIN_HEADROOM_KIB) {
+      failures.push(`${route.route} needs ${kib(route.brotliBytes).toFixed(1)} KiB Brotli to render (budget ${budget} KiB; keep ${ROUTE_MIN_HEADROOM_KIB} KiB free)`);
     }
     if (route.lazyOnly.length > 0) failures.push(`${route.route} loads ${route.lazyOnly.join(", ")} before it renders`);
   }
@@ -326,7 +335,8 @@ export function formatBundleReport(report, budgets = BUNDLE_BUDGETS) {
     .slice(0, 6);
   for (const route of [...budgeted, ...heaviest]) {
     const budget = budgets.routes[route.route] ?? budgets.routeDefault;
-    lines.push(`${route.route.padEnd(44)} ${kib(route.brotliBytes).padStart(6)} KiB in ${String(route.files).padStart(2)} file(s) (budget ${budget})`);
+    const headroom = (budget - route.brotliBytes / 1024).toFixed(3);
+    lines.push(`${route.route.padEnd(44)} ${kib(route.brotliBytes).padStart(6)} KiB in ${String(route.files).padStart(2)} file(s) (budget ${budget}; ${headroom} KiB free)`);
   }
   if (report.largestChunks) {
     lines.push(`largest chunks: ${report.largestChunks.map((chunk) => `${chunk.file.split("/").at(-1)} ${kib(chunk.brotliBytes)}`).join(", ")}`);

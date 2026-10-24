@@ -17,7 +17,7 @@ import { broadcastAdminSignOut } from "@/components/auth/AdminSessionSync";
 import { clearAdminRouteContextCache } from "@/lib/admin-route-context";
 import { withDashboardBasePath } from "@/lib/dashboard-base-path";
 import { LOCALES, setLocale, useLocale, useMessages, type Locale } from "~/i18n";
-import { shellMessages } from "~/i18n/shell";
+import { shellDialogMessages as shellMessages } from "~/i18n/shell-dialogs";
 import type { UserMenuUser } from "./UserMenu";
 
 // The help menu's items, for phones (the top bar's Help button shows from md): loaded when first shown.

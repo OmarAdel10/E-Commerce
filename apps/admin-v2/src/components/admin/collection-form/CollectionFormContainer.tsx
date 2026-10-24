@@ -36,7 +36,7 @@ import {
   type CollectionFormValues,
   type Product,
 } from "./types";
-import { CustomFieldsCard } from "../custom-fields/CustomFieldsCard";
+import { LazyCustomFieldsCard } from "../custom-fields/LazyCustomFieldsCard";
 import { AppActionsMenu } from "../apps/ui/AppActions";
 import { AppResourceCards } from "../apps/ui/AppResourceCards";
 import { richTextOrNull } from "~/lib/rich-text-value";
@@ -290,7 +290,7 @@ export function CollectionForm({
           />
           <CollectionSearchListing form={form} disabled={!canSave} />
           {isEdit && defaultValues?.id ? (
-            <CustomFieldsCard ownerType="collection" ownerId={defaultValues.id} canEdit={canSave} />
+            <LazyCustomFieldsCard ownerType="collection" ownerId={defaultValues.id} canEdit={canSave} />
           ) : null}
           {isEdit && defaultValues?.id ? <AppResourceCards target="collection" id={defaultValues.id} /> : null}
         </div>

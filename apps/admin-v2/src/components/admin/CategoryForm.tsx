@@ -40,7 +40,7 @@ import { readAdminApiErrorCode } from "@/lib/admin-api-error";
 import { readCategoryRevisionConflict } from "@/lib/admin-api-conflicts";
 import { useMessages } from "~/i18n";
 import { categoryFormMessages } from "~/i18n/category-form";
-import { CustomFieldsCard } from "./custom-fields/CustomFieldsCard";
+import { LazyCustomFieldsCard } from "./custom-fields/LazyCustomFieldsCard";
 import { AppActionsMenu } from "./apps/ui/AppActions";
 import { AppResourceCards } from "./apps/ui/AppResourceCards";
 import { richTextOrNull } from "~/lib/rich-text-value";
@@ -285,7 +285,7 @@ export function CategoryForm({ defaultValues, isEdit = false, publishReadiness }
           ) : null}
 
           {isEdit && defaultValues?.id ? (
-            <CustomFieldsCard ownerType="category" ownerId={defaultValues.id} canEdit={canSave} />
+            <LazyCustomFieldsCard ownerType="category" ownerId={defaultValues.id} canEdit={canSave} />
           ) : null}
           {isEdit && defaultValues?.id ? <AppResourceCards target="category" id={defaultValues.id} /> : null}
 

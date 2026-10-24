@@ -4,7 +4,7 @@ import { FormField } from "@/components/ui/form";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import type { ShippingProfile } from "~/lib/api-query-options/shipping-profiles";
 import { useMessages } from "~/i18n";
-import { giftCardProductMessages } from "~/i18n/gift-card-product";
+import { giftCardProductSummaryMessages as giftCardProductMessages } from "~/i18n/gift-card-product-summary";
 import { productMessages } from "~/i18n/products";
 import type { ProductFulfilmentMode } from "./fulfilment-mode";
 import { useProductKindRules } from "./product-kind-rules";

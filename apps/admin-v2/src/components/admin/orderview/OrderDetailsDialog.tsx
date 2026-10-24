@@ -31,7 +31,7 @@ import {
   type AddressProblemField,
 } from "~/components/admin/address/address-draft";
 import { useMessages } from "~/i18n";
-import { orderDetailMessages } from "~/i18n/order-detail";
+import { orderAddressEditMessages as orderDetailMessages } from "~/i18n/order-address-edit";
 import { resourceMessages } from "~/i18n/resource";
 import { orderErrorMessage, useUpdateOrderDetails } from "~/lib/api-mutations/orders";
 import type { Order } from "./types";

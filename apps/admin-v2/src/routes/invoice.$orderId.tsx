@@ -14,7 +14,7 @@ import {
   type InvoiceDocument,
 } from "~/components/admin/orderview/InvoiceSheet";
 import { translate, useMessages } from "~/i18n";
-import { orderDetailMessages } from "~/i18n/order-detail";
+import { orderInvoiceMessages as orderDetailMessages } from "~/i18n/order-invoice";
 import { apiData } from "~/lib/api";
 import { getAdminRouteContext } from "~/lib/admin-route-context";
 import { pageTitleMessages } from "~/i18n/page-titles";

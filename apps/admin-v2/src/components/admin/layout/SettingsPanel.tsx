@@ -4,7 +4,7 @@ import { mediaImageUrl } from "@scalius/shared/media-variants";
 import { UserMenu, type UserMenuUser } from "~/components/auth/UserMenu";
 import { Avatar, AvatarFallback, AvatarImage } from "~/components/ui/avatar";
 import { useMessages } from "~/i18n";
-import { shellMessages } from "~/i18n/shell";
+import { shellDialogMessages as shellMessages } from "~/i18n/shell-dialogs";
 import { SettingsNav } from "../settings/SettingsNav";
 import { NAV_ICON_BUTTON, NAV_ROW } from "./nav-button";
 

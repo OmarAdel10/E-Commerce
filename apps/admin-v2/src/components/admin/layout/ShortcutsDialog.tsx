@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { readSettingsRevisionConflict } from "~/lib/admin-api-error";
 import { apiData } from "~/lib/api";
 import { useMessages } from "~/i18n";
-import { shellMessages } from "~/i18n/shell";
+import { shellDialogMessages as shellMessages } from "~/i18n/shell-dialogs";
 import { shortcutsMessages } from "~/i18n/shortcuts";
 import { SETTINGS_ITEM, type VisibleNavItem } from "./AdminNav";
 import { comboCaps, GO_DEFAULTS, goCaps, goKeys, goSequence, SHORTCUTS, type KeyCombo } from "./shortcuts";

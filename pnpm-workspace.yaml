@@ -60,6 +60,9 @@ overrides:
   # The dashboard's Radix primitives stay on one release line; a newer dialog
   # under cmdk alone duplicates the shared primitives in every route bundle.
   "cmdk>@radix-ui/react-dialog": "1.1.23"
+  # One Slot implementation for direct and transitive Radix primitives. 1.4
+  # preserves each wrapper's aria-describedby instead of dropping help text.
+  "@radix-ui/react-slot": "1.4.0"
   prosemirror-model: ">=1.25.11"
   sharp: "0.35.5"
   source-map-js: "1.2.2"

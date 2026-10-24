@@ -5,7 +5,7 @@ import { getDecimalPlaces } from "@scalius/shared/currency";
 import type { OrderPaymentsPayload } from "~/lib/api-query-options/orders";
 import { formatSavedMinorAmount } from "~/lib/order-tax-presentation";
 import { useMessages } from "~/i18n";
-import { giftCardOrderMessages } from "~/i18n/gift-card-orders";
+import { giftCardTenderMessages as giftCardOrderMessages } from "~/i18n/gift-card-tenders";
 import type { Order } from "./types";
 
 type PaymentRow = OrderPaymentsPayload["payments"][number];

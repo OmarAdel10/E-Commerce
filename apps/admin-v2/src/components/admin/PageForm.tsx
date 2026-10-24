@@ -36,7 +36,7 @@ import { formatList } from "@scalius/shared/locale-words";
 import { pageFormMessages } from "~/i18n/page-form";
 import { defaultPageScheduleDate, toDateTimeLocalValue, type PagePublicationMode } from "@/lib/page-publication";
 import { toCreatePageInput, toUpdatePageInput } from "@/lib/page-form-input";
-import { CustomFieldsCard } from "./custom-fields/CustomFieldsCard";
+import { LazyCustomFieldsCard } from "./custom-fields/LazyCustomFieldsCard";
 import { AppActionsMenu } from "./apps/ui/AppActions";
 import { AppResourceCards } from "./apps/ui/AppResourceCards";
 import { Field, ChoiceField, ReadOnlyValue } from "~/components/ui/field";
@@ -424,7 +424,7 @@ export function PageForm({ defaultValues, isEdit = false, contentType = "page", 
             </CardContent>
           </Card>
           {isEdit && defaultValues?.id && !isArticle ? (
-            <CustomFieldsCard ownerType="page" ownerId={defaultValues.id} canEdit={canSave} />
+            <LazyCustomFieldsCard ownerType="page" ownerId={defaultValues.id} canEdit={canSave} />
           ) : null}
           {isEdit && defaultValues?.id && !isArticle ? <AppResourceCards target="page" id={defaultValues.id} /> : null}
         </div>
