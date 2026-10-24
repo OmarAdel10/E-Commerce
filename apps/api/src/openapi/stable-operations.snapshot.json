@@ -12840,9 +12840,10 @@
           "enum": [
            "market",
            "segment",
-           "sale"
+           "sale",
+           "override"
           ],
-          "description": "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others."
+          "description": "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists."
          },
          "marketId": {
           "type": "string",
@@ -13441,9 +13442,10 @@
           "enum": [
            "market",
            "segment",
-           "sale"
+           "sale",
+           "override"
           ],
-          "description": "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others."
+          "description": "`market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists."
          },
          "marketId": {
           "type": "string",
@@ -21221,7 +21223,8 @@
      "enum": [
       "market",
       "segment",
-      "sale"
+      "sale",
+      "override"
      ]
     },
     "marketId": {
