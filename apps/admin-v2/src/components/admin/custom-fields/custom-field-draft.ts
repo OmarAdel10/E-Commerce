@@ -10,6 +10,7 @@ import {
   customFieldMoneyMajorText,
   isCustomFieldMoney,
   isCustomFieldListType,
+  isCustomFieldEmptyInput,
   parseCustomFieldValidations,
   parseCustomFieldValue,
   type CustomFieldCodecContext,
@@ -134,9 +135,11 @@ export function checkDraft(
 ): DraftProblem | null {
   const converted = valueFromDraft(definition.type, draft, context);
   if (converted === null) return { issue: { code: "invalid" } };
+  if (isCustomFieldEmptyInput(converted.value)) return null;
   const validations = parseCustomFieldValidations(definition.type, definition.validations, context);
+  if (!validations.ok) return { issue: validations.issue };
   const parsed = parseCustomFieldValue(
-    { type: definition.type, validations: validations.ok ? validations.value : {} },
+    { type: definition.type, validations: validations.value },
     converted.value,
     context,
   );

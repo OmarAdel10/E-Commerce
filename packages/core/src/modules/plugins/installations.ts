@@ -26,6 +26,7 @@ import {
 } from "@scalius/database/schema";
 import { looksLikePlaceholderCredential } from "@scalius/shared/plugins/placeholder-credentials";
 import { currentProviderKind } from "@scalius/shared/plugins/providers/kinds";
+import { pluginObjectPatternIssues } from "@scalius/shared/plugins/object-patterns";
 import {
   PLUGIN_EXTENSION_RUN,
   FIRST_PARTY_PLUGIN_VENDOR,
@@ -399,6 +400,7 @@ export function requireInstallableManifest(value: unknown, source: PluginInstall
     });
   }
   const manifest = parsed.manifest;
+  requireSupportedObjectPatterns(manifest);
   // Only code compiled into the deployment may use the first-party id space,
   // whatever path it arrives by (audit R2 F6): first-party standing (beta
   // operations, surviving the emergency stop) goes by this prefix.
@@ -406,6 +408,14 @@ export function requireInstallableManifest(value: unknown, source: PluginInstall
     throw new PluginError("manifest_reserved_vendor", `Plugin ids under ${FIRST_PARTY_PLUGIN_VENDOR}.* are reserved for apps bundled with Scalius.`);
   }
   return manifest;
+}
+
+/** Persisted declarations stay readable; changing executable state validates them first. */
+function requireSupportedObjectPatterns(manifest: PluginManifest): void {
+  const issues = pluginObjectPatternIssues(manifest);
+  if (issues.length > 0) {
+    throw new PluginError("manifest_invalid", `The plugin manifest is invalid: ${issues[0]!.path} ${issues[0]!.message}`, { issues });
+  }
 }
 
 /** Registrations of the running manifest: an off feature registers nothing. */
@@ -629,6 +639,7 @@ export async function activatePlugin(
   },
 ): Promise<PluginInstallation> {
   const current = await requirePluginInstallation(db, pluginId);
+  requireSupportedObjectPatterns(current.declaredManifest);
   const features = options.features ? knownPluginFeatures(current.declaredManifest, options.features) : current.features;
   const installation = withFeatures(current, features);
   const missing = missingRequiredSettings(installation);
@@ -711,6 +722,7 @@ export async function setPluginFeature(
   if (installation.revision !== options.expectedRevision) await requireRevision(db, pluginId, options.expectedRevision, []);
   const on = installation.features.includes(options.feature);
   if (on === options.enabled) return { installation, changed: false };
+  if (options.enabled) requireSupportedObjectPatterns(declared);
   if (options.enabled && (installation.status !== "active" || !installation.grant)) {
     throw new PluginError("installation_inactive", `Turn on ${declared.name} first, then its features.`);
   }
@@ -969,6 +981,7 @@ export async function restorePluginRelease(
   const current = await requirePluginInstallation(db, pluginId);
   // A rollback point saved before features existed has only `manifest` (then the whole declaration).
   const declared = previous.declaredManifest ?? previous.manifest;
+  requireSupportedObjectPatterns(declared);
   const features = knownPluginFeatures(declared, previous.grant?.features ?? []);
   try {
     await safeBatch(db, [

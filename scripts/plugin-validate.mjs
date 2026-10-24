@@ -64,6 +64,11 @@ export async function validatePlugin(directory) {
     return result();
   }
   const manifest = parsed.manifest;
+  const patternIssues = contract.pluginObjectPatternIssues(manifest);
+  if (patternIssues.length > 0) {
+    for (const issue of patternIssues) add("fail", "Manifest", `${issue.path}: ${issue.message}`);
+    return result();
+  }
   add("pass", "Manifest", `${manifest.id}@${manifest.version}`);
 
   const compatible = contract.pluginCompatibility(definition.manifest);

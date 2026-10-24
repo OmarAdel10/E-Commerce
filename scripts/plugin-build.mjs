@@ -153,6 +153,7 @@ export async function loadPluginContract() {
     stdin: {
       contents: [
         'export * from "@scalius/shared/plugins";',
+        'export { pluginObjectPatternIssues } from "@scalius/shared/plugins/object-patterns";',
         'export { checkPluginAsset, checkStorefrontPublicFile } from "@scalius/shared/plugins/assets";',
         'export { storefrontTemplateCardFieldNotes } from "@scalius/shared/plugins/storefront-template-fields";',
         'export { storefrontModuleFieldNotes, storefrontPortabilityNotes } from "@scalius/shared/plugins/storefront-portability";',
@@ -566,6 +567,8 @@ export async function packPlugin(source) {
   if (!parsed.ok) {
     throw new Error(`${source}: invalid manifest: ${parsed.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
   }
+  const patternIssues = contract.pluginObjectPatternIssues(parsed.manifest);
+  if (patternIssues.length > 0) throw new Error(`${source}: invalid manifest: ${patternIssues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
   const issues = contract.checkPluginHandlers(contract.pluginHandlerInventory(parsed.manifest), loaded);
   if (issues.length > 0) throw new Error(`${source}: ${issues.join(" ")}`);
   const assets = readListingAssets(contract, parsed.manifest, source);

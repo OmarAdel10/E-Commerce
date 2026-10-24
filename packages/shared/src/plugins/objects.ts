@@ -1,7 +1,7 @@
 /** Typed records shared by apps, merchant content and the storefront. */
 import { z } from "zod";
 import {
-  CUSTOM_FIELD_TYPES, customFieldWireValue, parseCustomFieldValue, parseCustomFieldValidations,
+  CUSTOM_FIELD_TYPES, customFieldWireValue, isCustomFieldEmptyInput, parseCustomFieldValue, parseCustomFieldValidations,
   type CustomFieldCodecContext, type CustomFieldType,
 } from "../custom-fields";
 import { PLUGIN_ID_PATTERN } from "./ids";
@@ -154,9 +154,14 @@ export function prepareObjectData(
   for (const key of Object.keys(input)) if (!fields.has(key)) issues.push({ key, message: "Unknown object field." });
   for (const field of declaration.fields) {
     const type = codecType(field);
+    const inputValue = input[field.key] ?? null;
+    if (isCustomFieldEmptyInput(inputValue)) {
+      if (field.required && status !== "draft") issues.push({ key: field.key, message: "This field is required." });
+      continue;
+    }
     const validations = parseCustomFieldValidations(type, field.validations, context);
     if (!validations.ok) { issues.push({ key: field.key, message: validations.issue.message }); continue; }
-    const value = parseCustomFieldValue({ type, validations: validations.value }, input[field.key] ?? null, context);
+    const value = parseCustomFieldValue({ type, validations: validations.value }, inputValue, context);
     if (!value.ok) { issues.push({ key: field.key, message: value.issue.message }); continue; }
     if (value.value === null) {
       if (field.required && status !== "draft") issues.push({ key: field.key, message: "This field is required." });

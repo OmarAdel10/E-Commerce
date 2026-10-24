@@ -1,4 +1,5 @@
 import { OBJECT_HANDLE_PATTERN, prepareObjectData, objectDataWire } from "@scalius/shared/plugins/objects";
+import { pluginObjectPatternIssues } from "@scalius/shared/plugins/object-patterns";
 import { customFieldWireValue, isCustomFieldMoney, parseCustomFieldValidations, parseCustomFieldValue, type CustomFieldType } from "@scalius/shared/custom-fields";
 // `@scalius/plugin-sdk/testing`: run a plugin's handlers in a unit test with
 // the same runtime the platform uses (./runtime), over an in-memory bridge.
@@ -164,6 +165,8 @@ export function createPluginTestHarness(module: unknown, options: PluginTestHarn
   const definition = (module as { default?: { manifest?: unknown } })?.default ?? (module as { manifest?: unknown });
   const parsed = parsePluginManifest(definition?.manifest);
   if (!parsed.ok) throw new Error(`Invalid manifest: ${parsed.issues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
+  const patternIssues = pluginObjectPatternIssues(parsed.manifest);
+  if (patternIssues.length > 0) throw new Error(`Invalid manifest: ${patternIssues.map((issue) => `${issue.path} ${issue.message}`).join("; ")}`);
   const declared: PluginManifest = parsed.manifest;
   const features = options.features ?? declared.features.map((feature) => feature.id);
   const manifest: PluginManifest = pluginManifestWithFeatures(declared, features);
@@ -436,7 +439,8 @@ export function createPluginTestHarness(module: unknown, options: PluginTestHarn
         const field = manifest.customFields.find((entry) => entry.ownerType === ownerType && entry.key === key)!;
         const type = field.type as CustomFieldType;
         const validations = parseCustomFieldValidations(type, field.to ? { to: field.to } : {}, codec);
-        const parsed = parseCustomFieldValue({ type, validations: validations.ok ? validations.value : {} }, value, codec);
+        if (!validations.ok) refuse("custom_fields_invalid", `${ownerType}.${key}: ${validations.issue.message}`);
+        const parsed = parseCustomFieldValue({ type, validations: validations.value }, value, codec);
         if (!parsed.ok) refuse("custom_fields_invalid", `${ownerType}.${key}: ${parsed.issue.message}`);
         // Kept in the wire form a read returns (money as { amountMinor, currency }).
         if (parsed.value === null) delete next[key];

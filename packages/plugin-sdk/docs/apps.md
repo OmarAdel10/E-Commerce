@@ -301,6 +301,18 @@ Typed fields on core resources, owned by your namespace: `product`, `variant`, `
 
 Types: `single_line_text`, `multi_line_text`, `integer`, `decimal`, `boolean`, `date`, `date_time`, `url`, `color`, `json`, `money`, `product_reference`, `variant_reference`, `collection_reference`, `media_reference`, `object_reference`. Every type except `boolean` and `json` also has a `list.` form. `object_reference` needs `to`, a qualified object type.
 
+#### Text patterns
+
+Text field `validations.regex` matches the whole canonical value, after trimming and newline normalization. The same matcher validates custom fields and object fields, including each item of a text list. It uses Unicode code points and supports:
+
+- Literal characters, `.`, character sets and ranges (`[a-z]`, `[^0-9]`), escaped literals, character classes (`\d`, `\w`, `\s` and their complements), Unicode properties (`\p{L}`, `\P{L}`), and character escapes such as `\t`, `\x41`, `\u0041` and `\u{1F31F}`.
+- Concatenation, alternatives (`a|b`), ordinary or noncapturing groups (`(...)`, `(?:...)`), and start/end anchors (`^`, `$`). Groups do not expose captures. Matching is case-sensitive, with no flags; dot excludes line terminators.
+- Repetition: `?`, `*`, `+`, `{n}`, `{n,m}` and `{n,}`. Lazy suffixes are accepted and have the same boolean result.
+
+Lookaround, backreferences, named groups, word boundaries (`\b`, `\B` outside a character set), inline flags and possessive repetition are unsupported. Patterns have at most 200 source characters; each finite repetition bound is at most 1,000. Compilation allows at most 2,048 machine states and 4,096 expansion visits. Matching never backtracks and has a cumulative 200,000-work-unit budget per scalar or list, counting input, character predicates and machine traversal. A pattern that exceeds these bounds is refused as an invalid validation, rather than reported as a value mismatch. Simplify the pattern when this occurs.
+
+Since v2.0.0-beta.2, definition writes, app packing, validation, installation, update, activation, feature enable and release restoration reject unsupported patterns before changing state. Previously saved declarations remain readable, and stored values are retained. Replace an unsupported pattern before writing a nonempty value or activating that release. Clearing an optional value or a draft object field remains available without running the pattern; required active object fields still require a value. Disabling or removing an app remains available. This change requires no database migration or manifest-schema change.
+
 ### Money
 
 Money crosses every app boundary as integer minor units with an ISO 4217 code. A `money` field holds `{ amountMinor, currency }` in the store currency (`ctx.store.currency`). `{ amountMinor: 125000, currency: "BDT" }` is 1,250 taka. A write refuses a decimal, a bare number, another currency, a negative or fractional amount, or an amount off the store's price increment (`object_invalid`). A field's `min` and `max` are minor units.

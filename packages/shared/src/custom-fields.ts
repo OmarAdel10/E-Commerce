@@ -22,6 +22,8 @@
 // currency. The storefront contract carries the same wire money; the
 // storefront adds the page's `formatted` text where it hands money to apps.
 
+import { trimTrailingCharacter } from "./text-scan";
+import { compileCustomFieldPattern } from "./custom-field-pattern";
 import { toHandle } from "./handle";
 import { fromMinor, isIncrementMultipleMinor, MAX_MINOR_AMOUNT, priceIncrementMessage, toMinor } from "./money";
 import { PLUGIN_ID_PATTERN } from "./plugins/ids";
@@ -160,7 +162,7 @@ export function normalizeCustomFieldKey(value: unknown): string | null {
   if (typeof value !== "string") return null;
   let key = toHandle(value).replace(/-/g, "_");
   if (/^[0-9]/.test(key)) key = `f_${key}`;
-  key = key.slice(0, CUSTOM_FIELD_KEY_MAX_LENGTH).replace(/_+$/, "");
+  key = trimTrailingCharacter(key.slice(0, CUSTOM_FIELD_KEY_MAX_LENGTH), "_");
   return isCustomFieldKey(key) ? key : null;
 }
 
@@ -334,7 +336,7 @@ function canonicalDecimal(input: unknown): string | null {
   const match = DECIMAL_PATTERN.exec(text);
   if (!match) return null;
   const integer = match[2]!.replace(/^0+(?=\d)/, "");
-  const fraction = (match[3] ?? "").replace(/0+$/, "");
+  const fraction = trimTrailingCharacter(match[3] ?? "", "0");
   if (integer.length > DECIMAL_INTEGER_DIGITS || fraction.length > DECIMAL_FRACTION_DIGITS) return null;
   const magnitude = fraction ? `${integer}.${fraction}` : integer;
   return match[1] === "-" && magnitude !== "0" ? `-${magnitude}` : magnitude;
@@ -613,14 +615,6 @@ export function customFieldSupportsChoices(type: CustomFieldType): boolean {
   return customFieldItemType(type) === "single_line_text";
 }
 
-function compileRegex(pattern: string): RegExp | null {
-  try {
-    return new RegExp(`^(?:${pattern})$`, "u");
-  } catch {
-    return null;
-  }
-}
-
 const isBlank = (value: unknown) => value === undefined || value === null || (typeof value === "string" && value.trim() === "");
 
 /** A named Object type; kept here to avoid a codec/manifest dependency cycle. */
@@ -680,8 +674,8 @@ export function parseCustomFieldValidations(
 
   if (!isBlank(raw.regex)) {
     if (!customFieldSupportsRegex(type)) return invalid("Only text fields take a pattern.", "regex");
-    if (typeof raw.regex !== "string" || raw.regex.length > CUSTOM_FIELD_REGEX_MAX_LENGTH || compileRegex(raw.regex) === null) {
-      return invalid(`The pattern must be a valid regular expression of at most ${CUSTOM_FIELD_REGEX_MAX_LENGTH} characters.`, "regex");
+    if (typeof raw.regex !== "string" || compileCustomFieldPattern(raw.regex) === null) {
+      return invalid(`Use a supported text pattern of at most ${CUSTOM_FIELD_REGEX_MAX_LENGTH} characters, without lookaround or backreferences.`, "regex");
     }
     result.regex = raw.regex;
   }
@@ -765,6 +759,7 @@ function validateItem(
   validations: CustomFieldValidations,
   context: CustomFieldCodecContext,
   index: number | undefined,
+  pattern: ReturnType<typeof compileCustomFieldPattern>,
 ): CustomFieldResult<string> {
   const at = index === undefined ? {} : { index };
   const boundKind = customFieldBoundKind(type);
@@ -786,9 +781,10 @@ function validateItem(
         : fail("too_large", `The maximum is ${shown(validations.max)}.`, { ...at, limit: wire(validations.max) });
     }
   }
-  if (validations.regex !== undefined && customFieldSupportsRegex(type)) {
-    const pattern = compileRegex(validations.regex);
-    if (pattern && !pattern.test(value)) return fail("pattern", "The value does not match the required pattern.", at);
+  if (pattern) {
+    const matched = pattern.test(value);
+    if (matched === null) return fail("invalid_validation", "Simplify this field's text pattern before saving the value.", { ...at, validation: "regex" });
+    if (!matched) return fail("pattern", "The value does not match the required pattern.", at);
   }
   if (validations.choices !== undefined && customFieldSupportsChoices(type) && !validations.choices.includes(value)) {
     return fail("not_a_choice", "Choose one of the listed options.", at);
@@ -824,14 +820,19 @@ export function parseCustomFieldValue(
 ): CustomFieldResult<string | null> {
   if (isCustomFieldEmptyInput(input)) return ok(null);
   const item = customFieldItemType(definition.type);
-  const parseOne = (raw: unknown, index?: number): CustomFieldResult<string> => {
+  const pattern = definition.validations.regex === undefined ? null : compileCustomFieldPattern(definition.validations.regex);
+  if (definition.validations.regex !== undefined && (!customFieldSupportsRegex(definition.type) || pattern === null)) {
+    return fail("invalid_validation", "Correct this field's unsupported text pattern before saving a value.", { validation: "regex" });
+  }
+  const canonicalOne = (raw: unknown, index?: number): CustomFieldResult<string> => {
     if (isCustomFieldEmptyInput(raw) && index !== undefined) {
       return fail("invalid", "Remove the empty item or fill it in.", { index });
     }
     const canonical = canonicalItem(item, raw, context);
     if (!canonical.ok) return { ok: false, issue: index === undefined ? canonical.issue : { ...canonical.issue, index } };
-    return validateItem(definition.type, item, canonical.value, definition.validations, context, index);
+    return canonical;
   };
+  const validate = (value: string, index?: number) => validateItem(definition.type, item, value, definition.validations, context, index, pattern);
 
   let stored: string;
   if (isCustomFieldListType(definition.type)) {
@@ -840,15 +841,26 @@ export function parseCustomFieldValue(
       return fail("too_many_items", `Use at most ${CUSTOM_FIELD_LIST_MAX_ITEMS} items.`, { limit: CUSTOM_FIELD_LIST_MAX_ITEMS });
     }
     const items: string[] = [];
+    let storedLength = 2; // JSON brackets; count escaped canonical strings before matching.
     for (let index = 0; index < input.length; index += 1) {
-      const parsed = parseOne(input[index], index);
+      const parsed = canonicalOne(input[index], index);
       if (!parsed.ok) return parsed;
+      storedLength += JSON.stringify(parsed.value).length + (index > 0 ? 1 : 0);
+      if (storedLength > CUSTOM_FIELD_VALUE_MAX_LENGTH) {
+        return fail("too_long", `The value is too large (at most ${CUSTOM_FIELD_VALUE_MAX_LENGTH} characters stored).`, { limit: CUSTOM_FIELD_VALUE_MAX_LENGTH });
+      }
       items.push(parsed.value);
+    }
+    for (let index = 0; index < items.length; index++) {
+      const result = validate(items[index]!, index);
+      if (!result.ok) return result;
     }
     stored = JSON.stringify(items);
   } else {
-    const parsed = parseOne(input);
+    const parsed = canonicalOne(input);
     if (!parsed.ok) return parsed;
+    const result = validate(parsed.value);
+    if (!result.ok) return result;
     stored = parsed.value;
   }
   if (stored.length > CUSTOM_FIELD_VALUE_MAX_LENGTH) {
