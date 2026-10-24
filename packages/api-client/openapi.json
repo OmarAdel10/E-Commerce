@@ -68696,6 +68696,11 @@
                               "freeDelivery": {
                                 "type": "boolean"
                               },
+                              "shippingProfileId": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery, as on the product page."
+                              },
                               "categoryId": {
                                 "type": "string",
                                 "nullable": true
@@ -68981,6 +68986,7 @@
                               "discountAmount",
                               "discountedPrice",
                               "freeDelivery",
+                              "shippingProfileId",
                               "categoryId",
                               "requiresCustomization",
                               "productCondition",
@@ -183392,7 +183398,12 @@
                                 "type": "integer"
                               },
                               "productCount": {
-                                "type": "integer"
+                                "type": "integer",
+                                "description": "Live products in the profile that ship: a physical SKU, never a gift card."
+                              },
+                              "unweighedProductCount": {
+                                "type": "integer",
+                                "description": "Of those, products with a physical SKU without a weight: they weigh the profile's default weight, else the store's, else 0 g."
                               },
                               "rates": {
                                 "type": "array",
@@ -183450,6 +183461,7 @@
                               "defaultWeightGrams",
                               "revision",
                               "productCount",
+                              "unweighedProductCount",
                               "rates"
                             ]
                           }
@@ -205942,6 +205954,10 @@
                       "via"
                     ],
                     "additionalProperties": false
+                  },
+                  "expectedTotal": {
+                    "type": "number",
+                    "minimum": 0
                   }
                 },
                 "required": [

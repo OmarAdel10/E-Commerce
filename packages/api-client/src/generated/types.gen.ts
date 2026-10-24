@@ -18254,6 +18254,10 @@ export type GetApiV1ProductsFeedResponses = {
                 discountAmount: number | null;
                 discountedPrice: number;
                 freeDelivery: boolean;
+                /**
+                 * The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery, as on the product page.
+                 */
+                shippingProfileId: string | null;
                 categoryId: string | null;
                 requiresCustomization: boolean;
                 productCondition: 'new' | 'refurbished' | 'used' | null;
@@ -51709,7 +51713,14 @@ export type GetApiV1AdminSettingsShippingMethodsProfilesResponses = {
                 freeDelivery: boolean;
                 defaultWeightGrams: number | null;
                 revision: number;
+                /**
+                 * Live products in the profile that ship: a physical SKU, never a gift card.
+                 */
                 productCount: number;
+                /**
+                 * Of those, products with a physical SKU without a weight: they weigh the profile's default weight, else the store's, else 0 g.
+                 */
+                unweighedProductCount: number;
                 rates: Array<{
                     id: string;
                     methodId: string;
@@ -58141,6 +58152,7 @@ export type PostApiV1AdminOrdersData = {
             via: 'bank_transfer' | 'cash' | 'cheque' | 'card_terminal' | 'mobile_wallet' | 'other';
             reference?: string | null;
         };
+        expectedTotal?: number;
     };
     headers?: {
         /**
