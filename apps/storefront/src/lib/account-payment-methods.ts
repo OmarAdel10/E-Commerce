@@ -7,7 +7,7 @@
 // outcome flag enters the URL, never a brand, digits or an id.
 import { formatNumber, numberLocale } from "@scalius/shared/locale-format";
 import type { AccountSavedPaymentMethod } from "@/lib/account-server";
-import { storefrontLanguage } from "@/lib/storefront-copy";
+import { storefrontLanguage } from "@/lib/storefront-language";
 import { pageLanguage, storeRegion } from "@/lib/store-time-zone";
 
 export const ACCOUNT_PAYMENT_METHOD_INTENT = "remove-payment-method";

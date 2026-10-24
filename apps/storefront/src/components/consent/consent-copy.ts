@@ -1,6 +1,6 @@
 // The consent banner's words in English and Bangla (the storefront's two
 // catalogue languages, lib/storefront-copy.ts). Whole sentences only.
-import type { StorefrontLanguage } from "@/lib/storefront-copy";
+import type { StorefrontLanguage } from "@/lib/storefront-language";
 
 export interface ConsentCopy {
   region: string;

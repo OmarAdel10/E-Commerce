@@ -37,7 +37,7 @@ import { cn } from "@scalius/shared/utils";
 import { formatMoney } from "@/lib/currency";
 import { formatCount, pageLanguage, storeRegion } from "@/lib/store-time-zone";
 import { cartDrawerCopy, type CartDrawerCopy } from "@/lib/cart-drawer-copy";
-import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
+import { priceCopy as storefrontPriceCopy } from "@/lib/price-copy";
 import { formatNumber, numberLocale } from "@scalius/shared/locale-format";
 import { PRODUCT_IMAGE_FALLBACK, productImageSources, resolveProductImageUrl } from "@/lib/product-media";
 import type { ImageSlot } from "@/lib/responsive-image";
@@ -293,7 +293,7 @@ function offerSaving(percentOff: number, copy: CartDrawerCopy): string {
 export default function CartFlyout({ onReady }: Props) {
   // The page's language: Bangla words and digits on a Bangla page.
   const copy = cartDrawerCopy();
-  const priceCopy = storefrontCopy(storefrontLanguage(pageLanguage())).price;
+  const priceCopy = storefrontPriceCopy(pageLanguage());
   const cart = useStore(cartStore);
   const isOpen = useStore(cartOpenState);
   const { discounts, issues, ruleErrors, buyerUi, recheck } = useDrawerCartFacts(cart, isOpen);

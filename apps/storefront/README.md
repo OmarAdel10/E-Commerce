@@ -140,6 +140,8 @@ The storefront imports only `@scalius/shared` (pure helpers and contracts) and `
 
 Browser code never imports the SDK, `transport.ts` or a zod schema. It calls `fetch` with `browserApiUrl()` (`src/lib/api/browser-url.ts`), or a browser read such as `src/lib/api/browser-products.ts` that sends the SDK's request and shares the server's normalizers. `scripts/client-chunk-graph.test.ts` fails when zod or the generated SDK reaches the product, home or listing pages, their first add to cart, sign-in or search (run it after `pnpm --filter ./apps/storefront build`; `node apps/storefront/scripts/client-chunk-graph.mjs` prints the product page's chunks).
 
+Language-only consumers import `src/lib/storefront-language.ts`; price-only and sign-in-only islands import their small catalogue directly. `storefront-copy.ts` retains the combined catalogue and language re-exports for compatibility. App purchase-option validation loads only when adding that option, and the first-add byte budget includes its entire dependency tree. A failed validation download shows the page's localized failure and never adds the unchecked line.
+
 ## Search client rules
 
 - Normalize search input with `normalizeSearchQuery()` (`src/lib/search-query.ts`) before you build an API URL or a `/search?q=` link. Equivalent queries then share one cache key.

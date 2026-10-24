@@ -2,7 +2,7 @@
 // checkout language catalogue (English and Bangla), keyed by the store's
 // language like lib/storefront-copy.ts. Both languages carry every key, so a
 // Bangla store never mixes English into these parts.
-import { storefrontLanguage, type StorefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage, type StorefrontLanguage } from "./storefront-language";
 
 export interface ShopCopy {
   description: {

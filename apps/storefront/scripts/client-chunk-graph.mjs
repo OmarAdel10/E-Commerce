@@ -82,9 +82,10 @@ export const BUYER_PAGE_SCRIPTS = {
 /**
  * The lazy loads the first add to cart starts: the drawer (lazy-global-ui.ts),
  * the add's analytics (product-analytics.ts), and a card's quick add reading
- * the product (quick-add-card.ts).
+ * the product (quick-add-card.ts), and an app purchase option validating its
+ * authoritative price (new-line.ts).
  */
-export const ADD_TO_CART_LAZY_CHUNKS = ["mount-cart-flyout", "analytics", "browser-products", "cart"];
+export const ADD_TO_CART_LAZY_CHUNKS = ["mount-cart-flyout", "analytics", "browser-products", "cart", "new-line"];
 
 /**
  * Lazy loads that only another action of the buyer starts: sign-in, search,

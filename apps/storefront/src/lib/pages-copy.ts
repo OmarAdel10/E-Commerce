@@ -6,7 +6,7 @@
 // (pages-copy.test.ts fails otherwise). Whole phrases take their parts as
 // arguments, never concatenated, and counts arrive already in the page's
 // digits (formatCount).
-import { storefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage } from "./storefront-language";
 
 export interface PagesCopy {
   notFound: { title: string; message: string; continueShopping: string; searchProducts: string };

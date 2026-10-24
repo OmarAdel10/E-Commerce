@@ -5,32 +5,17 @@
 // `storefrontCopy.languageCode`), so a Bangla store never mixes English
 // chrome into its pages. Slices that move more strings here add keys to
 // both languages; the test fails when one language lacks a key.
-import { checkoutLanguageBaseCode } from "@scalius/shared/checkout-language-format";
 import type { ProductCondition } from "@scalius/shared/product-condition";
 import { CHROME_BN, CHROME_EN, type ChromeCopy } from "./chrome-copy";
 import { SEARCH_PALETTE_BN, SEARCH_PALETTE_EN, type SearchPaletteCopy } from "./search-palette-copy";
 import { SIGN_IN_BN, SIGN_IN_EN, type SignInCopy } from "./sign-in-copy";
 
-export type StorefrontLanguage = "en" | "bn";
-
-/** The store language the storefront speaks: Bangla for `bn…`, else English. */
-export function storefrontLanguage(code: unknown): StorefrontLanguage {
-  return checkoutLanguageBaseCode(code) === "bn" ? "bn" : "en";
-}
+import { priceCopy, type PriceCopy } from "./price-copy";
+import type { StorefrontLanguage } from "./storefront-language";
+export { storefrontLanguage, type StorefrontLanguage } from "./storefront-language";
 
 export interface StorefrontCopy {
-  price: {
-    /** Visually hidden before a discounted price. */
-    sale: string;
-    /** Visually hidden before the struck regular price. */
-    regular: string;
-    /** Visually hidden before an undiscounted price. */
-    price: string;
-    /** A price that varies by option: "From ৳2,450". */
-    from: (amount: string) => string;
-    /** The saving beside a discounted price: "Save ৳600". */
-    save: (amount: string) => string;
-  };
+  price: PriceCopy;
   badge: { sale: string; soldOut: string; new: string };
   stock: {
     inStock: string;
@@ -120,13 +105,7 @@ export interface StorefrontCopy {
 }
 
 const EN: StorefrontCopy = {
-  price: {
-    sale: "Sale price",
-    regular: "Regular price",
-    price: "Price",
-    from: (amount) => `From ${amount}`,
-    save: (amount) => `Save ${amount}`,
-  },
+  price: priceCopy("en"),
   badge: { sale: "Sale", soldOut: "Sold out", new: "New" },
   stock: {
     inStock: "In stock",
@@ -215,13 +194,7 @@ const EN: StorefrontCopy = {
 };
 
 const BN: StorefrontCopy = {
-  price: {
-    sale: "ছাড়ের দাম",
-    regular: "নিয়মিত দাম",
-    price: "দাম",
-    from: (amount) => `${amount} থেকে`,
-    save: (amount) => `${amount} সাশ্রয়`,
-  },
+  price: priceCopy("bn"),
   badge: { sale: "সেল", soldOut: "স্টক শেষ", new: "নতুন" },
   stock: {
     inStock: "স্টকে আছে",

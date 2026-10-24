@@ -1,4 +1,4 @@
-import { storefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage } from "./storefront-language";
 import { pageLanguage } from "./store-time-zone";
 
 /** Private cart consent snapshots. Names are display-only; only identities and quantities are sent. */

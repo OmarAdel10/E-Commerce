@@ -28,7 +28,7 @@ import {
 } from "@scalius/shared/storefront-theme";
 import { resolveThemePreview, type ThemePreviewData } from "./api/storefront";
 import { readThemePreviewCookie } from "./theme-preview-cookie";
-import { storefrontLanguage, type StorefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage, type StorefrontLanguage } from "./storefront-language";
 
 export interface RequestTheme {
   theme: StorefrontThemeDocument;

@@ -48,7 +48,6 @@ import {
 import { moneyPlaces, unitPriceWithSurcharge } from "../lib/buyer-inputs";
 import { initBuyerInputs, type BuyerInputsController } from "./buyer-inputs-controller";
 import { pagePath } from "@/lib/presence-url";
-import { acceptedNewCartLine, validateCartLinesInBrowser, validateNewCartLine } from "@/lib/cart/new-line";
 import type { CartLinePurchaseOption } from "@/lib/cart/purchase-option";
 
 const state = {
@@ -722,6 +721,10 @@ async function addSelected(redirect: boolean) {
   let price = cartData.data.price;
   let chosenOption = purchaseOption;
   if (purchaseOption) {
+    // Only app-priced lines need this check; ordinary products do not load it.
+    const lineValidation = await import("@/lib/cart/new-line").catch(() => null);
+    if (!lineValidation) return showError(failureMessage);
+    const { acceptedNewCartLine, validateCartLinesInBrowser, validateNewCartLine } = lineValidation;
     const checked = acceptedNewCartLine(await validateNewCartLine(validateCartLinesInBrowser, {
       cartKey: "new",
       productId: cartData.data.id,

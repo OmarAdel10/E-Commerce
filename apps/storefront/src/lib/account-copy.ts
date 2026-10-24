@@ -9,7 +9,7 @@
 // account-copy.test.ts fails when a language lacks a key. Counts, amounts and
 // dates arrive already formatted in the page's digits; these functions only
 // place them in words.
-import { storefrontLanguage, type StorefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage, type StorefrontLanguage } from "./storefront-language";
 import type { GatewayPresentationCopy } from "./checkout/gateway-presentation";
 import { pageLanguage } from "./store-time-zone";
 

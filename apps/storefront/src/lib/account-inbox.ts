@@ -9,7 +9,7 @@
 // number, a list cursor and one short status flag from STATUS_FLAGS.
 
 import { formatCount, formatStoreDateTime, pageLanguage, storeTimeZone } from "./store-time-zone";
-import { storefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage } from "./storefront-language";
 import { escapeHtml } from "@scalius/shared/html-escape";
 import { groupConversationMessages } from "@scalius/shared/conversation-grouping";
 import { formatMoney } from "@/lib/currency";

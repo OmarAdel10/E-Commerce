@@ -7,7 +7,7 @@ import { normalizeSearchQuery } from "./search-query";
 import { toLatinDigits } from "@scalius/shared/phone-input";
 import { formatList } from "@scalius/shared/locale-words";
 import { catalogCopy } from "./catalog-copy";
-import { storefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage } from "./storefront-language";
 import { pageLanguage } from "./store-time-zone";
 
 const PRODUCT_LIST_NAVIGATION_PARAMS = ["q", "page", "sortBy", "limit", "showAll"] as const;

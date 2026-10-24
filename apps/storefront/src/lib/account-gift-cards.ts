@@ -13,7 +13,7 @@ import type {
   GiftCardBalanceStatus,
   GiftCardFailureReason,
 } from "@/lib/api/gift-cards";
-import { storefrontLanguage } from "@/lib/storefront-copy";
+import { storefrontLanguage } from "@/lib/storefront-language";
 import { pageLanguage } from "@/lib/store-time-zone";
 
 const GIFT_CARD_PAGE_COPY_EN = {

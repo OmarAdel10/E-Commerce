@@ -11,7 +11,7 @@
 import { escapeHtml } from "@scalius/shared/html-escape";
 import { formatOrderNumber } from "@scalius/shared/order-utils";
 import { formatAccountDate } from "@/lib/account-format";
-import { storefrontLanguage } from "@/lib/storefront-copy";
+import { storefrontLanguage } from "@/lib/storefront-language";
 import { formatCount, formatPageNumber, pageLanguage } from "@/lib/store-time-zone";
 
 const DOWNLOAD_COPY_EN = {

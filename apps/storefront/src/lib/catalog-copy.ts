@@ -5,7 +5,7 @@
 // otherwise), so a Bangla store never mixes English into these pages.
 // Counts and amounts arrive formatted in the page's digits (formatCount,
 // formatMoney); these functions only place them in words.
-import { storefrontLanguage, type StorefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage, type StorefrontLanguage } from "./storefront-language";
 
 type Count = string | number;
 

@@ -31,7 +31,7 @@ import {
 import { pagePath } from "@/lib/presence-url";
 import { pageLocale, signInApps } from "@/lib/app-services";
 import { continueWithLabel, signInAppHref, signInLanguage } from "@/lib/sign-in-apps";
-import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
+import { signInCopy } from "@/lib/sign-in-copy";
 import { formatCount, formatPageNumber, pageLanguage } from "@/lib/store-time-zone";
 
 export interface AuthModalPrefill {
@@ -134,7 +134,7 @@ export default function AuthModal() {
 
   const ui = useMemo(() => resolveCustomerAuthUi(settings.identity, channel), [settings.identity, channel]);
   const language = pageLanguage();
-  const copy = storefrontCopy(storefrontLanguage(language)).signIn;
+  const copy = signInCopy(language);
   const digits = (value: number) => formatPageNumber(value, language);
   /** A valid example number for the phone check's message, in the page's digits. */
   const phoneExample = "01712345678".replace(/\d/g, (digit) => digits(Number(digit)));

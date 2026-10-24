@@ -7,7 +7,7 @@ import { escapeHtml } from "@scalius/shared/html-escape";
 import { formatMoney } from "@/lib/currency";
 import type { LineExtrasContext, OrderLine } from "@/lib/order-line-extras";
 import { pageLanguage } from "@/lib/store-time-zone";
-import { storefrontLanguage } from "@/lib/storefront-copy";
+import { storefrontLanguage } from "@/lib/storefront-language";
 
 /** One issued card, as `extras.giftCards[]` carries it. */
 export interface LineGiftCard {

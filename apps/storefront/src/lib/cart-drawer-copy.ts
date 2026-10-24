@@ -3,7 +3,7 @@
 // (cart-drawer-copy.test.ts fails otherwise), so a Bangla page never shows an
 // English drawer. Counts and amounts arrive already formatted in the page's
 // digits (formatCount, formatMoney); these functions only place them in words.
-import { storefrontLanguage } from "./storefront-copy";
+import { storefrontLanguage } from "./storefront-language";
 import { pageLanguage } from "./store-time-zone";
 
 export interface CartDrawerCopy {

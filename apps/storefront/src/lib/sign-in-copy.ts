@@ -5,6 +5,8 @@
 // arguments, never concatenated, so Bangla word order reads correctly.
 // Counts and waits arrive already in the page's digits.
 
+import { storefrontLanguage } from "./storefront-language";
+
 /** What the field checks say when a contact or a name will not do. */
 export interface SignInCheckCopy {
   enterPhone: string;
@@ -151,3 +153,8 @@ export const SIGN_IN_BN: SignInCopy = {
     enterName: "আপনার নাম দিন।",
   },
 };
+
+/** The sign-in dialog needs its own words, without the chrome and search catalogues. */
+export function signInCopy(language: unknown): SignInCopy {
+  return storefrontLanguage(language) === "bn" ? SIGN_IN_BN : SIGN_IN_EN;
+}
