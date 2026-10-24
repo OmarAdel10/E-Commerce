@@ -1,3 +1,4 @@
+import { SITEMAP_PAGE_SIZE, sitemapPageBounds, sitemapPagination, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // Buyer-facing brand reads: the brand page, the brand list (brand wall,
 // agents) and the brand sitemap. Only published, live brands are public;
 // a draft or trashed brand shows nowhere, and products that point at it
@@ -26,7 +27,7 @@ import {
 
 export const PUBLIC_BRAND_PAGE_LIMIT = 100;
 /** Brand URLs one sitemap document lists at most (the sitemap protocol allows 50k). */
-export const BRAND_SITEMAP_LIMIT = 5000;
+export const BRAND_SITEMAP_LIMIT = SITEMAP_PAGE_SIZE;
 
 /** A brand buyers may see: published and not in trash. */
 export function publicBrandConditions(): SQL[] {
@@ -222,11 +223,17 @@ export async function listPublicBrands(
  * Brand pages for XML discovery: published, live, not `noIndex` and not
  * `excludeFromSitemap`, filtered before the limit (never after a page read).
  */
-export async function getPublicBrandSitemapEntries(db: Database, translation: TranslationScope | null = null) {
+export async function getPublicBrandSitemapEntries(db: Database, params: SitemapPageOptions = {}, translation: TranslationScope | null = null) {
+    const { page, limit, offset } = sitemapPageBounds(params);
     deps.anyBrand();
     // A presence's sitemap: each brand at its handle in the presence's language.
     if (translation) deps.localizedSlugs("brand", translation.locale);
-    const rows = await db
+    const conditions = and(
+        ...publicBrandConditions(),
+        eq(brands.noIndex, false),
+        eq(brands.excludeFromSitemap, false),
+    );
+    const [rows, count] = await Promise.all([db
         .select({
             slug: brands.slug,
             ...(translation ? { trSlug: localizedSlugSql(translation, "brand", brands.id) } : {}),
@@ -234,13 +241,15 @@ export async function getPublicBrandSitemapEntries(db: Database, translation: Tr
             updatedAt: sql<number>`CAST(${brands.updatedAt} AS INTEGER)`,
         })
         .from(brands)
-        .where(and(
-            ...publicBrandConditions(),
-            eq(brands.noIndex, false),
-            eq(brands.excludeFromSitemap, false),
-        ))
+        .where(conditions)
         .orderBy(asc(brands.sortOrder), asc(brands.name), asc(brands.id))
-        .limit(BRAND_SITEMAP_LIMIT)
-        .all();
-    return rows.map(({ trSlug, ...row }: typeof rows[number] & { trSlug?: string | null }) => ({ ...row, slug: trSlug || row.slug, updatedAt: toIso(row.updatedAt) }));
+        .limit(limit)
+        .offset(offset)
+        .all(),
+        db.select({ count: sql<number>`count(*)` }).from(brands).where(conditions).get(),
+    ]);
+    return {
+        pagination: sitemapPagination(page, limit, Number(count?.count ?? 0)),
+        brands: rows.map(({ trSlug, ...row }: typeof rows[number] & { trSlug?: string | null }) => ({ ...row, slug: trSlug || row.slug, updatedAt: toIso(row.updatedAt) })),
+    };
 }

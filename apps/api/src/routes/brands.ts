@@ -1,3 +1,4 @@
+import { sitemapQuerySchema } from "../schemas/sitemap";
 // Public brand routes: the brand list (brand wall, agents), the brand page,
 // its product listing and the brand sitemap entries. Only published, live
 // brands exist here; public cache entries validate their declared brand dependencies.
@@ -175,6 +176,7 @@ const brandSitemapRoute = createRoute({
   tags: ["Brands"],
   summary: "List brand pages for the sitemap",
   description: "Published brands without noIndex or excludeFromSitemap, filtered before the limit.",
+  request: { query: sitemapQuerySchema },
   responses: {
     200: {
       description: "Brand sitemap entries",
@@ -184,14 +186,17 @@ const brandSitemapRoute = createRoute({
           canonicalPath: z.string().nullable(),
           updatedAt: z.string().nullable(),
         })).max(BRAND_SITEMAP_LIMIT),
+        pagination: paginationSchema,
       })) } },
     },
+    400: errorResponses[400],
     500: errorResponses[500],
   },
 });
 
 app.openapi(brandSitemapRoute, async (c) => {
-  return ok(c, { brands: await getPublicBrandSitemapEntries(c.get("db"), publicTranslation(c)) });
+  const { presence: _presence, ...params } = c.req.valid("query");
+  return ok(c, await getPublicBrandSitemapEntries(c.get("db"), params, publicTranslation(c)));
 });
 
 // GET /brands/{slug}

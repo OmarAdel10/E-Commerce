@@ -1,8 +1,9 @@
+import { sitemapQuerySchema } from "../schemas/sitemap";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { collections } from "@scalius/database/schema";
 import { eq, isNull, and } from "drizzle-orm";
 import { NotFoundError } from "../utils/api-error";
-import { successEnvelope, errorResponses, listingPaginationSchema, listingPageInfoSchema, listingCursorQuerySchema } from "../schemas/responses";
+import { successEnvelope, paginationSchema, errorResponses, listingPaginationSchema, listingPageInfoSchema, listingCursorQuerySchema } from "../schemas/responses";
 import { ok } from "../utils/api-response";
 import { getPublicCollectionCatalog, getPublicCollectionSitemapEntries, listPublicCollectionDirectory } from "@scalius/core/modules/catalog";
 import { marketPresenceQueryField } from "../schemas/markets";
@@ -240,6 +241,7 @@ const collectionSitemapRoute = createRoute({
   tags: ["Collections"],
   summary: "List collection pages for the XML sitemap",
   description: "Active collections without noIndex or a sitemap exclusion, filtered before the limit, with each page's last change.",
+  request: { query: sitemapQuerySchema },
   responses: {
     200: {
       description: "Collection sitemap entries",
@@ -249,14 +251,17 @@ const collectionSitemapRoute = createRoute({
           canonicalPath: z.string().nullable(),
           updatedAt: z.string().nullable(),
         })),
+        pagination: paginationSchema,
       })) } },
     },
+    400: errorResponses[400],
     500: errorResponses[500],
   },
 });
 
 app.openapi(collectionSitemapRoute, async (c) => {
-  return ok(c, { collections: await getPublicCollectionSitemapEntries(c.get("db")) });
+  const { presence: _presence, ...params } = c.req.valid("query");
+  return ok(c, await getPublicCollectionSitemapEntries(c.get("db"), params));
 });
 
 const getCollectionByIdRoute = createRoute({

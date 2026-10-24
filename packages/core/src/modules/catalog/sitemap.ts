@@ -5,7 +5,7 @@ import { and, sql, desc, eq } from "drizzle-orm";
 import { unixToDate } from "@scalius/shared/utils";
 import type { StorefrontProductFilterInput } from "../products";
 import type { Database } from "@scalius/database/client";
-import { getPagination } from "./shared";
+import { sitemapPageBounds, sitemapPagination } from "@scalius/shared/sitemap-pagination";
 import { buyerState, publicBuyerStateCondition } from "./buyer-state";
 import { deps } from "./declare-deps";
 import { localizedSlugSql, type TranslationScope } from "../translations";
@@ -27,16 +27,12 @@ export async function getStorefrontSitemapProducts(
     /** A presence's sitemap names each product at its handle in the presence's language. */
     translation: TranslationScope | null = null,
 ) {
-    const {
-        page = 1,
-        limit = 100,
-    } = params;
+    const { page, limit, offset } = sitemapPageBounds({ ...params, limit: params.limit ?? 100 });
     const conditions = [
         publicBuyerStateCondition(),
         eq(products.noIndex, false),
         eq(products.excludeFromSitemap, false),
     ];
-    const offset = (page - 1) * limit;
 
     const [productsList, totalCount] = await Promise.all([
         db
@@ -79,6 +75,6 @@ export async function getStorefrontSitemapProducts(
             canonicalPath: product.canonicalPath,
             updatedAt: unixToDate(product.updatedAt)?.toISOString() || null,
         })),
-        pagination: getPagination(page, limit, totalCount?.count || 0),
+        pagination: sitemapPagination(page, limit, Number(totalCount?.count ?? 0)),
     };
 }

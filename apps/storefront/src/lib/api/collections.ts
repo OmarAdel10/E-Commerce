@@ -1,7 +1,9 @@
+import { sitemapPageBounds, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // src/lib/api/collections.ts
 import { getConfiguredSdkClient } from "./transport";
 import type {
   Collection,
+  PaginatedResponse,
   CollectionWithProducts,
   CategorySummary,
   Product,
@@ -26,17 +28,19 @@ export interface SitemapCollection {
  * Collection pages for the sitemap (the API leaves out noIndex and
  * excludeFromSitemap collections before its limit), or null on failure.
  */
-export async function getSitemapCollections(): Promise<SitemapCollection[] | null> {
+export async function getSitemapCollections(options: SitemapPageOptions = {}): Promise<PaginatedResponse<SitemapCollection> | null> {
+  const { page, limit } = sitemapPageBounds(options);
   return withEdgeCache(
-    "sitemap_collections",
+    `sitemap_collections_${page}_${limit}`,
     async () => {
       try {
-        const { data, error } = await getApiV1CollectionsSitemap({ client: getConfiguredSdkClient() });
+        const { data, error } = await getApiV1CollectionsSitemap({ client: getConfiguredSdkClient(), query: { page, limit } });
         if (error) {
           console.error("Error fetching sitemap collections:", error);
           return null;
         }
-        return unwrapData<{ collections: SitemapCollection[] }>(data)?.collections ?? null;
+        const payload = unwrapData<{ collections: SitemapCollection[]; pagination: PaginatedResponse<SitemapCollection>["pagination"] }>(data);
+        return payload?.pagination ? { data: payload.collections, pagination: payload.pagination } : null;
       } catch (error: unknown) {
         console.error("Error fetching sitemap collections:", error);
         return null;

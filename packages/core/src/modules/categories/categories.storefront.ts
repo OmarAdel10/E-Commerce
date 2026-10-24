@@ -1,3 +1,4 @@
+import { SITEMAP_PAGE_SIZE, sitemapPageBounds, sitemapPagination, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // src/modules/categories/categories.storefront.ts
 // Public/storefront category queries for use by API routes.
 
@@ -40,21 +41,27 @@ export type StorefrontCategorySection = "summary" | "text";
 export type StorefrontCategoryTextField = "description" | "content";
 
 /** Category URLs one sitemap document lists at most (the sitemap protocol allows 50k). */
-export const CATEGORY_SITEMAP_LIMIT = 5000;
+export const CATEGORY_SITEMAP_LIMIT = SITEMAP_PAGE_SIZE;
 
 /**
  * Category pages for XML discovery: published, live, not `noIndex` and not
  * `excludeFromSitemap`, filtered before the limit (never after a page read).
  * `updatedAt` is the row's own last change, the page's lastmod.
  */
-export async function getPublicCategorySitemapEntries(db: Database, translation: TranslationScope | null = null) {
+export async function getPublicCategorySitemapEntries(db: Database, params: SitemapPageOptions = {}, translation: TranslationScope | null = null) {
+    const { page, limit, offset } = sitemapPageBounds(params);
     deps.anyCategory();
     // Sitemap lastmod: a write that changes only updated_at advances the
     // discovery key (cache-deps registry), not a category key.
     deps.discoveryMembership();
     // A presence's sitemap: each category at its handle in the presence's language.
     if (translation) deps.localizedSlugs("category", translation.locale);
-    const rows = await db
+    const conditions = and(
+        ...publicCategoryConditions(),
+        eq(categories.noIndex, false),
+        eq(categories.excludeFromSitemap, false),
+    );
+    const [rows, count] = await Promise.all([db
         .select({
             slug: categories.slug,
             ...(translation ? { trSlug: localizedSlugSql(translation, "category", categories.id) } : {}),
@@ -62,19 +69,21 @@ export async function getPublicCategorySitemapEntries(db: Database, translation:
             updatedAt: sql<number | null>`CAST(COALESCE(${categories.updatedAt}, ${categories.createdAt}) AS INTEGER)`,
         })
         .from(categories)
-        .where(and(
-            ...publicCategoryConditions(),
-            eq(categories.noIndex, false),
-            eq(categories.excludeFromSitemap, false),
-        ))
+        .where(conditions)
         .orderBy(categories.name, categories.id)
-        .limit(CATEGORY_SITEMAP_LIMIT)
-        .all();
-    return rows.map((row) => ({
-        slug: (row as { trSlug?: string | null }).trSlug || row.slug,
-        canonicalPath: row.canonicalPath,
-        updatedAt: row.updatedAt ? new Date(Number(row.updatedAt) * 1000).toISOString() : null,
-    }));
+        .limit(limit)
+        .offset(offset)
+        .all(),
+        db.select({ count: sql<number>`count(*)` }).from(categories).where(conditions).get(),
+    ]);
+    return {
+        pagination: sitemapPagination(page, limit, Number(count?.count ?? 0)),
+        categories: rows.map((row) => ({
+            slug: (row as { trSlug?: string | null }).trSlug || row.slug,
+            canonicalPath: row.canonicalPath,
+            updatedAt: row.updatedAt ? new Date(Number(row.updatedAt) * 1000).toISOString() : null,
+        })),
+    };
 }
 
 /**

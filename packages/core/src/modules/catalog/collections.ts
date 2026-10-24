@@ -1,3 +1,4 @@
+import { SITEMAP_PAGE_SIZE, sitemapPageBounds, sitemapPagination, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // src/modules/catalog/collections.ts
 // Buyer-facing collection reads: a collection's page catalog and its
 // product cards, the batched collection-product resolvers storefront sections
@@ -250,39 +251,47 @@ export async function listCollectionProductOptions(
 // ─────────────────────────────────────────
 
 /** Collection URLs one sitemap document lists at most (the sitemap protocol allows 50k). */
-export const COLLECTION_SITEMAP_LIMIT = 5000;
+export const COLLECTION_SITEMAP_LIMIT = SITEMAP_PAGE_SIZE;
 
 /**
  * Collection pages for XML discovery: active, live, not `noIndex` and not
  * `excludeFromSitemap`, filtered before the limit (never after a page read).
  * `updatedAt` is the row's own last change, the page's lastmod.
  */
-export async function getPublicCollectionSitemapEntries(db: Database) {
+export async function getPublicCollectionSitemapEntries(db: Database, params: SitemapPageOptions = {}) {
+    const { page, limit, offset } = sitemapPageBounds(params);
     deps.anyCollection();
     // Sitemap lastmod: a write that changes only updated_at advances the
     // discovery key (cache-deps registry), not a collection key.
     deps.discoveryMembership();
-    const rows = await db
+    const conditions = and(
+        eq(collections.isActive, true),
+        isNull(collections.deletedAt),
+        eq(collections.noIndex, false),
+        eq(collections.excludeFromSitemap, false),
+    );
+    const [rows, count] = await Promise.all([db
         .select({
             id: collections.id,
             canonicalPath: collections.canonicalPath,
             updatedAt: sql<number | null>`CAST(COALESCE(${collections.updatedAt}, ${collections.createdAt}) AS INTEGER)`,
         })
         .from(collections)
-        .where(and(
-            eq(collections.isActive, true),
-            isNull(collections.deletedAt),
-            eq(collections.noIndex, false),
-            eq(collections.excludeFromSitemap, false),
-        ))
+        .where(conditions)
         .orderBy(asc(collections.sortOrder), asc(collections.id))
-        .limit(COLLECTION_SITEMAP_LIMIT)
-        .all();
-    return rows.map((row) => ({
-        id: row.id,
-        canonicalPath: row.canonicalPath,
-        updatedAt: row.updatedAt ? new Date(Number(row.updatedAt) * 1000).toISOString() : null,
-    }));
+        .limit(limit)
+        .offset(offset)
+        .all(),
+        db.select({ count: sql<number>`count(*)` }).from(collections).where(conditions).get(),
+    ]);
+    return {
+        pagination: sitemapPagination(page, limit, Number(count?.count ?? 0)),
+        collections: rows.map((row) => ({
+            id: row.id,
+            canonicalPath: row.canonicalPath,
+            updatedAt: row.updatedAt ? new Date(Number(row.updatedAt) * 1000).toISOString() : null,
+        })),
+    };
 }
 
 // ─────────────────────────────────────────

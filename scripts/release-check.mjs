@@ -745,6 +745,29 @@ export function evaluateSitemapIndexSections(locs, { storefrontOrigin } = {}) {
   };
 }
 
+/** Verify every advertised chunk and presence, as well as the standard entry points. */
+export async function checkSitemapChildren(locs, { storefrontOrigin, verifySitemapEndpoint }) {
+  const endpoints = new Map(SITEMAP_SECTION_ENDPOINTS.map(({ endpoint, requireLoc }) => [endpoint, requireLoc]));
+  const childNames = new Set(SITEMAP_SECTION_ENDPOINTS.map(({ endpoint }) => new URL(endpoint, storefrontOrigin).pathname.slice(1)));
+  for (const loc of locs) {
+    const url = new URL(loc);
+    const parts = url.pathname.slice(1).split("/");
+    const child = parts.at(-1);
+    const validPresence = parts.length === 1 || (parts.length === 2 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parts[0]));
+    const query = [...url.searchParams];
+    const validQuery = query.length === 0 || (query.length === 1 && query[0][0] === "page"
+      && /^[1-9]\d*$/.test(query[0][1]) && Number.isSafeInteger(Number(query[0][1])));
+    if (!isSameOrigin(loc, storefrontOrigin) || url.username || url.password || url.hash
+      || !validPresence || !childNames.has(child) || !validQuery) {
+      throw new Error("Sitemap index advertises an invalid child sitemap URL.");
+    }
+    endpoints.set(`${url.pathname}${url.search}`, child === "sitemap-static.xml");
+  }
+  for (const [endpoint, requireLoc] of endpoints) {
+    await verifySitemapEndpoint(endpoint, { requireLoc });
+  }
+}
+
 function extractDirectChildTagValues(xml, parentTagName, childTagNames) {
   const escapedParent = parentTagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parentStart = new RegExp(`<${escapedParent}\\b[^>]*>`, "i").exec(xml);
@@ -2082,16 +2105,17 @@ async function checkDiscovery(options, { fetchImpl, logger }) {
     if (!cacheEvaluation.ok) {
       throw new Error(`${endpoint} cache headers failed: ${cacheEvaluation.errors.join("; ")}`);
     }
+    const productSitemap = new URL(endpoint, storefrontOrigin).pathname.endsWith("/sitemap-products.xml");
     const evaluation = evaluateSitemapXml(response.body, {
       storefrontOrigin,
-      forbidPriority: endpoint.startsWith("/sitemap-products.xml"),
-      forbidChangefreq: endpoint.startsWith("/sitemap-products.xml"),
+      forbidPriority: productSitemap,
+      forbidChangefreq: productSitemap,
       requireLoc,
     });
     if (!evaluation.ok) {
       throw new Error(`${endpoint} failed: ${evaluation.errors.join("; ")}`);
     }
-    if (endpoint.startsWith("/sitemap-products.xml")) {
+    if (productSitemap) {
       checks.productSitemapFirstUrl ??= evaluation.locs.find((loc) =>
         isSameOrigin(loc, storefrontOrigin)
       ) ?? null;
@@ -2115,9 +2139,7 @@ async function checkDiscovery(options, { fetchImpl, logger }) {
     throw new Error(`sitemap index failed: ${sitemapIndexSections.errors.join("; ")}`);
   }
 
-  for (const { endpoint, requireLoc } of SITEMAP_SECTION_ENDPOINTS) {
-    await verifySitemapEndpoint(endpoint, { requireLoc });
-  }
+  await checkSitemapChildren(sitemapIndexEvaluation.locs, { storefrontOrigin, verifySitemapEndpoint });
 
   responses.feeds = {};
   if (!policy.feeds.productCatalogEnabled) {

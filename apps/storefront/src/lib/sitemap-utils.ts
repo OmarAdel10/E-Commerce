@@ -5,6 +5,7 @@
 import { getRuntimeStorefrontUrl } from "./api/runtime";
 import { serverPagePath } from "./server-presence";
 import { normalizeAbsoluteStorefrontOriginUrl } from "./storefront-origin";
+import { parseSitemapPage, SITEMAP_PAGE_SIZE, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 
 export interface SitemapUrl {
   loc: string;
@@ -14,6 +15,30 @@ export interface SitemapUrl {
 export interface SitemapIndexEntry {
   loc: string;
   lastmod?: string | number | Date;
+}
+
+/** Catalog XML shares one bounded read, query validation and empty-page contract. */
+export async function paginatedSitemapResponse<T extends { updatedAt: string | null }>(
+  url: URL,
+  readPage: (options: SitemapPageOptions) => Promise<{ data: T[] } | null>,
+  resourcePath: (row: T) => string,
+  unavailableMessage: string,
+): Promise<Response> {
+  const page = parseSitemapPage(url.searchParams.get("page"));
+  if (page === null) return new Response("Invalid page parameter", { status: 400 });
+  try {
+    const baseUrl = getBaseUrl();
+    const response = await readPage({ page, limit: SITEMAP_PAGE_SIZE });
+    if (!response) return xmlDataUnavailableResponse(unavailableMessage);
+    if (page > 1 && response.data.length === 0) return new Response("Page not found", { status: 404 });
+    return new Response(generateSitemap(response.data.map((row) => ({
+      loc: sitemapPageUrl(baseUrl, resourcePath(row)),
+      lastmod: row.updatedAt ?? undefined,
+    })), baseUrl), { status: 200, headers: getSitemapHeaders() });
+  } catch (error: unknown) {
+    console.error(unavailableMessage, error);
+    return xmlDataUnavailableResponse(unavailableMessage);
+  }
 }
 
 /**

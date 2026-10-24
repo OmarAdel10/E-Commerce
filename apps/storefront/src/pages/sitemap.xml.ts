@@ -8,6 +8,10 @@
  */
 
 import type { APIRoute } from "astro";
+import { SITEMAP_PAGE_SIZE } from "@scalius/shared/sitemap-pagination";
+import { getSitemapCategories } from "@/lib/api/categories";
+import { getSitemapBrands } from "@/lib/api/brands";
+import { getSitemapCollections } from "@/lib/api/collections";
 import { activePresences } from "@scalius/shared/markets";
 import {
   generateSitemapIndex,
@@ -22,14 +26,8 @@ import type { APIContext } from "astro";
 
 export const prerender = false;
 
-// Max URLs per sitemap chunk
-const PRODUCTS_PER_SITEMAP = 5000;
-
 const CHILD_SITEMAPS = [
   "sitemap-static.xml",
-  "sitemap-categories.xml",
-  "sitemap-brands.xml",
-  "sitemap-collections.xml",
   "sitemap-pages.xml",
   "sitemap-articles.xml",
 ] as const;
@@ -39,24 +37,21 @@ export const GET: APIRoute = async (_context: APIContext) => {
     const baseUrl = getBaseUrl();
     const presence = getRuntimePresence();
 
-    // Fetch just 1 product to get the total count for pagination
-    const [productsResponse, layout] = await Promise.all([
-      getSitemapProducts({ limit: 1 }),
-      presence ? Promise.resolve(null) : getLayoutData(),
-    ]);
-    if (!productsResponse) {
-      return xmlDataUnavailableResponse(
-        "Sitemap index is temporarily unavailable",
-      );
+    // Counts use the same visibility predicates as each chunk. Read sequentially:
+    // four simultaneous count+page reads would exceed D1's six connections.
+    const catalogCounts = [];
+    for (const [kind, read] of [
+      ["categories", getSitemapCategories],
+      ["brands", getSitemapBrands],
+      ["collections", getSitemapCollections],
+      ["products", getSitemapProducts],
+    ] as const) {
+      const response = await read({ limit: 1 });
+      if (!response) return xmlDataUnavailableResponse("Sitemap index is temporarily unavailable");
+      catalogCounts.push({ kind, totalPages: Math.max(1, Math.ceil(response.pagination.total / SITEMAP_PAGE_SIZE)) });
     }
-    const totalProducts = productsResponse?.pagination?.total || 0;
-
-    // Calculate how many product sitemap chunks we need
-    // If totalProducts is 0, we still want to output at least page=1
-    const totalSitemaps = Math.max(
-      1,
-      Math.ceil(totalProducts / PRODUCTS_PER_SITEMAP),
-    );
+    const layout = presence ? null : await getLayoutData();
+    if (!presence && !layout) return xmlDataUnavailableResponse("Sitemap index is temporarily unavailable");
 
     // The root index lists the root's children, then every other active
     // presence's; a presence's own index lists its own.
@@ -68,9 +63,9 @@ export const GET: APIRoute = async (_context: APIContext) => {
         .map((value) => `/${value}`)];
     const sitemaps = prefixes.flatMap((prefix) => [
       ...CHILD_SITEMAPS.map((path) => ({ loc: `${baseUrl}${prefix}/${path}` })),
-      ...Array.from({ length: totalSitemaps }, (_, index) => ({
-        loc: `${baseUrl}${prefix}/sitemap-products.xml?page=${index + 1}`,
-      })),
+      ...catalogCounts.flatMap(({ kind, totalPages }) => Array.from({ length: totalPages }, (_, index) => ({
+        loc: `${baseUrl}${prefix}/sitemap-${kind}.xml?page=${index + 1}`,
+      }))),
     ]);
 
     const xml = generateSitemapIndex(sitemaps, baseUrl);

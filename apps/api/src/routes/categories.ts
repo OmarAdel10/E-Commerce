@@ -1,3 +1,4 @@
+import { sitemapQuerySchema } from "../schemas/sitemap";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
   CATEGORY_CHILDREN_LIMIT,
@@ -273,6 +274,7 @@ const categorySitemapRoute = createRoute({
   tags: ["Categories"],
   summary: "List category pages for the XML sitemap",
   description: "Published categories without noIndex or a sitemap exclusion, filtered before the limit, with each page's last change.",
+  request: { query: sitemapQuerySchema },
   responses: {
     200: {
       description: "Category sitemap entries",
@@ -282,14 +284,17 @@ const categorySitemapRoute = createRoute({
           canonicalPath: z.string().nullable(),
           updatedAt: z.string().nullable(),
         })),
+        pagination: paginationSchema,
       })) } },
     },
+    400: errorResponses[400],
     500: errorResponses[500],
   },
 });
 
 app.openapi(categorySitemapRoute, async (c) => {
-  return ok(c, { categories: await getPublicCategorySitemapEntries(c.get("db"), publicTranslation(c)) });
+  const { presence: _presence, ...params } = c.req.valid("query");
+  return ok(c, await getPublicCategorySitemapEntries(c.get("db"), params, publicTranslation(c)));
 });
 
 // GET /categories/tree — the published tree for automatic menus

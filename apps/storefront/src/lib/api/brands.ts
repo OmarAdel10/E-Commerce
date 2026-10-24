@@ -1,3 +1,4 @@
+import { sitemapPageBounds, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // src/lib/api/brands.ts
 // Brand reads: the brand page listing and the brand sitemap. Coalesced per
 // request; the API caches them under the store's cache generation.
@@ -84,17 +85,19 @@ export async function getProductsByBrand(
 }
 
 /** Brand pages for the sitemap (already filtered for noIndex and excludeFromSitemap), or null on failure. */
-export async function getSitemapBrands(): Promise<SitemapBrand[] | null> {
+export async function getSitemapBrands(options: SitemapPageOptions = {}): Promise<PaginatedResponse<SitemapBrand> | null> {
+  const { page, limit } = sitemapPageBounds(options);
   return withEdgeCache(
-    "sitemap_brands",
+    `sitemap_brands_${page}_${limit}`,
     async () => {
       try {
-        const { data, error } = await getApiV1BrandsSitemap({ client: getConfiguredSdkClient() });
+        const { data, error } = await getApiV1BrandsSitemap({ client: getConfiguredSdkClient(), query: { page, limit } });
         if (error) {
           console.error("Error fetching sitemap brands:", error);
           return null;
         }
-        return unwrapData<{ brands: SitemapBrand[] }>(data)?.brands ?? null;
+        const payload = unwrapData<{ brands: SitemapBrand[]; pagination: PaginatedResponse<SitemapBrand>["pagination"] }>(data);
+        return payload?.pagination ? { data: payload.brands, pagination: payload.pagination } : null;
       } catch (error: unknown) {
         console.error("Error fetching sitemap brands:", error);
         return null;

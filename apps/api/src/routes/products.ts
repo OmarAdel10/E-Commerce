@@ -1,3 +1,4 @@
+import { sitemapQuerySchema } from "../schemas/sitemap";
 // src/server/routes/products.ts
 // Storefront product routes — thin HTTP layer.
 import { CATALOG_CHANNEL_IDS } from "@scalius/shared/sales-channels";
@@ -130,10 +131,8 @@ const productFeedSchema = z.object({
   }),
 }).superRefine(validatePriceRange);
 
-const productSitemapSchema = z.object({
-  presence: marketPresenceQueryField,
-  page: z.coerce.number().int().min(1).max(1000).optional().default(1).openapi({ description: "Page number" }),
-  limit: z.coerce.number().int().min(1).max(5000).optional().default(100).openapi({ description: "Items per page" }),
+const productSitemapSchema = sitemapQuerySchema.extend({
+  limit: sitemapQuerySchema.shape.limit.default(100),
 });
 
 // Storefront product list item

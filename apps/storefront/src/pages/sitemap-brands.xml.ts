@@ -1,43 +1,14 @@
-/**
- * Brands Sitemap
- * Published brand pages; the API leaves out noIndex and excludeFromSitemap
- * brands before its limit.
- */
-
-import {
-  generateSitemap,
-  getBaseUrl,
-  getSitemapHeaders,
-  xmlDataUnavailableResponse,
-  sitemapPageUrl,
-} from "@/lib/sitemap-utils";
-import type { SitemapUrl } from "@/lib/sitemap-utils";
-import { getSitemapBrands } from "@/lib/api/brands";
-import type { APIContext, APIRoute } from "astro";
+/** Published, indexable brands; one bounded page per XML document. */
+import type { APIRoute } from "astro";
 import { normalizeResourceCanonicalPath } from "@scalius/shared/seo-canonical";
+import { paginatedSitemapResponse } from "@/lib/sitemap-utils";
+import { getSitemapBrands } from "@/lib/api/brands";
 
 export const prerender = false;
 
-export const GET: APIRoute = async (_context: APIContext) => {
-  try {
-    const baseUrl = getBaseUrl();
-    const brands = await getSitemapBrands();
-    if (!brands) {
-      console.error("Failed to fetch brands for sitemap");
-      return xmlDataUnavailableResponse("Brand sitemap is temporarily unavailable");
-    }
-
-    const brandUrls: SitemapUrl[] = brands.map((brand) => ({
-      loc: sitemapPageUrl(baseUrl, normalizeResourceCanonicalPath("brand", brand.canonicalPath) ?? `/brands/${brand.slug}`),
-      lastmod: brand.updatedAt ?? undefined,
-    }));
-
-    return new Response(generateSitemap(brandUrls, baseUrl), {
-      status: 200,
-      headers: getSitemapHeaders(),
-    });
-  } catch (error: unknown) {
-    console.error("Error generating brands sitemap:", error);
-    return xmlDataUnavailableResponse("Brand sitemap is temporarily unavailable");
-  }
-};
+export const GET: APIRoute = ({ url }) => paginatedSitemapResponse(
+  url,
+  getSitemapBrands,
+  (row) => normalizeResourceCanonicalPath("brand", row.canonicalPath) ?? `/brands/${row.slug}`,
+  "Brand sitemap is temporarily unavailable",
+);

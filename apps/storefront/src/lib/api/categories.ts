@@ -1,7 +1,8 @@
+import { sitemapPageBounds, type SitemapPageOptions } from "@scalius/shared/sitemap-pagination";
 // src/lib/api/categories.ts
 
 import { getConfiguredSdkClient } from "./transport";
-import type { Category } from "./types";
+import type { Category, PaginatedResponse } from "./types";
 import { withEdgeCache, CACHE_TTL } from "@/lib/api/transport";
 import { unwrapData } from "./unwrap";
 import {
@@ -20,17 +21,19 @@ export interface SitemapCategory {
  * Category pages for the sitemap (the API leaves out noIndex and
  * excludeFromSitemap categories before its limit), or null on failure.
  */
-export async function getSitemapCategories(): Promise<SitemapCategory[] | null> {
+export async function getSitemapCategories(options: SitemapPageOptions = {}): Promise<PaginatedResponse<SitemapCategory> | null> {
+  const { page, limit } = sitemapPageBounds(options);
   return withEdgeCache(
-    "sitemap_categories",
+    `sitemap_categories_${page}_${limit}`,
     async () => {
       try {
-        const { data, error } = await getApiV1CategoriesSitemap({ client: getConfiguredSdkClient() });
+        const { data, error } = await getApiV1CategoriesSitemap({ client: getConfiguredSdkClient(), query: { page, limit } });
         if (error) {
           console.error("Error fetching sitemap categories:", error);
           return null;
         }
-        return unwrapData<{ categories: SitemapCategory[] }>(data)?.categories ?? null;
+        const payload = unwrapData<{ categories: SitemapCategory[]; pagination: PaginatedResponse<SitemapCategory>["pagination"] }>(data);
+        return payload?.pagination ? { data: payload.categories, pagination: payload.pagination } : null;
       } catch (error: unknown) {
         console.error("Error fetching sitemap categories:", error);
         return null;

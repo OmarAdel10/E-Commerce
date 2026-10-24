@@ -16,7 +16,7 @@ Category records, their publication rules, revision-guarded admin writes and the
 
 Admin list search uses the `categories_fts` full-text index. The domain declares no settings document.
 
-DVC: `category_closure` advances `c:` keys and `lm:cat:<ancestorId>`, so a move advances the listings of the old and new ancestors. Public readers declare `deps.anyCategory()`; the sitemap read also declares `deps.discoveryMembership()`.
+DVC: `category_closure` advances `c:` keys and `lm:cat:<ancestorId>`, so a move advances the listings of the old and new ancestors. Public readers declare `deps.anyCategory()`; the sitemap read also declares `deps.discoveryMembership()`. Sitemap rows are filtered before count and pagination, with at most 5,000 per page and a complete filtered total for the XML index.
 
 ## Routes
 
