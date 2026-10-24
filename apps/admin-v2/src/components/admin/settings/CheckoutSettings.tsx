@@ -109,6 +109,7 @@ export const CARD_TEXT_FIELDS = [
 export const PAYMENT_START_TEXT_FIELDS = [
   "paymentStartFailedText",
   "paymentPreparingText",
+  "paymentRateExpiredText",
   "checkoutStorageBlockedText",
 ] as const;
 /** The order form posted without JavaScript, refused before the order is placed. */

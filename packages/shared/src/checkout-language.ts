@@ -1672,6 +1672,7 @@ export const CHECKOUT_LANGUAGE_LONG_TEXT_KEYS =/* @__PURE__ */ new Set<CheckoutL
   "cardAuthenticationFailedText",
   "cardPaymentFailedText",
   "paymentStartFailedText",
+  "paymentRateExpiredText",
   "checkoutStorageBlockedText",
   "addressSuggestionsText",
   "checkoutFieldsMissingText",
