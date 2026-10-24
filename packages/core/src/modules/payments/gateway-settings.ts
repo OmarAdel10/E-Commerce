@@ -311,8 +311,10 @@ export async function getPaymentGatewaySettingsSnapshot(
   encryptionKey?: string,
   /** The request's gateways, for enabled app methods (see `enabledAppPayments`). */
   providers?: PaymentProvidersSource,
+  /** Documents already read in this request, including payment_methods and stripe. */
+  prefetchedRows?: readonly GatewaySettingsStoredRow[],
 ): Promise<PaymentGatewaySettingsSnapshot> {
-  const rows = await readGatewayRows(db);
+  const rows = prefetchedRows ?? await readGatewayRows(db);
   const app = await enabledAppPayments(db, rows, encryptionKey, providers);
   const snapshot = await resolvePaymentGatewaySettingsSnapshotFromRows(rows, encryptionKey, app.apps);
   return app.providers ? { ...snapshot, providers: app.providers } : snapshot;

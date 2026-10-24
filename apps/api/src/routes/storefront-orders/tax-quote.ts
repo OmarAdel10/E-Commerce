@@ -62,11 +62,12 @@ import {
 import { buildStorefrontTaxAllocationLineId } from "@scalius/core/modules/tax";
 import { ValidationError } from "../../utils/api-error";
 import { getOptionalExecutionContext } from "../../utils/execution-context";
+import { enforceCheckoutPreparationLimit } from "../../utils/checkout-rate-limit";
 import { createCheckoutAppFunctions } from "../../plugins/checkout-functions";
 import { checkoutPaymentMethods } from "../../plugins/providers/payment";
 import { getCustomerSessionHashKey } from "../../utils/encryption-key";
 import { ok } from "../../utils/api-response";
-import { successEnvelope, errorResponses } from "../../schemas/responses";
+import { successEnvelope, errorResponses, serviceUnavailableResponse } from "../../schemas/responses";
 import {
     giftCardHandlesSchema,
     giftCardIssueSchema,
@@ -245,6 +246,8 @@ const taxQuoteRoute = createRoute({
       content: { "application/json": { schema: successEnvelope(taxQuoteResponseSchema) } },
     },
     400: errorResponses[400],
+    429: errorResponses[429],
+    503: serviceUnavailableResponse,
     500: errorResponses[500],
   },
 });
@@ -252,6 +255,7 @@ const taxQuoteRoute = createRoute({
 app.openapi(taxQuoteRoute, async (c) => {
   const db = c.get("db");
   const data = c.req.valid("json");
+  await enforceCheckoutPreparationLimit(c.env, c.req.raw);
   // A signed-in buyer is quoted as the order will be: their per-customer
   // limits and the promotions limited to their customer segments. A missing
   // or stale session quotes as a guest (checkout itself reports it).
@@ -290,6 +294,7 @@ app.openapi(taxQuoteRoute, async (c) => {
     priceIncrementMinor: currency.priceIncrementMinor,
     // The order's market prices the lines, as the order will (MARKETS-DESIGN D5).
     market: {
+      shippingMethodId: data.shippingMethodId,
       placing: true,
       shippingCountryCode: data.shippingCountryCode,
       billingCountryCode: data.billingCountryCode,

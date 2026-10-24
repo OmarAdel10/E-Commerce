@@ -21,6 +21,7 @@ import { alias, unionAll } from "drizzle-orm/sqlite-core";
 import type { BatchItem } from "drizzle-orm/batch";
 import { nanoid } from "nanoid";
 import { deps } from "../../cache-deps";
+import { inJsonArray } from "../../utils/in-json-array";
 import { matchAdminArea } from "@scalius/shared/address";
 import { addressRulesFor } from "@scalius/shared/address-metadata";
 import { DELIVERY_HIERARCHY_COUNTRY, normalizeMarketCountry } from "@scalius/shared/markets";
@@ -108,7 +109,7 @@ export function normalizeDeliveryDestination(input: DeliveryDestination): Delive
 
 /** Region rows as a JSON text column: `[{ "zoneId", "countryCode", "adminArea", "postalPrefix" }]`. */
 function regionRowsJsonSql(countries: readonly string[]): SQL<string | null> {
-    return sql<string | null>`(SELECT '[' || group_concat(json_object('zoneId', destination_region.zone_id, 'countryCode', destination_region.country_code, 'adminArea', destination_region.admin_area, 'postalPrefix', destination_region.postal_prefix), ',') || ']' FROM ${deliveryZoneRegions} AS destination_region WHERE destination_region.country_code IN ${countries})`;
+    return sql<string | null>`(SELECT '[' || group_concat(json_object('zoneId', destination_region.zone_id, 'countryCode', destination_region.country_code, 'adminArea', destination_region.admin_area, 'postalPrefix', destination_region.postal_prefix), ',') || ']' FROM ${deliveryZoneRegions} AS destination_region WHERE ${inJsonArray(sql`destination_region.country_code`, countries)})`;
 }
 
 /**
@@ -989,7 +990,7 @@ async function assertRegionsAssignable(db: Database, zoneId: string | null, regi
         })
         .from(deliveryZoneRegions)
         .innerJoin(deliveryZones, eq(deliveryZones.id, deliveryZoneRegions.zoneId))
-        .where(inArray(deliveryZoneRegions.countryCode, countries));
+        .where(inJsonArray(deliveryZoneRegions.countryCode, countries));
     const owner = new Map(held
         .filter((row) => row.zoneId !== zoneId)
         .map((row) => [`${row.countryCode}|${row.adminArea}|${row.postalPrefix}`, row.zoneName]));

@@ -36,6 +36,8 @@ import {
   customerAuthDocument,
   customerCountriesDocument,
   marketingConsentDocument,
+  paymentMethodsDocument,
+  stripeDocument,
   selectDocumentsWithSellingCountries,
 } from "../settings";
 import type { SettingsDocumentRow } from "../../settings-store";
@@ -110,6 +112,9 @@ export async function getCheckoutConfig(
         customerAuthDocument,
         customerCountriesDocument,
         marketingConsentDocument,
+        // Payment readiness uses this same request snapshot, without a third read wave.
+        paymentMethodsDocument,
+        stripeDocument,
     ];
     let rows: SettingsDocumentRow[];
     let sellingCountries: string[];
@@ -153,7 +158,9 @@ export async function getCheckoutConfig(
     const partialPaymentEnabled = checkout.partialPaymentEnabled && foreignCurrency === null;
     const [customerIdentity, checkoutReadiness] = await Promise.all([
         getOfferedCustomerIdentity(db, customerAuth, { encryptionKey, runtimeEnv, appProviders }),
-        getCheckoutReadiness(db, { encryptionKey, runtimeEnv, appProviders }),
+        // This projection has no cart. Physical carts validate their chosen
+        // option and destination in delivery preflight, for both quote and order.
+        getCheckoutReadiness(db, { encryptionKey, runtimeEnv, appProviders, requireDeliverySetup: false }),
     ]);
 
     if (!isReady(checkoutReadiness)) {
@@ -180,7 +187,7 @@ export async function getCheckoutConfig(
         };
     }
 
-    const gatewaySnapshot = await getPaymentGatewaySettingsSnapshot(db, encryptionKey, paymentProviders);
+    const gatewaySnapshot = await getPaymentGatewaySettingsSnapshot(db, encryptionKey, paymentProviders, rows);
     const activePaymentMethods = gatewaySnapshot.activePaymentMethods;
     const providers = gatewaySnapshot.providers ?? BUILT_IN_PAYMENT_PROVIDERS;
     const savedGatewaySettings = gatewaySnapshot.settings as unknown as Record<string, GatewaySettings | null | undefined>;

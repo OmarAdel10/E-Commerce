@@ -1,12 +1,12 @@
 // src/modules/checkout/readiness.ts
-// Whether checkout can accept orders: an active shipping method, an active
-// delivery hierarchy, and (when accounts are required) a usable customer
-// sign-in channel.
+// Checkout setup diagnostics and the readiness facts a caller requires.
+// Delivery is a cart-specific requirement; a cartless public configuration
+// must not block downloads or services on shipping setup.
 
 import type { Database } from "@scalius/database/client";
 import { places, shippingMethods } from "@scalius/database/schema";
 import { PLACE_ADDRESS_COUNTRY } from "@scalius/shared/places";
-import { and, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, eq, isNull, not, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { mergeReadiness, readiness, type ReadinessIssue } from "@scalius/shared/readiness";
 import {
@@ -16,6 +16,7 @@ import {
     type CheckoutReadiness,
 } from "@scalius/shared/checkout-readiness";
 import { deps } from "../../cache-deps";
+import { inJsonArray } from "../../utils/in-json-array";
 import { type CheckoutReadinessOptions, getCustomerSignInReadiness } from "../customers";
 
 function uniqueIds(ids: readonly string[] | undefined): string[] {
@@ -36,7 +37,7 @@ export async function getCheckoutDeliveryReadiness(
         isNull(shippingMethods.deletedAt),
     ];
     if (excludedShippingMethodIds.length > 0) {
-        shippingConditions.push(notInArray(shippingMethods.id, excludedShippingMethodIds));
+        shippingConditions.push(not(inJsonArray(shippingMethods.id, excludedShippingMethodIds)));
     }
 
     // An active thana (level 2) under an active Bangladesh city (level 1).
@@ -47,11 +48,11 @@ export async function getCheckoutDeliveryReadiness(
         isNull(places.deletedAt),
     ];
     if (excludedDeliveryLocationIds.length > 0) {
-        zoneConditions.push(notInArray(places.id, excludedDeliveryLocationIds));
+        zoneConditions.push(not(inJsonArray(places.id, excludedDeliveryLocationIds)));
     }
 
     const excludedCityPredicate: SQL = excludedDeliveryLocationIds.length > 0
-        ? sql`AND city.id NOT IN (${sql.join(excludedDeliveryLocationIds.map((id) => sql`${id}`), sql`, `)})`
+        ? sql`AND ${not(inJsonArray(sql`city.id`, excludedDeliveryLocationIds))}`
         : sql``;
     zoneConditions.push(sql`
         EXISTS (
@@ -94,13 +95,16 @@ export async function getCheckoutDeliveryReadiness(
 
 export async function getCheckoutReadiness(
     db: Database,
-    options: CheckoutReadinessOptions = {},
+    options: CheckoutReadinessOptions & {
+        /** Cartless public config skips delivery blockers; the admin still inspects complete setup. */
+        requireDeliverySetup?: boolean;
+    } = {},
 ): Promise<CheckoutReadiness> {
     const [delivery, signIn] = await Promise.all([
         getCheckoutDeliveryReadiness(db, options),
         getCustomerSignInReadiness(db, options),
     ]);
-    const value = mergeReadiness(delivery, signIn);
+    const value = options.requireDeliverySetup === false ? signIn : mergeReadiness(delivery, signIn);
 
     return {
         ...value,

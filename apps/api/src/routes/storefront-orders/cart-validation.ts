@@ -30,11 +30,12 @@ import { listActiveCheckoutRegistrations } from "@scalius/core/modules/plugins";
 import { getCustomerBySession } from "@scalius/core/modules/customers";
 import { ok } from "../../utils/api-response";
 import { getOptionalExecutionContext } from "../../utils/execution-context";
+import { enforceCheckoutPreparationLimit } from "../../utils/checkout-rate-limit";
 import { getCustomerSessionHashKey } from "../../utils/encryption-key";
 import { createCheckoutAppFunctions } from "../../plugins/checkout-functions";
 import { checkoutPaymentMethods } from "../../plugins/providers/payment";
 import { getCredentialEncryptionKey } from "../../utils/encryption-key";
-import { successEnvelope, errorResponses } from "../../schemas/responses";
+import { successEnvelope, errorResponses, serviceUnavailableResponse } from "../../schemas/responses";
 import {
   allowedPaymentMethodsSchema,
   deliveryMethodKindSchema,
@@ -238,6 +239,8 @@ const cartValidationRoute = createRoute({
       },
     },
     400: errorResponses[400],
+    429: errorResponses[429],
+    503: serviceUnavailableResponse,
     500: errorResponses[500],
   },
 });
@@ -271,6 +274,7 @@ async function giftCardHandleIssues(
 app.openapi(cartValidationRoute, async (c) => {
   const db = c.get("db");
   const data = c.req.valid("json");
+  await enforceCheckoutPreparationLimit(c.env, c.req.raw);
   // The apps' checkout functions ride the first read wave: none, no app work.
   const encryptionKey = getCredentialEncryptionKey(c.env as Record<string, unknown>);
   const [currency, builtInPaymentMethods, registrations] = await Promise.all([
@@ -325,6 +329,7 @@ app.openapi(cartValidationRoute, async (c) => {
     priceIncrementMinor: currency.priceIncrementMinor,
     // The buyer's country, else the page's presence, prices the cart (MARKETS-DESIGN D5).
     market: {
+      shippingMethodId: data.shippingMethodId,
       presence: data.presence,
       shippingCountryCode: data.shippingCountryCode,
       customerId: sessionCustomerId,

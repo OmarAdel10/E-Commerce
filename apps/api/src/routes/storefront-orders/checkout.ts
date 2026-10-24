@@ -57,6 +57,7 @@ import {
 import { getCredentialEncryptionKey, getCustomerSessionHashKey } from "../../utils/encryption-key";
 import { getClientIp } from "@scalius/shared/rate-limit";
 import { isWithinRateLimit } from "../../utils/rate-limit";
+import { enforceCheckoutPreparationLimit } from "../../utils/checkout-rate-limit";
 import { created } from "../../utils/api-response";
 import { errorResponses, serviceUnavailableResponse, conflictResponse } from "../../schemas/responses";
 import { linePropertiesInputSchema, linePurchaseOptionInputSchema } from "../../schemas/order-lines";
@@ -533,6 +534,7 @@ app.openapi(createOrderRoute, async (c) => {
       },
       getCredentialEncryptionKey(c.env as Record<string, unknown>),
       {
+        beforePrepare: () => enforceCheckoutPreparationLimit(c.env, c.req.raw),
         session: sessionToken
           ? { token: sessionToken, hashKey: getCustomerSessionHashKey(c.env as unknown as Record<string, unknown>) }
           : null,
@@ -712,8 +714,9 @@ app.openapi(createOrderRoute, async (c) => {
     );
     diagnostics?.mark("prepare");
 
-    // Only authoritative, policy-valid checkouts consume buyer rate-limit
-    // budget. All database writes still remain in the single commit below.
+    // Only authoritative, policy-valid checkouts consume the strict buyer
+    // quota; the coarse IP budget already bounded their preparation work.
+    // All database writes still remain in the single commit below.
     await enforceCheckoutRateLimits(c.env, c.req.raw, data);
     diagnostics?.mark("rate_limit");
 

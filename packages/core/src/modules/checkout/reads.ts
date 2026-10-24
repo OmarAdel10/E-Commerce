@@ -109,7 +109,7 @@ export async function loadStorefrontCheckoutReads<TResponse>(
         identity,
         transform ? { ...authorityInput, items: transform.items } : authorityInput,
         credentialEncryptionKey,
-        { ...options, apps: () => reads.apps },
+        { ...options, apps: () => reads.apps, beforePrepare: undefined },
         () => ({ linePricer: () => linePricer }),
     );
     if (!transform) return again;
@@ -141,6 +141,8 @@ export interface CheckoutSessionInput {
 }
 
 interface CheckoutReadsOptions {
+    /** Runs once after idempotent replay, before app pricing, transforms or provider preparation. */
+    beforePrepare?: () => Promise<void>;
     paymentProviders?: (registrations: readonly RegisteredPlugin[]) => PaymentProviders;
     apps?: (registrations: RegisteredPlugin[]) => CheckoutAppFunctions;
     /**
@@ -241,6 +243,9 @@ async function readCheckoutOnce<TResponse>(
         attemptRows[0], identity,
         attemptRows[0]?.linkedOrderAccountOwnerCustomerId ? await customerId : undefined,
     );
+    // A replay bypasses preparation and its coarse abuse budget. For a new
+    // attempt, the budget is checked before any app or gateway work begins.
+    if (!existingAttempt) await options.beforePrepare?.();
     const registrations = resolveActiveFunctionRegistrations(registrationRows ?? []);
     const paymentRegistrations = registrations.filter((registration) => registration.kind === "provider");
     const paymentProviders = paymentRegistrations.length > 0 && options.paymentProviders
