@@ -977,6 +977,10 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
                 replacedText={copy.deliveryOptionReplacedText}
                 replacedSameFeeText={copy.deliveryOptionReplacedSameFeeText}
                 goneText={copy.deliveryOptionGoneText}
+                overWeightText={copy.deliveryOverWeightText}
+                overWeightNoneText={copy.deliveryOverWeightNoneText}
+                itemsUnavailableText={copy.deliveryItemsUnavailableText}
+                itemsUnavailableNoneText={copy.deliveryItemsUnavailableNoneText}
               />
             </section>
             <div data-buyer-ui-target="checkout.delivery.after"></div>
@@ -1216,6 +1220,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
   } from "@/lib/checkout/loading-overlay";
   import type { CheckoutLanguageData as CheckoutLanguageStrings } from "@scalius/shared/checkout-language";
   import type { QuotedShippingRate } from "@/lib/checkout/tax-quote-contract";
+  import type { ItemsDeliveryRefusal } from "@/lib/checkout/tax-quote-error-contract";
 
   type CustomerAutofillProfile = {
     customerId?: string | null;
@@ -1329,6 +1334,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
     loadRates: (address) => fetchDeliveryRates(browserApiUrl(""), address),
     readDraftMethod: () => readCheckoutFormDraft()?.shippingLocation,
     readSubtotal: () => cartShippedSubtotal(cartStore.get().items),
+    readCartKey: () => JSON.stringify(Object.entries(cartStore.get().items).map(([key, item]) => [key, item.quantity])),
     isFeeWaived: () => cartShipsAllFree(cartStore.get().items),
     formatMoney,
     readMode: () => readCheckoutDeliveryMode(),
@@ -1375,6 +1381,8 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
     const need = Object.keys(items).length === 0 || cartNeedsDeliveryMethod(items) ? "method" : "none";
     if (root && root.dataset.deliveryNeed !== need) root.dataset.deliveryNeed = need;
     void shippingMethods?.setMode(applyCheckoutDeliveryMode(document));
+    // An option these items couldn't take is offered again once the items change.
+    void shippingMethods?.cartChanged();
     syncContactNeeds();
   };
   syncDeliveryPath();
@@ -1408,12 +1416,14 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
   // app hid the chosen one (null: re-read the store's own).
   window.addEventListener(
     "delivery-rate-rejected",
-    (event) =>
-      void shippingMethods?.rejectSelected(
-        (event as CustomEvent<{ shippingRates?: QuotedShippingRate[] | null } | null>).detail?.shippingRates ?? null,
-      ),
+    (event) => {
+      const detail = (event as CustomEvent<{ shippingRates?: QuotedShippingRate[] | null; forItems?: ItemsDeliveryRefusal | null } | null>).detail;
+      void shippingMethods?.rejectSelected(detail?.shippingRates ?? null, detail?.forItems ?? null);
+    },
     { signal: cartPageSignal },
   );
+  // Whether this address and cart have a delivery option decides Place order.
+  window.addEventListener("delivery-availability-change", () => updateCheckoutButtonState(), { signal: cartPageSignal });
   // Each quote says which options a store app changed for this cart (null: none).
   window.addEventListener(
     "delivery-rates-quoted",

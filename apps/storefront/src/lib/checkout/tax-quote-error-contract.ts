@@ -130,6 +130,34 @@ export function isDeliveryRateUnavailable(payload: unknown): boolean {
   return issueDetails(payload)?.reason === DELIVERY_RATE_UNAVAILABLE_REASON;
 }
 
+/** Delivery options these items can't take, and why (shipping-profile rates). */
+export interface ItemsDeliveryRefusal {
+  /** The options refused for these items, the chosen one first; `maxWeightGrams` when weight is why. */
+  rates: Array<{ id: string; name: string; maxWeightGrams: number | null }>;
+  /** What the refused items weigh (grams), when known. */
+  weightGrams: number | null;
+}
+
+const grams = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+
+/**
+ * A refusal of the chosen option because these items can't take it (its
+ * profile's weight or value bands), or null for any other refusal: such an
+ * option comes back when the cart changes, never when only the address does.
+ */
+export function refusedForItems(payload: unknown): ItemsDeliveryRefusal | null {
+  const details = issueDetails(payload);
+  if (details?.reason !== DELIVERY_RATE_UNAVAILABLE_REASON || !Array.isArray(details.unavailableRates)) return null;
+  const rates = details.unavailableRates.slice(0, 100).flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    const id = boundedString(entry.id, 180);
+    const name = boundedString(entry.name, 100);
+    return id && name ? [{ id, name, maxWeightGrams: grams(entry.maxWeightGrams) }] : [];
+  });
+  return rates.length > 0 ? { rates, weightGrams: grams(details.weightGrams) } : null;
+}
+
 /**
  * The visible delivery options a refusal of the chosen one names (a store app
  * hid it), or null when it names none (the rate is gone: re-read the rates).

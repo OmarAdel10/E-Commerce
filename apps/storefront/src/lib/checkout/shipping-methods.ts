@@ -22,6 +22,7 @@ import { formatCheckoutLanguageText } from "@scalius/shared/checkout-language-fo
 import type { ShippingMethod } from "@/lib/api";
 import type { CheckoutDeliveryMode } from "./delivery-mode";
 import type { QuotedShippingRate } from "./tax-quote-contract";
+import type { ItemsDeliveryRefusal } from "./tax-quote-error-contract";
 import { fetchWithTransientRetry } from "../transient-fetch";
 
 export type DeliveryRate = Pick<ShippingMethod, "id" | "name" | "fee" | "description" | "rateSource"> & {
@@ -111,6 +112,14 @@ export interface ShippingMethodsCopy {
   replacedText: string;
   replacedSameFeeText: string;
   goneText: string;
+  /** "{option} takes up to {max} kg and these items weigh {weight} kg…" (another option is left). */
+  overWeightText: string;
+  /** "These items weigh {weight} kg, over the {max} kg delivery limit…" (no option is left). */
+  overWeightNoneText: string;
+  /** "{option} isn't available for these items…" (a value band; another option is left). */
+  itemsUnavailableText: string;
+  /** No option takes these items to the address (a value band). */
+  itemsUnavailableNoneText: string;
   /** Legend text per path. */
   deliveryLegendText: string;
   pickupLegendText: string;
@@ -217,6 +226,8 @@ export function enhanceShippingMethods(
      * there"; null when it can.
      */
     readNoDeliveryReason?: () => string | null;
+    /** The cart's shipped lines and quantities: an option refused for these items returns once it changes. */
+    readCartKey?: () => string;
     signal?: AbortSignal;
   },
 ): {
@@ -229,7 +240,9 @@ export function enhanceShippingMethods(
    * and say what changed. When a store app hid it, `shippingRates` are the
    * options still offered and the first of them is chosen.
    */
-  rejectSelected(shippingRates?: QuotedShippingRate[] | null): Promise<void>;
+  rejectSelected(shippingRates?: QuotedShippingRate[] | null, forItems?: ItemsDeliveryRefusal | null): Promise<void>;
+  /** The cart changed: options these items couldn't take are offered again (and quoted). */
+  cartChanged(): Promise<void>;
   /** The latest quote's options when a store app changed them, or null to show the store's own. */
   applyQuotedRates(shippingRates: QuotedShippingRate[] | null): void;
   /**
@@ -263,6 +276,10 @@ export function enhanceShippingMethods(
     replacedText: data.replacedText || "",
     replacedSameFeeText: data.replacedSameFeeText || "",
     goneText: data.goneText || "",
+    overWeightText: data.overWeightText || "",
+    overWeightNoneText: data.overWeightNoneText || "",
+    itemsUnavailableText: data.itemsUnavailableText || "",
+    itemsUnavailableNoneText: data.itemsUnavailableNoneText || "",
     deliveryLegendText: data.deliveryLegendText || "",
     pickupLegendText: data.pickupLegendText || "",
     pickupHoursText: data.pickupHoursText || "",
@@ -291,6 +308,16 @@ export function enhanceShippingMethods(
   let address: DeliveryAddress = { cityId: "", zoneId: "", areaId: "" };
   let sequence = 0;
   const rejected = new Set<string>();
+  // Options the checkout refused for these items (a profile's weight or value
+  // limit), with the weight limit when weight is why. Unlike `rejected`, they
+  // belong to the cart: a changed cart offers them again (shipping-profiles QA D3).
+  const forItems = new Map<string, { name: string; maxWeightGrams: number | null }>();
+  let itemsWeightGrams: number | null = null;
+  let itemsCartKey = "";
+  /** `overlay` holds what an app left after refusing the chosen option (not a quote's list). */
+  let overlayRefused = false;
+  const readCartKey = options.readCartKey ?? (() => "");
+  const offered = (rate: DeliveryRate) => !rejected.has(rate.id) && !forItems.has(rate.id);
   // What the totals were last told: the same rate for the same address is
   // not announced twice (each announcement re-quotes the order).
   let announced: string | undefined;
@@ -312,6 +339,7 @@ export function enhanceShippingMethods(
         }
       : null;
     window.lastShippingEventDetail = detail ?? undefined;
+    syncBlocked();
     const key = detail ? `${JSON.stringify(detail)}|${addressKey(address)}` : "none";
     if (key === announced) return;
     announced = key;
@@ -481,7 +509,7 @@ export function enhanceShippingMethods(
     notice.classList.toggle("hidden", !message);
     // Frame the options, not the fieldset: a fieldset's edge runs through its legend.
     for (const name of ["rounded-lg", "ring-2", "ring-destructive", "ring-offset-2"]) {
-      list?.classList.toggle(name, Boolean(message));
+      list?.classList.toggle(name, Boolean(message) && list.children.length > 0);
     }
     if (message) container.scrollIntoView?.({ behavior: "smooth", block: "center" });
   };
@@ -515,12 +543,38 @@ export function enhanceShippingMethods(
       : formatCheckoutLanguageText(copy.goneText, { old: previous.name });
   };
 
+  const kilograms = (grams: number) => String(Math.round(grams / 100) / 10);
+  /** Why no delivery option is left for this address and cart. */
+  const noOptionText = () => {
+    const country = options.readNoDeliveryReason?.();
+    if (country) return country;
+    if (forItems.size === 0) return copy.noDeliveryText;
+    const limits = [...forItems.values()].map((rate) => rate.maxWeightGrams);
+    const max = limits.every((limit): limit is number => limit !== null) ? Math.max(...limits) : null;
+    return max !== null && itemsWeightGrams !== null
+      ? formatCheckoutLanguageText(copy.overWeightNoneText, { weight: kilograms(itemsWeightGrams), max: kilograms(max) })
+      : copy.itemsUnavailableNoneText;
+  };
+  /**
+   * The address is known and no delivery option takes the cart there: Place
+   * order says why instead of placing an order without delivery (QA D2).
+   */
+  const syncBlocked = () => {
+    const blocked = mode === "delivery" && hasDeliveryDestination(address)
+      && list.getAttribute("aria-busy") !== "true" && container.dataset.ratesFailed !== "true"
+      && !shown().some((rate) => rate.kind === "delivery");
+    const reason = blocked ? noOptionText() : "";
+    if ((container.dataset.deliveryBlocked ?? "") === reason) return;
+    if (reason) container.dataset.deliveryBlocked = reason;
+    else delete container.dataset.deliveryBlocked;
+    window.dispatchEvent(new CustomEvent("delivery-availability-change"));
+  };
+
   const applyLoaded = (loaded: DeliveryRate[]) => {
-    rates = loaded.filter((rate) =>
-      !rejected.has(rate.id) && (!hasModeSwitch || rate.kind === "delivery"));
+    rates = loaded.filter((rate) => offered(rate) && (!hasModeSwitch || rate.kind === "delivery"));
     choose();
     render();
-    setNote(shown().some((rate) => rate.kind === "delivery") ? "" : options.readNoDeliveryReason?.() ?? copy.noDeliveryText);
+    setNote(shown().some((rate) => rate.kind === "delivery") ? "" : noOptionText());
   };
 
   // The read in flight: placing the order waits for it (`settled`), so a
@@ -548,7 +602,7 @@ export function enhanceShippingMethods(
       return;
     }
     if (mode === "pickup" || !hasAddress) {
-      rates = addressFreeRates().filter((rate) => !rejected.has(rate.id));
+      rates = addressFreeRates().filter(offered);
       delete list.dataset.addressKey;
       const current = shown();
       const keptId = [selectedId, preferredId].find((id) => current.some((rate) => rate.id === id));
@@ -602,6 +656,7 @@ export function enhanceShippingMethods(
       mode = next;
       // A quote's options belong to the path it priced.
       overlay = null;
+      overlayRefused = false;
       showNotice("");
       // The other path's choice no longer applies; a rate chosen earlier on
       // this path comes back through the draft preference.
@@ -625,24 +680,63 @@ export function enhanceShippingMethods(
         || (nextAddress.countryCode ?? "") !== (address.countryCode ?? "")
         || (nextAddress.adminArea ?? "") !== (address.adminArea ?? "")
         || (nextAddress.postalCode ?? "") !== (address.postalCode ?? "")
-      ) rejected.clear();
+      ) {
+        rejected.clear();
+        forItems.clear();
+      }
       // A quote's options belong to the address it priced.
-      if (addressKey(nextAddress) !== addressKey(address)) overlay = null;
+      if (addressKey(nextAddress) !== addressKey(address)) {
+        overlay = null;
+        overlayRefused = false;
+      }
       address = nextAddress;
       showNotice("");
       return load();
     },
-    async rejectSelected(shippingRates = null) {
+    async rejectSelected(shippingRates = null, refusedItems = null) {
       const previous = selectedRate();
+      if (refusedItems) {
+        // These items can't take it (nor the others named): say why, offer the rest.
+        if (readCartKey() !== itemsCartKey) forItems.clear();
+        itemsCartKey = readCartKey();
+        for (const rate of refusedItems.rates) forItems.set(rate.id, { name: rate.name, maxWeightGrams: rate.maxWeightGrams });
+        itemsWeightGrams = refusedItems.weightGrams;
+        selectedId = null;
+        await load(true);
+        const limit = previous ? forItems.get(previous.id) : undefined;
+        // With another option left the notice names the limit; with none the note does (no empty red box).
+        showNotice(previous && shown().some((rate) => rate.kind === "delivery")
+          ? limit?.maxWeightGrams != null && itemsWeightGrams !== null
+            ? formatCheckoutLanguageText(copy.overWeightText, {
+                option: previous.name, max: kilograms(limit.maxWeightGrams), weight: kilograms(itemsWeightGrams),
+              })
+            : formatCheckoutLanguageText(copy.itemsUnavailableText, { option: previous.name })
+          : "");
+        return;
+      }
       if (shippingRates) {
         // A store app hid it: the options it left are the ones to show (never the refused one).
+        // An app decides per cart, so a changed cart asks it again.
         overlay = shippingRates.filter((rate) => rate.id !== selectedId);
+        overlayRefused = true;
+        itemsCartKey = readCartKey();
       } else if (selectedId) {
         rejected.add(selectedId);
       }
       selectedId = null;
       await load(true);
       if (previous) showNotice(describeChange(previous));
+    },
+    async cartChanged() {
+      // Only what this cart was refused: an app's left-over options, or the
+      // options these items couldn't take (an address refusal stays).
+      if ((forItems.size === 0 && !overlayRefused) || readCartKey() === itemsCartKey) return;
+      forItems.clear();
+      itemsWeightGrams = null;
+      if (overlayRefused) overlay = null;
+      overlayRefused = false;
+      showNotice("");
+      await load(true);
     },
     applyQuotedRates(shippingRates) {
       // Nothing to show on this path; or another address's options are
@@ -651,6 +745,7 @@ export function enhanceShippingMethods(
       if (mode === "none" || list.getAttribute("aria-busy") === "true") return;
       if (JSON.stringify(shippingRates) === JSON.stringify(overlay)) return;
       overlay = shippingRates;
+      overlayRefused = false;
       choose();
       render();
       if (mode === "delivery") {

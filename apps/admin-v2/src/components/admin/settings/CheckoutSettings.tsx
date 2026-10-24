@@ -117,6 +117,13 @@ export const ORDER_PROBLEM_TEXT_FIELDS = [
   "checkoutDeliveryChangedText",
   "cashOnDeliveryUnavailableText",
 ] as const;
+/** A cart its delivery options can't take (a shipping profile's weight or value limit). */
+export const DELIVERY_LIMIT_TEXT_FIELDS = [
+  "deliveryOverWeightText",
+  "deliveryOverWeightNoneText",
+  "deliveryItemsUnavailableText",
+  "deliveryItemsUnavailableNoneText",
+] as const;
 /** The address app's suggestions, read out by screen readers. */
 export const ADDRESS_SUGGESTION_TEXT_FIELDS = [
   "addressSuggestionText",
@@ -128,6 +135,7 @@ const TEXT_GROUPS = [
   { id: "card", title: "cardTextTitle", help: "cardTextHelp", keys: CARD_TEXT_FIELDS },
   { id: "payment-start", title: "paymentStartTextTitle", help: "paymentStartTextHelp", keys: PAYMENT_START_TEXT_FIELDS },
   { id: "order-problems", title: "orderProblemTextTitle", help: "orderProblemTextHelp", keys: ORDER_PROBLEM_TEXT_FIELDS },
+  { id: "delivery-limits", title: "deliveryLimitTextTitle", help: "deliveryLimitTextHelp", keys: DELIVERY_LIMIT_TEXT_FIELDS },
   { id: "address-suggestions", title: "addressSuggestionGroupTitle", help: "addressSuggestionGroupHelp", keys: ADDRESS_SUGGESTION_TEXT_FIELDS },
 ] as const;
 /** Every checkout-language key this editor lists. */
@@ -141,6 +149,7 @@ export const EDITABLE_CHECKOUT_TEXT_KEYS: ReadonlySet<string> = new Set<string>(
   ...CARD_TEXT_FIELDS,
   ...PAYMENT_START_TEXT_FIELDS,
   ...ORDER_PROBLEM_TEXT_FIELDS,
+  ...DELIVERY_LIMIT_TEXT_FIELDS,
   ...ADDRESS_SUGGESTION_TEXT_FIELDS,
 ]);
 /** The agreement line's link placeholders; the storefront links each to its policy page. */

@@ -156,6 +156,29 @@ export function priceDeliveryOption(option: PricedDeliveryOption, lines: readonl
 }
 
 /**
+ * Why an option has no rate for these lines (`priceDeliveryOption` is null):
+ * the first group whose rates all miss, its weight, and the heaviest weight
+ * its rates take when every one of them has a maximum the group is over
+ * (null: a value band or a minimum weight missed). Null when the option
+ * prices the lines.
+ */
+export function deliveryOptionMiss(option: PricedDeliveryOption, lines: readonly ShippingLine[]): { weightGrams: number; maxWeightGrams: number | null } | null {
+    if (priceDeliveryOption(option, lines)) return null;
+    const profileRates = option.profileRates ?? [];
+    for (const [profileId, groupLines] of deliveryOptionGroups(option, lines)) {
+        const rates = profileRates.filter((rate) => rate.profileId === profileId);
+        if (rates.length === 0) continue;
+        const weightGrams = groupLines.reduce((sum, line) => sum + line.weightGrams * line.quantity, 0);
+        const subtotalMinor = groupLines.reduce((sum, line) => sum + line.unitPriceMinor * line.quantity, 0);
+        if (cheapest({ profileId, rates, weightGrams, subtotalMinor })) continue;
+        const maxima = rates.map((rate) => rate.maxWeightGrams);
+        const heaviest = maxima.every((max): max is number => max !== null) ? Math.max(...maxima) : null;
+        return { weightGrams, maxWeightGrams: heaviest !== null && weightGrams > heaviest ? heaviest : null };
+    }
+    return { weightGrams: 0, maxWeightGrams: null };
+}
+
+/**
  * The shares as the order snapshots them: the charge, and the base fee the
  * order shows. A fully waived charge keeps its fees as the base (the order
  * says "৳120 delivery fee waived"); otherwise the base is the charge.

@@ -85,8 +85,10 @@ import {
   isDeliveryRateUnavailable,
   parseCartRuleErrors,
   refusedDeliveryRates,
+  refusedForItems,
   unavailableDeliveryLocation,
   type DeliveryLocationLevel,
+  type ItemsDeliveryRefusal,
 } from "../checkout/tax-quote-error-contract";
 
 /**
@@ -101,9 +103,11 @@ function rejectDeliveryLocation(field: DeliveryLocationLevel): void {
 /**
  * The checkout refused the chosen delivery option: the options drop it and
  * choose again, from the options still offered when a store app hid it.
+ * `forItems`: these items can't take it (a weight or value limit), so it
+ * comes back when the cart changes.
  */
-function rejectDeliveryRate(shippingRates: QuotedShippingRate[] | null): void {
-  window.dispatchEvent(new CustomEvent("delivery-rate-rejected", { detail: { shippingRates } }));
+function rejectDeliveryRate(shippingRates: QuotedShippingRate[] | null, forItems: ItemsDeliveryRefusal | null = null): void {
+  window.dispatchEvent(new CustomEvent("delivery-rate-rejected", { detail: { shippingRates, forItems } }));
 }
 import { hasPendingShippingRate, type ShippingMethodDetail } from "../checkout/shipping-methods";
 import type {
@@ -1134,7 +1138,7 @@ export async function validateCartSnapshot(
     setCartValidationIssues(issues, cartStore.get().items, summaryMessage);
     const deliveryRateRefused =
       !response.ok && issues.length === 0 && isDeliveryRateUnavailable(json);
-    if (deliveryRateRefused) rejectDeliveryRate(refusedDeliveryRates(json));
+    if (deliveryRateRefused) rejectDeliveryRate(refusedDeliveryRates(json), refusedForItems(json));
     const locationGone = !response.ok && issues.length === 0 ? unavailableDeliveryLocation(json) : null;
     if (locationGone) rejectDeliveryLocation(locationGone);
     if (!response.ok || !json?.success) {
@@ -1390,7 +1394,7 @@ async function refreshTotals() {
     }
     // A store app's rule is said at its line or above the checkout action.
     if (rulesRefused) setQuoteRuleErrors(error.ruleErrors);
-    if (rateRefused) rejectDeliveryRate(error.shippingRates ?? null);
+    if (rateRefused) rejectDeliveryRate(error.shippingRates ?? null, error.forItems ?? null);
     if (locationGone) rejectDeliveryLocation(error.field);
     await renderEstimate(cartChanged || rulesRefused || rateRefused || locationGone ? "" : activeCheckoutCopy().taxVerificationFailedText);
     updateCheckoutButtonState();
@@ -1583,6 +1587,8 @@ export function updateCheckoutButtonState() {
     checkoutPendingMessage: copy.existingCheckoutTitle,
     discountValidationPending: isDiscountValidationPending(),
     discountValidationPendingMessage: copy.processingText,
+    // No delivery option takes this cart to the address (said beside the options too).
+    deliveryBlockedMessage: document.querySelector<HTMLElement>("[data-shipping-methods]")?.dataset.deliveryBlocked || "",
     reasonElement: document.getElementById("submitButtonReason"),
   });
 }

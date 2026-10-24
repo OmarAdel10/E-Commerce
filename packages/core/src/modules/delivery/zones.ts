@@ -40,6 +40,7 @@ import {
     shippingProfileRates,
 } from "@scalius/database/schema";
 import {
+    deliveryOptionMiss,
     parseProfileRates,
     priceDeliveryOption,
     type DeliveryShare,
@@ -236,6 +237,12 @@ export interface ResolvedDeliveryRate {
  */
 export const DELIVERY_RATE_UNAVAILABLE_REASON = "delivery_rate_unavailable";
 
+/** Grams as kilograms for a sentence: "20", "2.5". */
+function formatKilograms(grams: number): string {
+    return String(Math.round(grams / 100) / 10);
+}
+
+
 /**
  * Verifies the chosen rate is live, active, well formed and a rate of the
  * destination's zone (local pickup is offered everywhere), then prices it for
@@ -248,6 +255,11 @@ export function resolveDeliveryRate(input: {
     addressZoneId: string | null;
     /** The cart's shipped lines (physical, never a gift card). */
     lines: readonly ShippingLine[];
+    /**
+     * The store's rates in the cart's currency: an option these lines can't
+     * take is refused naming every option of the destination they can't take.
+     */
+    offered?: readonly DeliveryRateRow[];
 }): ResolvedDeliveryRate {
     const { rate, addressZoneId, lines } = input;
     if (!rate || !rate.isActive || rate.deletedAt != null || (rate.rateSource && rate.rateSource !== "flat" && !rate.rateCurrency)) {
@@ -286,9 +298,30 @@ export function resolveDeliveryRate(input: {
     if (!charge) {
         // A shipping profile in the cart has rates behind this option, and its
         // lines meet none of them (too heavy, or outside its order-value band).
+        // The refusal names the limit and the options these items can take, so
+        // the buyer is told why and what to do, never "we don't deliver here".
+        const miss = deliveryOptionMiss(rate, lines);
+        const maxWeightGrams = miss?.maxWeightGrams ?? null;
+        const others = (input.offered ?? []).filter((row) => row.id !== rate.id
+            && row.isActive && row.deletedAt == null
+            && (row.kind === "pickup" || (addressZoneId !== null && row.zoneId === addressZoneId)));
         throw new ValidationError(
-            "This delivery option isn't available for these items. Choose another delivery option.",
-            { reason: DELIVERY_RATE_UNAVAILABLE_REASON },
+            maxWeightGrams !== null
+                ? `${name} takes up to ${formatKilograms(maxWeightGrams)} kg and these items weigh ${formatKilograms(miss!.weightGrams)} kg. Remove some items or choose another delivery option.`
+                : "This delivery option isn't available for these items. Choose another delivery option.",
+            {
+                reason: DELIVERY_RATE_UNAVAILABLE_REASON,
+                // Every option of the destination these items can't take (the
+                // chosen one first), with its weight limit when weight is why.
+                unavailableRates: [
+                    { id: rate.id, name, maxWeightGrams },
+                    ...others.flatMap((row) => {
+                        const otherMiss = deliveryOptionMiss(row, lines);
+                        return otherMiss ? [{ id: row.id, name: row.name.trim(), maxWeightGrams: otherMiss.maxWeightGrams }] : [];
+                    }),
+                ],
+                weightGrams: miss?.weightGrams ?? null,
+            },
         );
     }
     return {

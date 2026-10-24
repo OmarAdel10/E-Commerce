@@ -538,6 +538,10 @@ export const ENGLISH_CHECKOUT_LANGUAGE_DATA = {
   deliveryOptionReplacedText: "{old} is no longer available here, so {new} is selected. Delivery was {oldFee}, now {newFee}. Check your total.",
   deliveryOptionReplacedSameFeeText: "{old} is no longer available for this address, so {new} ({fee}) is selected. Check your total, then place your order.",
   deliveryOptionGoneText: "{old} is no longer available for this address. Choose another delivery option.",
+  deliveryOverWeightText: "{option} takes up to {max} kg and these items weigh {weight} kg. Choose another delivery option, or remove some items.",
+  deliveryOverWeightNoneText: "These items weigh {weight} kg, over the {max} kg delivery limit. Remove some items to have them delivered.",
+  deliveryItemsUnavailableText: "{option} isn't available for these items. Choose another delivery option.",
+  deliveryItemsUnavailableNoneText: "No delivery option takes these items to this address. Change the items in your cart to have them delivered.",
   freeDeliveryProgressText: "Add {amount} more for free delivery.",
   discountNeedsDeliveryText: "Choose your city and thana to use {code}.",
   discountOneDeliveryText: "Only one delivery discount can be used. {other} already applies to delivery.",
@@ -1303,6 +1307,10 @@ export const BANGLA_CHECKOUT_LANGUAGE_DATA: CheckoutLanguageData = {
   deliveryOptionReplacedText: "{old} এখানে আর পাওয়া যাচ্ছে না, তাই {new} বেছে নেওয়া হয়েছে। ডেলিভারি চার্জ {oldFee} থেকে {newFee}। মোট টাকা দেখুন।",
   deliveryOptionReplacedSameFeeText: "{old} এই ঠিকানায় আর পাওয়া যাচ্ছে না, তাই {new} ({fee}) বেছে নেওয়া হয়েছে। মোট টাকা দেখে অর্ডার করুন।",
   deliveryOptionGoneText: "{old} এই ঠিকানায় আর পাওয়া যাচ্ছে না। অন্য একটি ডেলিভারি অপশন বেছে নিন।",
+  deliveryOverWeightText: "{option}-এ সর্বোচ্চ {max} কেজি পাঠানো যায়, আর এই পণ্যগুলোর ওজন {weight} কেজি। অন্য ডেলিভারি অপশন বেছে নিন, অথবা কিছু পণ্য সরিয়ে দিন।",
+  deliveryOverWeightNoneText: "এই পণ্যগুলোর ওজন {weight} কেজি, যা ডেলিভারির সর্বোচ্চ সীমা {max} কেজির বেশি। ডেলিভারি পেতে কিছু পণ্য সরিয়ে দিন।",
+  deliveryItemsUnavailableText: "{option} এই পণ্যগুলোর জন্য পাওয়া যাচ্ছে না। অন্য একটি ডেলিভারি অপশন বেছে নিন।",
+  deliveryItemsUnavailableNoneText: "এই ঠিকানায় এই পণ্যগুলো পাঠানোর মতো কোনো ডেলিভারি অপশন নেই। ডেলিভারি পেতে কার্টের পণ্য বদলান।",
   freeDeliveryProgressText: "ফ্রি ডেলিভারির জন্য আরও {amount} যোগ করুন।",
   discountNeedsDeliveryText: "{code} ব্যবহার করতে শহর ও থানা বেছে নিন।",
   discountOneDeliveryText: "একটি ডেলিভারি ডিসকাউন্টই ব্যবহার করা যায়। {other} ইতিমধ্যে ডেলিভারিতে প্রযোজ্য।",
@@ -1665,6 +1673,10 @@ export const CHECKOUT_LANGUAGE_LONG_TEXT_KEYS =/* @__PURE__ */ new Set<CheckoutL
   "checkoutFieldsMissingText",
   "checkoutDeliveryChangedText",
   "cashOnDeliveryUnavailableText",
+  "deliveryOverWeightText",
+  "deliveryOverWeightNoneText",
+  "deliveryItemsUnavailableText",
+  "deliveryItemsUnavailableNoneText",
 ]);
 
 const CHECKOUT_LANGUAGE_PRESETS: Record<string, CheckoutLanguageData> = {

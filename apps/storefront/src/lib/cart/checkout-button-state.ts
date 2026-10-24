@@ -26,6 +26,11 @@ export function applyCheckoutButtonState(
     checkoutPendingMessage?: string;
     discountValidationPending?: boolean;
     discountValidationPendingMessage?: string;
+    /**
+     * The address is known and no delivery option takes this cart there: why
+     * (an order is never placed without delivery).
+     */
+    deliveryBlockedMessage?: string;
     /** The visible reason line under the button. */
     reasonElement?: HTMLElement | null;
   },
@@ -36,7 +41,8 @@ export function applyCheckoutButtonState(
     options.cartBlocked === true ||
     options.cartRulesBlocked === true ||
     options.checkoutPending === true ||
-    options.discountValidationPending === true;
+    options.discountValidationPending === true ||
+    Boolean(options.deliveryBlockedMessage);
   submitButton.disabled = disabled;
   submitButton.classList.toggle("opacity-50", disabled);
   submitButton.classList.toggle("cursor-not-allowed", disabled);
@@ -53,7 +59,9 @@ export function applyCheckoutButtonState(
             ? options.cartRulesBlockedMessage || ""
             : options.checkoutPending
               ? options.checkoutPendingMessage || ""
-              : options.discountValidationPendingMessage || "";
+              : options.discountValidationPending
+                ? options.discountValidationPendingMessage || ""
+                : options.deliveryBlockedMessage || "";
   const line = options.reasonElement;
   if (!line) return;
   if (line.textContent !== reason) line.textContent = reason;

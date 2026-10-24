@@ -28,6 +28,10 @@ interface Props {
   replacedText: string;
   replacedSameFeeText: string;
   goneText: string;
+  overWeightText: string;
+  overWeightNoneText: string;
+  itemsUnavailableText: string;
+  itemsUnavailableNoneText: string;
 }
 
 const { shippingMethods, shippingMethodLabel, pickupLocationLabel, modeSwitch, ...copy } = Astro.props;
@@ -53,6 +57,10 @@ const { shippingMethods, shippingMethodLabel, pickupLocationLabel, modeSwitch, .
   data-replaced-text={copy.replacedText}
   data-replaced-same-fee-text={copy.replacedSameFeeText}
   data-gone-text={copy.goneText}
+  data-over-weight-text={copy.overWeightText}
+  data-over-weight-none-text={copy.overWeightNoneText}
+  data-items-unavailable-text={copy.itemsUnavailableText}
+  data-items-unavailable-none-text={copy.itemsUnavailableNoneText}
 >
   <script is:inline type="application/json" data-shipping-rates set:html={serializeJsonForInlineScript(shippingMethods)} />
   <fieldset id="shippingMethods" class="rounded-lg" aria-describedby="shippingMethodNotice shippingMethodNote shippingMethodError">

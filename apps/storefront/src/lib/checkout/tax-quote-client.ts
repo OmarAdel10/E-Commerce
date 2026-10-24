@@ -19,8 +19,10 @@ import {
   isDeliveryRateUnavailable,
   parseTaxQuoteCartIssues,
   refusedDeliveryRates,
+  refusedForItems,
   unavailableDeliveryLocation,
   type DeliveryLocationLevel,
+  type ItemsDeliveryRefusal,
 } from "./tax-quote-error-contract";
 
 const TAX_QUOTE_ENDPOINT = "/api/checkout/tax-quote";
@@ -81,7 +83,11 @@ export class TaxQuoteCartRulesError extends Error {
  * When a store app hid it, `shippingRates` are the options still offered.
  */
 export class TaxQuoteDeliveryRateError extends Error {
-  constructor(public readonly shippingRates: QuotedShippingRate[] | null = null) {
+  constructor(
+    public readonly shippingRates: QuotedShippingRate[] | null = null,
+    /** These items can't take the option (its weight or value limit): it returns when the cart changes. */
+    public readonly forItems: ItemsDeliveryRefusal | null = null,
+  ) {
     super("The chosen delivery option isn't available for this address.");
     this.name = "TaxQuoteDeliveryRateError";
   }
@@ -234,7 +240,7 @@ export async function fetchAuthoritativeTaxQuote(
       const ruleErrors = cartRuleRefusal(payload);
       if (ruleErrors) throw new TaxQuoteCartRulesError(ruleErrors);
       if (isDeliveryRateUnavailable(payload)) {
-        throw new TaxQuoteDeliveryRateError(refusedDeliveryRates(payload));
+        throw new TaxQuoteDeliveryRateError(refusedDeliveryRates(payload), refusedForItems(payload));
       }
       const locationGone = unavailableDeliveryLocation(payload);
       if (locationGone) throw new TaxQuoteDeliveryLocationError(locationGone);

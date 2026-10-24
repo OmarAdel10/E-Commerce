@@ -272,6 +272,7 @@ export function resolveStorefrontDeliveryPreflightFromRows(
             rate: rateRow,
             addressZoneId: null,
             lines: deliveryShippingLines(cartValidation.items),
+            offered: shippingMethodRows.map((row) => deliveryRateInCurrency(row, cartValidation.money)),
         });
         return markTrustedStorefrontDeliveryPreflightResult({
             kind: "pickup",
@@ -340,6 +341,7 @@ export function resolveStorefrontDeliveryPreflightFromRows(
             regions: parseDeliveryRegionRows(rateRow?.destinationRegions),
         }),
         lines: deliveryShippingLines(cartValidation.items),
+        offered: shippingMethodRows.map((row) => deliveryRateInCurrency(row, cartValidation.money)),
     });
 
     return markTrustedStorefrontDeliveryPreflightResult({
