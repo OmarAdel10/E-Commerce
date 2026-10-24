@@ -212059,6 +212059,10 @@
                         "pickupReadyAt": {
                           "$ref": "#/components/schemas/NullableTimestamp"
                         },
+                        "returnDeliveryShare": {
+                          "type": "number",
+                          "description": "The delivery the received returns' items were charged (their shipping profile's share), suggested with refundDue for the refund; 0 without received returns."
+                        },
                         "editReadiness": {
                           "type": "object",
                           "properties": {

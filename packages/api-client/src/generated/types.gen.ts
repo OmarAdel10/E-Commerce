@@ -59867,6 +59867,10 @@ export type GetApiV1AdminOrdersByIdResponses = {
              */
             shippingMethodKind: 'delivery' | 'pickup' | null;
             pickupReadyAt: NullableTimestamp;
+            /**
+             * The delivery the received returns' items were charged (their shipping profile's share), suggested with refundDue for the refund; 0 without received returns.
+             */
+            returnDeliveryShare?: number;
             editReadiness: {
                 items: {
                     allowed: boolean;

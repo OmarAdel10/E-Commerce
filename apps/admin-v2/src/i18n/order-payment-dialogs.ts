@@ -46,6 +46,7 @@ const paymentDialogCopy = defineMessages({
     "refund.linesOrdered": "Ordered: {count}",
     "refund.linesQty": "Units refunded of {name}",
     "refund.maxOwed": "{owed} is owed for returned items. Up to {amount}.",
+    "refund.maxOwedDelivery": "{owed} is owed for returned items, plus {delivery} they were charged for delivery (suggested: change it if you keep it). Up to {amount}.",
   },
   bn: {
     "refund.issueAmount": "{amount} রিফান্ড করুন",
@@ -87,6 +88,7 @@ const paymentDialogCopy = defineMessages({
     "refund.linesOrdered": "অর্ডার করা হয়েছে: {count}",
     "refund.linesQty": "{name}-এর কতটি ফেরত",
     "refund.maxOwed": "ফেরত আসা প্রোডাক্টের জন্য {owed} বাকি। সর্বোচ্চ {amount}।",
+    "refund.maxOwedDelivery": "ফেরত আসা প্রোডাক্টের জন্য {owed} বাকি, সাথে সেগুলোর ডেলিভারি চার্জ {delivery} (প্রস্তাবিত: রেখে দিলে বদলে দিন)। সর্বোচ্চ {amount}।",
   },
 });
 

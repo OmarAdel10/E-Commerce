@@ -647,6 +647,7 @@ export const orderDetailSchema = z.object({
   refundAttempts: z.array(orderRefundAttemptSchema),
   activeRefundOperation: activeRefundOperationSchema.nullable(),
   ...orderListFactsShape,
+  returnDeliveryShare: z.number().optional().openapi({ description: "The delivery the received returns' items were charged (their shipping profile's share), suggested with refundDue for the refund; 0 without received returns." }),
   editReadiness: orderEditReadinessSchema,
   /** The order's own fulfilment location; null means the store default. */
   fulfillmentLocationId: z.string().nullable(),

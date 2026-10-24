@@ -308,6 +308,8 @@ export interface Order {
   channelSource: string | null;
   /** Value of received returns not refunded yet. */
   refundDue: number;
+  /** The delivery the received returns' items were charged: suggested with their refund. */
+  returnDeliveryShare?: number;
   refundedAmount: number;
   editReadiness: {
     items: OrderEditState;

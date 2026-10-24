@@ -34,9 +34,15 @@ import { refundSettlementTotals } from "@scalius/shared/refund-sources";
 
 const REFUND_REASONS = ["requested_by_customer", "returned_items", "duplicate", "fraudulent", "out_of_stock"] as const;
 
-/** Only what came back is owed; the rest of a refund is the merchant's call. */
-export function initialRefundAmount(order: Pick<Order, "refundDue" | "paidAmount">): number | null {
-  const owed = Math.min(Number(order.refundDue ?? 0), Number(order.paidAmount ?? 0));
+/**
+ * Only what came back is owed, with the delivery its items were charged
+ * (their shipping profile's share, suggested: the merchant edits it); the
+ * rest of a refund is the merchant's call.
+ */
+export function initialRefundAmount(order: Pick<Order, "refundDue" | "paidAmount" | "returnDeliveryShare">): number | null {
+  const items = Number(order.refundDue ?? 0);
+  const delivery = items > 0 ? Number(order.returnDeliveryShare ?? 0) : 0;
+  const owed = Math.min(Number((items + delivery).toFixed(6)), Number(order.paidAmount ?? 0));
   return owed > 0 ? owed : null;
 }
 
@@ -162,7 +168,9 @@ export default function RefundDialog({ order, open, onOpenChange, paid, money, l
             label={t("refund.amount")}
             error={amountError ?? undefined}
             help={order.refundDue > 0
-              ? t("refund.maxOwed", { owed: money(order.refundDue), amount: money(paid) })
+              ? (order.returnDeliveryShare ?? 0) > 0
+                ? t("refund.maxOwedDelivery", { owed: money(order.refundDue), delivery: money(order.returnDeliveryShare!), amount: money(paid) })
+                : t("refund.maxOwed", { owed: money(order.refundDue), amount: money(paid) })
               : t("refund.max", { amount: money(paid) })}
           >
             <MoneyInput

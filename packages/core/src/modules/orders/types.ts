@@ -275,6 +275,11 @@ export interface OrderListItem {
 }
 
 export interface OrderDetails extends OrderListItem, OrderBillingAddressFields {
+    /**
+     * The delivery the received returns' items were charged (major units), a
+     * suggestion beside `refundDue` for the refund; 0 without received returns.
+     */
+    returnDeliveryShare?: number;
     /** An invoice's terms (pay later): null when the order is not paid by invoice. */
     paymentTerms?: { kind: "net"; days: number; dueAt: string; overdue: boolean } | null;
     /** Shop-currency amounts of an order paid in a market's own currency (MARKETS-DESIGN D3); null: same-currency. */

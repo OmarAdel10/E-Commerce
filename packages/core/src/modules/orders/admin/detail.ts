@@ -24,6 +24,7 @@ import { getDecimalPlaces } from "@scalius/shared/currency";
 import { unixToDate } from "@scalius/shared/utils";
 import type { OrderDetails, OrderShipmentSummary } from "../types";
 import { orderMoneyAmounts, orderMoneySelection } from "../money";
+import { returnedDeliveryShareMinor } from "./return-delivery-share";
 import {
   listOrderPaymentSessionAttempts,
   listOrderRefundAttempts,
@@ -297,6 +298,10 @@ async function getOrderDetailsOnce(
         }
         : null;
     const nowSeconds = Math.floor(Date.now() / 1000);
+    // What the received returns' items paid for delivery: suggested with their refund.
+    const returnDeliveryShareMinor = Number(order.returnedValueMinor) > 0
+        ? await returnedDeliveryShareMinor(db, { id: order.id, shippingAmountMinor: order.shippingAmountMinor, shippingMethodId: order.shippingMethodId })
+        : 0;
     const {
         paymentRecoveryApplicable: _paymentRecoveryApplicable,
         codStatus: _codStatus,
@@ -331,6 +336,7 @@ async function getOrderDetailsOnce(
             }
             : null,
         ...presentOrderListFacts(order),
+        returnDeliveryShare: fromMinor(returnDeliveryShareMinor, order.currencyDecimalPlaces),
         pickup: presentOrderPickup({
             shippingMethodKind: order.shippingMethodKind,
             pickupAddress: order.pickupAddress,
