@@ -2,7 +2,8 @@
  * Test-only harness for the opt-in native PostgreSQL suites
  * (`*.postgres-native.test.ts`). Point `SCALIUS_TEST_POSTGRES_URL` at a
  * disposable server; every call to `createNativePostgres()` creates its own
- * database there and `closeNativePostgres()` (an `afterAll`) drops them, so a
+ * database there; its `close()` releases it immediately and
+ * `closeNativePostgres()` (an `afterAll`) drops any still open, so a
  * suite never assumes a schema or rows that another suite left behind.
  *
  * A database is the canonical PostgreSQL schema (DDL only) plus the rows the
@@ -42,6 +43,8 @@ export interface NativePostgres {
   /** This database's own connection URL. */
   url: string;
   name: string;
+  /** Release this store now, including its admin session; safe to call repeatedly. */
+  close(): Promise<void>;
 }
 
 export interface NativePostgresOptions {
@@ -74,7 +77,7 @@ interface CanonicalSchema {
   postDataSql: string;
 }
 let canonicalSchema: Promise<CanonicalSchema> | null = null;
-const open: Array<() => Promise<void>> = [];
+const open = new Set<() => Promise<void>>();
 
 function quote(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
@@ -112,23 +115,28 @@ function seededTables(sqlite: DatabaseSync): Array<{ name: string; rows: Array<R
  */
 export async function loadMigrationSeed(
   client: Client,
-  sqlite: DatabaseSync = createMigratedSqlite({ provider: "turso" }),
+  sqlite?: DatabaseSync,
 ): Promise<void> {
-  const present = new Set((await client.query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()",
-  )).rows.map((row) => row.table_name as string));
-  for (const { name, rows } of seededTables(sqlite)) {
-    if (!present.has(name)) continue;
-    for (const row of rows) {
-      const columns = Object.keys(row);
-      await client.query(
-        `INSERT INTO ${quote(name)} (${columns.map(quote).join(", ")}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(", ")})`,
-        columns.map((column) => {
-          const value = row[column];
-          return typeof value === "bigint" ? value.toString() : value;
-        }),
-      );
+  const seed = sqlite ?? createMigratedSqlite({ provider: "turso" });
+  try {
+    const present = new Set((await client.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()",
+    )).rows.map((row) => row.table_name as string));
+    for (const { name, rows } of seededTables(seed)) {
+      if (!present.has(name)) continue;
+      for (const row of rows) {
+        const columns = Object.keys(row);
+        await client.query(
+          `INSERT INTO ${quote(name)} (${columns.map(quote).join(", ")}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(", ")})`,
+          columns.map((column) => {
+            const value = row[column];
+            return typeof value === "bigint" ? value.toString() : value;
+          }),
+        );
+      }
     }
+  } finally {
+    if (!sqlite) seed.close();
   }
 }
 
@@ -143,27 +151,48 @@ export async function createNativePostgres(options: NativePostgresOptions): Prom
 
   const name = `scalius_${options.label.replace(/[^a-z0-9]/gi, "_")}_${randomUUID().replaceAll("-", "")}`;
   const admin = new Client({ connectionString: serverUrl });
-  await admin.connect();
-  await admin.query(`CREATE DATABASE ${name}`);
   const url = new URL(serverUrl);
   url.pathname = `/${name}`;
   const client = new Client({ connectionString: url.toString(), types: { getTypeParser: parseBigint } });
-  open.push(async () => {
-    await client.end().catch(() => undefined);
-    await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
-    await admin.end();
-  });
-  await client.connect();
-  await client.query(schema.preDataSql);
-  if (options.seed !== false) await loadMigrationSeed(client);
-  await client.query(schema.postDataSql);
-  // Register the provider through the production factory so capability-aware
-  // readers use PostgreSQL's non-FTS path, just as they do in the application.
-  const db = getDb({ DATABASE_PROVIDER: "postgres", POSTGRES_DATABASE_URL: url.toString() });
-  return { db, client, url: url.toString(), name };
+  let created = false;
+  let closing: Promise<void> | undefined;
+  const close = (): Promise<void> => closing ??= (async () => {
+    try {
+      await client.end().catch(() => undefined);
+      if (created) await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    } finally {
+      try {
+        await admin.end();
+      } finally {
+        open.delete(close);
+      }
+    }
+  })();
+  // Register before opening either session so partial setup also releases it.
+  open.add(close);
+  try {
+    await admin.connect();
+    await admin.query(`CREATE DATABASE ${name}`);
+    created = true;
+    await client.connect();
+    await client.query(schema.preDataSql);
+    if (options.seed !== false) await loadMigrationSeed(client);
+    await client.query(schema.postDataSql);
+    // The production adapter opens and closes a session for each operation;
+    // unlike these two setup sessions it retains no connection or pool.
+    const db = getDb({ DATABASE_PROVIDER: "postgres", POSTGRES_DATABASE_URL: url.toString() });
+    return { db, client, url: url.toString(), name, close };
+  } catch (error) {
+    await close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /** Drops every database this process created. Call it from `afterAll`. */
 export async function closeNativePostgres(): Promise<void> {
-  for (const close of open.splice(0).reverse()) await close();
+  const errors: unknown[] = [];
+  for (const close of [...open].reverse()) {
+    try { await close(); } catch (error) { errors.push(error); }
+  }
+  if (errors.length > 0) throw new AggregateError(errors, "Failed to close PostgreSQL test stores.");
 }
