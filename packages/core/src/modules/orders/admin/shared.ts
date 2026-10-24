@@ -1,4 +1,5 @@
 // Helpers shared by the dashboard order reads and writes. Not exported from the domain entry.
+import { qualifiedColumn } from "../../../utils/qualified-column";
 import type { Database } from "@scalius/database/client";
 import {
     orders,
@@ -60,7 +61,7 @@ export const OPEN_ORDER_STATUSES = new Set<string>([
 // Drizzle renders `${orders.id}` unqualified in a single-table select, and an
 // unqualified `id` inside these EXISTS subqueries binds to the subquery table's
 // own id column. Qualify the outer order explicitly.
-const OUTER_ORDER_ID = sql.raw('"orders"."id"');
+const OUTER_ORDER_ID = qualifiedColumn(orders.id);
 
 export function orderEditEvidenceSelection() {
     const exists = (table: SQL, orderId: SQL, extra?: SQL) => sql<number>`EXISTS (

@@ -10,7 +10,7 @@
 // reserved `_gc_` line properties and is a delivery target only; without one
 // the card belongs to the order's account owner.
 import type { BatchItem } from "drizzle-orm/batch";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { orderItems, orders } from "@scalius/database/schema";
 import {
     GIFT_CARD_LINE_PROPERTY_KEYS,
@@ -25,6 +25,7 @@ import { buildNotificationOutboxInsert } from "../../notifications";
 import { readGiftCardSettings } from "../../settings";
 import { ServiceUnavailableError } from "../../../errors";
 import type { AutoFulfiller } from "../registry";
+import { inJsonArray } from "../../../utils/in-json-array";
 
 /** Reserved line-property keys, owned by the gift-cards domain (checkout validates them too). */
 export { GIFT_CARD_LINE_PROPERTY_KEYS };
@@ -79,7 +80,7 @@ export const giftCardFulfiller: AutoFulfiller = {
             unitPriceMinor: orderItems.unitPriceMinor,
             propertiesPriceMinor: orderItems.propertiesPriceMinor,
             properties: orderItems.properties,
-        }).from(orderItems).where(inArray(orderItems.id, context.lines.map((line) => line.orderItemId))).all();
+        }).from(orderItems).where(inJsonArray(orderItems.id, context.lines.map((line) => line.orderItemId))).all();
         const itemById = new Map(items.map((item) => [item.id, item]));
         const expiresAt = giftCardExpiryFromMonths(settings.value.defaultExpiryMonths);
 

@@ -57,31 +57,36 @@ export async function reconcileInventoryForStatus(
     return impact.availabilityTransitionVariantIds;
 }
 
-const CANCELLATION_UNSAFE_PAYMENT_RECORD_STATUSES = [
-    PaymentRecordStatus.PENDING,
-    PaymentRecordStatus.CONFIRMED, PaymentRecordStatus.AUTHORIZED,
-    PaymentRecordStatus.SUCCEEDED,
-] as const;
-
 const CANCELLATION_REQUIRES_REFUND_MESSAGE =
     "This order has been paid. Refund the payment first, then cancel.";
 const CANCELLATION_REQUIRES_PAYMENT_RECONCILIATION_MESSAGE =
     "A payment for this order is still being processed. Check the payment before cancelling.";
 
-function noUnsafeCancellationPaymentCondition(orderId: string): SQL {
+/** Historical captures remain succeeded after a refund; only their net money or an unfinished payment blocks cancellation. */
+function cancellationPaymentRecordsSafeCondition(orderId: string): SQL {
     return sql`
-        ${orders.paymentStatus} IN (${PaymentStatus.UNPAID}, ${PaymentStatus.FAILED})
-        AND ${orders.paidAmountMinor} = 0
-        AND NOT EXISTS (
+        NOT EXISTS (
             SELECT 1 FROM ${orderPayments}
             WHERE ${orderPayments.orderId} = ${orderId}
               AND ${orderPayments.status} IN (
                   ${PaymentRecordStatus.PENDING},
-                  ${PaymentRecordStatus.CONFIRMED}, ${PaymentRecordStatus.AUTHORIZED},
-                  ${PaymentRecordStatus.SUCCEEDED}
+                  ${PaymentRecordStatus.CONFIRMED}, ${PaymentRecordStatus.AUTHORIZED}
               )
         )
+        AND (SELECT coalesce(sum(CASE
+            WHEN ${orderPayments.paymentType} <> 'refund' AND ${orderPayments.status} = ${PaymentRecordStatus.SUCCEEDED}
+              THEN ${orderPayments.amountMinor}
+            WHEN ${orderPayments.paymentType} = 'refund' AND ${orderPayments.status} = ${PaymentRecordStatus.REFUNDED}
+              THEN -${orderPayments.amountMinor}
+            ELSE 0 END), 0)
+            FROM ${orderPayments} WHERE ${orderPayments.orderId} = ${orderId}) = 0
     `;
+}
+
+function noUnsafeCancellationPaymentCondition(orderId: string): SQL {
+    return sql`${orders.paymentStatus} IN (${PaymentStatus.UNPAID}, ${PaymentStatus.FAILED})
+        AND ${orders.paidAmountMinor} = 0
+        AND ${cancellationPaymentRecordsSafeCondition(orderId)}`;
 }
 
 async function assertGenericCancellationPaymentSafe(
@@ -104,7 +109,7 @@ async function assertGenericCancellationPaymentSafe(
         .from(orderPayments)
         .where(and(
             eq(orderPayments.orderId, orderId),
-            inArray(orderPayments.status, [...CANCELLATION_UNSAFE_PAYMENT_RECORD_STATUSES]),
+            sql`NOT (${cancellationPaymentRecordsSafeCondition(orderId)})`,
         ))
         .get();
     if (unsafePayment) {

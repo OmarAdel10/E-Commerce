@@ -4,7 +4,6 @@ import {
     orders,
     deliveryShipments,
     OrderStatus,
-    FulfillmentStatus,
     ShipmentStatus,
 } from "@scalius/database/schema";
 import {
@@ -234,7 +233,6 @@ export async function bulkShipOrders(
                 // CAS update first — only apply inventory if we win the version check
                 const casResult = await db.update(orders).set({
                     status: OrderStatus.SHIPPED,
-                    fulfillmentStatus: FulfillmentStatus.COMPLETE,
                     version: order.version + 2,
                     updatedAt: sql`unixepoch()`,
                 }).where(and(

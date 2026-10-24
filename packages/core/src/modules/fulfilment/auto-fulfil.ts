@@ -1,9 +1,8 @@
-// Automatic fulfilment (Wave A §2.6): digital and gift-card lines are handed
-// over by the system once payment settles. Wave A ships the seam — the
-// registry lookup, the idempotent job and the sweep — with no automatic
-// fulfiller registered, so every run is a no-op until Wave B adds them.
+// Automatic fulfilment: hand over eligible digital and gift-card units
+// with their ledger, entitlements, cards and notifications in one batch.
+// Preparation does no handover; the batch rechecks the authority it read.
 import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
-import { orderItems, orders, OrderStatus, PaymentStatus } from "@scalius/database/schema";
+import { orderItems, orderPayments, orderRefundLines, orderRefunds, orders, settings, OrderStatus, PaymentStatus } from "@scalius/database/schema";
 import type { BatchItem } from "drizzle-orm/batch";
 import { and, asc, eq, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
@@ -13,12 +12,16 @@ import {
 } from "@scalius/shared/fulfilment";
 import { nanoid } from "nanoid";
 import { autoFulfillerFor, FULFILLER_REGISTRY, type AutoFulfilRuntime, type FulfillerRegistry } from "./registry";
-import { buildFulfilmentInsertStatements, deriveOrderFulfilmentStatus } from "./ledger";
+import { buildFulfilmentInsertStatements, orderFulfilmentStatusSql } from "./ledger";
 import { applyOrderStatusChange, listOrderHolds, noOpenOrderHoldCondition } from "../orders";
 import { awaitingAppHoldDecision } from "./hold-window";
 import { type AutoFulfilMode, checkoutDocument } from "../settings";
+import { noActiveRefundAttemptForOrderIdCondition } from "../order-kernel";
+import { ConflictError } from "../../errors";
+import { qualifiedColumn } from "../../utils/qualified-column";
 
 const ORDER_ON_HOLD = "AUTO_FULFIL_ORDER_ON_HOLD";
+const ELIGIBILITY_CHANGED = "AUTO_FULFIL_ELIGIBILITY_CHANGED";
 const SETTLED_PAYMENT_STATUSES = [PaymentStatus.PAID, PaymentStatus.PARTIALLY_REFUNDED];
 const CLOSED_ORDER_STATUSES = [
     OrderStatus.CANCELLED,
@@ -38,6 +41,20 @@ const STAFF_CONFIRMED_ORDER_STATUSES = [
     OrderStatus.DELIVERED,
     OrderStatus.COMPLETED,
 ];
+
+/** Completed money and claimed line units are separate facts: amount-only refunds name no units. */
+function refundedAmountSql(orderId: string) {
+    return sql<number>`(SELECT coalesce(sum(${orderPayments.amountMinor}), 0) FROM ${orderPayments}
+        WHERE ${orderPayments.orderId} = ${orderId} AND ${orderPayments.paymentType} = 'refund'
+          AND ${orderPayments.status} = 'refunded')`;
+}
+
+function refundedLineQuantitySql() {
+    return sql<number>`(SELECT coalesce(sum(${qualifiedColumn(orderRefundLines.quantity)}), 0) FROM ${orderRefundLines}
+        INNER JOIN ${orderRefunds} ON ${qualifiedColumn(orderRefunds.id)} = ${qualifiedColumn(orderRefundLines.refundId)}
+        WHERE ${qualifiedColumn(orderRefundLines.orderItemId)} = ${qualifiedColumn(orderItems.id)}
+          AND ${qualifiedColumn(orderRefunds.status)} <> 'failed')`;
+}
 
 export interface AutoFulfilResult {
     orderId: string;
@@ -78,6 +95,8 @@ export async function autoFulfilOrder(
     const order = await db.select({
         status: orders.status,
         paymentStatus: orders.paymentStatus,
+        paidAmountMinor: orders.paidAmountMinor,
+        refundedAmountMinor: refundedAmountSql(orderId),
         deletedAt: orders.deletedAt,
         createdAt: orders.createdAt,
     }).from(orders).where(eq(orders.id, orderId)).get();
@@ -91,20 +110,23 @@ export async function autoFulfilOrder(
         quantity: orderItems.quantity,
         fulfilledQuantity: orderItems.fulfilledQuantity,
         fulfillmentType: orderItems.fulfillmentType,
+        refundedQuantity: refundedLineQuantitySql(),
     }).from(orderItems).where(eq(orderItems.orderId, orderId)).orderBy(asc(orderItems.id)).all();
     const pending = items.filter((item) =>
         isFulfillmentType(item.fulfillmentType)
         && (AUTO_FULFILLMENT_TYPES as readonly string[]).includes(item.fulfillmentType)
-        && item.fulfilledQuantity < item.quantity);
+        && item.fulfilledQuantity < item.quantity - item.refundedQuantity);
     if (pending.length === 0) return { ...result, skipped: "no_auto_lines" };
     if (!(SETTLED_PAYMENT_STATUSES as string[]).includes(order.paymentStatus)) {
         return { ...result, skipped: "unsettled" };
     }
     // With no fulfiller for any pending type there is nothing to time.
     const deliverable = pending.some((item) => autoFulfillerFor(item.fulfillmentType as FulfillmentType, registry));
+    const timing = deliverable ? await checkoutDocument.readDetailed(db, {}, { skipCache: true }) : null;
+    const requiresConfirmation = timing?.invalid || timing?.value.autoFulfilMode === "after_confirmation";
     if (
         deliverable
-        && await readAutoFulfilMode(db) === "after_confirmation"
+        && requiresConfirmation
         && !(STAFF_CONFIRMED_ORDER_STATUSES as string[]).includes(order.status)
     ) {
         return { ...result, skipped: "awaiting_confirmation" };
@@ -138,23 +160,35 @@ export async function autoFulfilOrder(
                 orderItemId: item.id,
                 productId: item.productId,
                 variantId: item.variantId,
-                quantity: item.quantity - item.fulfilledQuantity,
+                quantity: item.quantity - item.refundedQuantity - item.fulfilledQuantity,
             })),
         };
         const afterThis = new Map(fulfilledAfter);
         for (const line of context.lines) {
             afterThis.set(line.orderItemId, (afterThis.get(line.orderItemId) ?? 0) + line.quantity);
         }
-        const nextFulfillmentStatus = deriveOrderFulfilmentStatus(items.map((item) => ({
-            quantity: item.quantity,
-            fulfilledQuantity: afterThis.get(item.id) ?? item.fulfilledQuantity,
-        })));
         let statements: BatchItem<"sqlite">[];
         try {
             statements = [
             // A hold that committed since the check above wins: the batch
             // stops before anything is handed over.
             buildBatchGuard(db, noOpenOrderHoldCondition(orderId), ORDER_ON_HOLD) as BatchItem<"sqlite">,
+            // Preparation may await files, licence keys or encryption. Every
+            // authority that permitted handover must still hold at commit.
+            buildBatchGuard(db, sql`EXISTS (
+                SELECT 1 FROM ${orders}
+                WHERE ${orders.id} = ${orderId}
+                  AND ${isNull(orders.deletedAt)}
+                  AND ${notInArray(orders.status, CLOSED_ORDER_STATUSES)}
+                  AND ${inArray(orders.paymentStatus, SETTLED_PAYMENT_STATUSES)}
+                  AND ${orders.paymentStatus} = ${order.paymentStatus}
+                  AND ${orders.paidAmountMinor} = ${order.paidAmountMinor}
+                  AND ${refundedAmountSql(orderId)} = ${order.refundedAmountMinor}
+                  AND ${requiresConfirmation ? inArray(orders.status, STAFF_CONFIRMED_ORDER_STATUSES) : sql`1 = 1`}
+                  AND ${noActiveRefundAttemptForOrderIdCondition(orderId)}
+            ) AND coalesce((SELECT ${settings.revision} FROM ${settings}
+                WHERE ${settings.category} = ${checkoutDocument.key} AND ${settings.key} = 'document'), 0) = ${timing?.revision ?? 0}`,
+            ELIGIBILITY_CHANGED),
             // The ledger rows next: their unique request key makes a
             // concurrent or repeated run fail here before any delivery.
             ...buildFulfilmentInsertStatements(db, {
@@ -167,7 +201,8 @@ export async function autoFulfilOrder(
             }),
             ...await fulfiller.prepare(db, context),
             db.update(orders).set({
-                fulfillmentStatus: nextFulfillmentStatus,
+                fulfillmentStatus: orderFulfilmentStatusSql(orderId),
+                version: sql`${orders.version} + 1`,
                 updatedAt: sql`unixepoch()`,
             }).where(eq(orders.id, orderId)) as BatchItem<"sqlite">,
             ];
@@ -183,6 +218,9 @@ export async function autoFulfilOrder(
             if (isBatchGuardError(error, ORDER_ON_HOLD)) {
                 // Types handed over earlier in this run stay handed over; the rest wait for staff.
                 return { ...result, skipped: result.fulfilledTypes.length > 0 ? null : "on_hold" };
+            }
+            if (isBatchGuardError(error, ELIGIBILITY_CHANGED)) {
+                throw new ConflictError("The order or its delivery settings changed before handover. Please retry.");
             }
             const message = error instanceof Error ? error.message : "";
             // Another run already handed this type over.
@@ -200,7 +238,7 @@ export async function autoFulfilOrder(
 
     // A digital-only order is delivered once everything is handed over
     // (two validated transitions); an order with manual lines waits for them.
-    const everythingHandedOver = items.every((item) => (fulfilledAfter.get(item.id) ?? 0) >= item.quantity);
+    const everythingHandedOver = items.every((item) => (fulfilledAfter.get(item.id) ?? 0) >= item.quantity - item.refundedQuantity);
     if (result.fulfilledTypes.length > 0 && everythingHandedOver) {
         const current = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).get();
         if (current && (current.status === OrderStatus.PENDING || current.status === OrderStatus.PROCESSING)) {
@@ -243,6 +281,7 @@ export async function listOrdersAwaitingAutoFulfil(
         .innerJoin(orders, eq(orders.id, orderItems.orderId))
         .where(and(
             AUTO_PENDING_LINE,
+            sql`${orderItems.fulfilledQuantity} < ${orderItems.quantity} - ${refundedLineQuantitySql()}`,
             afterOrderId ? gt(orderItems.orderId, afterOrderId) : undefined,
             inArray(orders.paymentStatus, SETTLED_PAYMENT_STATUSES),
             notInArray(orders.status, CLOSED_ORDER_STATUSES),

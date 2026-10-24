@@ -18,7 +18,7 @@ import {
     ShipmentStatus,
 } from "@scalius/database/schema";
 import type { BatchItem } from "drizzle-orm/batch";
-import { and, asc, desc, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, notInArray, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { isFulfillmentType, type FulfillmentType } from "@scalius/shared/fulfilment";
 import { ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
@@ -40,6 +40,7 @@ import {
 import {
   applyOrderStatusChange,
   assertOrderNotOnHold,
+  noOpenOrderHoldCondition,
   fulfilmentVoidBlockedReason,
   reconcileInventoryForStatus,
   type StatusUpdateResult,
@@ -91,6 +92,20 @@ export function deriveOrderFulfilmentStatus(
     if (fulfilled <= 0) return FulfillmentStatus.PENDING;
     if (fulfilled >= total) return FulfillmentStatus.COMPLETE;
     return FulfillmentStatus.PARTIAL;
+}
+
+/**
+ * The projection at the atomic write, including other handovers that have
+ * already committed. A claim before its ledger writes supplies their net
+ * quantity; writes after the ledger use zero. Ledger bounds enforce that
+ * the resulting quantity stays between zero and the ordered quantity.
+ */
+export function orderFulfilmentStatusSql(orderId: string, quantityDelta = 0): SQL<string> {
+    return sql<string>`(SELECT CASE
+        WHEN coalesce(sum(${orderItems.fulfilledQuantity}), 0) + ${quantityDelta} <= 0 THEN 'pending'
+        WHEN coalesce(sum(${orderItems.fulfilledQuantity}), 0) + ${quantityDelta} >= coalesce(sum(${orderItems.quantity}), 0) THEN 'complete'
+        ELSE 'partial' END
+        FROM ${orderItems} WHERE ${orderItems.orderId} = ${orderId})`;
 }
 
 /** Every line of a type is handed over (auto lines never block `delivered`). */
@@ -453,23 +468,25 @@ export async function recordOrderFulfilment(
         ? `shp_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`
         : null;
     const claimedVersion = order.version + 1;
+    const claimCondition = and(
+        eq(orders.id, orderId),
+        eq(orders.version, order.version),
+        eq(orders.status, order.status),
+        noActiveShipmentClaimCondition(),
+        noActiveRefundAttemptForOrderIdCondition(orderId),
+        noActivePaymentSessionAttemptForOrderIdCondition(orderId),
+        noOpenOrderHoldCondition(orderId),
+    )!;
     const statements: Statement[] = [
+        // Test the original authority before writing. Observing version N+1
+        // afterwards cannot prove this command won: another writer may own it.
+        buildBatchGuard(db, sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${claimCondition})`, FULFILMENT_CLAIM_GUARD),
         db.update(orders).set({
-            fulfillmentStatus: nextFulfillmentStatus,
+            fulfillmentStatus: orderFulfilmentStatusSql(orderId, lines.reduce((total, line) => total + line.quantity, 0)),
             ...(shouldShip ? { status: OrderStatus.SHIPPED } : {}),
             version: claimedVersion,
             updatedAt: sql`unixepoch()`,
-        }).where(and(
-            eq(orders.id, orderId),
-            eq(orders.version, order.version),
-            eq(orders.status, order.status),
-            noActiveShipmentClaimCondition(),
-            noActiveRefundAttemptForOrderIdCondition(orderId),
-            noActivePaymentSessionAttemptForOrderIdCondition(orderId),
-        )) as Statement,
-        buildBatchGuard(db, sql`EXISTS (
-            SELECT 1 FROM ${orders} WHERE ${orders.id} = ${orderId} AND ${orders.version} = ${claimedVersion}
-        )`, FULFILMENT_CLAIM_GUARD),
+        }).where(claimCondition) as Statement,
     ];
     if (shipmentId) {
         statements.push(db.insert(deliveryShipments).values({
@@ -666,19 +683,19 @@ export async function voidOrderFulfilment(
     })));
     validateTransition("fulfillment", order.fulfillmentStatus, nextFulfillmentStatus);
     const claimedVersion = order.version + 1;
-    const claimed = sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${orders.id} = ${orderId} AND ${orders.version} = ${claimedVersion})`;
+    const claimCondition = and(
+        eq(orders.id, orderId),
+        eq(orders.version, order.version),
+        eq(orders.status, OrderStatus.CONFIRMED),
+        noActiveShipmentClaimCondition(),
+    )!;
     const statements: Statement[] = [
+        buildBatchGuard(db, sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${claimCondition})`, FULFILMENT_CLAIM_GUARD),
         db.update(orders).set({
-            fulfillmentStatus: nextFulfillmentStatus,
+            fulfillmentStatus: orderFulfilmentStatusSql(orderId, -quantity),
             version: claimedVersion,
             updatedAt: sql`unixepoch()`,
-        }).where(and(
-            eq(orders.id, orderId),
-            eq(orders.version, order.version),
-            eq(orders.status, OrderStatus.CONFIRMED),
-            noActiveShipmentClaimCondition(),
-        )) as Statement,
-        buildBatchGuard(db, claimed, FULFILMENT_CLAIM_GUARD),
+        }).where(claimCondition) as Statement,
         db.update(orderFulfillments).set({
             status: "voided",
             voidedAt: sql`unixepoch()`,
@@ -752,12 +769,6 @@ export async function recordCourierBookingFulfilment(
         .map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.fulfilledQuantity }));
     if (lines.length === 0) return { fulfillmentId: null, lines: [], recorded: false };
     const fulfillmentId = createFulfilmentId();
-    const fulfilledAfter = new Map(items.map((item) => [item.id, item.fulfilledQuantity]));
-    for (const line of lines) fulfilledAfter.set(line.orderItemId, (fulfilledAfter.get(line.orderItemId) ?? 0) + line.quantity);
-    const nextFulfillmentStatus = deriveOrderFulfilmentStatus(items.map((item) => ({
-        quantity: item.quantity,
-        fulfilledQuantity: fulfilledAfter.get(item.id) ?? item.fulfilledQuantity,
-    })));
     try {
         await safeBatch(db, [
             ...buildFulfilmentInsertStatements(db, {
@@ -769,8 +780,11 @@ export async function recordCourierBookingFulfilment(
                 shipmentId,
                 lines,
             }),
-            db.update(orders).set({ fulfillmentStatus: nextFulfillmentStatus, updatedAt: sql`unixepoch()` })
-                .where(and(eq(orders.id, orderId), ne(orders.fulfillmentStatus, nextFulfillmentStatus))) as Statement,
+            db.update(orders).set({
+                fulfillmentStatus: orderFulfilmentStatusSql(orderId),
+                version: sql`${orders.version} + 1`,
+                updatedAt: sql`unixepoch()`,
+            }).where(eq(orders.id, orderId)) as Statement,
         ]);
     } catch (error) {
         const raced = await findFulfilmentByRequestKey(db, orderId, requestKey).catch(() => null);
@@ -861,20 +875,14 @@ export async function syncCourierFulfilmentFromShipment(
             .where(and(eq(orderFulfillments.shipmentId, shipment.id), eq(orderFulfillments.status, "active")))
             .get();
         if (!active) return { recorded: false, voided: false };
-        const items = await selectLedgerItems(db, shipment.orderId);
-        const lines = await db.select({
-            orderItemId: orderFulfillmentLines.orderItemId,
-            quantity: orderFulfillmentLines.quantity,
-        }).from(orderFulfillmentLines).where(eq(orderFulfillmentLines.fulfillmentId, active.id)).all();
-        const voided = new Map(lines.map((line) => [line.orderItemId, line.quantity]));
-        const nextFulfillmentStatus = deriveOrderFulfilmentStatus(items.map((item) => ({
-            quantity: item.quantity,
-            fulfilledQuantity: item.fulfilledQuantity - (voided.get(item.id) ?? 0),
-        })));
         await safeBatch(db, [
             db.update(orderFulfillments).set({ status: "voided", voidedAt: sql`unixepoch()` })
                 .where(and(eq(orderFulfillments.id, active.id), eq(orderFulfillments.status, "active"))) as Statement,
-            db.update(orders).set({ fulfillmentStatus: nextFulfillmentStatus, updatedAt: sql`unixepoch()` })
+            db.update(orders).set({
+                fulfillmentStatus: orderFulfilmentStatusSql(shipment.orderId),
+                version: sql`${orders.version} + 1`,
+                updatedAt: sql`unixepoch()`,
+            })
                 .where(eq(orders.id, shipment.orderId)) as Statement,
         ]);
         return { recorded: false, voided: true };

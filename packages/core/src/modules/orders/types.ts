@@ -422,8 +422,9 @@ export interface CreateStorefrontOrderInput {
     customerName: string;
     /**
      * E.164, or null for an order the shared contact rule lets go without a
-     * phone (`orderContactNeeds`): only digital or service lines, paid in
-     * full online, outside Bangladesh, with the merchant's opt-in.
+     * phone (`orderContactNeeds`): only digital, service or gift-card lines,
+     * paid in full online or by gift-card tender (never deferred), outside
+     * Bangladesh, with the merchant's opt-in.
      */
     customerPhone: string | null;
     customerEmail: string | null;

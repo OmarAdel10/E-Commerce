@@ -4,7 +4,6 @@ import {
     orders,
     deliveryShipments,
     OrderStatus,
-    FulfillmentStatus,
     ShipmentStatus,
 } from "@scalius/database/schema";
 import {
@@ -493,9 +492,6 @@ export async function reconcileOrderShipment(
                 .update(orders)
                 .set({
                     status: targetOrderStatus,
-                    fulfillmentStatus: targetOrderStatus === OrderStatus.SHIPPED || targetOrderStatus === OrderStatus.DELIVERED
-                        ? FulfillmentStatus.COMPLETE
-                        : order.fulfillmentStatus,
                     version: order.version + 1,
                     updatedAt: sql`unixepoch()`,
                 })
@@ -577,7 +573,6 @@ export async function reconcileOrderShipment(
             .update(orders)
             .set({
                 status: finalOrderStatus,
-                fulfillmentStatus: FulfillmentStatus.COMPLETE,
                 version: order.version + 1,
                 updatedAt: sql`unixepoch()`,
             })
@@ -594,14 +589,6 @@ export async function reconcileOrderShipment(
             throw new ConflictError("Order changed while shipment recovery was being repaired.");
         }
         orderStatusChanged = true;
-    } else if (order.fulfillmentStatus !== FulfillmentStatus.COMPLETE) {
-        await db
-            .update(orders)
-            .set({
-                fulfillmentStatus: FulfillmentStatus.COMPLETE,
-                updatedAt: sql`unixepoch()`,
-            })
-            .where(and(eq(orders.id, orderId), eq(orders.shipmentClaimId, shipmentId)));
     }
 
     await recordCourierBookingFulfilment(db, orderId, shipmentId);
