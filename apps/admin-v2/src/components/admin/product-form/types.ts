@@ -63,7 +63,8 @@ export const productFormSchema = z.object({
    * (not above the price, or not an amount). Never sent: it only stops a save.
    */
   compareAtProblem: z.enum(["notHigher", "invalid"]).nullish(),
-  freeDelivery: z.boolean(),
+  /** The product's shipping profile; null: the default profile. */
+  shippingProfileId: z.string().nullable(),
   metaTitle: z.string().nullable(),
   metaDescription: z.string().nullable(),
   canonicalPath: canonicalPathSchema,

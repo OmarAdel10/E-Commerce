@@ -23,6 +23,7 @@ export const SETTINGS_CARDS = [
   { page: "checkout", card: "addressAutocomplete" },
   { page: "shipping", card: "deliveryCharges" },
   { page: "shipping", card: "localPickup" },
+  { page: "shipping", card: "shippingProfiles" },
   { page: "shipping", card: "deliveryAreas" },
   { page: "shipping", card: "couriers" },
   { page: "taxes", card: "taxCollection" },

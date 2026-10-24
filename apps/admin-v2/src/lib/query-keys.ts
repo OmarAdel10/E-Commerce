@@ -288,6 +288,7 @@ export const queryKeys = {
       params !== undefined
         ? (["settings", "shipping-methods", params] as const)
         : (["settings", "shipping-methods"] as const),
+    shippingProfiles: () => ["settings", "shipping-profiles"] as const,
   },
 
   // ── Setup ────────────────────────────────────────────────────────

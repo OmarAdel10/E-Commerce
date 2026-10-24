@@ -17,7 +17,7 @@ const FIELD_LABELS: Record<keyof ProductFormValues, ProductMessageKey> = {
   discountPercentage: "discount",
   discountAmount: "discount",
   compareAtProblem: "compareAtName",
-  freeDelivery: "freeDelivery",
+  shippingProfileId: "shippingProfile",
   metaTitle: "searchListing",
   metaDescription: "searchListing",
   canonicalPath: "searchListing",
@@ -101,7 +101,7 @@ export function formatFormValuesForSubmission(
     discountPercentage:
       !values.variantPriced && values.discountType === "percentage" ? values.discountPercentage : 0,
     discountAmount: !values.variantPriced && values.discountType === "flat" ? values.discountAmount : 0,
-    freeDelivery: values.freeDelivery,
+    shippingProfileId: values.shippingProfileId,
     metaTitle: values.metaTitle,
     metaDescription: values.metaDescription?.trim() || null,
     canonicalPath: values.canonicalPath,

@@ -38,6 +38,8 @@ export interface DiscountDraft {
   freeShippingMinimum: string;
   /** Free shipping is skipped when the delivery rate is over this; empty = any rate. */
   freeShippingMaxRate: string;
+  /** Shipping profiles whose part of the delivery charge free shipping leaves charged. */
+  freeShippingExcludedProfiles: string[];
   minimum: "none" | "amount" | "quantity";
   minimumValue: string;
   buyKind: "quantity" | "amount";
@@ -211,6 +213,7 @@ export function emptyDraft(type: DiscountType, now = Date.now()): DiscountDraft 
     freeShipping: false,
     freeShippingMinimum: "",
     freeShippingMaxRate: "",
+    freeShippingExcludedProfiles: [],
     minimum: "none",
     minimumValue: "",
     buyKind: "quantity",
@@ -282,6 +285,10 @@ export function draftFromDiscount(record: DiscountRecord, currencyCode: string):
     freeShippingMaxRate: numberOf(record.effects.find((item) => item.target === "shipping")?.config.maxRateMinor)
       ? money(record.effects.find((item) => item.target === "shipping")!.config.maxRateMinor)
       : "",
+    freeShippingExcludedProfiles: (() => {
+      const excluded = record.effects.find((item) => item.target === "shipping")?.config.excludedProfileIds;
+      return Array.isArray(excluded) ? excluded.filter((id): id is string => typeof id === "string") : [];
+    })(),
     minimum: minimum?.kind === "minimum_merchandise_subtotal" ? "amount" : minimum ? "quantity" : "none",
     minimumValue: minimum?.kind === "minimum_merchandise_subtotal"
       ? money(minimum.config.amountMinor)
@@ -374,10 +381,13 @@ export function validateDraft(
   return errors;
 }
 
-/** The free-shipping effect's config: the rate above which delivery stays paid, when set. */
-function shippingConfig(draft: DiscountDraft, currency: string): { maxRateMinor?: number } {
+/** The free-shipping effect's config: the rate above which delivery stays paid, and the profiles it leaves charged. */
+function shippingConfig(draft: DiscountDraft, currency: string): { maxRateMinor?: number; excludedProfileIds?: string[] } {
   const maxRate = draft.freeShippingMaxRate.trim() ? majorToMinor(draft.freeShippingMaxRate, currency) : null;
-  return maxRate ? { maxRateMinor: maxRate } : {};
+  return {
+    ...(maxRate ? { maxRateMinor: maxRate } : {}),
+    ...(draft.freeShippingExcludedProfiles.length > 0 ? { excludedProfileIds: [...draft.freeShippingExcludedProfiles].sort() } : {}),
+  };
 }
 
 function bundlesShipping(draft: DiscountDraft): boolean {

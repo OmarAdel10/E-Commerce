@@ -51,6 +51,7 @@ import { AdminApiResponseError } from "~/lib/admin-api-error";
 import { readPromotionRevisionConflict } from "~/lib/admin-api-conflicts";
 import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { discountQueryOptions, discountsQueryOptions, type DiscountRecord } from "~/lib/api-query-options/discounts";
+import { shippingProfilesQuery } from "~/lib/api-query-options/settings-screens";
 import {
   discountFailureText,
   useCreateDiscount,
@@ -89,6 +90,31 @@ function CheckRow({ id, label, checked, onChange }: {
   onChange: (checked: boolean) => void;
 }) {
   return <ChoiceField id={id} label={label} control={<Checkbox id={id} checked={checked} onCheckedChange={(value) => onChange(value === true)} />} />;
+}
+
+/**
+ * Free shipping can leave some shipping profiles' delivery charged (bulky
+ * items). Shown only when the store has a priced profile besides General.
+ */
+function ExcludedProfilesField({ selected, onChange }: { selected: string[]; onChange: (ids: string[]) => void }) {
+  const t = useMessages(discountsMessages);
+  const { hasPermission } = usePermissions();
+  const profiles = useQuery({ ...shippingProfilesQuery, enabled: hasPermission(ADMIN_PERMISSIONS.SETTINGS_SHIPPING_METHODS_VIEW) }).data ?? [];
+  const priced = profiles.filter((profile) => !profile.isDefault && !profile.freeDelivery);
+  if (priced.length === 0 && selected.length === 0) return null;
+  return (
+    <FieldSet label={t("freeShippingExcludedProfiles")} help={t("freeShippingExcludedProfilesHelp")}>
+      {priced.map((profile) => (
+        <CheckRow
+          key={profile.id}
+          id={`free-shipping-exclude-${profile.id}`}
+          label={profile.name}
+          checked={selected.includes(profile.id)}
+          onChange={(checked) => onChange(checked ? [...selected, profile.id] : selected.filter((id) => id !== profile.id))}
+        />
+      ))}
+    </FieldSet>
+  );
 }
 
 function RadioRow({ value, id, label }: { value: string; id: string; label: string }) {
@@ -470,6 +496,9 @@ function EditorPage({ type, discount }: { type: DiscountType; discount?: Discoun
                   {draft.freeShipping
                     ? numberField("free-shipping-max-rate", "freeShippingMaxRate", t("freeShippingMaxRate"), { money: true, help: t("freeShippingMaxRateHelp") })
                     : null}
+                  {draft.freeShipping
+                    ? <ExcludedProfilesField selected={draft.freeShippingExcludedProfiles} onChange={(freeShippingExcludedProfiles) => update({ freeShippingExcludedProfiles })} />
+                    : null}
                 </CardContent>
               </Card>
             ) : null}
@@ -479,6 +508,7 @@ function EditorPage({ type, discount }: { type: DiscountType; discount?: Discoun
                 <CardHeader><CardTitle>{t("shippingCard")}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   {numberField("free-shipping-max-rate", "freeShippingMaxRate", t("freeShippingMaxRate"), { money: true, help: t("freeShippingMaxRateHelp") })}
+                  <ExcludedProfilesField selected={draft.freeShippingExcludedProfiles} onChange={(freeShippingExcludedProfiles) => update({ freeShippingExcludedProfiles })} />
                 </CardContent>
               </Card>
             ) : null}

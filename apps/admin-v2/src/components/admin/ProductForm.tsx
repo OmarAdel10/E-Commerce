@@ -80,7 +80,10 @@ import { productMessages } from "~/i18n/products";
 import { resourceMessages } from "~/i18n/resource";
 import { saveBarMessages } from "~/i18n/save-bar";
 import type { ProductRevisionConflict } from "@/lib/admin-api-conflicts";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { shippingProfilesQuery } from "~/lib/api-query-options/settings-screens";
+import { useHasPermission } from "~/contexts/PermissionContext";
+import { ADMIN_PERMISSIONS } from "~/lib/admin-permissions";
 import { queryKeys } from "@/lib/query-keys";
 import type {
   OptionMatrixEditorHandle,
@@ -229,6 +232,9 @@ function ProductEditor({
   const duplicate = useDuplicateProduct();
   const trash = useTrashProduct();
   const queryClient = useQueryClient();
+  // The profile choice in Shipping; staff who can't see shipping settings keep the saved one.
+  const canViewShippingProfiles = useHasPermission(ADMIN_PERMISSIONS.SETTINGS_SHIPPING_METHODS_VIEW);
+  const shippingProfiles = useQuery({ ...shippingProfilesQuery, enabled: canViewShippingProfiles }).data;
   // Content blocks, bundles and the page template save on their own, under the same revision.
   const sections = useProductSections();
   // The old Additional sections tabs were saved as blocks: this save removes the originals.
@@ -246,7 +252,7 @@ function ProductEditor({
       discountType: "percentage",
       discountPercentage: 0,
       discountAmount: 0,
-      freeDelivery: false,
+      shippingProfileId: null,
       metaTitle: null,
       metaDescription: null,
       noIndex: false,
@@ -496,7 +502,7 @@ function ProductEditor({
               <fieldset disabled={readOnly} className="min-w-0 space-y-4">
               <PricingCard form={form} variantPrices={variantPrices} readOnly={readOnly} />
               <div ref={setInventorySlot} className="empty:hidden" />
-              <ShippingCard form={form} hasOptions={variantPrices !== null} weightSlot={setShippingSlot} readOnly={readOnly} />
+              <ShippingCard form={form} hasOptions={variantPrices !== null} weightSlot={setShippingSlot} readOnly={readOnly} profiles={shippingProfiles} />
               </fieldset>
               <Card id="product-variants" className="scroll-mt-4">
                 <CardHeader>

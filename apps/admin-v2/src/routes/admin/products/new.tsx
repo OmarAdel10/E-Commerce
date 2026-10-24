@@ -27,7 +27,7 @@ const defaultValues = {
   discountType: "percentage" as "percentage" | "flat",
   discountPercentage: 0,
   discountAmount: 0,
-  freeDelivery: false,
+  shippingProfileId: null,
   metaTitle: null,
   metaDescription: null,
   canonicalPath: null,

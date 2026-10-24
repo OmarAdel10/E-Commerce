@@ -2,14 +2,16 @@ import { useWatch, type UseFormReturn } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { Checkbox } from "@/components/ui/checkbox";
+import type { ShippingProfile } from "~/lib/api-query-options/settings-screens";
 import { useMessages } from "~/i18n";
 import { giftCardProductMessages } from "~/i18n/gift-card-product";
 import { productMessages } from "~/i18n/products";
 import type { ProductFulfilmentMode } from "./fulfilment-mode";
 import { useProductKindRules } from "./product-kind-rules";
 import type { ProductFormValues } from "./types";
-import { Field, ChoiceField, ReadOnlyValue } from "~/components/ui/field";
+import { Field, ReadOnlyValue } from "~/components/ui/field";
+
+const DEFAULT_PROFILE = "shp_default";
 
 const HELP = {
   physical: "fulfilmentPhysicalHelp",
@@ -23,11 +25,15 @@ const HELP = {
  * "Physical product" switch, here a select because Scalius also sells
  * downloads and services, or each variant its own), then what only a parcel
  * needs: its weight (a product without options; variants carry their own in
- * the table) and free delivery. A gift card is always digital: the card says
- * so instead of offering the select.
+ * the table) and its shipping profile (Shopify's: which delivery prices it
+ * pays; a free profile ships it free). A store with one profile shows none.
+ * A gift card is always digital: the card says so instead of offering the
+ * select.
  */
-export function ShippingCard({ form, hasOptions, weightSlot, readOnly = false }: {
-  /** Viewers read the saved fulfilment and free delivery as text. */
+export function ShippingCard({ form, hasOptions, weightSlot, readOnly = false, profiles = [] }: {
+  /** The store's shipping profiles (none or one: no choice to show). */
+  profiles?: readonly ShippingProfile[];
+  /** Viewers read the saved fulfilment and shipping profile as text. */
   readOnly?: boolean;
   form: UseFormReturn<ProductFormValues>;
   /** The product has options, so "set per variant" makes sense. */
@@ -39,7 +45,11 @@ export function ShippingCard({ form, hasOptions, weightSlot, readOnly = false }:
   const g = useMessages(giftCardProductMessages);
   const { forcedFulfillmentKind, showShipping } = useProductKindRules();
   const mode = useWatch({ control: form.control, name: "fulfillmentKind" }) ?? "physical";
-  const freeDelivery = useWatch({ control: form.control, name: "freeDelivery" });
+  const profileId = useWatch({ control: form.control, name: "shippingProfileId" }) ?? null;
+  const profileLabel = (profile: ShippingProfile) => profile.isDefault
+    ? t("shippingProfileDefault", { name: profile.name })
+    : profile.freeDelivery ? t("shippingProfileFree", { name: profile.name }) : profile.name;
+  const current = profiles.find((profile) => profile.id === (profileId ?? DEFAULT_PROFILE));
   const single: ProductFulfilmentMode[] = ["physical", "digital", "service"];
   const choices: ProductFulfilmentMode[] = hasOptions || mode === "mixed" ? [...single, "mixed"] : single;
   const ships = showShipping && (mode === "physical" || mode === "mixed");
@@ -71,19 +81,22 @@ export function ShippingCard({ form, hasOptions, weightSlot, readOnly = false }:
           </Field>
         )}
         <div ref={weightSlot} className="empty:hidden" />
-        {ships ? (
+        {ships && profiles.length > 1 ? (
           <div className="border-t pt-4">
             {readOnly ? (
-              <ReadOnlyValue label={t("freeDelivery")} value={t(freeDelivery ? "freeDeliveryYes" : "freeDeliveryNo")} />
+              <ReadOnlyValue label={t("shippingProfile")} value={current ? profileLabel(current) : null} />
             ) : <FormField
               control={form.control}
-              name="freeDelivery"
+              name="shippingProfileId"
               render={({ field }) => (
-                <ChoiceField
-                  id="product-free-delivery"
-                  label={t("freeDelivery")}
-                  control={<Checkbox id="product-free-delivery" checked={field.value} onCheckedChange={(checked) => field.onChange(checked === true)} />}
-                />
+                <Field id="product-shipping-profile" label={t("shippingProfile")} help={t("shippingProfileHelp")}>
+                  <SearchableSelect
+                    value={field.value ?? DEFAULT_PROFILE}
+                    onValueChange={(value) => field.onChange(value === DEFAULT_PROFILE ? null : value)}
+                    triggerClassName="w-full"
+                    options={profiles.map((profile) => ({ value: profile.id, label: profileLabel(profile) }))}
+                  />
+                </Field>
               )}
             />}
           </div>

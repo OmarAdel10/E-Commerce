@@ -193,6 +193,35 @@ export const deliveryZonesQuery = {
   queryFn: () => apiData(apiClient.get<{ 200: { data: DeliveryZones } }>({ url: ZONES_URL })),
 };
 
+/** A shipping profile's own price behind one delivery option (amounts in major units). */
+export interface ShippingProfileRate {
+  id?: string;
+  methodId: string;
+  fee: number;
+  minWeightGrams: number | null;
+  maxWeightGrams: number | null;
+  minSubtotal: number | null;
+  maxSubtotal: number | null;
+  freeOver: number | null;
+}
+export interface ShippingProfile {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  freeDelivery: boolean;
+  defaultWeightGrams: number | null;
+  revision: number;
+  productCount: number;
+  rates: ShippingProfileRate[];
+}
+
+export const PROFILES_URL = `${ZONES_URL}/profiles`;
+
+export const shippingProfilesQuery = {
+  queryKey: queryKeys.settings.shippingProfiles(),
+  queryFn: async () => (await apiData(apiClient.get<{ 200: { data: { profiles: ShippingProfile[] } } }>({ url: PROFILES_URL }))).profiles,
+};
+
 // ── Policies ─────────────────────────────────────────────────────────────
 
 export type PoliciesPayload = Record<PolicyKind, string | null> & { revision: number };

@@ -97,7 +97,7 @@ function toFormValues(product: ProductDetail): ProductFormValues {
     discountType: (product.discountType || "percentage") as "percentage" | "flat",
     discountPercentage: product.discountPercentage || 0,
     discountAmount: product.discountAmount || 0,
-    freeDelivery: product.freeDelivery,
+    shippingProfileId: product.shippingProfileId ?? null,
     slugEdited: true,
     media: [...(product.media || [])]
       .sort((left, right) => left.sortOrder - right.sortOrder)
