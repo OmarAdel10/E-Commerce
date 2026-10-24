@@ -84,8 +84,8 @@ const [
 ]);
 const cities = citiesResponse ?? [];
 const shippingMethods: ShippingMethod[] = shippingMethodsResponse || [];
-// A failed read renders the fail-closed page (checkout unavailable, English
-// copy); that answer is for this request only, never the shared cache.
+// A failed public read must never populate the shared cache. A failed
+// checkout-config read also keeps checkout unavailable until it can be proved.
 if (
   !layoutData ||
   citiesResponse === null ||
@@ -101,11 +101,11 @@ const hasPickupRates = shippingMethods.some((method) => method.kind === "pickup"
 const hasDeliveryRates = shippingMethods.some((method) => method.kind !== "pickup");
 const deliveryModeSwitch = hasPickupRates && hasDeliveryRates;
 const pickupOnly = hasPickupRates && !hasDeliveryRates;
+// This cacheable shell has no cart. The API owns global readiness; each
+// physical cart proves its destination and delivery option when quoted.
 const checkoutUnavailable =
   checkoutConfig.unavailable === true ||
-  checkoutConfig.gateways.length === 0 ||
-  shippingMethods.length === 0 ||
-  (cities.length === 0 && !hasPickupRates);
+  checkoutConfig.gateways.length === 0;
 const checkoutUnavailableMessage =
   checkoutConfig.unavailableMessage ||
   checkoutLanguageResponse?.languageData.checkoutUnavailableMessage ||

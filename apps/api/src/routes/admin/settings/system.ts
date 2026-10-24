@@ -282,7 +282,7 @@ const getCheckoutReadinessRoute = createRoute({
     operationId: "dashboard.checkout.readiness_get",
     tags: ["Admin - Settings"],
     summary: "Get checkout readiness",
-    description: "Check store checkout health, operational readiness, and blocking configuration issues.",
+    description: "Inspect delivery setup and customer sign-in diagnostics. Delivery diagnostics do not indicate global checkout availability; each cart validates its applicable delivery requirements.",
     responses: {
         200: {
             description: "Checkout readiness",

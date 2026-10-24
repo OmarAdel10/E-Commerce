@@ -33,11 +33,11 @@ export const CHECKOUT_READINESS_CODES = {
 
 export const CHECKOUT_READINESS_SHIPPING_ISSUE: ReadinessIssue = readinessIssue(
     CHECKOUT_READINESS_CODES.shipping,
-    "Add at least one active shipping method before checkout can accept orders.",
+    "No active shipping method is configured. Physical carts need an applicable delivery or pickup option.",
 );
 export const CHECKOUT_READINESS_LOCATION_ISSUE: ReadinessIssue = readinessIssue(
     CHECKOUT_READINESS_CODES.deliveryLocation,
-    "Add at least one active city with an active thana before checkout can accept orders.",
+    "Bangladesh address selection has no active city with an active thana. Configure these places for deliveries in Bangladesh.",
 );
 export const CHECKOUT_READINESS_CUSTOMER_SIGN_IN_ISSUE: ReadinessIssue = readinessIssue(
     CHECKOUT_READINESS_CODES.customerSignIn,

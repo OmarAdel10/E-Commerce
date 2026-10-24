@@ -5168,7 +5168,7 @@ export const postApiV1AdminSettingsStripe = <ThrowOnError extends boolean = fals
 /**
  * Get checkout readiness
  *
- * Check store checkout health, operational readiness, and blocking configuration issues.
+ * Inspect delivery setup and customer sign-in diagnostics. Delivery diagnostics do not indicate global checkout availability; each cart validates its applicable delivery requirements.
  */
 export const getApiV1AdminSettingsCheckoutReadiness = <ThrowOnError extends boolean = false>(options?: Options<GetApiV1AdminSettingsCheckoutReadinessData, ThrowOnError>): RequestResult<GetApiV1AdminSettingsCheckoutReadinessResponses, GetApiV1AdminSettingsCheckoutReadinessErrors, ThrowOnError> => (options?.client ?? client).get<GetApiV1AdminSettingsCheckoutReadinessResponses, GetApiV1AdminSettingsCheckoutReadinessErrors, ThrowOnError>({ url: '/api/v1/admin/settings/checkout-readiness', ...options });
 
