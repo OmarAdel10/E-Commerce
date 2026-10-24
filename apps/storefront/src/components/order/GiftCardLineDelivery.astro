@@ -4,7 +4,7 @@
 // Never a code: last 4, value, and where it was sent.
 import type { LineExtrasContext, OrderLine } from "@/lib/order-line-extras";
 import {
-  GIFT_CARD_LINE_COPY,
+  giftCardLineCopy,
   lineGiftCardDestination,
   lineGiftCardText,
   lineGiftCardsShowCodeLink,
@@ -31,7 +31,7 @@ const showCodeLink = lineGiftCardsShowCodeLink(cards, context);
       ))}
     </ul>
     {showCodeLink && (
-      <a href="/account/gift-cards" data-astro-prefetch="false" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{GIFT_CARD_LINE_COPY.showCode}</a>
+      <a href="/account/gift-cards" data-astro-prefetch="false" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{giftCardLineCopy().showCode}</a>
     )}
   </div>
 )}

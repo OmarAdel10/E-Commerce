@@ -5,6 +5,7 @@
 // and renders nothing when it has nothing to show, so a line without extras
 // adds no markup.
 import type { FulfillmentType } from "@scalius/shared/fulfilment";
+import type { CheckoutLanguageData } from "@scalius/shared/checkout-language";
 import type { ConversationAccess } from "@/lib/account-inbox";
 import { digitalLineDeliveryMarkup, type DigitalDownloadsExtra, type LicenceKeysExtra } from "@/components/order/digital-line-delivery";
 import { giftCardLineDeliveryMarkup, type GiftCardsExtra } from "@/components/order/gift-card-line-delivery";
@@ -36,6 +37,8 @@ export interface OrderLine {
 export interface LineExtrasContext {
   orderId: string;
   access: ConversationAccess;
+  /** The page's checkout language (the store's language, the merchant's wording); English where it has no word. */
+  languageData?: Partial<CheckoutLanguageData> | null;
 }
 
 /** The account order page's per-line extras, in the receipt's order. */

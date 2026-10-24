@@ -58,7 +58,7 @@ export function reviewLineActionMarkup(line: OrderLine, context: LineExtrasConte
   return lineReviewMarkup(line.id, extra, {
     access,
     returnTo: options.returnTo ?? defaultReturnTo(context),
-    copy: options.copy ?? pickReviewFormCopy(null, ENGLISH_CHECKOUT_LANGUAGE_DATA),
+    copy: options.copy ?? pickReviewFormCopy(context.languageData, ENGLISH_CHECKOUT_LANGUAGE_DATA),
     notice: options.notice === undefined ? (location ? readReviewNotice(location.search) : null) : options.notice,
     review: options.reviews?.find((review) => review.orderItemId === line.id) ?? null,
     editHref: access.kind === "account" ? (reviewId) => pagePath(`/account/reviews#written-${reviewId}`) : undefined,

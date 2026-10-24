@@ -601,7 +601,7 @@ function renderItemsAndSummary(detail: AccountOrderDetail): void {
       // Buyer inputs: display only, escaped, never in links or data attributes.
       const properties = orderLinePropertyRows(item.properties, (property) => minor(property.priceMinor), copy);
       // Files, keys, card codes and the review form get the line's full width.
-      const extras = lineExtrasMarkup(item, { orderId: order.id, access: "account" });
+      const extras = lineExtrasMarkup(item, { orderId: order.id, access: "account", languageData: copy });
       return `<li class="py-4 first:pt-0 last:pb-0"><div class="flex gap-3">
         <img src="${escapeHtml(getProductImageUrl(item.productImage, 128))}" alt="" class="h-16 w-16 shrink-0 rounded-lg border border-border bg-card object-contain" loading="lazy" />
         <div class="min-w-0 flex-1 text-sm">

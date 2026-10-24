@@ -6,6 +6,8 @@
 import { escapeHtml } from "@scalius/shared/html-escape";
 import { formatMoney } from "@/lib/currency";
 import type { LineExtrasContext, OrderLine } from "@/lib/order-line-extras";
+import { pageLanguage } from "@/lib/store-time-zone";
+import { storefrontLanguage } from "@/lib/storefront-copy";
 
 /** One issued card, as `extras.giftCards[]` carries it. */
 export interface LineGiftCard {
@@ -21,12 +23,25 @@ export interface LineGiftCard {
 /** `extras.giftCards` from the API. */
 export type GiftCardsExtra = LineGiftCard[];
 
-export const GIFT_CARD_LINE_COPY = {
-  card: "Gift card {card} · {amount}",
-  sentTo: "Sent to {contact}",
-  sentToYou: "Sent to you",
-  showCode: "Show code in Gift cards",
+const GIFT_CARD_LINE_COPY = {
+  en: {
+    card: "Gift card {card} · {amount}",
+    sentTo: "Sent to {contact}",
+    sentToYou: "Sent to you",
+    showCode: "Show code in Gift cards",
+  },
+  bn: {
+    card: "গিফট কার্ড {card} · {amount}",
+    sentTo: "{contact}-এ পাঠানো হয়েছে",
+    sentToYou: "আপনাকে পাঠানো হয়েছে",
+    showCode: "গিফট কার্ড পেজে কোড দেখুন",
+  },
 } as const;
+
+/** The line's words in the page's language (Bangla on a Bangla page). */
+export function giftCardLineCopy(language: string = pageLanguage()) {
+  return GIFT_CARD_LINE_COPY[storefrontLanguage(language)];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -61,16 +76,15 @@ export function readLineGiftCards(value: unknown): LineGiftCard[] {
 
 /** "Gift card •••• 7K2Q · ৳500" */
 export function lineGiftCardText(card: LineGiftCard): string {
-  return GIFT_CARD_LINE_COPY.card
+  return giftCardLineCopy().card
     .replace("{card}", `•••• ${card.last4}`)
     .replace("{amount}", formatMoney(card.initialAmount, { code: card.currencyCode }));
 }
 
 /** "Sent to r•••@gmail.com" or "Sent to you". */
 export function lineGiftCardDestination(card: LineGiftCard): string {
-  return card.sentTo
-    ? GIFT_CARD_LINE_COPY.sentTo.replace("{contact}", card.sentTo)
-    : GIFT_CARD_LINE_COPY.sentToYou;
+  const copy = giftCardLineCopy();
+  return card.sentTo ? copy.sentTo.replace("{contact}", card.sentTo) : copy.sentToYou;
 }
 
 /** The account may show the code of a card that went to the buyer themself. */
@@ -87,7 +101,7 @@ export function giftCardLineDeliveryMarkup(line: OrderLine, context: LineExtrasC
         <span class="text-muted-foreground">${escapeHtml(lineGiftCardDestination(card))}</span>
       </li>`).join("");
   const link = lineGiftCardsShowCodeLink(cards, context)
-    ? `<a href="/account/gift-cards" data-astro-prefetch="false" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">${escapeHtml(GIFT_CARD_LINE_COPY.showCode)}</a>`
+    ? `<a href="/account/gift-cards" data-astro-prefetch="false" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">${escapeHtml(giftCardLineCopy().showCode)}</a>`
     : "";
   return `<div class="mt-2 text-sm" data-line-gift-cards><ul class="space-y-1">${items}</ul>${link}</div>`;
 }

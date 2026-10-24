@@ -18,7 +18,7 @@ export type WarrantyLineExtra = unknown;
 export function warrantyLineInfoMarkup(line: OrderLine, context: LineExtrasContext): string {
   const records = readLineWarranties(line.extras?.warranty);
   if (records.length === 0) return "";
-  const copy = pickWarrantyCopy(null, ENGLISH_CHECKOUT_LANGUAGE_DATA);
+  const copy = pickWarrantyCopy(context.languageData, ENGLISH_CHECKOUT_LANGUAGE_DATA);
   const access: WarrantyAccess = context.access === "account" ? { kind: "account" } : { kind: "receipt", orderId: context.orderId };
   const now = Date.now();
   return records.map((record) => lineWarrantyMarkup(record, {
