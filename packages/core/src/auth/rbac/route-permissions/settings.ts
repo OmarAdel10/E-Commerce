@@ -325,6 +325,15 @@ export const SETTINGS_ROUTE_PERMISSIONS: RoutePermissionMap = {
   "/api/v1/admin/settings/shipping-methods/*/rates/*": {
     PATCH: { permission: PERMISSIONS.SETTINGS_SHIPPING_METHODS_EDIT },
   },
+  // Shipping profiles: who ships free and each profile's own rates.
+  "/api/v1/admin/settings/shipping-methods/profiles": {
+    GET: { permission: PERMISSIONS.SETTINGS_SHIPPING_METHODS_VIEW },
+    POST: { permission: PERMISSIONS.SETTINGS_SHIPPING_METHODS_EDIT },
+  },
+  "/api/v1/admin/settings/shipping-methods/profiles/*": {
+    PUT: { permission: PERMISSIONS.SETTINGS_SHIPPING_METHODS_EDIT },
+    DELETE: { permission: PERMISSIONS.SETTINGS_SHIPPING_METHODS_EDIT },
+  },
   "/api/v1/admin/settings/checkout-languages": {
     GET: { permission: PERMISSIONS.SETTINGS_GENERAL_VIEW },
     POST: { permission: PERMISSIONS.SETTINGS_GENERAL_EDIT },

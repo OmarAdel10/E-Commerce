@@ -49,10 +49,16 @@ export interface CheckoutRateOption {
   kind: "delivery" | "pickup";
   /** What the buyer pays for this option. */
   amountMinor: number;
-  /** The rate's own charge before the platform's free-delivery rules. */
+  /** The fee the order shows: the charge, or the fees a free-over amount waived. */
   baseAmountMinor: number;
-  /** A platform free-delivery rule (a free-delivery product, a free-over threshold) applies: it stays free. */
+  /** Every priced profile's free-over amount waived its fee: it stays free whatever an app prices. */
   waived: boolean;
+  /**
+   * Each priced shipping profile's share (a free profile's lines price
+   * nothing and have none). An app's price for a profile replaces that
+   * share's fee; the share's free-over waiver still applies after it.
+   */
+  shares?: Array<{ profileId: string; baseMinor: number; waived: boolean }>;
 }
 
 // ── Staff-created (manual) orders, channel "admin" ───────────────────────

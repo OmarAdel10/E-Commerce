@@ -140,7 +140,10 @@ export interface ProductListItem {
     discountPercentage: number;
     discountType: string;
     discountAmount: number;
+    /** Its shipping profile ships free (the profile's mirror). */
     freeDelivery: boolean;
+    /** Null: the default profile. */
+    shippingProfileId: string | null;
     aggregateRevision: number;
     createdAt: Date;
     updatedAt: Date;

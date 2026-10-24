@@ -269,6 +269,10 @@ export const DASHBOARD_SETTINGS_OPERATIONS = {
   "dashboard.settings.storefront_url_get": { limits: { request: 16_384, response: 8_192 } },
   "dashboard.settings.storefront_url_update": { revision: "required", limits: { request: 16_384, response: 8_192 } },
   "dashboard.shipping_methods.list": {},
+  "dashboard.shipping_profiles.list": {},
+  "dashboard.shipping_profiles.create": {},
+  "dashboard.shipping_profiles.update": { revision: "required" },
+  "dashboard.shipping_profiles.delete": { risk: "destructive" },
   // Only for a store without zones: the batch refuses a second start.
   "dashboard.shipping_zones.apply_template": { batch: "forbidden" },
   "dashboard.shipping_zones.create": {},

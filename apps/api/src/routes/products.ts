@@ -514,6 +514,7 @@ const productSectionSummarySchema = z.object({
     discountAmount: z.number(),
     discountedPrice: z.number(),
     freeDelivery: z.boolean(),
+    shippingProfileId: z.string().nullable().openapi({ description: "The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery." }),
     hasVariants: z.boolean(),
     imageUrl: z.string().nullable(),
     imageMediaId: z.string().nullable(),

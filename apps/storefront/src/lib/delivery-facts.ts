@@ -63,6 +63,36 @@ export function productFulfilment(
 }
 
 const MAX_LISTED_METHODS = 3;
+const DEFAULT_SHIPPING_PROFILE_ID = "shp_default";
+/** `rateSource` of an option whose price for a product depends on its weight or order value. */
+export const BANDED_RATE_SOURCE = "banded";
+
+/**
+ * The options as one product's shipping profile pays them (the checkout's
+ * rule): its profile's own rates behind an option, else the default
+ * profile's, else the option's fee. One unconditioned rate is a plain fee; a
+ * price that depends on weight or order value is stated like a calculated
+ * one (`BANDED_RATE_SOURCE`), never as a fee that may not apply.
+ */
+export function shippingMethodsForProfile(
+  shippingMethods: ShippingMethod[] | null | undefined,
+  profileId: string | null | undefined,
+): ShippingMethod[] | null | undefined {
+  if (!shippingMethods) return shippingMethods;
+  const profile = profileId || DEFAULT_SHIPPING_PROFILE_ID;
+  return shippingMethods.map((method) => {
+    const rates = method.profileRates ?? [];
+    const own = rates.filter((rate) => rate.profileId === profile);
+    const applying = own.length > 0 ? own : rates.filter((rate) => rate.profileId === DEFAULT_SHIPPING_PROFILE_ID);
+    if (applying.length === 0) return method;
+    const [only] = applying;
+    const plain = applying.length === 1 && only!.minWeightGrams === null && only!.maxWeightGrams === null
+      && only!.minSubtotal === null && only!.maxSubtotal === null;
+    return plain
+      ? { ...method, fee: only!.fee, freeOver: only!.freeOver }
+      : { ...method, fee: Math.min(...applying.map((rate) => rate.fee)), freeOver: null, rateSource: BANDED_RATE_SOURCE };
+  });
+}
 
 export interface DeliveryRateSplit {
   /** Rates that deliver to an address in the countries asked about, in merchant order. */

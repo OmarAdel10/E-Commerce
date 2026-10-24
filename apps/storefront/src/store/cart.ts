@@ -177,18 +177,31 @@ export const cartStore = map<CartStore>({ ...EMPTY_CART_STATE });
 
 type ShippingFeeCartItem = Pick<CartItem, "freeDelivery"> & Partial<Pick<CartItem, "price" | "quantity" | "fulfillmentKind">>;
 
+/** A line that ships (a line whose kind is not known yet counts as physical). */
+const shipsItem = (item: ShippingFeeCartItem) => item.fulfillmentKind === undefined || item.fulfillmentKind === "physical";
+
 /**
- * A line that ships and waives delivery (the checkout's rule): a digital or
- * service product marked "free delivery" ships nothing, so it waives nothing.
+ * Every line that ships is in a free-delivery shipping profile, so delivery
+ * costs nothing (the checkout's rule: a free line ships only itself free,
+ * never the rest of the order; a digital or service line ships nothing).
  */
-export function cartHasFreeDeliveryItem(
+export function cartShipsAllFree(
   items: Record<string, ShippingFeeCartItem>,
 ): boolean {
-  return Object.values(items).some((item) =>
-    item.freeDelivery === true && (item.fulfillmentKind === undefined || item.fulfillmentKind === "physical"));
+  const shipped = Object.values(items).filter(shipsItem);
+  return shipped.length > 0 && shipped.every((item) => item.freeDelivery === true);
 }
 
-/** The items subtotal before discounts, which a rate's free-over threshold is measured against. */
+/**
+ * What a rate's free-over threshold is measured against: the lines that ship
+ * and pay delivery, before discounts. Digital, service and free-delivery
+ * lines count for nothing (the checkout's shipping-profile rule).
+ */
+export function cartShippedSubtotal(items: Record<string, ShippingFeeCartItem>): number {
+  return cartItemsSubtotal(Object.fromEntries(Object.entries(items).filter(([, item]) => shipsItem(item) && item.freeDelivery !== true)));
+}
+
+/** The items subtotal before discounts. */
 export function cartItemsSubtotal(items: Record<string, ShippingFeeCartItem>): number {
   const decimalPlaces = getDecimalPlaces(getCurrencyCode());
   const totalMinor = Object.values(items).reduce(
@@ -204,9 +217,10 @@ export function cartItemsSubtotal(items: Record<string, ShippingFeeCartItem>): n
 }
 
 /**
- * What the buyer pays for the chosen rate: nothing when a cart item waives
- * delivery or the items subtotal reaches the rate's free-over threshold
- * (the checkout applies the same rule authoritatively).
+ * What the buyer pays for the chosen rate: nothing when every line that ships
+ * ships free, or when the shipped lines reach the rate's free-over threshold
+ * (the checkout applies the same rule authoritatively; with shipping profiles
+ * the checkout quote's per-cart amount is `quoted`).
  */
 export function getEffectiveCartShippingFee(
   items: Record<string, ShippingFeeCartItem>,
@@ -219,8 +233,8 @@ export function getEffectiveCartShippingFee(
     : 0;
   // An app quote already includes its delivery rules and is the amount payable.
   if (quoted) return normalizedMethodFee;
-  if (cartHasFreeDeliveryItem(items)) return 0;
-  if (freeOver !== null && Number.isFinite(freeOver) && cartItemsSubtotal(items) >= freeOver) return 0;
+  if (cartShipsAllFree(items)) return 0;
+  if (freeOver !== null && Number.isFinite(freeOver) && cartShippedSubtotal(items) >= freeOver) return 0;
   return normalizedMethodFee;
 }
 

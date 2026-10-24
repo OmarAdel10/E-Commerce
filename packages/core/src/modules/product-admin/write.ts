@@ -14,6 +14,7 @@ import {
     taxClasses,
     customFieldDefinitions,
     customFieldValues,
+    DEFAULT_SHIPPING_PROFILE_ID,
 } from "@scalius/database/schema";
 import { and, sql, eq, isNull, or } from "drizzle-orm";
 import {
@@ -23,6 +24,7 @@ import {
     type UpdateProductInput,
 } from "./validation";
 import { DEFAULT_PRODUCT_CONDITION } from "@scalius/shared/product-condition";
+import { createFreeShippingProfileStatement, resolveProductShippingProfile } from "./shipping-profile";
 import { nanoid } from "nanoid";
 import { AppError, NotFoundError, ConflictError, ValidationError } from "@scalius/core/errors";
 import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
@@ -494,6 +496,7 @@ export async function createProduct(
     };
     const mediaPlan = await validateProductMediaPlan(db, productId, data.media, false);
     const customizationSchema = toStoredCustomizationSchema(data.customizationSchema ?? null, currency);
+    const shippingProfile = (await resolveProductShippingProfile(db, data))!;
 
     const productInsert = (slug: string) => db.insert(products).values({
             id: productId,
@@ -514,7 +517,8 @@ export async function createProduct(
             discountType: data.discountType || "percentage",
             discountBps: (data.discountType || "percentage") === "percentage" ? (productPrice.discountBps ?? 0) : 0,
             discountAmountMinor: (data.discountType || "percentage") === "flat" ? (productPrice.discountAmountMinor ?? 0) : 0,
-            freeDelivery: data.freeDelivery,
+            freeDelivery: shippingProfile.freeDelivery,
+            shippingProfileId: shippingProfile.shippingProfileId,
             isGiftCard,
             customizationSchema,
             createdAt: sql`unixepoch()`,
@@ -678,6 +682,7 @@ export async function createProduct(
 
     const insertWithSlug = async (slug: string) => {
         await db.batch([
+            ...(shippingProfile.createFreeProfile ? [createFreeShippingProfileStatement(db)] : []),
             productInsert(slug),
             // The insert published it to every channel (trigger); the form's choice narrows that.
             ...(data.salesChannelIds ? [productChannelChoiceStatement(db, productId, data.salesChannelIds)] : []),
@@ -771,6 +776,7 @@ async function unchangedProductSaveRevision(
             discountBps: products.discountBps,
             discountAmountMinor: products.discountAmountMinor,
             freeDelivery: products.freeDelivery,
+            shippingProfileId: products.shippingProfileId,
             customizationSchema: products.customizationSchema,
             pageTemplate: products.pageTemplate,
             emiEligible: products.emiEligible,
@@ -822,6 +828,10 @@ async function unchangedProductSaveRevision(
         discountBps: discountType === "percentage" ? (plan.productPrice.discountBps ?? 0) : 0,
         discountAmountMinor: discountType === "flat" ? (plan.productPrice.discountAmountMinor ?? 0) : 0,
         freeDelivery: data.freeDelivery,
+        // The default profile is stored as NULL.
+        shippingProfileId: data.shippingProfileId === undefined
+            ? undefined
+            : (data.shippingProfileId?.trim() || DEFAULT_SHIPPING_PROFILE_ID) === DEFAULT_SHIPPING_PROFILE_ID ? null : data.shippingProfileId!.trim(),
         customizationSchema: plan.customizationSchema,
         pageTemplate: data.pageTemplate,
         emiEligible: data.emiEligible,
@@ -1067,6 +1077,8 @@ export async function updateProduct(
             id: products.id,
             slug: products.slug,
             isGiftCard: products.isGiftCard,
+            shippingProfileId: products.shippingProfileId,
+            freeDelivery: products.freeDelivery,
             storeCurrencyCode: storeCurrencyCodeSql(),
             storePriceIncrementMinor: storePriceIncrementSql(),
         })
@@ -1097,6 +1109,7 @@ export async function updateProduct(
     const attributeRows = await prepareProductAttributeValueRows(db, id, data.attributes ?? []);
     await assertLiveBrand(db, data.brandId);
     await assertLiveWarrantyPolicy(db, data.warrantyPolicyId);
+    const shippingProfile = await resolveProductShippingProfile(db, data, existingProduct);
     const currency = storeCurrencyFromSql(existingProduct.storeCurrencyCode, existingProduct.storePriceIncrementMinor);
     const productPrice = catalogPriceColumns(data, currency);
     const priceMinor = toStoreMinor(data.price, currency);
@@ -1195,6 +1208,7 @@ export async function updateProduct(
     // Drizzle D1 batch() requires specific tuple types
     const batchOps: unknown[] = [
         buildProductAggregateRevisionGuard(db, id, data.expectedAggregateRevision),
+        ...(shippingProfile?.createFreeProfile ? [createFreeShippingProfileStatement(db)] : []),
         // Sections first, as when they saved on their own (moved tabs become blocks before the tabs go).
         ...sectionStatements,
     ];
@@ -1222,7 +1236,8 @@ export async function updateProduct(
                 discountType: data.discountType || "percentage",
                 discountBps: (data.discountType || "percentage") === "percentage" ? (productPrice.discountBps ?? 0) : 0,
                 discountAmountMinor: (data.discountType || "percentage") === "flat" ? (productPrice.discountAmountMinor ?? 0) : 0,
-                freeDelivery: data.freeDelivery,
+                // Omitted keeps the shipping profile (and its free-delivery mirror).
+                ...(shippingProfile ? { shippingProfileId: shippingProfile.shippingProfileId, freeDelivery: shippingProfile.freeDelivery } : {}),
                 ...(data.isGiftCard !== undefined ? { isGiftCard: data.isGiftCard } : {}),
                 ...(customizationSchema !== undefined ? { customizationSchema } : {}),
                 // Omitted keeps the template and the EMI line.
@@ -1508,7 +1523,7 @@ export async function duplicateProduct(
         discountType: source.discountType === "flat" ? "flat" : "percentage",
         discountPercentage: source.discountPercentage,
         discountAmount: source.discountAmount,
-        freeDelivery: source.freeDelivery,
+        shippingProfileId: source.shippingProfileId,
         isGiftCard: source.isGiftCard,
         metaTitle: source.metaTitle,
         metaDescription: source.metaDescription,

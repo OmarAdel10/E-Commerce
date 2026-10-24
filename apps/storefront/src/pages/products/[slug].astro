@@ -19,7 +19,7 @@ import ThemeEditorMark from "@/components/ThemeEditorMark.astro";
 import { THEME_EDITOR_MARKS, themeEditorModuleMark } from "@scalius/shared/theme-editor-bridge";
 import TemplateSections from "@/components/homepage/TemplateSections.astro";
 import { templateSectionData } from "@/lib/template-sections";
-import { buildDeliveryFacts, productFulfilment } from "@/lib/delivery-facts";
+import { buildDeliveryFacts, productFulfilment, shippingMethodsForProfile } from "@/lib/delivery-facts";
 import { resolveProductPageCopy } from "@/components/product/lib/buyer-inputs";
 import { formatMoney } from "@/lib/currency";
 import { localizedPaths } from "@/lib/localized-paths";
@@ -457,8 +457,10 @@ const shouldEmitProductGroupJsonLd =
 // The countries the page's market sells to: delivery facts and Offer
 // shippingDetails claim only those a shipping zone serves (MARKETS-DESIGN step 3b).
 const pageCountries = presenceMarketCountries(layoutData.markets, getRuntimePresence());
+// What this product pays behind each option: its shipping profile's rates.
+const productShippingMethods = shippingMethodsForProfile(shippingMethods, product.shippingProfileId);
 const offerShippingDetails = buildOfferShippingDetails({
-  shippingMethods,
+  shippingMethods: productShippingMethods,
   currencyCode,
   freeDelivery: product.freeDelivery,
   countries: pageCountries,
@@ -468,7 +470,7 @@ const offerShippingDetails = buildOfferShippingDetails({
 const pageFulfilment = productFulfilment(product, buyerVariants);
 // Delivery fees, cash on delivery and returns, stated under the buy buttons.
 const deliveryFacts = buildDeliveryFacts({
-  shippingMethods,
+  shippingMethods: productShippingMethods,
   checkoutConfig,
   returnPolicy: layoutData.seo?.returnPolicy,
   freeDelivery: product.freeDelivery,

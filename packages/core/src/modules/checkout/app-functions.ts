@@ -64,6 +64,7 @@ import { floorToIncrementMinor, percentOfMinor, roundToIncrementMinor } from "@s
 import { defaultOrderSalesChannelId } from "@scalius/shared/sales-channels";
 import { and, eq, isNull, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { collectionMembershipForConfig } from "../collections";
+import { DEFAULT_SHIPPING_PROFILE_ID, summarizeDeliveryShares } from "../delivery/browser";
 import { orderMarketIdSql } from "../markets";
 import { allocateMinorAmount, type TaxDiscountAllocationInput } from "../tax";
 import type { AppDiscountTarget, AppliedAppDiscount, AppObjectCommit, CheckoutRateOption } from "@scalius/shared/checkout-app-facts";
@@ -144,7 +145,7 @@ export function wantsAppCart(apps: CheckoutAppFunctions | undefined, points: rea
 // ── The cart an app sees ────────────────────────────────────────────────────
 
 export interface AppFunctionCartFacts {
-  products: Map<string, { categoryIds: string[]; collectionIds: string[]; brandId: string | null; isGiftCard?: boolean }>;
+  products: Map<string, { categoryIds: string[]; collectionIds: string[]; brandId: string | null; isGiftCard?: boolean; shippingProfileId?: string | null }>;
   skus: Map<string, string | null>;
   /** Per SKU: its weight in grams and whether it is a physical good (absent: unknown, read as physical). */
   variants?: Map<string, { weightGrams: number | null; physical: boolean }>;
@@ -214,7 +215,7 @@ export async function loadAppFunctionCartFacts(
   const variantIds = [...new Set(input.variantIds)];
   const customerId = input.customerId?.trim() || null;
   const statements = [
-    db.select({ id: products.id, categoryId: products.categoryId, brandId: products.brandId, isGiftCard: products.isGiftCard })
+    db.select({ id: products.id, categoryId: products.categoryId, brandId: products.brandId, isGiftCard: products.isGiftCard, shippingProfileId: products.shippingProfileId })
       .from(products).where(idList(products.id, productIds)),
     db.select({ productId: products.id, ancestorId: categoryClosure.ancestorId, depth: categoryClosure.depth })
       .from(products)
@@ -249,7 +250,7 @@ export async function loadAppFunctionCartFacts(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle batch tuple typing
   const batched = await db.batch([...statements, ...readStatements] as any) as unknown[][];
   const [productRows, ancestorRows, collectionRows, variantRows, customerRows, marketRows] = batched as [
-    Array<{ id: string; categoryId: string | null; brandId: string | null; isGiftCard: boolean | number | null }>,
+    Array<{ id: string; categoryId: string | null; brandId: string | null; isGiftCard: boolean | number | null; shippingProfileId?: string | null }>,
     Array<{ productId: string; ancestorId: string; depth: number }>,
     Array<{ id: string; config: unknown }>,
     Array<{ id: string; sku: string | null; weight: number | null; fulfillmentKind: string | null }>,
@@ -282,7 +283,7 @@ export async function loadAppFunctionCartFacts(
         || (row.categoryId !== null && collection.categoryIds.includes(row.categoryId)))
       .map((collection) => collection.id)
       .sort();
-    facts.products.set(row.id, { categoryIds: categoryIds.slice(0, 20), collectionIds: collectionIds.slice(0, 50), brandId: row.brandId, isGiftCard: Boolean(row.isGiftCard) });
+    facts.products.set(row.id, { categoryIds: categoryIds.slice(0, 20), collectionIds: collectionIds.slice(0, 50), brandId: row.brandId, isGiftCard: Boolean(row.isGiftCard), shippingProfileId: row.shippingProfileId ?? null });
   }
   for (const row of variantRows) {
     facts.skus.set(row.id, row.sku?.trim() ? row.sku.trim().slice(0, 128) : null);
@@ -366,6 +367,7 @@ export function buildAppFunctionCart(input: {
       // A physical SKU that is not a gift card (the rule `summarizeStorefrontCartFulfilment` reads).
       requiresShipping: (variant?.physical ?? true) && product?.isGiftCard !== true,
       weightGrams: variant?.weightGrams ?? null,
+      shippingProfileId: product?.shippingProfileId ?? DEFAULT_SHIPPING_PROFILE_ID,
       purchaseOption: line.purchaseOption ?? null,
     };
   });
@@ -687,9 +689,30 @@ export function applyAppShippingRateOperations(
         rate.name = operation.name;
       } else {
         const price = roundToIncrementMinor(operation.amountMinor, incrementMinor);
-        if (rate.baseAmountMinor !== price) changed = true;
-        rate.baseAmountMinor = price;
-        rate.amountMinor = rate.waived ? 0 : price;
+        const shares = rate.shares ?? [{ profileId: DEFAULT_SHIPPING_PROFILE_ID, baseMinor: rate.baseAmountMinor, waived: rate.waived }];
+        let next: Array<{ profileId: string; baseMinor: number; waived: boolean }>;
+        if (operation.profileId !== undefined) {
+          // One profile's share: its free-over waiver still applies after the app's price.
+          if (!shares.some((share) => share.profileId === operation.profileId)) {
+            apps?.report(result.pluginId, "checkout.shipping_rates", `Operation price names shipping profile ${operation.profileId}, which prices nothing on rate ${rate.rateId} here; it was skipped.`);
+            continue;
+          }
+          next = shares.map((share) => share.profileId === operation.profileId ? { ...share, baseMinor: price } : share);
+        } else {
+          // The whole rate: free only when the store waived every share; a cart
+          // whose lines all ship free (free-delivery profiles) has nothing to price.
+          if (shares.length === 0) {
+            apps?.report(result.pluginId, "checkout.shipping_rates", `Operation price names rate ${rate.rateId}, whose lines all ship free; it was skipped.`);
+            continue;
+          }
+          next = [{ profileId: shares[0]!.profileId, baseMinor: price, waived: shares.every((share) => share.waived) }];
+        }
+        const summary = summarizeDeliveryShares(next.map((share) => ({ ...share, weightGrams: 0, subtotalMinor: 0 })));
+        if (rate.amountMinor !== summary.chargeMinor || rate.baseAmountMinor !== summary.baseMinor) changed = true;
+        rate.shares = next;
+        rate.amountMinor = summary.chargeMinor;
+        rate.baseAmountMinor = summary.baseMinor;
+        rate.waived = summary.waived;
       }
     }
   }

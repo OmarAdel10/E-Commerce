@@ -13,6 +13,8 @@ export interface StorefrontDiscountCart {
     priceIncrementMinor: number;
     lines: CheckoutLine[];
     shippingAmountMinor: number;
+    /** Each shipping profile's part of `shippingAmountMinor`; a free shipping discount can exclude profiles. */
+    shippingShares?: PromotionEvaluationCart["shippingShares"];
     /**
      * A cart in a market's own currency (MARKETS-DESIGN step 6): a promotion's
      * shop-currency amounts (fixed amounts off, minimum subtotals, buy

@@ -20,8 +20,8 @@ import { pagePath } from "../presence-url";
 import { addressAutocompleteService, pageLocale } from "../app-services";
 import { storefrontSourcePath } from "../test-source-paths";
 import {
-  cartHasFreeDeliveryItem,
-  cartItemsSubtotal,
+  cartShipsAllFree,
+  cartShippedSubtotal,
   cartNeedsDeliveryMethod,
   cartStore,
   getEffectiveCartShippingFee,
@@ -89,8 +89,8 @@ const realImports: Record<string, unknown> = {
   applyCheckoutContactNeeds,
   applyCheckoutDeliveryMode,
   browserApiUrl,
-  cartHasFreeDeliveryItem,
-  cartItemsSubtotal,
+  cartShipsAllFree,
+  cartShippedSubtotal,
   cartNeedsDeliveryMethod,
   cartStore,
   checkoutTransferPath,

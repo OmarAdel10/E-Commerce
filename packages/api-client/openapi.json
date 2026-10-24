@@ -67262,6 +67262,56 @@
                               "createdAt": {
                                 "type": "string",
                                 "nullable": true
+                              },
+                              "profileRates": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "profileId": {
+                                      "type": "string",
+                                      "maxLength": 128
+                                    },
+                                    "fee": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    },
+                                    "minWeightGrams": {
+                                      "type": "integer",
+                                      "nullable": true
+                                    },
+                                    "maxWeightGrams": {
+                                      "type": "integer",
+                                      "nullable": true
+                                    },
+                                    "minSubtotal": {
+                                      "type": "number",
+                                      "nullable": true,
+                                      "minimum": 0
+                                    },
+                                    "maxSubtotal": {
+                                      "type": "number",
+                                      "nullable": true,
+                                      "minimum": 0
+                                    },
+                                    "freeOver": {
+                                      "type": "number",
+                                      "nullable": true,
+                                      "minimum": 0
+                                    }
+                                  },
+                                  "required": [
+                                    "profileId",
+                                    "fee",
+                                    "minWeightGrams",
+                                    "maxWeightGrams",
+                                    "minSubtotal",
+                                    "maxSubtotal",
+                                    "freeOver"
+                                  ]
+                                },
+                                "maxItems": 200,
+                                "description": "Shipping profiles' own rates behind this option: a product of `profileId` pays the cheapest one its items fit (weight and order-value bands), not `fee`. A product whose profile has none here pays as the default profile's (`shp_default`) do. Empty: every product pays `fee`."
                               }
                             },
                             "required": [
@@ -67277,7 +67327,8 @@
                               "description",
                               "isActive",
                               "sortOrder",
-                              "createdAt"
+                              "createdAt",
+                              "profileRates"
                             ]
                           },
                           "maxItems": 100
@@ -69898,6 +69949,11 @@
                                 "freeDelivery": {
                                   "type": "boolean"
                                 },
+                                "shippingProfileId": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "description": "The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery."
+                                },
                                 "hasVariants": {
                                   "type": "boolean"
                                 },
@@ -70011,6 +70067,7 @@
                                 "discountAmount",
                                 "discountedPrice",
                                 "freeDelivery",
+                                "shippingProfileId",
                                 "hasVariants",
                                 "imageUrl",
                                 "imageMediaId",
@@ -134429,6 +134486,16 @@
                                   "minimum": 0,
                                   "exclusiveMinimum": true,
                                   "maximum": 9007199254740991
+                                },
+                                "excludedProfileIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "maxItems": 20,
+                                  "description": "Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's."
                                 }
                               },
                               "additionalProperties": false
@@ -135290,6 +135357,16 @@
                                   "minimum": 0,
                                   "exclusiveMinimum": true,
                                   "maximum": 9007199254740991
+                                },
+                                "excludedProfileIds": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "maxItems": 20,
+                                  "description": "Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's."
                                 }
                               },
                               "additionalProperties": false
@@ -135763,6 +135840,29 @@
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 9007199254740991
+                      },
+                      "shippingShares": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "profileId": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "amountMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "profileId",
+                            "amountMinor"
+                          ]
+                        },
+                        "maxItems": 50
                       },
                       "submittedCodes": {
                         "type": "array",
@@ -183224,6 +183324,829 @@
         }
       }
     },
+    "/api/v1/admin/settings/shipping-methods/profiles": {
+      "get": {
+        "operationId": "dashboard.shipping_profiles.list",
+        "tags": [
+          "Admin - Shipping Profiles"
+        ],
+        "summary": "List shipping profiles with their product counts and their own rates behind each delivery option",
+        "responses": {
+          "200": {
+            "description": "Shipping profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "profiles": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "isDefault": {
+                                "type": "boolean"
+                              },
+                              "freeDelivery": {
+                                "type": "boolean"
+                              },
+                              "defaultWeightGrams": {
+                                "type": "integer",
+                                "nullable": true
+                              },
+                              "revision": {
+                                "type": "integer"
+                              },
+                              "productCount": {
+                                "type": "integer"
+                              },
+                              "rates": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "methodId": {
+                                      "type": "string"
+                                    },
+                                    "fee": {
+                                      "type": "number"
+                                    },
+                                    "minWeightGrams": {
+                                      "type": "integer",
+                                      "nullable": true
+                                    },
+                                    "maxWeightGrams": {
+                                      "type": "integer",
+                                      "nullable": true
+                                    },
+                                    "minSubtotal": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "maxSubtotal": {
+                                      "type": "number",
+                                      "nullable": true
+                                    },
+                                    "freeOver": {
+                                      "type": "number",
+                                      "nullable": true
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "methodId",
+                                    "fee",
+                                    "minWeightGrams",
+                                    "maxWeightGrams",
+                                    "minSubtotal",
+                                    "maxSubtotal",
+                                    "freeOver"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "isDefault",
+                              "freeDelivery",
+                              "defaultWeightGrams",
+                              "revision",
+                              "productCount",
+                              "rates"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "profiles"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          },
+          {
+            "agentBearer": []
+          }
+        ],
+        "x-scalius-agent": {
+          "surface": "dashboard",
+          "exposure": "execute",
+          "stability": "beta",
+          "principals": [
+            "admin"
+          ],
+          "risk": "read",
+          "openWorld": false,
+          "idempotency": "none",
+          "revision": "none",
+          "batch": "parallel",
+          "transport": "json",
+          "maximumResponseBytes": 65536,
+          "maxRequestBytes": 1048576,
+          "sensitiveOutput": false,
+          "oneTimeSecretOutput": false,
+          "when": "Use when reading shipping profiles: which products ship free, and each profile's own rates (weight and order-value bands) behind each delivery option.",
+          "dryRun": "none",
+          "confirmation": "none"
+        },
+        "x-scalius-rbac": {
+          "type": "permission",
+          "permission": "settings.shipping_methods.view"
+        }
+      },
+      "post": {
+        "operationId": "dashboard.shipping_profiles.create",
+        "tags": [
+          "Admin - Shipping Profiles"
+        ],
+        "summary": "Create a shipping profile; a free delivery profile ships its products free on every delivery option",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "defaultWeightGrams": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "description": "What an item of this profile without its own weight weighs, in grams (the default profile's is the store's)."
+                  },
+                  "rates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "methodId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "description": "The delivery option (zones[].rates[].id or pickup.rates[].id from dashboard.shipping_methods.list)."
+                        },
+                        "fee": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "minWeightGrams": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "maxWeightGrams": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "minSubtotal": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "maxSubtotal": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "freeOver": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Free once this profile's shipped items reach this value (before discounts), in major units."
+                        }
+                      },
+                      "required": [
+                        "methodId",
+                        "fee"
+                      ]
+                    },
+                    "maxItems": 200,
+                    "description": "The profile's own rates behind delivery options; an option without one prices the profile's items with the default profile's. Omit to keep them."
+                  },
+                  "freeDelivery": {
+                    "type": "boolean",
+                    "description": "Products in this profile ship free on every delivery option. Fixed once the profile exists."
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Profile created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          },
+          {
+            "agentBearer": []
+          }
+        ],
+        "x-scalius-agent": {
+          "surface": "dashboard",
+          "exposure": "execute",
+          "stability": "beta",
+          "principals": [
+            "admin"
+          ],
+          "risk": "write",
+          "openWorld": false,
+          "idempotency": "none",
+          "revision": "none",
+          "batch": "sequential",
+          "transport": "json",
+          "maximumResponseBytes": 65536,
+          "maxRequestBytes": 1048576,
+          "sensitiveOutput": false,
+          "oneTimeSecretOutput": false,
+          "when": "Use when grouping products that ship differently, such as bulky items or free-delivery products.",
+          "dryRun": "none",
+          "confirmation": "none"
+        },
+        "x-scalius-rbac": {
+          "type": "permission",
+          "permission": "settings.shipping_methods.edit"
+        }
+      }
+    },
+    "/api/v1/admin/settings/shipping-methods/profiles/{id}": {
+      "put": {
+        "operationId": "dashboard.shipping_profiles.update",
+        "tags": [
+          "Admin - Shipping Profiles"
+        ],
+        "summary": "Replace a shipping profile's name, default weight and rates",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "defaultWeightGrams": {
+                    "type": "integer",
+                    "nullable": true,
+                    "minimum": 0,
+                    "maximum": 1000000,
+                    "description": "What an item of this profile without its own weight weighs, in grams (the default profile's is the store's)."
+                  },
+                  "rates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "methodId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 128,
+                          "description": "The delivery option (zones[].rates[].id or pickup.rates[].id from dashboard.shipping_methods.list)."
+                        },
+                        "fee": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "minWeightGrams": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "maxWeightGrams": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "minSubtotal": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "maxSubtotal": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000
+                        },
+                        "freeOver": {
+                          "type": "number",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 100000,
+                          "description": "Free once this profile's shipped items reach this value (before discounts), in major units."
+                        }
+                      },
+                      "required": [
+                        "methodId",
+                        "fee"
+                      ]
+                    },
+                    "maxItems": 200,
+                    "description": "The profile's own rates behind delivery options; an option without one prices the profile's items with the default profile's. Omit to keep them."
+                  },
+                  "expectedRevision": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "name",
+                  "expectedRevision"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "revision"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          },
+          {
+            "agentBearer": []
+          }
+        ],
+        "x-scalius-agent": {
+          "surface": "dashboard",
+          "exposure": "execute",
+          "stability": "beta",
+          "principals": [
+            "admin"
+          ],
+          "risk": "write",
+          "openWorld": false,
+          "idempotency": "none",
+          "revision": "required",
+          "batch": "sequential",
+          "transport": "json",
+          "maximumResponseBytes": 65536,
+          "maxRequestBytes": 1048576,
+          "sensitiveOutput": false,
+          "oneTimeSecretOutput": false,
+          "when": "Use when changing a shipping profile's name, default weight or its rates behind each delivery option.",
+          "dryRun": "none",
+          "confirmation": "none"
+        },
+        "x-scalius-rbac": {
+          "type": "permission",
+          "permission": "settings.shipping_methods.edit"
+        }
+      },
+      "delete": {
+        "operationId": "dashboard.shipping_profiles.delete",
+        "tags": [
+          "Admin - Shipping Profiles"
+        ],
+        "summary": "Delete a shipping profile; its products move to the default profile",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "adminSession": []
+          },
+          {
+            "agentBearer": []
+          }
+        ],
+        "x-scalius-agent": {
+          "surface": "dashboard",
+          "exposure": "execute",
+          "stability": "beta",
+          "principals": [
+            "admin"
+          ],
+          "risk": "destructive",
+          "openWorld": false,
+          "idempotency": "none",
+          "revision": "none",
+          "batch": "sequential",
+          "transport": "json",
+          "maximumResponseBytes": 65536,
+          "maxRequestBytes": 1048576,
+          "sensitiveOutput": false,
+          "oneTimeSecretOutput": false,
+          "when": "Use when deleting a shipping profile; its products move to the default profile.",
+          "dryRun": "none",
+          "confirmation": "required"
+        },
+        "x-scalius-rbac": {
+          "type": "permission",
+          "permission": "settings.shipping_methods.edit"
+        }
+      }
+    },
     "/api/v1/admin/settings/markets": {
       "get": {
         "operationId": "dashboard.markets.list",
@@ -203257,6 +204180,10 @@
                               "freeDelivery": {
                                 "type": "boolean"
                               },
+                              "shippingProfileId": {
+                                "type": "string",
+                                "nullable": true
+                              },
                               "aggregateRevision": {
                                 "type": "integer",
                                 "minimum": 1
@@ -203439,6 +204366,7 @@
                               "discountType",
                               "discountAmount",
                               "freeDelivery",
+                              "shippingProfileId",
                               "aggregateRevision",
                               "createdAt",
                               "updatedAt",
@@ -222323,6 +223251,10 @@
                               "freeDelivery": {
                                 "type": "boolean"
                               },
+                              "shippingProfileId": {
+                                "type": "string",
+                                "nullable": true
+                              },
                               "aggregateRevision": {
                                 "type": "integer",
                                 "minimum": 1
@@ -222410,6 +223342,7 @@
                               "discountType",
                               "discountAmount",
                               "freeDelivery",
+                              "shippingProfileId",
                               "aggregateRevision",
                               "createdAt",
                               "updatedAt",
@@ -222676,6 +223609,13 @@
                     "nullable": true,
                     "minimum": 0,
                     "maximum": 9000000000000
+                  },
+                  "shippingProfileId": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "A shipping profile id (shp_…); null is the default profile. Omit to keep the current one."
                   },
                   "freeDelivery": {
                     "type": "boolean"
@@ -223189,7 +224129,6 @@
                   "price",
                   "categoryId",
                   "isActive",
-                  "freeDelivery",
                   "metaTitle",
                   "metaDescription",
                   "productCondition"
@@ -225957,7 +226896,13 @@
                                   "nullable": true
                                 },
                                 "freeDelivery": {
-                                  "type": "boolean"
+                                  "type": "boolean",
+                                  "description": "Its shipping profile ships free (read-only: the profile's mirror)."
+                                },
+                                "shippingProfileId": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "description": "The product's shipping profile; null is the default profile."
                                 },
                                 "emiEligible": {
                                   "type": "boolean"
@@ -226080,6 +227025,7 @@
                                 "discountPercentage",
                                 "discountAmount",
                                 "freeDelivery",
+                                "shippingProfileId",
                                 "emiEligible",
                                 "pageTemplate",
                                 "createdAt",
@@ -227180,6 +228126,12 @@
                             "minimum": 0,
                             "maximum": 9000000000000
                           },
+                          "shippingProfileId": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
                           "freeDelivery": {
                             "type": "boolean"
                           },
@@ -228048,6 +229000,10 @@
                         "freeDelivery": {
                           "type": "boolean"
                         },
+                        "shippingProfileId": {
+                          "type": "string",
+                          "nullable": true
+                        },
                         "isGiftCard": {
                           "type": "boolean"
                         },
@@ -228559,6 +229515,7 @@
                         "discountType",
                         "discountAmount",
                         "freeDelivery",
+                        "shippingProfileId",
                         "isGiftCard",
                         "customizationSchema",
                         "customizationSchemaInvalid",
@@ -228693,6 +229650,13 @@
                     "nullable": true,
                     "minimum": 0,
                     "maximum": 9000000000000
+                  },
+                  "shippingProfileId": {
+                    "type": "string",
+                    "nullable": true,
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "description": "A shipping profile id (shp_…); null is the default profile. Omit to keep the current one."
                   },
                   "freeDelivery": {
                     "type": "boolean"
@@ -229409,7 +230373,6 @@
                   "price",
                   "categoryId",
                   "isActive",
-                  "freeDelivery",
                   "metaTitle",
                   "metaDescription",
                   "productCondition",
@@ -288390,6 +289353,38 @@
             "dashboard.guest-checkout-conditional-enable",
             "dashboard.shipping-method",
             "operations.daily-snapshot.v1"
+          ]
+        },
+        {
+          "operationId": "dashboard.shipping_profiles.create",
+          "surface": "dashboard",
+          "mode": "operation-fallback",
+          "workflowIds": [
+            "operation.dashboard.shipping_profiles.create"
+          ]
+        },
+        {
+          "operationId": "dashboard.shipping_profiles.delete",
+          "surface": "dashboard",
+          "mode": "operation-fallback",
+          "workflowIds": [
+            "operation.dashboard.shipping_profiles.delete"
+          ]
+        },
+        {
+          "operationId": "dashboard.shipping_profiles.list",
+          "surface": "dashboard",
+          "mode": "operation-fallback",
+          "workflowIds": [
+            "operation.dashboard.shipping_profiles.list"
+          ]
+        },
+        {
+          "operationId": "dashboard.shipping_profiles.update",
+          "surface": "dashboard",
+          "mode": "operation-fallback",
+          "workflowIds": [
+            "operation.dashboard.shipping_profiles.update"
           ]
         },
         {

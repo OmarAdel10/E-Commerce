@@ -440,7 +440,7 @@ function updateInputFrom(details: ProductWithDetails) {
     discountType: (details.discountType === "flat" ? "flat" : "percentage") as "flat" | "percentage",
     discountPercentage: details.discountPercentage,
     discountAmount: details.discountAmount,
-    freeDelivery: details.freeDelivery,
+    shippingProfileId: details.shippingProfileId,
     metaTitle: details.metaTitle,
     metaDescription: details.metaDescription,
     canonicalPath: details.canonicalPath,

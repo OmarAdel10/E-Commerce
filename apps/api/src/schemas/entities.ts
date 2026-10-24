@@ -53,6 +53,7 @@ export const productSummarySchema = z.object({
   discountType: z.string(),
   discountAmount: z.number(),
   freeDelivery: z.boolean(),
+  shippingProfileId: z.string().nullable(),
   aggregateRevision: z.number().int().min(1),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -194,6 +195,8 @@ export const productDetailSchema = z.object({
   discountType: z.enum(["percentage", "flat"]).nullable(),
   discountAmount: z.number().nullable(),
   freeDelivery: z.boolean(),
+  /** The product's shipping profile; null is the default profile. */
+  shippingProfileId: z.string().nullable(),
   /** Gift-card product: every SKU is a denomination (Wave B). */
   isGiftCard: z.boolean(),
   /** Buyer inputs asked on the product page; null when none. */

@@ -76,6 +76,8 @@ import {
     type StorefrontCartFulfilmentSummary,
     type StorefrontCartItemIssue,
     type StorefrontCartValidationResult,
+    type StorefrontCartShippingLine,
+    deliveryShippingLines,
 } from "./cart-validation";
 import { lineIdentityProperties, linePropertiesHash, linePurchaseOptionProperty, serializeOrderLineProperties } from "@scalius/shared/line-properties";
 import type { FulfillmentType } from "@scalius/shared/fulfilment";
@@ -96,6 +98,8 @@ import {
   resolveDestinationZoneId,
   selectActiveDeliveryLocationRowsByIds,
   selectDeliveryRateRowsByIds,
+  deliveryOptionBaseLines,
+  priceDeliveryOption,
 } from "../delivery";
 
 export interface StorefrontDeliveryPreflightInput {
@@ -126,6 +130,14 @@ export interface StorefrontDeliveryPreflightResult {
     rateToken?: string;
     rateCod?: boolean;
     rateRows?: DeliveryRateRow[];
+    /**
+     * The options the preflight read with the chosen one (its zone's and
+     * pickup), in the shop currency: pricing lists their per-cart charges from
+     * them without another read when shipping profiles apply.
+     */
+    offeredRows?: DeliveryRateRow[];
+    /** What each shipping profile pays of `shippingMinor` (a free shipping discount may exclude profiles). */
+    shippingShares?: Array<{ profileId: string; amountMinor: number }>;
     shippingMethod: StorefrontOrderShippingMethodSnapshot | null;
     cityName: string | null;
     zoneName: string | null;
@@ -210,11 +222,19 @@ export function isTrustedStorefrontCheckoutPolicySnapshot(
     return Boolean(snapshot && Reflect.get(snapshot, STOREFRONT_CHECKOUT_POLICY_SNAPSHOT_PROOF) === true);
 }
 
-type DeliveryPreflightCart = Pick<StorefrontCartValidationResult, "hasFreeDeliveryProduct" | "subtotalMinor"> & {
-    items: readonly (StorefrontCartFulfilmentLine & Partial<Pick<StorefrontCartValidatedItem, "variantId" | "quantity" | "unitPriceMinor" | "weightGrams">>)[];
+type DeliveryPreflightLine = StorefrontCartShippingLine;
+
+/** Each share's charge: nothing when its free-over amount (or a free profile) waived it. */
+export function shareCharges(shares: ReadonlyArray<{ profileId: string; baseMinor: number; waived: boolean }>): Array<{ profileId: string; amountMinor: number }> {
+    return shares.map((share) => ({ profileId: share.profileId, amountMinor: share.waived ? 0 : share.baseMinor }));
+}
+
+type DeliveryPreflightCart = {
+    items: readonly DeliveryPreflightLine[];
     /** The cart's currency: a rate's fee and free-over amount convert into it (MARKETS-DESIGN step 6). */
     money?: PresentmentMoney;
 };
+
 
 
 /**
@@ -251,18 +271,19 @@ export function resolveStorefrontDeliveryPreflightFromRows(
         const rate = resolveDeliveryRate({
             rate: rateRow,
             addressZoneId: null,
-            subtotalMinor: cartValidation.subtotalMinor,
+            lines: deliveryShippingLines(cartValidation.items),
         });
-        const shippingFeeWaived = cartValidation.hasFreeDeliveryProduct || rate.freeOverApplied;
         return markTrustedStorefrontDeliveryPreflightResult({
             kind: "pickup",
-            shippingMinor: shippingFeeWaived ? 0 : rate.baseFeeMinor,
+            offeredRows: [...shippingMethodRows],
+            shippingShares: shareCharges(rate.shares),
+            shippingMinor: rate.feeMinor,
             shippingMethod: {
                 id: rate.id,
                 name: rate.name,
                 description: rate.description,
                 baseAmountMinor: rate.baseFeeMinor,
-                feeWaived: shippingFeeWaived,
+                feeWaived: rate.freeOverApplied,
             },
             cityName: null,
             zoneName: null,
@@ -318,19 +339,20 @@ export function resolveStorefrontDeliveryPreflightFromRows(
             locations: locationRows,
             regions: parseDeliveryRegionRows(rateRow?.destinationRegions),
         }),
-        subtotalMinor: cartValidation.subtotalMinor,
+        lines: deliveryShippingLines(cartValidation.items),
     });
-    const shippingFeeWaived = cartValidation.hasFreeDeliveryProduct || rate.freeOverApplied;
 
     return markTrustedStorefrontDeliveryPreflightResult({
         kind: rate.kind,
-        shippingMinor: shippingFeeWaived ? 0 : rate.baseFeeMinor,
+        offeredRows: [...shippingMethodRows],
+        shippingShares: shareCharges(rate.shares),
+        shippingMinor: rate.feeMinor,
         shippingMethod: {
             id: rate.id,
             name: rate.name,
             description: rate.description,
             baseAmountMinor: rate.baseFeeMinor,
-            feeWaived: shippingFeeWaived,
+            feeWaived: rate.freeOverApplied,
         },
         cityName: locationNames.cityName,
         zoneName: locationNames.zoneName,
@@ -355,8 +377,22 @@ export async function resolveStorefrontDeliveryPreflightWithRates(
     }
     const destination = normalizeDeliveryDestination({ countryCode: data.shippingCountryCode, city: data.city, zone: data.zone, area: data.area, adminArea: data.shippingAdminArea, postalCode: data.shippingPostalCode });
     const zoneId = resolveDestinationZoneId(destination, { locations, regions: parseDeliveryRegionRows(rows[0]?.destinationRegions) });
-    const lines = cart.items.filter((item) => item.fulfillmentKind === "physical").map((item) => ({ variantId: item.variantId ?? "", quantity: item.quantity ?? 1, unitPriceMinor: item.unitPriceMinor ?? 0, weightGrams: item.weightGrams ?? null }));
+    // A carrier quotes the parcel its option's own fee prices: the lines of the
+    // profiles without their own rates behind it, never a free profile's.
+    // An unweighed line weighs its profile's default weight, so one missing
+    // weight never leaves the parcel without one.
+    const shippedItems = cart.items.filter((item) => item.fulfillmentKind === "physical" && !item.isGiftCard);
+    const shippingLines = deliveryShippingLines(shippedItems);
+    const parcelFor = (row: DeliveryRateRow) => {
+        const base = deliveryOptionBaseLines(row, shippingLines);
+        const items = base.map((line) => shippedItems[shippingLines.indexOf(line)]!);
+        return {
+            lines: items.map((item) => ({ variantId: item.variantId ?? "", quantity: item.quantity ?? 1, unitPriceMinor: item.unitPriceMinor ?? 0, weightGrams: item.weightGrams ?? null })),
+            weightGrams: base.reduce((sum, line) => sum + line.weightGrams * line.quantity, 0),
+        };
+    };
     const rateRows = await resolveCalculatedDeliveryRates({
+        parcelFor,
         db: storefrontDb,
         rows: rows.filter((row) => row.kind === "pickup" || row.zoneId === zoneId),
         locationRows: locations,
@@ -365,7 +401,7 @@ export async function resolveStorefrontDeliveryPreflightWithRates(
             destination: { country: destination.countryCode, adminArea: destination.adminArea ?? null, city: locations.find((row) => row.id === destination.city)?.name ?? null, postalCode: destination.postalCode ?? null,
                 placeIds: { city: destination.city ?? null, zone: destination.zone ?? null, area: destination.area ?? null } },
             origin: null,
-            parcel: { lines, weightGrams: lines.every((line) => line.weightGrams !== null) ? lines.reduce((sum, line) => sum + line.weightGrams! * line.quantity, 0) : null },
+            parcel: { lines: [], weightGrams: 0 },
             currency: cart.money.currencyCode, decimalPlaces: cart.money.decimalPlaces, cod: data.cod === true,
         },
         token: data.shippingRateToken,
@@ -375,10 +411,11 @@ export async function resolveStorefrontDeliveryPreflightWithRates(
     if (data.shippingMethodId && !rateRows.some((row) => row.id === data.shippingMethodId)) {
         throw new ValidationError("This delivery option is unavailable. Choose another delivery option.", {
             reason: DELIVERY_RATE_UNAVAILABLE_REASON,
-            shippingRates: rateRows.map((stored) => {
-                const row = deliveryRateInCurrency(stored, cart.money);
-                const waived = cart.hasFreeDeliveryProduct || (row.freeOverMinor !== null && cart.subtotalMinor >= row.freeOverMinor);
-                return { id: row.id, name: row.name, kind: row.kind ?? "delivery", amount: fromMinor(waived ? 0 : row.feeMinor, cart.money!.decimalPlaces), amountMinor: waived ? 0 : row.feeMinor };
+            shippingRates: rateRows.flatMap((stored) => {
+                const charge = priceDeliveryOption(deliveryRateInCurrency(stored, cart.money), shippingLines);
+                return charge
+                    ? [{ id: stored.id, name: stored.name, kind: stored.kind ?? "delivery", amount: fromMinor(charge.chargeMinor, cart.money!.decimalPlaces), amountMinor: charge.chargeMinor }]
+                    : [];
             }),
         });
     }

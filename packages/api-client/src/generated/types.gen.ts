@@ -17806,6 +17806,18 @@ export type GetApiV1ShippingMethodsResponses = {
                 isActive: boolean;
                 sortOrder: number;
                 createdAt: string | null;
+                /**
+                 * Shipping profiles' own rates behind this option: a product of `profileId` pays the cheapest one its items fit (weight and order-value bands), not `fee`. A product whose profile has none here pays as the default profile's (`shp_default`) do. Empty: every product pays `fee`.
+                 */
+                profileRates: Array<{
+                    profileId: string;
+                    fee: number;
+                    minWeightGrams: number | null;
+                    maxWeightGrams: number | null;
+                    minSubtotal: number | null;
+                    maxSubtotal: number | null;
+                    freeOver: number | null;
+                }>;
             }>;
         };
     };
@@ -18582,6 +18594,10 @@ export type GetApiV1ProductsBySlugSectionsBySectionResponses = {
                 discountAmount: number;
                 discountedPrice: number;
                 freeDelivery: boolean;
+                /**
+                 * The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery.
+                 */
+                shippingProfileId: string | null;
                 hasVariants: boolean;
                 imageUrl: string | null;
                 imageMediaId: string | null;
@@ -37257,6 +37273,10 @@ export type PostApiV1AdminDiscountsData = {
             allocation: 'once';
             config: {
                 maxRateMinor?: number;
+                /**
+                 * Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's.
+                 */
+                excludedProfileIds?: Array<string>;
             };
         }>;
         /**
@@ -37556,6 +37576,10 @@ export type PutApiV1AdminDiscountsByIdData = {
             allocation: 'once';
             config: {
                 maxRateMinor?: number;
+                /**
+                 * Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's.
+                 */
+                excludedProfileIds?: Array<string>;
             };
         }>;
         /**
@@ -37646,6 +37670,10 @@ export type PostApiV1AdminDiscountsByIdPreviewData = {
                 giftCard?: boolean;
             }>;
             shippingAmountMinor: number;
+            shippingShares?: Array<{
+                profileId: string;
+                amountMinor: number;
+            }>;
             submittedCodes: Array<string>;
             evaluatedAtEpochSeconds: number;
         };
@@ -51618,6 +51646,286 @@ export type PatchApiV1AdminSettingsShippingMethodsByIdRatesByRateIdResponses = {
 
 export type PatchApiV1AdminSettingsShippingMethodsByIdRatesByRateIdResponse = PatchApiV1AdminSettingsShippingMethodsByIdRatesByRateIdResponses[keyof PatchApiV1AdminSettingsShippingMethodsByIdRatesByRateIdResponses];
 
+export type GetApiV1AdminSettingsShippingMethodsProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/settings/shipping-methods/profiles';
+};
+
+export type GetApiV1AdminSettingsShippingMethodsProfilesErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type GetApiV1AdminSettingsShippingMethodsProfilesError = GetApiV1AdminSettingsShippingMethodsProfilesErrors[keyof GetApiV1AdminSettingsShippingMethodsProfilesErrors];
+
+export type GetApiV1AdminSettingsShippingMethodsProfilesResponses = {
+    /**
+     * Shipping profiles
+     */
+    200: {
+        success: true;
+        data: {
+            profiles: Array<{
+                id: string;
+                name: string;
+                isDefault: boolean;
+                freeDelivery: boolean;
+                defaultWeightGrams: number | null;
+                revision: number;
+                productCount: number;
+                rates: Array<{
+                    id: string;
+                    methodId: string;
+                    fee: number;
+                    minWeightGrams: number | null;
+                    maxWeightGrams: number | null;
+                    minSubtotal: number | null;
+                    maxSubtotal: number | null;
+                    freeOver: number | null;
+                }>;
+            }>;
+        };
+    };
+};
+
+export type GetApiV1AdminSettingsShippingMethodsProfilesResponse = GetApiV1AdminSettingsShippingMethodsProfilesResponses[keyof GetApiV1AdminSettingsShippingMethodsProfilesResponses];
+
+export type PostApiV1AdminSettingsShippingMethodsProfilesData = {
+    body: {
+        name: string;
+        /**
+         * What an item of this profile without its own weight weighs, in grams (the default profile's is the store's).
+         */
+        defaultWeightGrams?: number | null;
+        /**
+         * The profile's own rates behind delivery options; an option without one prices the profile's items with the default profile's. Omit to keep them.
+         */
+        rates?: Array<{
+            /**
+             * The delivery option (zones[].rates[].id or pickup.rates[].id from dashboard.shipping_methods.list).
+             */
+            methodId: string;
+            fee: number;
+            minWeightGrams?: number | null;
+            maxWeightGrams?: number | null;
+            minSubtotal?: number | null;
+            maxSubtotal?: number | null;
+            /**
+             * Free once this profile's shipped items reach this value (before discounts), in major units.
+             */
+            freeOver?: number | null;
+        }>;
+        /**
+         * Products in this profile ship free on every delivery option. Fixed once the profile exists.
+         */
+        freeDelivery?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/settings/shipping-methods/profiles';
+};
+
+export type PostApiV1AdminSettingsShippingMethodsProfilesErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type PostApiV1AdminSettingsShippingMethodsProfilesError = PostApiV1AdminSettingsShippingMethodsProfilesErrors[keyof PostApiV1AdminSettingsShippingMethodsProfilesErrors];
+
+export type PostApiV1AdminSettingsShippingMethodsProfilesResponses = {
+    /**
+     * Profile created
+     */
+    201: {
+        success: true;
+        data: {
+            id?: string;
+            revision: number;
+        };
+    };
+};
+
+export type PostApiV1AdminSettingsShippingMethodsProfilesResponse = PostApiV1AdminSettingsShippingMethodsProfilesResponses[keyof PostApiV1AdminSettingsShippingMethodsProfilesResponses];
+
+export type DeleteApiV1AdminSettingsShippingMethodsProfilesByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/settings/shipping-methods/profiles/{id}';
+};
+
+export type DeleteApiV1AdminSettingsShippingMethodsProfilesByIdErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type DeleteApiV1AdminSettingsShippingMethodsProfilesByIdError = DeleteApiV1AdminSettingsShippingMethodsProfilesByIdErrors[keyof DeleteApiV1AdminSettingsShippingMethodsProfilesByIdErrors];
+
+export type DeleteApiV1AdminSettingsShippingMethodsProfilesByIdResponses = {
+    /**
+     * No content
+     */
+    204: void;
+};
+
+export type DeleteApiV1AdminSettingsShippingMethodsProfilesByIdResponse = DeleteApiV1AdminSettingsShippingMethodsProfilesByIdResponses[keyof DeleteApiV1AdminSettingsShippingMethodsProfilesByIdResponses];
+
+export type PutApiV1AdminSettingsShippingMethodsProfilesByIdData = {
+    body: {
+        name: string;
+        /**
+         * What an item of this profile without its own weight weighs, in grams (the default profile's is the store's).
+         */
+        defaultWeightGrams?: number | null;
+        /**
+         * The profile's own rates behind delivery options; an option without one prices the profile's items with the default profile's. Omit to keep them.
+         */
+        rates?: Array<{
+            /**
+             * The delivery option (zones[].rates[].id or pickup.rates[].id from dashboard.shipping_methods.list).
+             */
+            methodId: string;
+            fee: number;
+            minWeightGrams?: number | null;
+            maxWeightGrams?: number | null;
+            minSubtotal?: number | null;
+            maxSubtotal?: number | null;
+            /**
+             * Free once this profile's shipped items reach this value (before discounts), in major units.
+             */
+            freeOver?: number | null;
+        }>;
+        expectedRevision: number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/settings/shipping-methods/profiles/{id}';
+};
+
+export type PutApiV1AdminSettingsShippingMethodsProfilesByIdErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Forbidden
+     */
+    403: ErrorResponse;
+    /**
+     * Not found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
+     * Server error
+     */
+    500: ErrorResponse;
+};
+
+export type PutApiV1AdminSettingsShippingMethodsProfilesByIdError = PutApiV1AdminSettingsShippingMethodsProfilesByIdErrors[keyof PutApiV1AdminSettingsShippingMethodsProfilesByIdErrors];
+
+export type PutApiV1AdminSettingsShippingMethodsProfilesByIdResponses = {
+    /**
+     * Profile saved
+     */
+    200: {
+        success: true;
+        data: {
+            id?: string;
+            revision: number;
+        };
+    };
+};
+
+export type PutApiV1AdminSettingsShippingMethodsProfilesByIdResponse = PutApiV1AdminSettingsShippingMethodsProfilesByIdResponses[keyof PutApiV1AdminSettingsShippingMethodsProfilesByIdResponses];
+
 export type GetApiV1AdminSettingsMarketsData = {
     body?: never;
     path?: never;
@@ -57349,6 +57657,7 @@ export type GetApiV1AdminOrdersCatalogProductsResponses = {
                 discountType: string;
                 discountAmount: number;
                 freeDelivery: boolean;
+                shippingProfileId: string | null;
                 aggregateRevision: number;
                 createdAt: string | number;
                 updatedAt: string | number;
@@ -62536,6 +62845,7 @@ export type GetApiV1AdminProductsResponses = {
                 discountType: string;
                 discountAmount: number;
                 freeDelivery: boolean;
+                shippingProfileId: string | null;
                 aggregateRevision: number;
                 createdAt: string | number;
                 updatedAt: string | number;
@@ -62633,7 +62943,11 @@ export type PostApiV1AdminProductsData = {
         discountType?: 'percentage' | 'flat';
         discountPercentage?: number | null;
         discountAmount?: number | null;
-        freeDelivery: boolean;
+        /**
+         * A shipping profile id (shp_…); null is the default profile. Omit to keep the current one.
+         */
+        shippingProfileId?: string | null;
+        freeDelivery?: boolean;
         metaTitle: string | null;
         metaDescription: string | null;
         canonicalPath?: string | null;
@@ -63707,7 +64021,14 @@ export type GetApiV1AdminProductsByIdSectionsBySectionResponses = {
                 discountType: 'percentage' | 'flat' | null;
                 discountPercentage: number | null;
                 discountAmount: number | null;
+                /**
+                 * Its shipping profile ships free (read-only: the profile's mirror).
+                 */
                 freeDelivery: boolean;
+                /**
+                 * The product's shipping profile; null is the default profile.
+                 */
+                shippingProfileId: string | null;
                 emiEligible: boolean;
                 pageTemplate: string | null;
                 createdAt: string | number;
@@ -63917,6 +64238,7 @@ export type PatchApiV1AdminProductsByIdSectionsBySectionData = {
             discountType?: 'percentage' | 'flat';
             discountPercentage?: number | null;
             discountAmount?: number | null;
+            shippingProfileId?: string | null;
             freeDelivery?: boolean;
             canonicalPath?: string | null;
             noIndex?: boolean;
@@ -64191,6 +64513,7 @@ export type GetApiV1AdminProductsByIdResponses = {
             discountType: 'percentage' | 'flat' | null;
             discountAmount: number | null;
             freeDelivery: boolean;
+            shippingProfileId: string | null;
             isGiftCard: boolean;
             /**
              * Buyer inputs asked on the product page, in schema order.
@@ -64323,7 +64646,11 @@ export type PutApiV1AdminProductsByIdData = {
         discountType?: 'percentage' | 'flat';
         discountPercentage?: number | null;
         discountAmount?: number | null;
-        freeDelivery: boolean;
+        /**
+         * A shipping profile id (shp_…); null is the default profile. Omit to keep the current one.
+         */
+        shippingProfileId?: string | null;
+        freeDelivery?: boolean;
         metaTitle: string | null;
         metaDescription: string | null;
         canonicalPath?: string | null;

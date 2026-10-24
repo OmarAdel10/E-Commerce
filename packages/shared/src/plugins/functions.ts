@@ -59,6 +59,11 @@ export const functionCartLineSchema = z.object({
   /** The SKU's weight in grams, or null when the merchant has not set one. */
   weightGrams: z.number().finite().min(0).nullable().default(null),
   /**
+   * The product's shipping profile (`shp_default` unless the merchant put it
+   * in another): delivery prices each profile's lines with its own rates.
+   */
+  shippingProfileId: id.default("shp_default"),
+  /**
    * The purchase option the buyer chose for the line (`<app id>.<key>`, an
    * active app's manifest `checkout.purchaseOptions`), or null for a one-time
    * purchase. Core prices nothing for it: the owning app prices it
@@ -222,7 +227,14 @@ export const checkoutShippingRatesOutputSchema = z.object({
   operations: z.array(z.discriminatedUnion("op", [
     z.object({ op: z.literal("hide"), rateId: id }).strict(),
     z.object({ op: z.literal("rename"), rateId: id, name: label }).strict(),
-    z.object({ op: z.literal("price"), rateId: id, amountMinor: nonNegativeMinor }).strict(),
+    /**
+     * Sets a rate's fee before the store's free-over waivers. With
+     * `profileId`, only that shipping profile's share of the rate (its
+     * lines carry `shippingProfileId`); without, the whole rate. A share the
+     * store waived stays free, and a free-delivery profile's lines always
+     * ship free.
+     */
+    z.object({ op: z.literal("price"), rateId: id, amountMinor: nonNegativeMinor, profileId: id.optional() }).strict(),
     z.object({ op: z.literal("reorder"), rateIds: z.array(id).min(1).max(50) }).strict(),
   ])).max(50),
 }).strict();

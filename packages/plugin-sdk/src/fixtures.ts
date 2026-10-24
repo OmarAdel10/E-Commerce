@@ -46,6 +46,7 @@ function cartLine(overrides: Partial<FunctionCart["lines"][number]> = {}): Funct
     properties: {},
     requiresShipping: true,
     weightGrams: null,
+    shippingProfileId: "shp_default",
     purchaseOption: null,
     ...overrides,
   };

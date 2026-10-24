@@ -1155,8 +1155,8 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
   } from "@/lib/cart/client";
   import { getCustomerSession } from "@/lib/api/customer-auth";
   import {
-    cartHasFreeDeliveryItem,
-    cartItemsSubtotal,
+    cartShipsAllFree,
+    cartShippedSubtotal,
     cartNeedsDeliveryMethod,
     cartStore,
     getEffectiveCartShippingFee,
@@ -1328,8 +1328,8 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
   const shippingMethods = enhanceShippingMethods(document, {
     loadRates: (address) => fetchDeliveryRates(browserApiUrl(""), address),
     readDraftMethod: () => readCheckoutFormDraft()?.shippingLocation,
-    readSubtotal: () => cartItemsSubtotal(cartStore.get().items),
-    isFeeWaived: () => cartHasFreeDeliveryItem(cartStore.get().items),
+    readSubtotal: () => cartShippedSubtotal(cartStore.get().items),
+    isFeeWaived: () => cartShipsAllFree(cartStore.get().items),
     formatMoney,
     readMode: () => readCheckoutDeliveryMode(),
     // A country no shipping zone serves says so by name (MARKETS-DESIGN step 3b).

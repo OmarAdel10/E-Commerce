@@ -53,6 +53,7 @@ import {
 import { isSalesChannelId } from "@scalius/shared/sales-channels";
 import { executeProductAggregateMutationBatch } from "./aggregate-revision";
 import { planProductMediaSection, productMediaFromMediaIds, updateProductMediaSection } from "./write";
+import { createFreeShippingProfileStatement, resolveProductShippingProfile } from "./shipping-profile";
 import {
     PRODUCT_NAME_MAX_LENGTH,
     productBrandIdSchema,
@@ -109,6 +110,9 @@ const productBasePatchSchema = z.object({
     discountType: z.enum(["percentage", "flat"]).optional(),
     discountPercentage: z.number().min(0).max(100).nullable().optional(),
     discountAmount: z.number().min(0).max(MAX_MAJOR_AMOUNT).nullable().optional(),
+    /** The product's shipping profile; null: the default profile. */
+    shippingProfileId: z.string().trim().min(1).max(128).nullable().optional(),
+    /** Deprecated: use `shippingProfileId`. True puts the product in the free-delivery profile. */
     freeDelivery: z.boolean().optional(),
     canonicalPath: canonicalPathPatchSchema,
     noIndex: z.boolean().optional(),
@@ -324,6 +328,7 @@ export async function getProductSemanticSection(
             discountBps: products.discountBps,
             discountAmountMinor: products.discountAmountMinor,
             freeDelivery: products.freeDelivery,
+            shippingProfileId: products.shippingProfileId,
             emiEligible: products.emiEligible,
             pageTemplate: products.pageTemplate,
             createdAt: products.createdAt,
@@ -371,6 +376,7 @@ export async function getProductSemanticSection(
                 discountPercentage: price.discountPercentage,
                 discountAmount: price.discountAmount,
                 freeDelivery: row.freeDelivery,
+                shippingProfileId: row.shippingProfileId ?? null,
                 emiEligible: row.emiEligible,
                 pageTemplate: row.pageTemplate,
                 createdAt: row.createdAt,
@@ -664,6 +670,7 @@ export async function planProductBaseSection(
         discountBps: products.discountBps,
         discountAmountMinor: products.discountAmountMinor,
         freeDelivery: products.freeDelivery,
+        shippingProfileId: products.shippingProfileId,
         canonicalPath: products.canonicalPath,
         noIndex: products.noIndex,
         excludeFromSitemap: products.excludeFromSitemap,
@@ -675,7 +682,8 @@ export async function planProductBaseSection(
         metaDescription: products.metaDescription,
     }).from(products).where(eq(products.id, productId)).get(), readStoreCurrency(db)]);
     if (!current) return null;
-    const { price, discountPercentage, discountAmount, redirectOldUrl, ...otherPatch } = patch;
+    const { price, discountPercentage, discountAmount, redirectOldUrl, shippingProfileId, freeDelivery, ...otherPatch } = patch;
+    const shippingProfile = await resolveProductShippingProfile(db, { shippingProfileId, freeDelivery }, current);
     const definedPatch = Object.fromEntries(Object.entries(otherPatch).filter(([, value]) => value !== undefined));
     const next = {
         ...current,
@@ -710,7 +718,7 @@ export async function planProductBaseSection(
         if (collision) throw new ValidationError("A product with this slug already exists.");
     }
 
-    const mutationStatements: SQLiteBatchItem[] = [db.update(products).set({
+    const mutationStatements: SQLiteBatchItem[] = [...(shippingProfile?.createFreeProfile ? [createFreeShippingProfileStatement(db)] : []), db.update(products).set({
         name: next.name,
         priceMinor: next.priceMinor,
         categoryId: next.categoryId,
@@ -719,7 +727,7 @@ export async function planProductBaseSection(
         discountType: next.discountType ?? "percentage",
         discountBps: (next.discountType ?? "percentage") === "percentage" ? next.discountBps : 0,
         discountAmountMinor: (next.discountType ?? "percentage") === "flat" ? next.discountAmountMinor : 0,
-        freeDelivery: next.freeDelivery,
+        ...(shippingProfile ? { shippingProfileId: shippingProfile.shippingProfileId, freeDelivery: shippingProfile.freeDelivery } : {}),
         canonicalPath: next.canonicalPath,
         noIndex: next.noIndex,
         excludeFromSitemap: next.excludeFromSitemap,

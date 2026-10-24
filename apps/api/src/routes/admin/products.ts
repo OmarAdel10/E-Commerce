@@ -146,7 +146,8 @@ const productSemanticSectionResponseSchema = z.discriminatedUnion("section", [
             discountType: z.enum(["percentage", "flat"]).nullable(),
             discountPercentage: z.number().nullable(),
             discountAmount: z.number().nullable(),
-            freeDelivery: z.boolean(),
+            freeDelivery: z.boolean().openapi({ description: "Its shipping profile ships free (read-only: the profile's mirror)." }),
+            shippingProfileId: z.string().nullable().openapi({ description: "The product's shipping profile; null is the default profile." }),
             /** Shows the store's "EMI on card payment" line when the store has EMI plans. */
             emiEligible: z.boolean(),
             /** The product page template id; null is the theme's default product page. */

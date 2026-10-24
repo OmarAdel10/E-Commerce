@@ -37,7 +37,15 @@ import {
     placeAddressFieldSql,
     places,
     shippingMethods,
+    shippingProfileRates,
 } from "@scalius/database/schema";
+import {
+    parseProfileRates,
+    priceDeliveryOption,
+    type DeliveryShare,
+    type ProfileRateRow,
+    type ShippingLine,
+} from "./profile-pricing";
 import { fromMinor, isIncrementMultipleMinor, priceIncrementMessage, toMinor } from "@scalius/shared/money";
 import type { StoreCurrency } from "../settings";
 import { ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
@@ -102,6 +110,16 @@ function regionRowsJsonSql(countries: readonly string[]): SQL<string | null> {
     return sql<string | null>`(SELECT '[' || group_concat(json_object('zoneId', destination_region.zone_id, 'countryCode', destination_region.country_code, 'adminArea', destination_region.admin_area, 'postalPrefix', destination_region.postal_prefix), ',') || ']' FROM ${deliveryZoneRegions} AS destination_region WHERE destination_region.country_code IN ${countries})`;
 }
 
+/**
+ * A rate's shipping-profile rates as a JSON text column, read in the
+ * statement that already reads the rate (no extra statement; empty for a
+ * store without profile rates). `parseProfileRates` reads it.
+ */
+function profileRatesJsonSql(): SQL<ProfileRateRow[]> {
+    return sql<string | null>`(SELECT '[' || group_concat(json_object('p', profile_rate.profile_id, 'f', profile_rate.fee_minor, 'wn', profile_rate.min_weight_grams, 'wx', profile_rate.max_weight_grams, 'vn', profile_rate.min_subtotal_minor, 'vx', profile_rate.max_subtotal_minor, 'fo', profile_rate.free_over_minor, 's', profile_rate.sort_order, 'i', profile_rate.id), ',') || ']' FROM ${shippingProfileRates} AS profile_rate WHERE profile_rate.method_id = "shipping_methods"."id")`
+        .mapWith(parseProfileRates) as unknown as SQL<ProfileRateRow[]>;
+}
+
 /** The region rows of a `regionRowsJsonSql()` value. */
 export function parseDeliveryRegionRows(value: unknown): DeliveryRegionRow[] {
     if (typeof value !== "string" || !value) return [];
@@ -147,6 +165,8 @@ export interface DeliveryRateRow {
      * rows' zones, they pick the destination's zone.
      */
     destinationRegions?: string | null;
+    /** The shipping profiles' own rates behind this option (`profile-pricing.ts`); none: every line pays the option's fee. */
+    profileRates?: ProfileRateRow[];
 }
 
 /**
@@ -178,6 +198,7 @@ export function selectDeliveryRateRowsByIds(
             pickupAddress: shippingMethods.pickupAddress,
             pickupHours: shippingMethods.pickupHours,
             destinationRegions: countries.length > 0 ? regionRowsJsonSql(countries) : sql<string | null>`NULL`,
+            profileRates: profileRatesJsonSql(),
         })
         .from(shippingMethods);
     if (ids.length === 0) return query.limit(0);
@@ -198,11 +219,14 @@ export interface ResolvedDeliveryRate {
     kind: DeliveryRateKind;
     name: string;
     description: string | null;
-    /** The rate's own charge. */
+    /** The fee the order shows: the charge, or the fees a free-over amount waived. */
     baseFeeMinor: number;
-    /** What the buyer pays for delivery (0 once the free-over threshold is met). */
+    /** What the buyer pays for delivery: each profile's share summed. */
     feeMinor: number;
+    /** Every share's free-over amount waived its fee. */
     freeOverApplied: boolean;
+    /** Each priced group's share (`profile-pricing.ts`). */
+    shares: DeliveryShare[];
 }
 
 /**
@@ -214,16 +238,18 @@ export const DELIVERY_RATE_UNAVAILABLE_REASON = "delivery_rate_unavailable";
 
 /**
  * Verifies the chosen rate is live, active, well formed and a rate of the
- * destination's zone (local pickup is offered everywhere), then applies its
- * free-over threshold to the items subtotal. `addressZoneId` null: no zone
- * serves the destination, so no delivery rate does (fail closed).
+ * destination's zone (local pickup is offered everywhere), then prices it for
+ * the cart's shipped lines with the shipping-profile rule
+ * (`priceDeliveryOption`). `addressZoneId` null: no zone serves the
+ * destination, so no delivery rate does (fail closed).
  */
 export function resolveDeliveryRate(input: {
     rate: DeliveryRateRow | undefined;
     addressZoneId: string | null;
-    subtotalMinor: number;
+    /** The cart's shipped lines (physical, never a gift card). */
+    lines: readonly ShippingLine[];
 }): ResolvedDeliveryRate {
-    const { rate, addressZoneId, subtotalMinor } = input;
+    const { rate, addressZoneId, lines } = input;
     if (!rate || !rate.isActive || rate.deletedAt != null || (rate.rateSource && rate.rateSource !== "flat" && !rate.rateCurrency)) {
         throw new ValidationError(
             "A valid active shipping method is required for this order.",
@@ -256,15 +282,24 @@ export function resolveDeliveryRate(input: {
     ) {
         throw new ValidationError("Selected shipping method is misconfigured.");
     }
-    const freeOverApplied = freeOver !== null && subtotalMinor >= freeOver;
+    const charge = priceDeliveryOption(rate, lines);
+    if (!charge) {
+        // A shipping profile in the cart has rates behind this option, and its
+        // lines meet none of them (too heavy, or outside its order-value band).
+        throw new ValidationError(
+            "This delivery option isn't available for these items. Choose another delivery option.",
+            { reason: DELIVERY_RATE_UNAVAILABLE_REASON },
+        );
+    }
     return {
         id: rate.id,
         kind,
         name,
         description,
-        baseFeeMinor: rate.feeMinor,
-        feeMinor: freeOverApplied ? 0 : rate.feeMinor,
-        freeOverApplied,
+        baseFeeMinor: charge.baseMinor,
+        feeMinor: charge.chargeMinor,
+        freeOverApplied: charge.waived,
+        shares: charge.shares,
     };
 }
 
@@ -273,12 +308,26 @@ export function resolveDeliveryRate(input: {
  * threshold (shop currency) converted at the locked rate and rounded to the
  * market's increment (Shopify's rule). The shop currency keeps the row.
  */
-export function deliveryRateInCurrency<T extends { feeMinor: number; freeOverMinor: number | null; rateCurrency?: string }>(
+export function deliveryRateInCurrency<T extends { feeMinor: number; freeOverMinor: number | null; rateCurrency?: string; profileRates?: ProfileRateRow[] }>(
     row: T,
     money: PresentmentMoney | null | undefined,
 ): T {
     if (!money || !isForeignPresentment(money)) return row;
-    return { ...row, feeMinor: row.rateCurrency === money.currencyCode ? row.feeMinor : presentShopMinor(money, row.feeMinor), freeOverMinor: presentShopMinorOrNull(money, row.freeOverMinor) };
+    return {
+        ...row,
+        feeMinor: row.rateCurrency === money.currencyCode ? row.feeMinor : presentShopMinor(money, row.feeMinor),
+        freeOverMinor: presentShopMinorOrNull(money, row.freeOverMinor),
+        // A profile's fees and order-value bands are shop amounts too; weights are not money.
+        ...(row.profileRates ? {
+            profileRates: row.profileRates.map((rate) => ({
+                ...rate,
+                feeMinor: presentShopMinor(money, rate.feeMinor),
+                minSubtotalMinor: presentShopMinorOrNull(money, rate.minSubtotalMinor),
+                maxSubtotalMinor: presentShopMinorOrNull(money, rate.maxSubtotalMinor),
+                freeOverMinor: presentShopMinorOrNull(money, rate.freeOverMinor),
+            })),
+        } : {}),
+    };
 }
 
 // ── Storefront: rates for a destination ────────────────────────────────
@@ -355,6 +404,8 @@ export interface OfferedDeliveryRate {
      * address there gets this zone. Empty for local pickup.
      */
     countries: DeliveryCountryCoverage[];
+    /** The shipping profiles' own rates behind this option; empty: every product pays `feeMinor`. */
+    profileRates: ProfileRateRow[];
 }
 
 /**
@@ -407,6 +458,7 @@ export async function listDeliveryRatesForDestination(
             createdAt: shippingMethods.createdAt,
             updatedAt: shippingMethods.updatedAt,
             coverage: coverageFactsSql(),
+            profileRates: profileRatesJsonSql(),
             ...(options.presence ? {
                 presenceMarket: sql<string | null>`(SELECT json_object('id', rate_market.id, 'c', rate_market.currency_code, 'r', rate_market.fx_rate)
                     FROM market_presences AS rate_presence
@@ -421,6 +473,8 @@ export async function listDeliveryRatesForDestination(
     return rows.map(({ coverage: _coverage, ...row }) => ({
         ...row,
         countries: row.zoneId ? zoneCountryCoverage(row.zoneId, facts) : [],
+        // NULL (no profile rates) skips the column decoder.
+        profileRates: row.profileRates ?? [],
     }));
 }
 

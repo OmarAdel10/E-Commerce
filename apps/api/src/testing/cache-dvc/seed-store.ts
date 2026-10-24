@@ -310,6 +310,14 @@ function seedSql(): string {
     ('ship_bd', 'Outside Dhaka', NULL, 1, 2, 15000, 'zone_bd', NULL, 'delivery'),
     ('ship_us', 'US standard', NULL, 1, 3, 250000, 'zone_us', NULL, 'delivery'),
     ('ship_west', 'West coast', NULL, 1, 4, 150000, 'zone_west', 500000, 'delivery');
+  -- Shipping profiles (0185): a priced profile with its own weight bands, a
+  -- free one, and a General band behind Outside Dhaka; the rate read lists them.
+  INSERT INTO shipping_profiles (id, name, free_delivery, default_weight_grams) VALUES
+    ('shp_bulky', 'Bulky', 0, 5000), ('shp_free_delivery', 'Free delivery', 1, NULL);
+  INSERT INTO shipping_profile_rates (id, method_id, profile_id, fee_minor, min_weight_grams, max_weight_grams, min_subtotal_minor, max_subtotal_minor, free_over_minor, sort_order) VALUES
+    ('spr_bulky_light', 'ship_dhaka', 'shp_bulky', 30000, NULL, 20000, NULL, NULL, NULL, 0),
+    ('spr_bulky_heavy', 'ship_dhaka', 'shp_bulky', 60000, 20001, NULL, NULL, NULL, NULL, 1),
+    ('spr_default_bd', 'ship_bd', 'shp_default', 15000, NULL, NULL, NULL, 500000, 200000, 0);
 
   INSERT INTO tax_classes (id, name, description, is_exempt) VALUES ('tax_std', 'Standard', NULL, 0), ('tax_zero', 'Zero rated', NULL, 1);
   INSERT INTO tax_regions (id, country_code, admin_area, postal_prefix, place_type, place_id, provider_id) VALUES

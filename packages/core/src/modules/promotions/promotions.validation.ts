@@ -83,7 +83,7 @@ export const promotionEffectInputSchema = z.discriminatedUnion("kind", [
         kind: z.literal("free"),
         target: z.literal("shipping"),
         allocation: z.literal("once"),
-        config: z.object({ maxRateMinor: positiveMinorSchema.optional() }).strict(),
+        config: z.object({ maxRateMinor: positiveMinorSchema.optional(), excludedProfileIds: z.array(z.string().trim().min(1).max(128)).max(20).optional() }).strict(),
     }).strict(),
 ]);
 

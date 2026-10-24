@@ -104,7 +104,6 @@ function editorCreateInput(body: CreateBody, places: number): unknown {
     productCondition: body.condition,
     categoryId: body.categoryId ?? null,
     ...(body.brandId !== undefined ? { brandId: body.brandId } : {}),
-    freeDelivery: false,
     metaTitle: body.metaTitle ?? null,
     metaDescription: body.metaDescription ?? null,
     canonicalPath: null,

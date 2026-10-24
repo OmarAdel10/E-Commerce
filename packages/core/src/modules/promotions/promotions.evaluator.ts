@@ -62,6 +62,12 @@ const cartSchema = z.object({
     priceIncrementMinor: z.number().int().min(1).max(10_000).optional(),
     lines: z.array(cartLineSchema).max(MAX_LINES),
     shippingAmountMinor: minorAmountSchema,
+    /**
+     * What each shipping profile pays of `shippingAmountMinor` (its share
+     * after the store's waivers); a free shipping discount that excludes a
+     * profile leaves that share charged. Absent: one share.
+     */
+    shippingShares: z.array(z.object({ profileId: z.string().trim().min(1).max(128), amountMinor: minorAmountSchema })).max(50).optional(),
     submittedCodes: z.array(z.string().trim().min(1).max(50)).max(MAX_SUBMITTED_CODES),
     evaluatedAtEpochSeconds: z.number().int().min(0),
 }).superRefine((cart, context) => {
@@ -148,8 +154,12 @@ const effectSchema = z.discriminatedUnion("kind", [
         kind: z.literal("free"),
         target: z.literal("shipping"),
         allocation: z.literal("once"),
-        /** Delivery rates above this amount are not made free. */
-        config: z.object({ maxRateMinor: positiveMinorSchema.optional() }),
+        /**
+         * Delivery rates above this amount are not made free (the covered
+         * part: what the profiles not excluded pay). `excludedProfileIds`:
+         * shipping profiles whose share stays charged.
+         */
+        config: z.object({ maxRateMinor: positiveMinorSchema.optional(), excludedProfileIds: z.array(z.string().trim().min(1).max(128)).max(20).optional() }),
     }),
 ]);
 
@@ -582,9 +592,26 @@ function computeOrder(eligible: Eligible, remaining: Map<string, number>, increm
     return finish(eligible, effect, splitAcross(amount, weights, incrementMinor));
 }
 
-function computeShipping(eligible: Eligible, effect: PromotionEffect, shippingMinor: number, incrementMinor: number): Computed {
+/**
+ * What a free shipping effect saves: every shipping profile's share except
+ * the excluded profiles', nothing when that covered part is over
+ * `maxRateMinor`. Without shares the whole charge is one share.
+ */
+export function freeShippingSavingMinor(
+    config: { maxRateMinor?: number; excludedProfileIds?: string[] },
+    shippingMinor: number,
+    shares?: PromotionEvaluationCart["shippingShares"],
+): number {
+    const excluded = new Set(config.excludedProfileIds ?? []);
+    const covered = excluded.size === 0 || !shares
+        ? shippingMinor
+        : Math.min(shippingMinor, shares.reduce((sum, share) => sum + (excluded.has(share.profileId) ? 0 : share.amountMinor), 0));
+    return config.maxRateMinor !== undefined && covered > config.maxRateMinor ? 0 : covered;
+}
+
+function computeShipping(eligible: Eligible, effect: PromotionEffect, shippingMinor: number, incrementMinor: number, shares?: PromotionEvaluationCart["shippingShares"]): Computed {
     const amount = effect.kind === "free"
-        ? (effect.config.maxRateMinor !== undefined && shippingMinor > effect.config.maxRateMinor ? 0 : shippingMinor)
+        ? freeShippingSavingMinor(effect.config, shippingMinor, shares)
         : effect.kind === "percentage_off"
             ? percentOfMinor(shippingMinor, effect.config.basisPoints, incrementMinor)
             : Math.min(shippingMinor, effect.config.amountMinor);
@@ -816,7 +843,7 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
         return [computed];
     });
     const shippingOptions = byClass.shipping.flatMap((eligible) => {
-        const computed = computeShipping(eligible, eligible.effect, cart.shippingAmountMinor, increment);
+        const computed = computeShipping(eligible, eligible.effect, cart.shippingAmountMinor, increment, cart.shippingShares);
         if (computed.total <= 0) {
             reject(eligible.candidate.id, "no_savings");
             return [];
@@ -856,7 +883,7 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
     const bundledPart = (primary: Computed | null, merchandiseAfterMinor: number): Computed | null => {
         const eligible = primary?.eligible;
         if (!eligible?.bundledShipping || merchandiseAfterMinor < eligible.shippingMinimumMinor) return null;
-        const part = computeShipping(eligible, eligible.bundledShipping, cart.shippingAmountMinor, increment);
+        const part = computeShipping(eligible, eligible.bundledShipping, cart.shippingAmountMinor, increment, cart.shippingShares);
         return part.total > 0 && withinBudget(eligible.candidate, primary!.total + part.total) ? part : null;
     };
     for (const product of [null, ...productOptions]) {

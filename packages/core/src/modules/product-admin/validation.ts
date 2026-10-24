@@ -198,7 +198,11 @@ const productBaseSchema = z.object({
     discountType: z.enum(["percentage", "flat"]).optional(),
     discountPercentage: z.number().min(0).max(100).nullish(),
     discountAmount: catalogMoneySchema.nullish(),
-    freeDelivery: z.boolean(),
+    /** The product's shipping profile; null: the default profile. Omit to keep it. */
+    shippingProfileId: z.string().trim().min(1).max(128).nullable().optional()
+        .describe("A shipping profile id (shp_…); null is the default profile. Omit to keep the current one."),
+    /** Deprecated: use `shippingProfileId`. True puts the product in the free-delivery profile. */
+    freeDelivery: z.boolean().optional(),
     metaTitle: z.string().nullable(),
     metaDescription: z.string().nullable().refine(
         (value) => !value?.includes("<!--variant_images:"),

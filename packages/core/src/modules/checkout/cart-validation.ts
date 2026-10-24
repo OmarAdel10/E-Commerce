@@ -1,6 +1,6 @@
 import type { Database } from "@scalius/database/client";
 import { withGiftCardRecipientFields } from "@scalius/shared/gift-card-recipient";
-import { products, productVariants } from "@scalius/database/schema";
+import { DEFAULT_SHIPPING_PROFILE_ID, products, productVariants } from "@scalius/database/schema";
 import { DEFAULT_CURRENCY, getDecimalPlaces, normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
 import { resolvePriceIncrementMinor } from "@scalius/shared/currency-policy";
 import { discountedPriceMinor, fromMinor, toMinor } from "@scalius/shared/money";
@@ -38,6 +38,7 @@ import { hasFulfiller } from "../fulfilment";
 import { BUILT_IN_PAYMENT_PROVIDERS, type PaymentProviders } from "../payments";
 import { giftCardLineRecipientIssue } from "../gift-cards";
 import { digitalDeliverableSql, digitalUnusedKeysSql } from "../digital";
+import { shippingWeightGrams, type ShippingLine } from "../delivery/browser";
 import { bundleGroupPricing } from "@scalius/shared/product-bundles";
 import { resolvePrice, type AppLinePrice, type ResolvedPriceSource } from "@scalius/shared/market-pricing";
 import { resolveCartWithAppLinePrices, type AppLinePricer } from "./app-line-prices";
@@ -174,7 +175,12 @@ export interface StorefrontCartValidatedItem {
     isGiftCard: boolean;
     productName: string;
     variantLabel: string | null;
+    /** The line's shipping profile ships free: its share of delivery is nothing (and only its own). */
     freeDelivery: boolean;
+    /** The product's shipping profile; null: the default profile. */
+    shippingProfileId?: string | null;
+    /** Grams per unit delivery pricing uses: the SKU's weight, else its profile's or the store's default, else 0. */
+    shippingWeightGrams?: number;
     inventoryTracked: boolean;
     availableQuantity: number | null;
     taxClassId: string | null;
@@ -260,7 +266,12 @@ export interface StorefrontCartProductRow {
     discountBps: number;
     discountType: string | null;
     discountAmountMinor: number;
+    /** The product's shipping profile ships free (`products.free_delivery`, its profile's mirror). */
     freeDelivery: boolean;
+    /** Null: the default profile. */
+    shippingProfileId?: string | null;
+    /** Grams an unweighed SKU of the product weighs (its profile's, else the store's); null: none set. */
+    defaultWeightGrams?: number | null;
     taxClassId: string | null;
     isGiftCard: boolean;
     /** Raw `products.customization_schema`; parsed and validated per line. */
@@ -425,6 +436,13 @@ export function selectStorefrontCartProductRows(
             discountType: products.discountType,
             discountAmountMinor: products.discountAmountMinor,
             freeDelivery: products.freeDelivery,
+            shippingProfileId: products.shippingProfileId,
+            // What an unweighed SKU weighs: its profile's default weight, else
+            // the default profile's (same statement; NULL without either).
+            defaultWeightGrams: sql<number | null>`(SELECT coalesce(own_profile.default_weight_grams, store_profile.default_weight_grams)
+                FROM shipping_profiles AS store_profile
+                LEFT JOIN shipping_profiles AS own_profile ON own_profile.id = "products"."shipping_profile_id"
+                WHERE store_profile.id = ${DEFAULT_SHIPPING_PROFILE_ID})`,
             taxClassId: products.taxClassId,
             isGiftCard: products.isGiftCard,
             customizationSchema: products.customizationSchema,
@@ -851,9 +869,6 @@ export function resolveStorefrontCartValidationFromRows(
             variant.imageId,
         );
         subtotalMinor += unitPriceMinor * item.quantity;
-        // Only a line that ships can waive delivery: a digital or service
-        // product marked "free delivery" must not make a mixed order's parcel free.
-        hasFreeDeliveryProduct ||= product.freeDelivery === true && fulfillmentKind === "physical" && !isGiftCard;
         validatedItems.push({
             index,
             cartKey: item.cartKey ?? null,
@@ -876,6 +891,8 @@ export function resolveStorefrontCartValidationFromRows(
             variantLabel: requestedVariantLabel,
             weightGrams: variant.weight ?? null,
             freeDelivery: product.freeDelivery,
+            shippingProfileId: product.shippingProfileId ?? null,
+            shippingWeightGrams: shippingWeightGrams(variant.weight, product.defaultWeightGrams),
             inventoryTracked: variant.trackInventory,
             availableQuantity: Number.isFinite(availableQuantity) ? availableQuantity : null,
             taxClassId: variant.taxClassId ?? product.taxClassId,
@@ -884,6 +901,10 @@ export function resolveStorefrontCartValidationFromRows(
         });
     });
 
+    // Deprecated: delivery is free for the whole order only when every line
+    // that ships is in a free-delivery profile (one free line waives only its own share).
+    const shipped = validatedItems.filter((line) => line.fulfillmentKind === "physical" && !line.isGiftCard);
+    hasFreeDeliveryProduct = shipped.length > 0 && shipped.every((line) => line.freeDelivery === true);
     const bundles = resolveCartBundleSavings(validatedItems, presentBundleRows(bundleRows, money), priceIncrementMinor);
 
     const pricingSegmentIds = [...(options.priceScope?.segmentIds ?? [])].sort();
@@ -1108,6 +1129,7 @@ export function presentStorefrontCartValidation(
             priceSource: _priceSource,
             bundle: _bundle,
             sourceIndex: _sourceIndex,
+            shippingWeightGrams: _shippingWeightGrams,
             ...item
         }, position) => ({
             ...item,
@@ -1235,4 +1257,25 @@ export function resolveCartPaymentMethods(
         && (method !== "cod" || summary.allowsCashOnDelivery)
         && providers.countryIssue(method, paymentCountryCode) === null
         && (currencyCode === null || providers.currencyIssue(method, currencyCode) === null));
+}
+
+/** A cart line as delivery pricing reads it (a validated item, or a narrower test or agent cart's line). */
+export type StorefrontCartShippingLine = StorefrontCartFulfilmentLine & Partial<Pick<StorefrontCartValidatedItem,
+    "variantId" | "quantity" | "unitPriceMinor" | "weightGrams" | "freeDelivery" | "shippingProfileId" | "shippingWeightGrams">>;
+
+/**
+ * The cart's lines that ship (physical, never a gift card) as the
+ * shipping-profile rule reads them (`priceDeliveryOption`): digital,
+ * service and gift-card lines count toward no band and no free-over amount.
+ */
+export function deliveryShippingLines(items: readonly StorefrontCartShippingLine[]): ShippingLine[] {
+    return items
+        .filter((item) => item.fulfillmentKind === "physical" && !item.isGiftCard)
+        .map((item) => ({
+            shippingProfileId: item.shippingProfileId ?? null,
+            freeDelivery: item.freeDelivery === true,
+            weightGrams: item.shippingWeightGrams ?? shippingWeightGrams(item.weightGrams, null),
+            unitPriceMinor: item.unitPriceMinor ?? 0,
+            quantity: item.quantity ?? 1,
+        }));
 }

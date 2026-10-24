@@ -16,6 +16,7 @@ import {
   updateCartItemByKey,
   getEffectiveCartShippingFee,
   cartItemsSubtotal,
+  cartShippedSubtotal,
   cartLinePropertyInputs,
   cartNeedsDeliveryMethod,
   type CartItem,
@@ -713,7 +714,7 @@ function renderShippingLine(
 /** "Add ৳500 more for free delivery." while the chosen rate's threshold is not reached. */
 function renderFreeDeliveryProgress(
   chargedFee: number,
-  subtotal = cartItemsSubtotal(cartStore.get().items),
+  subtotal = cartShippedSubtotal(cartStore.get().items),
   decimalPlaces = getDecimalPlaces(getCurrencyCode()),
 ): void {
   const progress = document.getElementById("shippingProgress");
@@ -760,7 +761,7 @@ function renderAuthoritativeCartQuote(
     // Nothing physical: no delivery line to price (the row is hidden).
     renderShippingLine(elements.shipping, { baseFee: 0, charged: 0, discounts: [] });
   }
-  renderFreeDeliveryProgress(quote.shippingAmount, quote.subtotalAmount, quote.decimalPlaces);
+  renderFreeDeliveryProgress(quote.shippingAmount, cartShippedSubtotal(cartStore.get().items), quote.decimalPlaces);
   elements.total.textContent = formatMoney(quote.totalAmount);
   if (elements.totalLabel) {
     elements.totalLabel.textContent =

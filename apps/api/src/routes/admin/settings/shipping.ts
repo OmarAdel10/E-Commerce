@@ -1,7 +1,13 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
     MAX_DELIVERY_AMOUNT,
+    MAX_PROFILE_RATES,
+    MAX_SHIPPING_WEIGHT_GRAMS,
     MAX_ZONE_LOCATIONS,
+    createShippingProfile,
+    deleteShippingProfile,
+    listShippingProfiles,
+    updateShippingProfile,
     MAX_ZONE_RATES,
     MAX_ZONE_REGIONS,
     applyDeliveryZoneTemplate,
@@ -309,6 +315,135 @@ app.openapi(deleteZoneRoute, async (c) => {
     const db = c.get("db");
     await deleteDeliveryZone(db, c.req.valid("param").id);
 
+    return noContent(c);
+});
+
+// ── Shipping profiles (rules/decisions/2026-10-24-shipping-profiles.md) ──
+
+const grams = z.number().int("Enter whole grams.").min(0, "Enter 0 or more.").max(MAX_SHIPPING_WEIGHT_GRAMS, "Enter up to 1,000,000 grams.");
+
+const profileRateInputSchema = z.object({
+    methodId: z.string().trim().min(1).max(128).openapi({ description: "The delivery option (zones[].rates[].id or pickup.rates[].id from dashboard.shipping_methods.list)." }),
+    fee: amount("Enter a charge up to 1,00,000."),
+    minWeightGrams: grams.nullable().optional(),
+    maxWeightGrams: grams.nullable().optional(),
+    minSubtotal: amount("Enter an amount up to 1,00,000.").nullable().optional(),
+    maxSubtotal: amount("Enter an amount up to 1,00,000.").nullable().optional(),
+    freeOver: amount("Enter an amount up to 1,00,000.").nullable().optional().openapi({
+        description: "Free once this profile's shipped items reach this value (before discounts), in major units.",
+    }),
+});
+
+const profileInputSchema = z.object({
+    name: z.string().trim().min(1, "Enter a profile name.").max(80),
+    defaultWeightGrams: grams.nullable().optional().openapi({
+        description: "What an item of this profile without its own weight weighs, in grams (the default profile's is the store's).",
+    }),
+    rates: z.array(profileRateInputSchema).max(MAX_PROFILE_RATES).optional().openapi({
+        description: "The profile's own rates behind delivery options; an option without one prices the profile's items with the default profile's. Omit to keep them.",
+    }),
+});
+
+const profileSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    isDefault: z.boolean(),
+    freeDelivery: z.boolean(),
+    defaultWeightGrams: z.number().int().nullable(),
+    revision: z.number().int(),
+    productCount: z.number().int(),
+    rates: z.array(z.object({
+        id: z.string(),
+        methodId: z.string(),
+        fee: z.number(),
+        minWeightGrams: z.number().int().nullable(),
+        maxWeightGrams: z.number().int().nullable(),
+        minSubtotal: z.number().nullable(),
+        maxSubtotal: z.number().nullable(),
+        freeOver: z.number().nullable(),
+    })),
+});
+
+const PROFILE_TAGS = ["Admin - Shipping Profiles"];
+const profileParams = z.object({ id: z.string().min(1).max(128) });
+
+app.openapi(createRoute({
+    method: "get",
+    path: "/profiles",
+    operationId: "dashboard.shipping_profiles.list",
+    tags: PROFILE_TAGS,
+    summary: "List shipping profiles with their product counts and their own rates behind each delivery option",
+    responses: {
+        200: { description: "Shipping profiles", content: { "application/json": { schema: successEnvelope(z.object({ profiles: z.array(profileSchema) })) } } },
+        ...errorResponses,
+    },
+}), async (c) => {
+    const db = c.get("db");
+    return ok(c, { profiles: await listShippingProfiles(db, await storeDecimalPlaces(db)) });
+});
+
+app.openapi(createRoute({
+    method: "post",
+    path: "/profiles",
+    operationId: "dashboard.shipping_profiles.create",
+    tags: PROFILE_TAGS,
+    summary: "Create a shipping profile; a free delivery profile ships its products free on every delivery option",
+    request: {
+        body: {
+            required: true,
+            content: {
+                "application/json": {
+                    schema: profileInputSchema.extend({
+                        freeDelivery: z.boolean().optional().openapi({ description: "Products in this profile ship free on every delivery option. Fixed once the profile exists." }),
+                    }),
+                },
+            },
+        },
+    },
+    responses: {
+        201: { description: "Profile created", content: { "application/json": { schema: successEnvelope(revisionSchema) } } },
+        ...errorResponses,
+    },
+}), async (c) => {
+    const db = c.get("db");
+    return created(c, await createShippingProfile(db, c.req.valid("json"), await readStoreCurrency(db)));
+});
+
+app.openapi(createRoute({
+    method: "put",
+    path: "/profiles/{id}",
+    operationId: "dashboard.shipping_profiles.update",
+    tags: PROFILE_TAGS,
+    summary: "Replace a shipping profile's name, default weight and rates",
+    request: {
+        params: profileParams,
+        body: { required: true, content: { "application/json": { schema: profileInputSchema.extend({ expectedRevision: z.number().int().min(1) }) } } },
+    },
+    responses: {
+        200: { description: "Profile saved", content: { "application/json": { schema: successEnvelope(revisionSchema) } } },
+        ...errorResponses,
+        409: conflictResponse,
+    },
+}), async (c) => {
+    const db = c.get("db");
+    const { expectedRevision, ...profile } = c.req.valid("json");
+    return ok(c, await updateShippingProfile(db, c.req.valid("param").id, profile, expectedRevision, await readStoreCurrency(db)));
+});
+
+app.openapi(createRoute({
+    method: "delete",
+    path: "/profiles/{id}",
+    operationId: "dashboard.shipping_profiles.delete",
+    tags: PROFILE_TAGS,
+    summary: "Delete a shipping profile; its products move to the default profile",
+    request: { params: profileParams },
+    responses: {
+        204: noContentResponse,
+        ...errorResponses,
+        409: conflictResponse,
+    },
+}), async (c) => {
+    await deleteShippingProfile(c.get("db"), c.req.valid("param").id);
     return noContent(c);
 });
 

@@ -48,11 +48,18 @@ async function readRate(token: string | null | undefined, key: CryptoKey, match:
   } catch { return null; }
 }
 
-/** Quotes once per provider, at most three providers and two seconds total; no durable quote state. */
+/**
+ * Quotes once per provider and parcel, at most three quotes and two seconds
+ * total; no durable quote state. Each option quotes the parcel `parcelFor`
+ * gives it (the lines its own fee prices, `deliveryOptionBaseLines`); an
+ * option whose parcel is empty prices nothing and calls no carrier.
+ */
 export async function resolveCalculatedDeliveryRates(input: {
   db: Database;
   rows: readonly DeliveryRateRow[];
   request: CourierRatesInput;
+  /** The parcel each option quotes; absent: `request.parcel` for every option. */
+  parcelFor?: (row: DeliveryRateRow) => CourierRatesInput["parcel"];
   locationRows: readonly ActiveDeliveryLocationRow[];
   money: PresentmentMoney;
   token?: string | null;
@@ -62,10 +69,12 @@ export async function resolveCalculatedDeliveryRates(input: {
   if (!input.rows.some((row) => row.rateSource && row.rateSource !== "flat")) return [...input.rows];
   const { options = {}, request, money } = input;
   const key = options.masterSecret ? await signingKey(options.masterSecret) : null;
-  const parcelHash = await sha256(JSON.stringify({ parcel: request.parcel, origin: request.origin }));
+  const requestFor = (row: DeliveryRateRow): CourierRatesInput => input.parcelFor ? { ...request, parcel: input.parcelFor(row) } : request;
+  const parcelHashOf = (rowRequest: CourierRatesInput) => sha256(JSON.stringify({ parcel: rowRequest.parcel, origin: rowRequest.origin }));
   const selected = input.rows.find((row) => row.id === input.methodId);
   if (key && input.token && selected?.rateSource && selected.rateSource !== "flat") {
     const destHash = await sha256(JSON.stringify({ destination: request.destination, provider: selected.rateSource, service: selected.rateService ?? null }));
+    const parcelHash = await parcelHashOf(requestFor(selected));
     const locked = await readRate(input.token, key, { methodId: selected.id, currency: request.currency, destHash, parcelHash, ...(options.acceptQuotedCod ? {} : { cod: request.cod }) }, selected.rateService ?? null);
     // Commit consumes the chosen signed rate; it does not contact any carrier.
     if (locked) return input.rows.flatMap((row) => row.id === selected.id
@@ -76,49 +85,53 @@ export async function resolveCalculatedDeliveryRates(input: {
   for (const row of input.locationRows) {
     try { locationExternalIds.set(row.id, JSON.parse(row.externalIds || "{}")); } catch { /* Unreadable mappings refuse this carrier's rate. */ }
   }
+  const sign = async (row: DeliveryRateRow, parcelHash: string, amountMinor: number, service: string | null) => {
+    const destHash = await sha256(JSON.stringify({ destination: request.destination, provider: row.rateSource, service: row.rateService ?? null }));
+    const proof: RateProof = { methodId: row.id, service, amountMinor, currency: request.currency, destHash, parcelHash, cod: request.cod, exp: Math.floor(Date.now() / 1000) + 900 };
+    return { ...row, feeMinor: amountMinor, rateCurrency: request.currency, rateCod: request.cod, rateToken: await signRate(proof, key!) };
+  };
   const settled = new Map<string, DeliveryRateRow | null>();
   const pending = new Map<string, Promise<ReturnType<typeof courierRatesSchema.parse> | null>>();
   const quoted = await withCheckoutProviderDeadline(async (signal) => {
     return Promise.all(input.rows.map((row) => (async (): Promise<DeliveryRateRow | null> => {
       const provider = row.rateSource;
       if (!provider || provider === "flat" || row.kind === "pickup") return row;
-      const destHash = await sha256(JSON.stringify({ destination: request.destination, provider, service: row.rateService ?? null }));
-      const match = { methodId: row.id, currency: request.currency, destHash, parcelHash };
       if (!key) return null;
-      let call = pending.get(provider);
+      const rowRequest = requestFor(row);
+      const parcelHash = await parcelHashOf(rowRequest);
+      // Nothing for the carrier to price: every line has its own profile rate or ships free.
+      if (input.parcelFor && rowRequest.parcel.lines.length === 0) return sign(row, parcelHash, 0, row.rateService ?? null);
+      const quoteKey = `${provider}\u0000${parcelHash}`;
+      let call = pending.get(quoteKey);
       if (!call && pending.size < 3) {
         call = (async () => {
           try {
             const courier = await courierFor(options.couriers, provider);
-            if (!courier?.rates || !providerServesCountry(courier.countries, request.destination.country)) return null;
-            const cacheKey = await sha256(JSON.stringify({ provider, request, mappings: [...locationExternalIds] }));
+            if (!courier?.rates || !providerServesCountry(courier.countries, rowRequest.destination.country)) return null;
+            const cacheKey = await sha256(JSON.stringify({ provider, request: rowRequest, mappings: [...locationExternalIds] }));
             const cached = await options.cache?.get(cacheKey).catch(() => null);
             if (cached) {
               try { return courierRatesSchema.parse(JSON.parse(cached)); } catch { /* A bad hint is a miss. */ }
             }
-            const response = courierRatesSchema.parse(await courier.rates(request, { settings: null, signal, db: input.db, locationExternalIds }));
+            const response = courierRatesSchema.parse(await courier.rates(rowRequest, { settings: null, signal, db: input.db, locationExternalIds }));
             await options.cache?.put(cacheKey, JSON.stringify(response)).catch(() => undefined);
             return response;
           } catch { return null; }
         })();
-        pending.set(provider, call);
+        pending.set(quoteKey, call);
       }
       const rates = (await call)?.rates ?? [];
       const chosen = row.rateService ? rates.find((rate) => rate.service === row.rateService)
         : rates.reduce<(typeof rates)[number] | undefined>((best, rate) => !best || rate.amountMinor < best.amountMinor ? rate : best, undefined);
       const amountMinor = chosen?.amountMinor ?? (row.fallbackFeeMinor == null ? null : presentShopMinor(money, row.fallbackFeeMinor));
       if (amountMinor === null) return null;
-      const proof: RateProof = { ...match, cod: request.cod, service: chosen?.service ?? row.rateService ?? null, amountMinor, exp: Math.floor(Date.now() / 1000) + 900 };
-      return { ...row, feeMinor: amountMinor, rateCurrency: request.currency, rateCod: request.cod, rateToken: await signRate(proof, key) };
+      return sign(row, parcelHash, amountMinor, chosen?.service ?? row.rateService ?? null);
     })().then((result) => { settled.set(row.id, result); return result; })));
   }).catch(async () => Promise.all(input.rows.map(async (row): Promise<DeliveryRateRow | null> => {
     if (settled.has(row.id)) return settled.get(row.id)!;
     if (!row.rateSource || row.rateSource === "flat" || row.kind === "pickup") return row;
     if (!key || row.fallbackFeeMinor == null) return null;
-    const destHash = await sha256(JSON.stringify({ destination: request.destination, provider: row.rateSource, service: row.rateService ?? null }));
-    const amountMinor = presentShopMinor(money, row.fallbackFeeMinor);
-    const proof: RateProof = { methodId: row.id, service: row.rateService ?? null, amountMinor, currency: request.currency, destHash, parcelHash, cod: request.cod, exp: Math.floor(Date.now() / 1000) + 900 };
-    return { ...row, feeMinor: amountMinor, rateCurrency: request.currency, rateCod: request.cod, rateToken: await signRate(proof, key) };
+    return sign(row, await parcelHashOf(requestFor(row)), presentShopMinor(money, row.fallbackFeeMinor), row.rateService ?? null);
   })));
   return quoted.filter((row): row is DeliveryRateRow => row !== null);
 }

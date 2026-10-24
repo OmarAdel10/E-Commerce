@@ -4,6 +4,7 @@ export * from "./tracking";
 export * from "./places";
 export * from "./places-import";
 export * from "./zones";
+export * from "./shipping-profiles";
 export * from "./location-validation";
 // Couriers: the port as delivery code calls it and the request-scoped
 // catalog. Every courier is an app's (the Bangladesh ones are the Bangladesh

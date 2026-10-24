@@ -83,7 +83,12 @@ const effectInput = z.discriminatedUnion("kind", [
     kind: z.literal("free"),
     target: z.literal("shipping"),
     allocation: z.literal("once"),
-    config: z.object({ maxRateMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional() }).strict(),
+    config: z.object({
+      maxRateMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+      excludedProfileIds: z.array(z.string().trim().min(1).max(128)).max(20).optional().openapi({
+        description: "Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's.",
+      }),
+    }).strict(),
   }).strict(),
 ]);
 

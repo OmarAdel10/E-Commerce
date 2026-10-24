@@ -24,12 +24,12 @@ import {
   type TaxQuote,
 } from "../tax";
 import { DELIVERY_HIERARCHY_COUNTRY } from "@scalius/shared/markets";
-import { DELIVERY_RATE_UNAVAILABLE_REASON, deliveryRateInCurrency, destinationCountry, listDeliveryRatesForDestination, type DeliveryRateRow } from "../delivery";
+import { DEFAULT_SHIPPING_PROFILE_ID, DELIVERY_RATE_UNAVAILABLE_REASON, deliveryRateInCurrency, destinationCountry, listDeliveryRatesForDestination, priceDeliveryOption, type DeliveryRateRow } from "../delivery";
 import { BUILT_IN_PAYMENT_PROVIDERS, COD_LABEL, NET_TERMS_LABEL, NET_TERMS_PAYMENT_METHOD, type PaymentProviders } from "../payments";
 import { GIFT_CARD_PAYMENT_METHOD } from "../gift-cards";
 import type { StorefrontOrderShippingMethodSnapshot } from "../orders";
 import { resolveBundlePromotionInterplay, type BundlePromotionInterplay } from "./bundle-discounts";
-import type { StorefrontCartValidationResult } from "./cart-validation";
+import { deliveryShippingLines, type StorefrontCartValidationResult } from "./cart-validation";
 import {
   applyAppPaymentMethodOperations,
   applyAppShippingRateOperations,
@@ -55,6 +55,10 @@ import {
 /** The delivery facts pricing needs (a delivery preflight result has them). */
 export interface CheckoutPricingDelivery {
   rateRows?: DeliveryRateRow[];
+  /** The options read with the chosen one (shop currency); see `StorefrontDeliveryPreflightResult.offeredRows`. */
+  offeredRows?: DeliveryRateRow[];
+  /** What each shipping profile pays of `shippingMinor`. */
+  shippingShares?: Array<{ profileId: string; amountMinor: number }>;
   kind: "delivery" | "pickup" | null;
   shippingMinor: number;
   shippingMethod: StorefrontOrderShippingMethodSnapshot | null;
@@ -175,7 +179,7 @@ async function listRateOptions(
   // Bangladesh needs its city; another country is a destination by itself.
   const hasDestination = country === DELIVERY_HIERARCHY_COUNTRY ? Boolean(source?.city?.trim()) : Boolean(source);
   const money = input.cartValidation.money;
-  const rows = (input.delivery.rateRows ?? await listDeliveryRatesForDestination(db, hasDestination
+  const rows = (input.delivery.rateRows ?? input.delivery.offeredRows ?? await listDeliveryRatesForDestination(db, hasDestination
     ? {
       countryCode: country,
       city: source?.city,
@@ -185,22 +189,37 @@ async function listRateOptions(
       postalCode: source?.postalCode,
     }
     : null)).map((row) => deliveryRateInCurrency(row, money));
+  const lines = deliveryShippingLines(input.cartValidation.items);
   return rows
     // Without a destination only pickup is offered; apps adjust what the buyer can choose.
     .filter((row) => (hasDestination || row.kind === "pickup") && (!row.rateSource || row.rateSource === "flat" || row.rateCurrency !== undefined))
-    .map((row) => {
-      const freeOver = row.freeOverMinor ?? null;
-      const waived = input.cartValidation.hasFreeDeliveryProduct
-        || (freeOver !== null && input.cartValidation.subtotalMinor >= freeOver);
-      return {
+    .flatMap((row) => {
+      // Each shipping profile's share (`priceDeliveryOption`); an option a
+      // profile's rates refuse for these lines is not offered.
+      const charge = priceDeliveryOption(row, lines);
+      if (!charge) return [];
+      return [{
         rateId: row.id,
         name: row.name.trim(),
         kind: row.kind === "pickup" ? "pickup" as const : "delivery" as const,
-        amountMinor: waived ? 0 : row.feeMinor,
-        baseAmountMinor: row.feeMinor,
-        waived,
-      };
+        amountMinor: charge.chargeMinor,
+        baseAmountMinor: charge.baseMinor,
+        waived: charge.waived,
+        shares: charge.shares.map(({ profileId, baseMinor, waived }) => ({ profileId, baseMinor, waived })),
+      }];
     });
+}
+
+/**
+ * Whether profile pricing can make this cart's option charges differ from
+ * the options' own fees (a profile's rates behind an option, or a line in a
+ * profile other than the default): the quote then lists each option's
+ * charge for this cart, so the storefront shows what the buyer pays.
+ */
+function cartUsesShippingProfiles(input: StorefrontCheckoutPricingInput, rows: readonly DeliveryRateRow[] | undefined): boolean {
+  return (rows ?? []).some((row) => (row.profileRates?.length ?? 0) > 0)
+    || input.cartValidation.items.some((item) => item.fulfillmentKind === "physical" && !item.isGiftCard
+      && ((item.shippingProfileId ?? DEFAULT_SHIPPING_PROFILE_ID) !== DEFAULT_SHIPPING_PROFILE_ID || item.freeDelivery === true));
 }
 
 /** A cart that fails its own schema is a platform fault: no app runs (fail-open), checkout goes on. */
@@ -223,7 +242,7 @@ export async function priceStorefrontCheckout(
   const apps = input.apps;
   const lineIds = cartValidation.items.map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId));
 
-  const platformPricing = async (shippingMinor: number) => {
+  const platformPricing = async (shippingMinor: number, shippingShares?: Array<{ profileId: string; amountMinor: number }>) => {
     const discount = await quoteStorefrontDiscount(db, {
       codes: [...input.discountCodes],
       customerId: input.customerId,
@@ -246,6 +265,8 @@ export async function priceStorefrontCheckout(
           ...(item.isGiftCard ? { giftCard: true } : {}),
         })),
         shippingAmountMinor: shippingMinor,
+        // One default-profile share is the whole charge: nothing for an exclusion to split.
+        ...(shippingShares && shippingShares.some((share) => share.profileId !== DEFAULT_SHIPPING_PROFILE_ID) ? { shippingShares } : {}),
       },
     });
     // Promotions or quantity bundles price the order, never both (bundle-discounts.ts).
@@ -265,12 +286,17 @@ export async function priceStorefrontCheckout(
 
   let shippingMinor = delivery.shippingMinor;
   let shippingMethod = delivery.shippingMethod;
-  let platform = await platformPricing(shippingMinor);
+  let shippingShares = delivery.shippingShares;
+  let platform = await platformPricing(shippingMinor, shippingShares);
   let appDiscounts: AppliedAppDiscount[] = [];
   let appObjectCommits: AppObjectCommit[] = [];
   let claimedCodes: string[] = [];
   let ruleErrors: CheckoutRuleError[] = [];
-  let shippingRates: CheckoutRateOption[] | null = delivery.rateRows ? await listRateOptions(db, input) : null;
+  // Carrier quotes, and carts that shipping profiles price, list each option's
+  // charge for this cart; otherwise the options' own fees are what the buyer pays.
+  let shippingRates: CheckoutRateOption[] | null = delivery.rateRows || (delivery.kind !== null && cartUsesShippingProfiles(input, delivery.offeredRows))
+    ? await listRateOptions(db, input)
+    : null;
   let appCart: FunctionCart | null = null;
 
   if (apps && wantsAppCart(apps, ["cart.validate", "checkout.discounts", "checkout.shipping_rates", "checkout.payment_methods", PLUGIN_EXTENSION_RUN])) {
@@ -351,8 +377,11 @@ export async function priceStorefrontCheckout(
           };
           if (chosen.amountMinor !== shippingMinor) {
             shippingMinor = chosen.amountMinor;
+            shippingShares = chosen.shares
+              ? chosen.shares.map((share) => ({ profileId: share.profileId, amountMinor: share.waived ? 0 : share.baseMinor }))
+              : undefined;
             // Delivery discounts follow the charge the buyer now pays.
-            platform = await platformPricing(shippingMinor);
+            platform = await platformPricing(shippingMinor, shippingShares);
           }
         }
       }

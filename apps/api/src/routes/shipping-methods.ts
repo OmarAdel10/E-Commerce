@@ -58,6 +58,17 @@ const listShippingMethodsRoute = createRoute({
           isActive: z.boolean(),
           sortOrder: z.number().int(),
           createdAt: z.string().nullable(),
+          profileRates: z.array(z.object({
+            profileId: z.string().max(128),
+            fee: z.number().min(0),
+            minWeightGrams: z.number().int().nullable(),
+            maxWeightGrams: z.number().int().nullable(),
+            minSubtotal: z.number().min(0).nullable(),
+            maxSubtotal: z.number().min(0).nullable(),
+            freeOver: z.number().min(0).nullable(),
+          })).max(200).openapi({
+            description: "Shipping profiles' own rates behind this option: a product of `profileId` pays the cheapest one its items fit (weight and order-value bands), not `fee`. A product whose profile has none here pays as the default profile's (`shp_default`) do. Empty: every product pays `fee`.",
+          }),
         })).max(100),
       })) } },
     },
@@ -101,12 +112,21 @@ app.openapi(listShippingMethodsRoute, async (c) => {
 
   return ok(c, {
     // zoneId and updatedAt are left out: they change without changing what a buyer sees.
-    shippingMethods: (money === null ? [] : rates).map(({ zoneId: _zoneId, feeMinor, freeOverMinor, createdAt, updatedAt: _updatedAt, presenceMarket: _presenceMarket, rateService: _rateService, fallbackFeeMinor: _fallbackFeeMinor, rateToken: _rateToken, rateCurrency: _rateCurrency, rateCod: _rateCod, ...rate }) => ({
+    shippingMethods: (money === null ? [] : rates).map(({ zoneId: _zoneId, feeMinor, freeOverMinor, createdAt, updatedAt: _updatedAt, presenceMarket: _presenceMarket, rateService: _rateService, fallbackFeeMinor: _fallbackFeeMinor, rateToken: _rateToken, rateCurrency: _rateCurrency, rateCod: _rateCod, profileRates, ...rate }) => ({
       ...applyTranslation(rate, chains.get(rate.id) ?? [], { name: "name", description: "description", pickupHours: "pickupHours" }),
       rateSource: rate.rateSource ?? "flat",
       fee: fromMinor(present(feeMinor), decimalPlaces),
       freeOver: freeOverMinor === null ? null : fromMinor(present(freeOverMinor), decimalPlaces),
       createdAt: createdAt instanceof Date ? createdAt.toISOString() : null,
+      profileRates: profileRates.map((profileRate) => ({
+        profileId: profileRate.profileId,
+        fee: fromMinor(present(profileRate.feeMinor), decimalPlaces),
+        minWeightGrams: profileRate.minWeightGrams,
+        maxWeightGrams: profileRate.maxWeightGrams,
+        minSubtotal: profileRate.minSubtotalMinor === null ? null : fromMinor(present(profileRate.minSubtotalMinor), decimalPlaces),
+        maxSubtotal: profileRate.maxSubtotalMinor === null ? null : fromMinor(present(profileRate.maxSubtotalMinor), decimalPlaces),
+        freeOver: profileRate.freeOverMinor === null ? null : fromMinor(present(profileRate.freeOverMinor), decimalPlaces),
+      })),
     })),
   });
 });

@@ -260,6 +260,8 @@ export interface Product {
   discountedPrice: number;
   priceVaries?: boolean;
   freeDelivery: boolean;
+  /** The product's shipping profile; null or absent: the default profile. */
+  shippingProfileId?: string | null;
   isActive: boolean;
   metaTitle: string | null;
   metaDescription: string | null;
@@ -907,6 +909,22 @@ export interface ShippingMethod {
   isActive: boolean;
   sortOrder: number;
   createdAt: string | null;
+  /**
+   * Shipping profiles' own rates behind this option: a product of
+   * `profileId` pays one of these instead of `fee` (absent or empty: every
+   * product pays `fee`). Read with `shippingMethodsForProfile`.
+   */
+  profileRates?: ShippingProfileRate[];
+}
+
+export interface ShippingProfileRate {
+  profileId: string;
+  fee: number;
+  minWeightGrams: number | null;
+  maxWeightGrams: number | null;
+  minSubtotal: number | null;
+  maxSubtotal: number | null;
+  freeOver: number | null;
 }
 
 export interface AnalyticsConfig {

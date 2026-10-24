@@ -5978,6 +5978,16 @@
                  "minimum": 0,
                  "exclusiveMinimum": true,
                  "maximum": 9007199254740991
+                },
+                "excludedProfileIds": {
+                 "type": "array",
+                 "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                 },
+                 "maxItems": 20,
+                 "description": "Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's."
                 }
                },
                "additionalProperties": false
@@ -6707,6 +6717,16 @@
                  "minimum": 0,
                  "exclusiveMinimum": true,
                  "maximum": 9007199254740991
+                },
+                "excludedProfileIds": {
+                 "type": "array",
+                 "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                 },
+                 "maxItems": 20,
+                 "description": "Shipping profiles (ids) whose share of the delivery charge stays charged: free shipping covers every other profile's."
                 }
                },
                "additionalProperties": false
