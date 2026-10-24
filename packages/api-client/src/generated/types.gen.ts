@@ -3896,9 +3896,22 @@ export type CustomerErasureResult = {
      */
     orders: number;
     /**
-     * The buyer's conversation images deleted from storage.
+     * Work outside the database that is recorded and runs in the background, retried until it is done. Erasing the customer again resumes it.
      */
-    files: number;
+    pending: {
+        /**
+         * The buyer's conversation images still to delete from storage.
+         */
+        files: number;
+        /**
+         * Saved payment methods still to detach at their provider. They can no longer be charged.
+         */
+        paymentMethods: number;
+    };
+    /**
+     * True only when nothing is pending: every image is deleted and every saved method detached.
+     */
+    complete: boolean;
 };
 
 export type StaffSavedPaymentMethod = CustomerSavedPaymentMethod & {

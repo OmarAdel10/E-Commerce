@@ -19393,9 +19393,27 @@
             "type": "integer",
             "description": "Orders whose contact and addresses were scrubbed. Their money, lines and region stay."
           },
-          "files": {
-            "type": "integer",
-            "description": "The buyer's conversation images deleted from storage."
+          "pending": {
+            "type": "object",
+            "properties": {
+              "files": {
+                "type": "integer",
+                "description": "The buyer's conversation images still to delete from storage."
+              },
+              "paymentMethods": {
+                "type": "integer",
+                "description": "Saved payment methods still to detach at their provider. They can no longer be charged."
+              }
+            },
+            "required": [
+              "files",
+              "paymentMethods"
+            ],
+            "description": "Work outside the database that is recorded and runs in the background, retried until it is done. Erasing the customer again resumes it."
+          },
+          "complete": {
+            "type": "boolean",
+            "description": "True only when nothing is pending: every image is deleted and every saved method detached."
           }
         },
         "required": [
@@ -19403,7 +19421,8 @@
           "erased",
           "mergedRecords",
           "orders",
-          "files"
+          "pending",
+          "complete"
         ]
       },
       "StaffSavedPaymentMethod": {
@@ -128184,7 +128203,7 @@
           "Admin - Customers"
         ],
         "summary": "Erase a customer's personal data",
-        "description": "The right to erasure for a customer who ordered. Scrubs the customer's contact and every guest record merged into it; deletes their addresses, sign-in identities, sessions, saved payment methods (detached at their provider first), marketing consents, push subscriptions and app roles; scrubs the contact, recipient, street lines, phones and notes on their orders (money, lines and region stay for the books); gives their reviews the fallback name; and erases their words and images in conversations. The record is retired and cannot be restored. Emits `customer.erased` so apps erase their copies. Refused while an order is still in progress. Only a Super Admin may erase (an agent only for a Super Admin owner); it cannot be undone.",
+        "description": "The right to erasure for a customer who ordered. Scrubs the customer's contact and every guest record merged into it; deletes their addresses, sign-in identities, sessions, saved payment methods, marketing consents, push subscriptions and app roles; scrubs the contact, recipient, street lines, phones and notes on their orders (money, lines and region stay for the books); gives their reviews the fallback name; and erases their words and images in conversations. The record is retired and cannot be restored. Emits `customer.erased` so apps erase their copies. Refused while an order is still in progress, and then nothing changes anywhere. Deleting the images from storage and detaching the saved methods at their provider run after the erasure commits, in the background, retried until done (`pending`); erasing again resumes them. Only a Super Admin may erase (an agent only for a Super Admin owner); it cannot be undone.",
         "parameters": [
           {
             "schema": {
