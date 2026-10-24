@@ -14,9 +14,10 @@ type CircuitEnv = Parameters<typeof workerCacheHint>[0];
 
 const hint = (env: CircuitEnv) => workerCacheHint(env, "tiktok-events-circuit", 60);
 
+// The error's class only: a database or provider message can echo what it was handed.
 function warn(action: string, error: unknown): void {
   console.warn(`[TikTok Events API] Browser event circuit could not be ${action}`, {
-    error: error instanceof Error ? error.message : String(error),
+    error: error instanceof Error ? error.name : typeof error,
   });
 }
 

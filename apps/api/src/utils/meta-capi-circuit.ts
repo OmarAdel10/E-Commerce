@@ -14,13 +14,19 @@ type CircuitEnv = Parameters<typeof workerCacheHint>[0];
 
 const hint = (env: CircuitEnv) => workerCacheHint(env, "meta-capi-circuit", 60);
 
+// The error's class only: a database or provider message can echo what it was handed.
 function warn(action: string, error: unknown): void {
   console.warn(`[Meta CAPI] Browser event circuit could not be ${action}`, {
-    error: error instanceof Error ? error.message : String(error),
+    error: error instanceof Error ? error.name : typeof error,
   });
 }
 
-/** Whether browser events skip dispatch now. A failed read fails open (dispatch), as before. */
+/**
+ * Whether browser events skip dispatch now. A circuit that cannot be read
+ * fails open (dispatch): it only saves Meta calls, and dispatch itself still
+ * needs the trusted origin and valid credentials. Such a read warns, error
+ * class only.
+ */
 export async function isMetaCapiBrowserCircuitOpen(db: Database, env: CircuitEnv, now = Date.now()): Promise<boolean> {
   try {
     const cache = hint(env);

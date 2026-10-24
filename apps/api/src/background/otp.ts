@@ -295,7 +295,7 @@ export async function deliverAuthOtp(
           rawResponse: failureResult.rawResponse,
         },
       );
-      console.warn(`[otp] Skipped delivery ${target.deliveryKey}: ${redactAuthOtpLogText(reason)}`);
+      console.warn(`[otp] Skipped delivery ${target.deliveryKey}: ${authOtpLogCode(reason)}`);
       return { status: "done" };
     }
 
@@ -570,7 +570,7 @@ async function sendAuthOtpSms(
   }
 
   console.log(
-    `[otp] SMS OTP sent via ${smsProvider.id} delivery=${target.deliveryKey} recipientHashPrefix=${getAuthOtpRecipientHashPrefix(target.identifierHash)}, ref=${result.providerRef}`,
+    `[otp] SMS OTP sent via ${smsProvider.id} delivery=${target.deliveryKey} recipientHashPrefix=${getAuthOtpRecipientHashPrefix(target.identifierHash)}`,
   );
   return receiptResult;
 }
@@ -664,7 +664,7 @@ async function blockAuthOtpProviderForMerchantActionableFailure(
   await markNotificationProviderBlocked(db, candidate).catch((blockError: unknown) => {
     console.error(
       `[otp] Failed to block OTP ${candidate.channel}/${candidate.provider} provider after setup failure:`,
-      blockError instanceof Error ? blockError.message : blockError,
+      blockError instanceof Error ? blockError.name : "error",
     );
   });
 }
@@ -685,6 +685,17 @@ function redactAuthOtpLogText(value: string): string {
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
     .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]")
     .replace(/\b\d{6}\b/g, "[code]");
+}
+
+/**
+ * A skip reason fit for a log line: a short status code as it is, and any
+ * other text (a provider's echo can carry the recipient or the code) as its
+ * class only. The receipt row keeps the masked detail for the dashboard.
+ */
+function authOtpLogCode(reason: string): string {
+  const text = reason.trim();
+  if (/^[a-z][a-z0-9_.-]{0,63}$/i.test(text)) return text;
+  return isAuthOtpProviderSetupFailure(text) ? "provider_setup_failure" : "provider_non_retryable_failure";
 }
 
 function getAuthOtpRecipientHashPrefix(identifierHash: string): string {

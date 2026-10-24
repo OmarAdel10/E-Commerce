@@ -118,7 +118,7 @@ async function dispatchOrderNotification(
       }
     }
   } catch (fcmError) {
-    console.error(`[notifications] Admin notification check/send failed for ${input.orderId}:`, fcmError);
+    console.error(`[notifications] Admin notification check/send failed for ${input.orderId}:`, fcmError instanceof Error ? fcmError.name : "error");
     retryableFailures.push(`admin push: ${fcmError instanceof Error ? fcmError.message : String(fcmError)}`);
   }
 
@@ -138,7 +138,7 @@ async function dispatchOrderNotification(
       retryableFailures.push(`staff email: ${summarizeNotificationFailures(staffEmailResult.outcomes)}`);
     }
   } catch (staffEmailError) {
-    console.error(`[notifications] Staff order email failed for ${input.orderId}:`, staffEmailError instanceof Error ? staffEmailError.message : "unknown error");
+    console.error(`[notifications] Staff order email failed for ${input.orderId}:`, staffEmailError instanceof Error ? staffEmailError.name : "error");
     retryableFailures.push("staff email: settings or order read failed");
   }
 
@@ -173,7 +173,7 @@ export async function deliverNotification(
   } catch (error) {
     await markNotificationOutboxProcessingFailed(db, claim.outboxId, claim.claimId, claim.attempts, error)
       .catch((markError: unknown) => {
-        console.error(`[notifications] Failed to mark notification outbox ${claim.outboxId} failure:`, markError instanceof Error ? markError.message : "unknown error");
+        console.error(`[notifications] Failed to mark notification outbox ${claim.outboxId} failure:`, markError instanceof Error ? markError.name : "error");
       });
   }
 }
