@@ -6,6 +6,7 @@ import {
   sendCapiEvent,
 } from "@scalius/core/integrations/meta/conversions-api";
 import { getClientIp } from "@scalius/shared/rate-limit";
+import { trackingPageUrl } from "@scalius/shared/tracking-url";
 
 import { ok } from "../utils/api-response";
 import { errorResponses, successEnvelope } from "../schemas/responses";
@@ -137,7 +138,11 @@ app.openapi(postEventRoute, async (c) => {
   const body = c.req.valid("json");
   const eventId = body.eventId ?? createId();
 
-  if (!isTrustedEventSource(body.eventSourceUrl, c.env.STOREFRONT_URL)) {
+  // The URL is the body's claim, not caller authentication: it must name the
+  // storefront's origin, and only its tracking projection (origin, path and
+  // campaign parameters) reaches Meta and TikTok, whatever the caller sent.
+  const eventSourceUrl = trackingPageUrl(body.eventSourceUrl);
+  if (!eventSourceUrl || !isTrustedEventSource(eventSourceUrl, c.env.STOREFRONT_URL)) {
     throw new ValidationError("Event source URL is not trusted for this storefront.");
   }
 
@@ -174,7 +179,7 @@ app.openapi(postEventRoute, async (c) => {
   const metaPromise = metaOpen ? null : sendCapiEvent(db, {
     event_name: body.eventName,
     event_time: eventTime,
-    event_source_url: body.eventSourceUrl,
+    event_source_url: eventSourceUrl,
     event_id: eventId,
     action_source: body.actionSource,
     user_data: {
@@ -201,7 +206,7 @@ app.openapi(postEventRoute, async (c) => {
       eventName: body.eventName,
       eventId,
       eventTime,
-      eventSourceUrl: body.eventSourceUrl,
+      eventSourceUrl,
       userData: {
         em: body.userData.em,
         ph: body.userData.ph,

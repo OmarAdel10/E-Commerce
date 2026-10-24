@@ -7,6 +7,7 @@ import {
   sendMetaCapiEvent,
   type MetaCapiEventPayload,
 } from "../api/tracking";
+import { trackingPageUrl } from "@scalius/shared/tracking-url";
 import { marketingAllowed, saleOfDataRefused } from "./consent";
 export { createMetaEventId } from "./meta-event-id";
 
@@ -53,36 +54,9 @@ function getBrowserUserData(): Partial<MetaCapiEventPayload["userData"]> {
   return userData;
 }
 
-function sanitizeEventSourceUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const sensitiveParams = new Set([
-      "token",
-      "tokenhash",
-      "receipttoken",
-      "paymentintent",
-      "paymentintentclientsecret",
-      "redirectstatus",
-      "sessionid",
-      "valid",
-      "tranid",
-    ]);
-
-    for (const param of Array.from(parsed.searchParams.keys())) {
-      const normalizedParam = param.toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (
-        !sensitiveParams.has(normalizedParam) &&
-        !normalizedParam.startsWith("receipttoken")
-      ) {
-        continue;
-      }
-      parsed.searchParams.delete(param);
-    }
-
-    return parsed.toString();
-  } catch {
-    return url;
-  }
+/** The page as tracking hears it: origin, path and campaign parameters only (the API projects it again). */
+function eventSourceUrl(): string {
+  return trackingPageUrl(window.location.href) ?? `${window.location.origin}/`;
 }
 
 /**
@@ -105,7 +79,7 @@ export function sendServerEvent(
   const fullPayload: MetaCapiEventPayload = {
     eventId: event.eventId,
     eventName: event.eventName,
-    eventSourceUrl: sanitizeEventSourceUrl(window.location.href),
+    eventSourceUrl: eventSourceUrl(),
     userData: {
       ...getBrowserUserData(),
       ...(event.userData || {}),
