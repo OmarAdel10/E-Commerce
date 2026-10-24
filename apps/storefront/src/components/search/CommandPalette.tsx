@@ -18,6 +18,8 @@ import { browserApiUrl } from "@/lib/api/browser-url";
 import { normalizeSearchQuery } from "@/lib/search-query";
 import { currentPresence, pagePath } from "@/lib/presence-url";
 import { pageLocale, searchProvider } from "@/lib/app-services";
+import { formatCount, pageLanguage } from "@/lib/store-time-zone";
+import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
 
 interface SearchResultItem {
   id: string;
@@ -76,7 +78,7 @@ export default function CommandPalette() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [mounted, setMounted] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState(false);
   const [searchRetry, setSearchRetry] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -168,7 +170,7 @@ export default function CommandPalette() {
       setResults(null);
       setHasSearched(false);
       setIsLoading(false);
-      setSearchError(null);
+      setSearchError(false);
     }, 200);
     return () => clearTimeout(reset);
   }, [isOpen]);
@@ -185,7 +187,7 @@ export default function CommandPalette() {
       setResults(null);
       setIsLoading(false);
       setHasSearched(false);
-      setSearchError(null);
+      setSearchError(false);
       return;
     }
 
@@ -196,7 +198,7 @@ export default function CommandPalette() {
       setSelectedIndex(-1);
       setHasSearched(true);
       setIsLoading(false);
-      setSearchError(null);
+      setSearchError(false);
       return;
     }
 
@@ -211,7 +213,7 @@ export default function CommandPalette() {
     setHasSearched(false);
     setSelectedIndex(-1);
     setIsLoading(true);
-    setSearchError(null);
+    setSearchError(false);
 
     const timer = setTimeout(async () => {
       try {
@@ -254,7 +256,7 @@ export default function CommandPalette() {
         if (searchRunRef.current === runId) {
           setResults(null);
           setHasSearched(true);
-          setSearchError("Search is temporarily unavailable.");
+          setSearchError(true);
         }
       } finally {
         if (searchRunRef.current === runId) {
@@ -334,12 +336,13 @@ export default function CommandPalette() {
 
   if (!mounted || !isOpen) return null;
 
+  const { searchPalette: copy, price: priceCopy, stock: stockCopy } = storefrontCopy(storefrontLanguage(pageLanguage()));
   const searchStatus = isLoading
-    ? "Searching…"
+    ? copy.searching
     : searchError
-      ? "Search unavailable"
+      ? copy.unavailable
       : hasSearched
-        ? `${flatResults.length} ${flatResults.length === 1 ? "result" : "results"}`
+        ? copy.results(formatCount(flatResults.length), flatResults.length === 1)
         : "";
 
   return createPortal(
@@ -354,7 +357,7 @@ export default function CommandPalette() {
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Search catalog"
+        aria-label={copy.dialog}
         className={cn(
           "relative flex w-full flex-col overflow-hidden bg-background text-foreground shadow-2xl transition-all",
           "h-dvh rounded-none",
@@ -377,8 +380,8 @@ export default function CommandPalette() {
               ref={inputRef}
               type="text"
               className="h-11 w-full border-none bg-transparent ps-8 pe-8 text-lg font-medium tracking-tight text-foreground outline-none placeholder:text-muted-foreground sm:text-xl"
-              placeholder="Search products…"
-              aria-label="Search products"
+              placeholder={copy.placeholder}
+              aria-label={copy.input}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleNavigation}
@@ -410,15 +413,16 @@ export default function CommandPalette() {
           </span>
 
           {/* Stable Close Button */}
+          {/* Always visible: a phone or a touch tablet has no Esc key. */}
           <button
             type="button"
-            aria-label="Close search"
             onClick={() => setIsOpen(false)}
             className="min-h-11 min-w-11 shrink-0 rounded-lg bg-muted px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-95"
           >
-            <span className="sm:hidden">Cancel</span>
+            <span className="sm:hidden">{copy.cancel}</span>
             <span className="hidden sm:inline">
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5" aria-hidden="true" />
+              <span className="sr-only">{copy.close}</span>
             </span>
           </button>
         </div>
@@ -437,7 +441,7 @@ export default function CommandPalette() {
               aria-hidden="true"
             >
               <p className="pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Searching…
+                {copy.searching}
               </p>
               {[0, 1, 2].map((index) => (
                 <div
@@ -461,7 +465,7 @@ export default function CommandPalette() {
                 <Search className="w-6 h-6 opacity-20" />
               </div>
               <p className="text-sm font-medium text-muted-foreground">
-                Search products, categories, and pages
+                {copy.start}
               </p>
             </div>
           )}
@@ -471,13 +475,13 @@ export default function CommandPalette() {
               className="flex h-full flex-col items-center justify-center py-24 text-muted-foreground sm:py-20"
               role="alert"
             >
-              <p className="font-medium text-foreground">Couldn’t reach the store</p>
+              <p className="font-medium text-foreground">{copy.failed}</p>
               <button
                 type="button"
                 className="mt-4 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
                 onClick={() => setSearchRetry((value) => value + 1)}
               >
-                Retry
+                {copy.retry}
               </button>
             </div>
           )}
@@ -487,13 +491,13 @@ export default function CommandPalette() {
               <div className="mb-4 rounded-full bg-muted/50 p-4">
                 <Search className="h-6 w-6" aria-hidden="true" />
               </div>
-              <p className="font-medium text-foreground">No results for “{normalizedQuery}”</p>
-              <p className="mt-1 text-sm">Check the spelling or try a more general word.</p>
+              <p className="font-medium text-foreground">{copy.noResultsFor(normalizedQuery)}</p>
+              <p className="mt-1 text-sm">{copy.trySpelling}</p>
               <a
                 href={pagePath("/search")}
                 className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted"
               >
-                Browse all products
+                {copy.browseAll}
               </a>
             </div>
           )}
@@ -503,15 +507,14 @@ export default function CommandPalette() {
             <div className="space-y-4 pb-4 sm:pt-2">
               {results.correctedQuery && flatResults.length > 0 && (
                 <p className="px-4 pt-3 text-sm text-muted-foreground sm:px-3">
-                  No results for “{normalizedQuery}”. Showing results for{" "}
-                  <span className="font-semibold text-foreground">“{results.correctedQuery}”</span>.
+                  {copy.showingInstead(normalizedQuery, results.correctedQuery)}
                 </p>
               )}
               {/* Products */}
               {results.products.length > 0 && (
                 <div>
                   <h3 className="sticky top-0 z-10 bg-muted/50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:static sm:bg-transparent">
-                    Products
+                    {copy.products}
                   </h3>
                   <div className="grid grid-cols-1 gap-0 sm:gap-1">
                     {results.products.map((p) => {
@@ -535,8 +538,7 @@ export default function CommandPalette() {
                             <div className="text-xs font-medium text-muted-foreground">
                               {p.discountedPrice !== undefined ? (
                                 <span className="text-primary">
-                                  {p.priceVaries ? "From " : ""}
-                                  {formatMoney(p.discountedPrice)}
+                                  {p.priceVaries ? priceCopy.from(formatMoney(p.discountedPrice)) : formatMoney(p.discountedPrice)}
                                 </span>
                               ) : p.price !== undefined ? (
                                 <span>{formatMoney(p.price)}</span>
@@ -544,7 +546,7 @@ export default function CommandPalette() {
                             </div>
                             {p.availableForSale === false ? (
                               <div className="mt-0.5 text-xs font-medium text-muted-foreground">
-                                Sold out
+                                {stockCopy.soldOut}
                               </div>
                             ) : null}
                           </div>
@@ -567,7 +569,7 @@ export default function CommandPalette() {
               {results.categories.length > 0 && (
                 <div>
                   <h3 className="sticky top-0 z-10 bg-muted/50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:static sm:bg-transparent">
-                    Categories
+                    {copy.categories}
                   </h3>
                   <div
                     className={cn(
@@ -604,7 +606,7 @@ export default function CommandPalette() {
               {results.pages.length > 0 && (
                 <div>
                   <h3 className="sticky top-0 z-10 bg-muted/50 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:static sm:bg-transparent">
-                    Pages
+                    {copy.pages}
                   </h3>
                   <div
                     className={cn(
@@ -644,31 +646,38 @@ export default function CommandPalette() {
             href={searchPageHref(normalizedQuery)}
             className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-t border-border bg-background px-4 text-sm font-medium text-foreground sm:hidden"
           >
-            <span className="truncate">View all results for “{normalizedQuery}”</span>
-            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{copy.viewAllFor(normalizedQuery)}</span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground rtl:-scale-x-100" aria-hidden="true" />
           </a>
         )}
 
-        {/* Desktop keyboard help and full-results link */}
-        <div className="hidden shrink-0 items-center justify-between border-t border-border bg-muted/30 px-5 py-3 text-xs text-muted-foreground sm:flex">
-          <div className="flex items-center gap-4">
+        {/* Wider screens: the full-results link, and keyboard help only where
+            there is a mouse or trackpad (a touch tablet has no Enter or Esc to
+            press), so a touch tablet with no query shows no footer at all. */}
+        <div
+          className={cn(
+            "hidden shrink-0 items-center justify-between border-t border-border bg-muted/30 px-5 py-3 text-xs text-muted-foreground",
+            normalizedQuery ? "sm:flex" : "sm:any-pointer-fine:flex",
+          )}
+        >
+          <div className="hidden items-center gap-4 any-pointer-fine:flex" aria-label={copy.keys.label} role="group">
             <span className="flex items-center gap-1.5">
               <kbd className="flex h-5 min-w-5 items-center justify-center rounded border border-border bg-background px-1 font-sans text-[10px] shadow-sm">
                 ↵
               </kbd>
-              <span>{selectedIndex >= 0 ? "to open" : "to search"}</span>
+              <span>{selectedIndex >= 0 ? copy.keys.open : copy.keys.search}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <kbd className="flex h-5 min-w-5 items-center justify-center rounded border border-border bg-background px-1 font-sans text-[10px] shadow-sm">
                 ↑↓
               </kbd>
-              <span>to navigate</span>
+              <span>{copy.keys.navigate}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <kbd className="flex h-5 min-w-5 items-center justify-center rounded border border-border bg-background px-1 font-sans text-[10px] shadow-sm">
                 esc
               </kbd>
-              <span>to close</span>
+              <span>{copy.keys.close}</span>
             </span>
           </div>
 
@@ -677,7 +686,7 @@ export default function CommandPalette() {
               href={searchPageHref(normalizedQuery)}
               className="flex items-center hover:text-primary transition-colors ms-auto font-medium"
             >
-              View all results <ArrowRight className="w-3 h-3 ms-1" />
+              {copy.viewAll} <ArrowRight className="w-3 h-3 ms-1 rtl:-scale-x-100" aria-hidden="true" />
             </a>
           )}
         </div>

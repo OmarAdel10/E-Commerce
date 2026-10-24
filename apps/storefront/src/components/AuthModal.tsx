@@ -31,6 +31,8 @@ import {
 import { pagePath } from "@/lib/presence-url";
 import { pageLocale, signInApps } from "@/lib/app-services";
 import { continueWithLabel, signInAppHref, signInLanguage } from "@/lib/sign-in-apps";
+import { storefrontCopy, storefrontLanguage } from "@/lib/storefront-copy";
+import { formatCount, formatPageNumber, pageLanguage } from "@/lib/store-time-zone";
 
 export interface AuthModalPrefill {
   name?: string;
@@ -131,6 +133,12 @@ export default function AuthModal() {
   const prefillRef = useRef<AuthModalPrefill>({});
 
   const ui = useMemo(() => resolveCustomerAuthUi(settings.identity, channel), [settings.identity, channel]);
+  const language = pageLanguage();
+  const copy = storefrontCopy(storefrontLanguage(language)).signIn;
+  const digits = (value: number) => formatPageNumber(value, language);
+  /** A valid example number for the phone check's message, in the page's digits. */
+  const phoneExample = "01712345678".replace(/\d/g, (digit) => digits(Number(digit)));
+  const wait = (seconds: number) => formatWait(seconds, digits);
   const isEmail = ui.requestMethod === "email";
   const locked = attemptsLeft === 0;
 
@@ -272,7 +280,7 @@ export default function AuthModal() {
   };
 
   const sendCode = () => run(async () => {
-    const checked = checkContact(ui.requestMethod, contact, settings.phonePolicy);
+    const checked = checkContact(ui.requestMethod, contact, settings.phonePolicy, copy.check, phoneExample);
     if (!checked.ok) {
       setFieldErrors({ contact: checked.message });
       return;
@@ -310,7 +318,7 @@ export default function AuthModal() {
 
   const verifyCode = (account?: NewCustomerAccountDetails) => run(async () => {
     if (!/^\d{6}$/.test(code)) {
-      setFieldErrors({ code: "Enter the 6-digit code." });
+      setFieldErrors({ code: copy.enterCode });
       return;
     }
     setFieldErrors({});
@@ -326,7 +334,7 @@ export default function AuthModal() {
     if (!result.success) {
       setAttemptsLeft(result.attemptsLeft ?? null);
       const left = result.attemptsLeft;
-      setError(left && left <= 2 ? `${result.error} ${left === 1 ? "1 attempt left." : `${left} attempts left.`}` : result.error);
+      setError(left && left <= 2 ? copy.attemptsLeft(result.error, formatCount(left), left === 1) : result.error);
       if (left === 0) {
         startResendWait(0);
         if (step === "details") setStep("code");
@@ -352,7 +360,7 @@ export default function AuthModal() {
   });
 
   const submitDetails = () => {
-    const checked = checkNewAccount(ui, details, settings.phonePolicy);
+    const checked = checkNewAccount(ui, details, settings.phonePolicy, copy.check, phoneExample);
     if (!checked.ok) {
       setFieldErrors(Object.fromEntries(checked.errors.map(({ field, message }) => [field, message])));
       dialogRef.current?.querySelector<HTMLInputElement>(`#auth-${checked.errors[0]!.field}`)?.focus();
@@ -372,9 +380,9 @@ export default function AuthModal() {
   if (!isOpen) return null;
 
   const title = step === "signed_in"
-    ? "You're signed in"
-    : step === "details" ? "Create your account" : "Sign in";
-  const destinationLabel = isEmail ? "Email" : "Phone number";
+    ? copy.title.signedIn
+    : step === "details" ? copy.title.createAccount : copy.title.signIn;
+  const destinationLabel = isEmail ? copy.email : copy.phone;
   const errorFor = (field: Field) => fieldErrors[field] ?? "";
   const clearError = (field: Field) => setFieldErrors(({ [field]: _cleared, ...rest }) => rest);
   // The wait shows once: on the code step the resend button counts it down.
@@ -386,7 +394,7 @@ export default function AuthModal() {
     href: signInAppHref(app, { returnTo: window.location.pathname, locale: pageLocale() }),
   }));
   const alertText = error || (limit && sendWait > 0
-    ? step === "code" ? limit : `${limit} Try again in ${formatWait(sendWait)}.`
+    ? step === "code" ? limit : copy.tryAgainIn(limit, wait(sendWait))
     : "");
 
   return (
@@ -409,7 +417,7 @@ export default function AuthModal() {
           <button
             type="button"
             onClick={close}
-            aria-label="Close"
+            aria-label={copy.close}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-5 w-5" aria-hidden="true" />
@@ -441,12 +449,10 @@ export default function AuthModal() {
             {step === "contact" && (
               <>
                 <p className="text-sm text-muted-foreground">
-                  {isEmail
-                    ? "Enter your email and we'll send you a code. New here? We'll set up your account."
-                    : "Enter your mobile number and we'll text you a code. New here? We'll set up your account."}
+                  {isEmail ? copy.intro.email : copy.intro.phone}
                 </p>
                 {ui.showMethodSwitcher && (
-                  <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1" role="group" aria-label="Sign in with">
+                  <div className="flex gap-1 rounded-lg border border-border bg-muted/50 p-1" role="group" aria-label={copy.method.group}>
                     {ui.requestOptions.map((option) => (
                       <button
                         type="button"
@@ -462,7 +468,7 @@ export default function AuthModal() {
                         }}
                         className={`min-h-11 flex-1 rounded-md px-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${channel === option.channel ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                       >
-                        {option.method === "email" ? "Email" : option.channel === "whatsapp" ? "WhatsApp" : "Phone"}
+                        {option.method === "email" ? copy.method.email : option.channel === "whatsapp" ? "WhatsApp" : copy.method.phone}
                       </button>
                     ))}
                   </div>
@@ -490,7 +496,7 @@ export default function AuthModal() {
                     }}
                     onBlur={() => {
                       if (!contact.trim()) return;
-                      const checked = checkContact(ui.requestMethod, contact, settings.phonePolicy);
+                      const checked = checkContact(ui.requestMethod, contact, settings.phonePolicy, copy.check, phoneExample);
                       if (!checked.ok) setFieldErrors({ contact: checked.message });
                       else if (!isEmail) setContact(formatBdMobile(checked.value));
                     }}
@@ -499,12 +505,12 @@ export default function AuthModal() {
                   {errorFor("contact") && <p id="auth-contact-error" className="text-sm text-destructive">{errorFor("contact")}</p>}
                   {settings.ready && !ui.available && (
                     <p data-sign-in-unavailable role="alert" className="text-sm text-destructive">
-                      Sign-in codes aren't available right now. Contact the store.
+                      {copy.codesUnavailable}
                     </p>
                   )}
                   {settings.ready && ui.available && !ui.phoneSignIn && (
                     <p data-phone-sign-in-note className="text-sm text-muted-foreground">
-                      Phone sign-in isn't available yet. Use your email.
+                      {copy.phoneUnavailable}
                     </p>
                   )}
                 </div>
@@ -528,12 +534,11 @@ export default function AuthModal() {
 
             {step === "code" && (
               <>
-                <p className="text-sm text-muted-foreground">
-                  Enter the 6-digit code we sent to{" "}
-                  <span className="break-all font-medium text-foreground">{isEmail ? sentTo : formatBdMobile(sentTo)}</span>.
+                <p className="break-words text-sm text-muted-foreground">
+                  {copy.codeSentTo(isEmail ? sentTo : formatBdMobile(sentTo))}
                 </p>
                 <div className="space-y-1.5">
-                  <label htmlFor="customer-otp" className="text-sm font-medium">Code</label>
+                  <label htmlFor="customer-otp" className="text-sm font-medium">{copy.code}</label>
                   <input
                     id="customer-otp"
                     data-autofocus
@@ -558,10 +563,10 @@ export default function AuthModal() {
                     onClick={() => { setStep("contact"); setCode(""); setError(""); setAttemptsLeft(null); }}
                     className="min-h-11 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {isEmail ? "Use a different email" : "Use a different number"}
+                    {isEmail ? copy.otherEmail : copy.otherNumber}
                   </button>
                   <button type="button" disabled={loading || resendWait > 0} onClick={() => void sendCode()} className={linkButtonClass}>
-                    {resendWait > 0 ? `Send a new code in ${formatWait(resendWait)}` : "Send a new code"}
+                    {resendWait > 0 ? copy.resendIn(wait(resendWait)) : copy.resend}
                   </button>
                 </div>
               </>
@@ -570,10 +575,10 @@ export default function AuthModal() {
             {step === "details" && (
               <>
                 <p className="text-sm text-muted-foreground">
-                  {isEmail ? "Your email is confirmed." : "Your number is confirmed."} Add your details to finish.
+                  {isEmail ? copy.confirmed.email : copy.confirmed.phone}
                 </p>
                 <div className="space-y-1.5">
-                  <label htmlFor="auth-name" className="text-sm font-medium">Full name</label>
+                  <label htmlFor="auth-name" className="text-sm font-medium">{copy.fullName}</label>
                   <input
                     id="auth-name"
                     data-autofocus
@@ -591,7 +596,7 @@ export default function AuthModal() {
                 {ui.newAccount.phone !== "hidden" && (
                   <div className="space-y-1.5">
                     <label htmlFor="auth-phone" className="text-sm font-medium">
-                      Phone number{ui.newAccount.phone === "optional" ? " (optional)" : ""}
+                      {ui.newAccount.phone === "optional" ? copy.optional(copy.phone) : copy.phone}
                     </label>
                     <input
                       id="auth-phone"
@@ -606,14 +611,14 @@ export default function AuthModal() {
                       onChange={(event) => { setDetails((value) => ({ ...value, phone: event.target.value })); clearError("phone"); }}
                       className={inputClass}
                     />
-                    <p id="auth-phone-help" className="text-sm text-muted-foreground">Couriers call this number to deliver.</p>
+                    <p id="auth-phone-help" className="text-sm text-muted-foreground">{copy.courierPhone}</p>
                     {errorFor("phone") && <p id="auth-phone-error" className="text-sm text-destructive">{errorFor("phone")}</p>}
                   </div>
                 )}
                 {ui.newAccount.email !== "hidden" && (
                   <div className="space-y-1.5">
                     <label htmlFor="auth-email" className="text-sm font-medium">
-                      Email{ui.newAccount.email === "optional" ? " (optional)" : ""}
+                      {ui.newAccount.email === "optional" ? copy.optional(copy.email) : copy.email}
                     </label>
                     <input
                       id="auth-email"
@@ -642,8 +647,8 @@ export default function AuthModal() {
                     <span className="min-w-0">
                       <span className="block font-medium">
                         {orderAddress.orderNumber != null
-                          ? `Save the delivery address from order ${formatOrderNumber(orderAddress.orderNumber, "")}`
-                          : "Save the delivery address from your last order"}
+                          ? copy.saveAddressFromOrder(formatOrderNumber(orderAddress.orderNumber, ""))
+                          : copy.saveAddressFromLastOrder}
                       </span>
                       <span className="block break-words text-muted-foreground">{orderAddress.text}</span>
                     </span>
@@ -663,7 +668,7 @@ export default function AuthModal() {
                     data-astro-prefetch="false"
                     className="flex min-h-11 flex-1 items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    View account
+                    {copy.viewAccount}
                   </a>
                   <button
                     type="button"
@@ -671,7 +676,7 @@ export default function AuthModal() {
                     disabled={loading}
                     className="min-h-11 rounded-lg border border-border px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Sign out
+                    {copy.signOut}
                   </button>
                 </>
               ) : (
@@ -685,14 +690,14 @@ export default function AuthModal() {
                   className="min-h-11 flex-1 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 >
                   {loading
-                    ? step === "contact" ? "Sending…" : step === "code" ? "Checking…" : "Creating account…"
-                    : step === "contact" ? "Send code" : step === "code" ? "Continue" : "Create account"}
+                    ? step === "contact" ? copy.submit.sending : step === "code" ? copy.submit.verifying : copy.submit.creating
+                    : step === "contact" ? copy.submit.send : step === "code" ? copy.submit.verify : copy.submit.create}
                 </button>
               )}
             </div>
             {step === "contact" && !fromReceipt && (
               <p className="text-center text-sm text-muted-foreground">
-                Ordered as a guest? <a href={pagePath("/track-order")} className="font-medium text-primary hover:underline">Track your order</a>
+                {copy.guest.question} <a href={pagePath("/track-order")} className="font-medium text-primary hover:underline">{copy.guest.trackOrder}</a>
               </p>
             )}
           </div>

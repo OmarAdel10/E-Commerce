@@ -9,8 +9,9 @@ import {
   type FieldNeed,
 } from "@scalius/shared/customer-auth-policy";
 import type { PhoneCountryPolicy } from "@scalius/shared/customer-utils";
-import { BD_MOBILE_REQUIRED_MESSAGE, isBangladeshNumber, normalizeBdMobile } from "@scalius/shared/phone-input";
+import { isBangladeshNumber, normalizeBdMobile } from "@scalius/shared/phone-input";
 import { validateStorefrontPhone } from "@/lib/phone-country-policy";
+import { SIGN_IN_EN, type SignInCheckCopy } from "@/lib/sign-in-copy";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -72,31 +73,41 @@ export function resolveCustomerAuthUi(
 
 export type ContactCheck = { ok: true; value: string } | { ok: false; message: string };
 
-/** Accepts Bangla digits and any spacing; returns what the API expects. */
-export function checkPhone(value: string, policy?: PhoneCountryPolicy): ContactCheck {
-  if (!value.trim()) return { ok: false, message: "Enter your phone number." };
+/**
+ * Accepts Bangla digits and any spacing; returns what the API expects.
+ * `words` are the page's (lib/sign-in-copy.ts), `example` a number in its digits.
+ */
+export function checkPhone(
+  value: string,
+  policy?: PhoneCountryPolicy,
+  words: SignInCheckCopy = SIGN_IN_EN.check,
+  example = "01712345678",
+): ContactCheck {
+  if (!value.trim()) return { ok: false, message: words.enterPhone };
   const bd = normalizeBdMobile(value);
   if (bd) return { ok: true, value: bd };
-  if (isBangladeshNumber(value)) return { ok: false, message: `${BD_MOBILE_REQUIRED_MESSAGE}.` };
+  if (isBangladeshNumber(value)) return { ok: false, message: words.bangladeshMobile };
   const result = validateStorefrontPhone(value, policy);
   return result.ok
     ? { ok: true, value: result.value }
-    : { ok: false, message: "Enter a valid mobile number, like 01712345678." };
+    : { ok: false, message: words.invalidPhone(example) };
 }
 
-export function checkEmail(value: string): ContactCheck {
-  if (!value.trim()) return { ok: false, message: "Enter your email address." };
+export function checkEmail(value: string, words: SignInCheckCopy = SIGN_IN_EN.check): ContactCheck {
+  if (!value.trim()) return { ok: false, message: words.enterEmail };
   return isValidEmail(value)
     ? { ok: true, value: value.trim().toLowerCase() }
-    : { ok: false, message: "Enter a valid email address, like name@example.com." };
+    : { ok: false, message: words.invalidEmail };
 }
 
 export function checkContact(
   method: CustomerAuthRequestMethod,
   value: string,
   policy?: PhoneCountryPolicy,
+  words: SignInCheckCopy = SIGN_IN_EN.check,
+  example?: string,
 ): ContactCheck {
-  return method === "email" ? checkEmail(value) : checkPhone(value, policy);
+  return method === "email" ? checkEmail(value, words) : checkPhone(value, policy, words, example);
 }
 
 export interface NewAccountInput {
@@ -116,26 +127,32 @@ export function checkNewAccount(
   ui: CustomerAuthUiModel,
   input: NewAccountInput,
   policy?: PhoneCountryPolicy,
+  words: SignInCheckCopy = SIGN_IN_EN.check,
+  example?: string,
 ): NewAccountCheck {
   const errors: Array<{ field: NewAccountField; message: string }> = [];
   const name = input.name.trim();
-  if (!name) errors.push({ field: "name", message: "Enter your name." });
+  if (!name) errors.push({ field: "name", message: words.enterName });
   const account: { name: string; phone?: string; email?: string } = { name };
   if (ui.newAccount.phone !== "hidden" && (ui.newAccount.phone === "required" || input.phone.trim())) {
-    const phone = checkPhone(input.phone, policy);
+    const phone = checkPhone(input.phone, policy, words, example);
     if (phone.ok) account.phone = phone.value;
     else errors.push({ field: "phone", message: phone.message });
   }
   if (ui.newAccount.email !== "hidden" && (ui.newAccount.email === "required" || input.email.trim())) {
-    const email = checkEmail(input.email);
+    const email = checkEmail(input.email, words);
     if (email.ok) account.email = email.value;
     else errors.push({ field: "email", message: email.message });
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, account };
 }
 
-/** "2:00", "0:45": the honest wait shown next to a disabled button. */
-export function formatWait(seconds: number): string {
+/**
+ * "2:00", "0:45": the honest wait shown next to a disabled button, its
+ * digits written by `digits` (the page's: "২:০০" on a Bangla page).
+ */
+export function formatWait(seconds: number, digits: (value: number) => string = String): string {
   const total = Math.max(0, Math.ceil(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  const rest = total % 60;
+  return `${digits(Math.floor(total / 60))}:${rest < 10 ? digits(0) : ""}${digits(rest)}`;
 }

@@ -8,6 +8,8 @@
 import { checkoutLanguageBaseCode } from "@scalius/shared/checkout-language-format";
 import type { ProductCondition } from "@scalius/shared/product-condition";
 import { CHROME_BN, CHROME_EN, type ChromeCopy } from "./chrome-copy";
+import { SEARCH_PALETTE_BN, SEARCH_PALETTE_EN, type SearchPaletteCopy } from "./search-palette-copy";
+import { SIGN_IN_BN, SIGN_IN_EN, type SignInCopy } from "./sign-in-copy";
 
 export type StorefrontLanguage = "en" | "bn";
 
@@ -60,6 +62,10 @@ export interface StorefrontCopy {
   };
   /** Header, menus, drawers and footer (chrome-copy.ts). */
   chrome: ChromeCopy;
+  /** The search palette (search-palette-copy.ts). */
+  searchPalette: SearchPaletteCopy;
+  /** The sign-in dialog (sign-in-copy.ts). */
+  signIn: SignInCopy;
   /** The home page's sections, hero and carousels. */
   home: {
     /** Theme editor only: a section that draws nothing until the merchant fills it. */
@@ -133,6 +139,8 @@ const EN: StorefrontCopy = {
     viewAll: "View all",
   },
   chrome: CHROME_EN,
+  searchPalette: SEARCH_PALETTE_EN,
+  signIn: SIGN_IN_EN,
   home: {
     emptyHero: {
       title: "Add a slide to show this hero",
@@ -210,6 +218,8 @@ const BN: StorefrontCopy = {
     viewAll: "সব দেখুন",
   },
   chrome: CHROME_BN,
+  searchPalette: SEARCH_PALETTE_BN,
+  signIn: SIGN_IN_BN,
   home: {
     emptyHero: {
       title: "এই হিরো দেখাতে একটি স্লাইড যোগ করুন",
