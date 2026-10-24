@@ -7,7 +7,7 @@ import { inJsonArray } from "./in-json-array";
 export async function sweepExpiredRows(
   db: Database,
   table: AnySQLiteTable,
-  key: AnySQLiteColumn<{ data: string }>,
+  key: AnySQLiteColumn<{ data: string; notNull: true }>,
   expired: SQL | undefined,
   limit: number,
 ): Promise<{ scanned: number; deleted: number; limit: number; hasMore: boolean }> {
