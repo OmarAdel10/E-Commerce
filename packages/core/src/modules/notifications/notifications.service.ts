@@ -1,13 +1,15 @@
 // src/modules/notifications/notifications.service.ts
 // Centralized notification service for admin push + order notifications.
 
+import { replaceEmailAddresses } from "@scalius/shared/text-scan";
 import { staffPermissionSql, type StaffPermissionRequirement } from "@scalius/core/auth/rbac/helpers";
 import { recordStaffAlert } from "./staff-alerts";
 import { staffPushPermission } from "./staff-push-policy";
 import type { Database } from "@scalius/database/client";
 import { adminFcmTokens, orders } from "@scalius/database/schema";
 import { isReady } from "@scalius/shared/readiness";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { inJsonArray } from "../../utils/in-json-array";
 import { sendEmail } from "../../integrations/email";
 import type { EmailRuntimeContext, SendEmailResult } from "../../integrations/email";
 import type { AppProviders } from "../../integrations/provider-port";
@@ -1785,7 +1787,7 @@ async function deactivateFcmTokens(db: Database, invalidTokens: string[]): Promi
             isActive: false,
             updatedAt: sql`(cast(strftime('%s','now') as int))`,
         })
-        .where(inArray(adminFcmTokens.token, invalidTokens));
+        .where(inJsonArray(adminFcmTokens.token, invalidTokens));
 }
 
 export function maskEmail(email: string): string {
@@ -1806,8 +1808,7 @@ export function normalizeError(error: unknown): string {
 }
 
 export function compactProviderLogDetail(error: unknown): string {
-    return normalizeError(error)
-        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+    return replaceEmailAddresses(normalizeError(error))
         .replace(/\+?\d[\d\s().-]{8,}\d/g, "[phone]")
         .replace(/\s+/g, " ")
         .trim()

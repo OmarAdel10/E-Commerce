@@ -7,6 +7,7 @@
 // longer exists is null.
 
 import type { Database } from "@scalius/database/client";
+import { inJsonArray } from "@scalius/core/utils/in-json-array";
 import {
   abandonedCheckouts,
   customerMarketingConsents,
@@ -244,7 +245,7 @@ async function readReturnRepresentations(db: Database, where: { id: string } | {
     .orderBy(asc(orderReturns.createdAt), asc(orderReturns.id)).limit(MAX_LINES).all();
   if (rows.length === 0) return [];
   const lineRows = await db.select().from(orderReturnLines)
-    .where(inArray(orderReturnLines.returnId, rows.map((row) => row.id)))
+    .where(inJsonArray(orderReturnLines.returnId, rows.map((row) => row.id)))
     .orderBy(asc(orderReturnLines.returnId), asc(orderReturnLines.createdAt), asc(orderReturnLines.id)).all();
   const linesByReturn = groupBy(lineRows, (line) => line.returnId);
   return rows.map((row) => returnFrom(row, linesByReturn.get(row.id) ?? []));
@@ -646,7 +647,7 @@ async function readFulfillmentRepresentations(db: Database, where: { id: string 
     id: orderFulfillmentLines.id,
     orderItemId: orderFulfillmentLines.orderItemId,
     quantity: orderFulfillmentLines.quantity,
-  }).from(orderFulfillmentLines).where(inArray(orderFulfillmentLines.fulfillmentId, rows.map((row) => row.id)))
+  }).from(orderFulfillmentLines).where(inJsonArray(orderFulfillmentLines.fulfillmentId, rows.map((row) => row.id)))
     .orderBy(asc(orderFulfillmentLines.fulfillmentId), asc(orderFulfillmentLines.id)).all();
   const lines = groupBy(lineRows, (line) => line.fulfillmentId);
   return rows.map((row) => sealed("fulfillment", {

@@ -6,6 +6,7 @@ import { assertContactSearchAllowed } from "./contact-access";
 import { createId } from "@paralleldrive/cuid2";
 import { sql, inArray, desc, asc, and, count } from "drizzle-orm";
 import { containsText } from "@scalius/core/utils/text-match";
+import { inJsonArray } from "@scalius/core/utils/in-json-array";
 import { abandonedCheckouts, adminFcmTokens } from "@scalius/database/schema";
 import { searchMatch } from "@scalius/core/search";
 import { projectAbandonedCheckoutAgentSummary } from "@scalius/core/modules/checkout";
@@ -210,7 +211,7 @@ app.openapi(deleteCheckoutsRoute, async (c) => {
     const db = c.get("db");
     try {
         const { ids } = c.req.valid("json");
-        await db.delete(abandonedCheckouts).where(inArray(abandonedCheckouts.id, ids));
+        await db.delete(abandonedCheckouts).where(inJsonArray(abandonedCheckouts.id, ids));
         return noContent(c);
     } catch (error: unknown) {
         console.error("Error bulk deleting checkouts:", error);

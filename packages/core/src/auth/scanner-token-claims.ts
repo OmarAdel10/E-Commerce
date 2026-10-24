@@ -1,3 +1,4 @@
+import { sweepExpiredRows } from "../utils/sweep-expired-rows";
 import type { Database } from "@scalius/database/client";
 import { scannerTokenClaims } from "@scalius/database/schema";
 import {
@@ -5,7 +6,7 @@ import {
   SCANNER_TOKEN_TTL_SECONDS,
 } from "@scalius/shared/scanner-auth";
 import { sha256Hex } from "@scalius/shared/hash";
-import { and, eq, gt, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { ConflictError, UnauthorizedError } from "../errors";
 import { staffPermissionSql } from "./rbac/helpers";
 import { PERMISSIONS } from "./rbac/permissions";
@@ -140,39 +141,20 @@ export async function cleanupExpiredScannerTokenClaims(
 ): Promise<ScannerTokenCleanupResult> {
   const nowSeconds = options.nowSeconds ?? toUnixSeconds(Date.now());
   const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
-  const rows = await db
-    .select({ tokenHash: scannerTokenClaims.tokenHash })
-    .from(scannerTokenClaims)
-    .where(
+  const expired = or(
+    and(
+      isNull(scannerTokenClaims.consumedAt),
+      lte(scannerTokenClaims.expiresAt, nowSeconds),
+    ),
+    and(
+      isNotNull(scannerTokenClaims.consumedAt),
       or(
-        and(
-          isNull(scannerTokenClaims.consumedAt),
-          lte(scannerTokenClaims.expiresAt, nowSeconds),
-        ),
-        and(
-          isNotNull(scannerTokenClaims.consumedAt),
-          or(
-            isNull(scannerTokenClaims.sessionExpiresAt),
-            lte(scannerTokenClaims.sessionExpiresAt, nowSeconds),
-          ),
-        ),
+        isNull(scannerTokenClaims.sessionExpiresAt),
+        lte(scannerTokenClaims.sessionExpiresAt, nowSeconds),
       ),
-    )
-    .limit(limit + 1);
-
-  const deleteIds = rows.slice(0, limit).map((row) => row.tokenHash);
-  if (deleteIds.length > 0) {
-    await db
-      .delete(scannerTokenClaims)
-      .where(inArray(scannerTokenClaims.tokenHash, deleteIds));
-  }
-
-  return {
-    scanned: Math.min(rows.length, limit),
-    deleted: deleteIds.length,
-    limit,
-    hasMore: rows.length > limit,
-  };
+    ),
+  );
+  return sweepExpiredRows(db, scannerTokenClaims, scannerTokenClaims.tokenHash, expired, limit);
 }
 
 function toUnixSeconds(timestampMs: number): number {

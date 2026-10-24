@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { inJsonArray } from "../../utils/in-json-array";
 import { percentToBps, toMinor } from "@scalius/shared/money";
 import { toStoreMinor } from "../settings";
 import { readStoreCurrency } from "../markets";
@@ -789,7 +790,7 @@ export async function planProductOptionMatrix(
             .from(orderItems)
             .innerJoin(orders, eq(orders.id, orderItems.orderId))
             .where(and(
-                inArray(orderItems.variantId, variantsRequiringRetirement.map((variant) => variant.id)),
+                inJsonArray(orderItems.variantId, variantsRequiringRetirement.map((variant) => variant.id)),
                 isNull(orders.deletedAt),
                 not(inArray(orders.status, CLOSED_ORDER_STATUSES)),
             ))

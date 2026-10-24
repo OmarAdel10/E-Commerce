@@ -1,3 +1,4 @@
+import { sweepExpiredRows } from "../../utils/sweep-expired-rows";
 // src/modules/customers/customer-auth.service.ts
 // Customer sign-in: one-time codes, account resolution, sessions.
 // Used by the customer-auth route handler (apps/api/src/routes/customer-auth/).
@@ -8,9 +9,10 @@
 // guest types at checkout never change who an account belongs to, and never
 // block anyone from signing in.
 
+import { isEmailAddress, trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { nanoid } from "nanoid";
 import { customerAddresses, customerIdentities, customers, customerSessions, firstCustomerAddressId, orders } from "@scalius/database/schema";
-import { and, desc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { safeBatch, type Database } from "@scalius/database/client";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
@@ -196,12 +198,11 @@ export function getSessionCookie(cookieHeader: string | null): string | null {
 }
 
 export function normalizeCustomerAuthCookieDomain(cookieDomain?: string): string {
-    const normalized = cookieDomain
-        ?.trim()
+    const normalized = trimTrailingCharacter((cookieDomain ?? "")
+        .trim()
         .replace(/^domain=/i, "")
         .replace(/^\.+/, "")
-        .replace(/\.+$/, "")
-        .toLowerCase();
+        .toLowerCase(), ".");
 
     if (!normalized) return "";
     if (normalized === "localhost") return "";
@@ -261,7 +262,7 @@ async function getCustomerAuthRuntimePolicy(db: Database): Promise<{
 }
 
 function isValidEmailAddress(value: string): boolean {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+    return isEmailAddress(value.trim());
 }
 
 function normalizePhoneOrThrow(phone: string, phoneCountryPolicy?: PhoneCountryPolicy): string {
@@ -1215,29 +1216,12 @@ export async function cleanupExpiredCustomerSessions(
     const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
     const revokedRetentionSeconds = options.revokedRetentionSeconds ?? 7 * 24 * 60 * 60;
     const revokedCutoff = nowSeconds - revokedRetentionSeconds;
-    const rows = await db
-        .select({ tokenHash: customerSessions.tokenHash })
-        .from(customerSessions)
-        .where(or(
-            lte(customerSessions.expiresAt, nowSeconds),
-            and(
-                isNotNull(customerSessions.revokedAt),
-                lte(customerSessions.revokedAt, revokedCutoff),
-            ),
-        ))
-        .limit(limit + 1);
-
-    const deleteIds = rows.slice(0, limit).map((row) => row.tokenHash);
-    if (deleteIds.length > 0) {
-        await db
-            .delete(customerSessions)
-            .where(inArray(customerSessions.tokenHash, deleteIds));
-    }
-
-    return {
-        scanned: Math.min(rows.length, limit),
-        deleted: deleteIds.length,
-        limit,
-        hasMore: rows.length > limit,
-    };
+    const expired = or(
+        lte(customerSessions.expiresAt, nowSeconds),
+        and(
+            isNotNull(customerSessions.revokedAt),
+            lte(customerSessions.revokedAt, revokedCutoff),
+        ),
+    );
+    return sweepExpiredRows(db, customerSessions, customerSessions.tokenHash, expired, limit);
 }

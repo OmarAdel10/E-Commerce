@@ -1,6 +1,7 @@
+import { sweepExpiredRows } from "../../utils/sweep-expired-rows";
 import { customerAuthOtpChallenges } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
-import { and, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { and, eq, gt, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { RateLimitError, ServiceUnavailableError, ValidationError } from "@scalius/core/errors";
 import { maskOtpIdentifier } from "./otp-delivery-receipts";
 import {
@@ -13,6 +14,14 @@ export type CustomerAuthOtpChannel = "email" | "sms" | "whatsapp";
 
 /** How long a proven code stays usable while a new buyer adds their name and phone. */
 const ACCOUNT_DETAILS_WINDOW_SECONDS = 10 * 60;
+/** Rechecking or rate-limit recovery must never make one code live indefinitely. */
+const MAX_CHALLENGE_LIFETIME_SECONDS = 30 * 60;
+
+function extendedChallengeExpiry(now: number, seconds: number): SQL<number> {
+    const requested = now + Math.min(Math.max(seconds, 0), MAX_CHALLENGE_LIFETIME_SECONDS);
+    const absolute = sql`${customerAuthOtpChallenges.createdAt} + ${MAX_CHALLENGE_LIFETIME_SECONDS}`;
+    return sql`case when ${absolute} < ${requested} then ${absolute} else ${requested} end`;
+}
 
 export const OTP_LOCKED_MESSAGE = "Too many wrong codes. Send a new code to try again.";
 
@@ -71,7 +80,7 @@ export async function persistCustomerAuthOtpChallenge(
     input: PersistCustomerAuthOtpChallengeInput,
 ): Promise<PersistedCustomerAuthOtpChallenge> {
     const now = Math.floor(Date.now() / 1000);
-    const expiresAt = now + input.ttlSeconds;
+    const expiresAt = now + Math.min(input.ttlSeconds, MAX_CHALLENGE_LIFETIME_SECONDS);
     const resendAvailableAt = now + input.resendCooldownSeconds;
     const codeHash = await hashOtpCode(input.code, input.otpKey, input.encryptionKey);
     const identifierHash = await hashCustomerAuthOtpIdentifier(input.identifier, input.encryptionKey);
@@ -171,7 +180,7 @@ export async function claimCustomerAuthOtpChallenge(
                 consumedAt: now,
                 updatedAt: now,
             }
-            : { expiresAt: now + ACCOUNT_DETAILS_WINDOW_SECONDS, updatedAt: now })
+            : { expiresAt: extendedChallengeExpiry(now, ACCOUNT_DETAILS_WINDOW_SECONDS), updatedAt: now })
         .where(and(
             eq(customerAuthOtpChallenges.otpKey, input.otpKey),
             eq(customerAuthOtpChallenges.method, input.method),
@@ -179,6 +188,7 @@ export async function claimCustomerAuthOtpChallenge(
             eq(customerAuthOtpChallenges.identifierHash, identifierHash),
             eq(customerAuthOtpChallenges.status, "pending"),
             gt(customerAuthOtpChallenges.expiresAt, now),
+            gt(sql`${customerAuthOtpChallenges.createdAt} + ${MAX_CHALLENGE_LIFETIME_SECONDS}`, now),
             sql`${customerAuthOtpChallenges.attempts} < ${customerAuthOtpChallenges.maxAttempts}`,
             eq(customerAuthOtpChallenges.codeHash, codeHash),
         ))
@@ -204,6 +214,7 @@ export async function claimCustomerAuthOtpChallenge(
             eq(customerAuthOtpChallenges.identifierHash, identifierHash),
             eq(customerAuthOtpChallenges.status, "pending"),
             gt(customerAuthOtpChallenges.expiresAt, now),
+            gt(sql`${customerAuthOtpChallenges.createdAt} + ${MAX_CHALLENGE_LIFETIME_SECONDS}`, now),
             sql`${customerAuthOtpChallenges.attempts} < ${customerAuthOtpChallenges.maxAttempts}`,
             ne(customerAuthOtpChallenges.codeHash, codeHash),
         ))
@@ -245,14 +256,14 @@ export async function claimCustomerAuthOtpChallenge(
     if (existing.status === "locked" || existing.attempts >= existing.maxAttempts) {
         throw new ValidationError(OTP_LOCKED_MESSAGE, { attemptsLeft: 0 });
     }
-    if (existing.expiresAt <= now) {
+    if (Math.min(existing.expiresAt, existing.createdAt + MAX_CHALLENGE_LIFETIME_SECONDS) <= now) {
         throw new ValidationError("That code has expired. Send a new code.", { attemptsLeft: 0 });
     }
 
     throw new ValidationError("That code couldn't be checked. Send a new code.", { attemptsLeft: 0 });
 }
 
-/** Keeps the latest pending code usable for up to 30 more minutes. */
+/** Keeps the latest pending code usable, at most 30 minutes from its issuance. */
 export async function extendPendingCustomerAuthOtpChallenge(
     db: Database,
     otpKey: string,
@@ -260,7 +271,7 @@ export async function extendPendingCustomerAuthOtpChallenge(
 ): Promise<void> {
     const now = Math.floor(Date.now() / 1000);
     await db.update(customerAuthOtpChallenges)
-        .set({ expiresAt: now + Math.min(Math.max(seconds, 0), 30 * 60), updatedAt: now })
+        .set({ expiresAt: extendedChallengeExpiry(now, seconds), updatedAt: now })
         .where(and(
             eq(customerAuthOtpChallenges.otpKey, otpKey),
             eq(customerAuthOtpChallenges.status, "pending"),
@@ -275,29 +286,14 @@ export async function cleanupExpiredCustomerAuthOtpChallenges(
 ): Promise<CleanupExpiredCustomerAuthOtpChallengesResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
     const staleTerminalCutoff = nowSeconds - 60 * 60;
-    const rows = await db.select({ otpKey: customerAuthOtpChallenges.otpKey })
-        .from(customerAuthOtpChallenges)
-        .where(or(
-            lte(customerAuthOtpChallenges.expiresAt, nowSeconds),
-            and(
-                ne(customerAuthOtpChallenges.status, "pending"),
-                lte(customerAuthOtpChallenges.updatedAt, staleTerminalCutoff),
-            ),
-        ))
-        .limit(limit + 1);
-
-    const deleteIds = rows.slice(0, limit).map((row) => row.otpKey);
-    if (deleteIds.length > 0) {
-        await db.delete(customerAuthOtpChallenges)
-            .where(inArray(customerAuthOtpChallenges.otpKey, deleteIds));
-    }
-
-    return {
-        scanned: Math.min(rows.length, limit),
-        deleted: deleteIds.length,
-        limit,
-        hasMore: rows.length > limit,
-    };
+    const expired = or(
+        lte(customerAuthOtpChallenges.expiresAt, nowSeconds),
+        and(
+            ne(customerAuthOtpChallenges.status, "pending"),
+            lte(customerAuthOtpChallenges.updatedAt, staleTerminalCutoff),
+        ),
+    );
+    return sweepExpiredRows(db, customerAuthOtpChallenges, customerAuthOtpChallenges.otpKey, expired, limit);
 }
 
 async function hashOtpCode(code: string, otpKey: string, encryptionKey: string | undefined): Promise<string> {

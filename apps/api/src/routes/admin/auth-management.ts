@@ -1,3 +1,4 @@
+import { randomString } from "@scalius/shared/random";
 // src/server/routes/admin/auth-management.ts
 // Admin OpenAPI routes for auth management (users, profile, 2FA, setup).
 
@@ -5,10 +6,12 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { ADMIN_SETUP_TOKEN_HEADER } from "@scalius/shared/setup-token";
 import { settingsMirror } from "@scalius/core/settings-store";
+import { inJsonArray } from "@scalius/core/utils/in-json-array";
 import { and, desc, eq, gt, inArray, isNotNull, like, ne, or, sql } from "drizzle-orm";
 import { getCookies, parseSetCookieHeader, splitSetCookieHeader } from "better-auth/cookies";
 import {
     buildBatchGuard,
+    chunkInsertRowsForD1,
     isBatchGuardError,
     safeBatch,
     type Database,
@@ -136,13 +139,7 @@ function getSessionTokenFromSetCookie(headers: Headers | undefined, auth: unknow
 
 function generateBootstrapPassword(length = 32): string {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    let password = "";
-    const randomValues = new Uint8Array(length);
-    crypto.getRandomValues(randomValues);
-    for (let i = 0; i < length; i++) {
-        password += chars[(randomValues[i] ?? 0) % chars.length];
-    }
-    return password;
+    return randomString(chars, length);
 }
 
 /** A wrong, expired or used second-factor code: the person can retry, so never a 5xx. */
@@ -728,8 +725,9 @@ app.openapi(deleteUserRoute, async (c) => {
         })));
         await safeBatch(db, [
             ...(liveLinks.length ? [
-                db.delete(verification).where(inArray(verification.id, liveLinks.map(({ id }) => id))),
-                db.insert(verification).values(cancelledMarkers),
+                db.delete(verification).where(inJsonArray(verification.id, liveLinks.map(({ id }) => id))),
+                ...chunkInsertRowsForD1(cancelledMarkers, (row) => db.insert(verification).values(row))
+                    .map((rows) => db.insert(verification).values(rows)),
             ] : []),
             db.update(adminInvitations)
                 .set({

@@ -5,7 +5,8 @@
 // delay after delivery) into `review_request` outbox rows, one per order, and
 // the send-time check decides again whether there is anything to ask about.
 // Links point at the order page or /track-order, never at a token.
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { inJsonArray } from "../../utils/in-json-array";
 import { safeBatch, type Database } from "@scalius/database/client";
 import {
   orderItems,
@@ -77,7 +78,7 @@ export async function sweepReviewRequests(
   if (skip.length > 0) {
     await db.update(orderReviewRequests)
       .set({ status: "skipped", updatedAt: now })
-      .where(and(inArray(orderReviewRequests.orderId, skip), eq(orderReviewRequests.status, "scheduled")));
+      .where(and(inJsonArray(orderReviewRequests.orderId, skip), eq(orderReviewRequests.status, "scheduled")));
   }
   for (let index = 0; index < ask.length; index += SWEEP_BATCH_ORDERS) {
     const statements = ask.slice(index, index + SWEEP_BATCH_ORDERS).flatMap((orderId) => {

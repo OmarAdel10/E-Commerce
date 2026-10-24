@@ -26,6 +26,7 @@ import {
 } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { nanoid } from "nanoid";
+import { inJsonArray } from "../../utils/in-json-array";
 import { deps } from "../../cache-deps";
 import { applyTranslation, foldedTranslationChain, translationRowsSql, type TranslationScope } from "../translations";
 import { resolveTranslatedField, type TranslationRow } from "@scalius/shared/translations";
@@ -733,7 +734,7 @@ export async function searchNavigationMenuItems(
             .from(navigationMenuItems)
             .where(and(
                 eq(navigationMenuItems.menuId, menuId),
-                inArray(navigationMenuItems.id, parentIds),
+                inJsonArray(navigationMenuItems.id, parentIds),
             ))
             .all();
         parentIds = [];

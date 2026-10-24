@@ -3,9 +3,10 @@
 // Allocates a refund across the order's captured payments, claims it locally,
 // then dispatches each allocation through its gateway adapter (gateways/port.ts).
 
+import { inJsonArray } from "../../utils/in-json-array";
 import { orderPricePolicy, readGiftCardSettings, toStoreMinor } from "../settings";
 import { readStoreCurrency } from "../markets";
-import { eq, sql, desc, and, inArray } from "drizzle-orm";
+import { eq, sql, desc, and } from "drizzle-orm";
 import {
     orders,
     orderItems,
@@ -356,7 +357,7 @@ async function findRefundRequestReplay(
             .from(giftCards)
             .where(and(
                 eq(giftCards.source, "refund"),
-                inArray(giftCards.sourceRefundAttemptId, rows.map((row) => row.id)),
+                inJsonArray(giftCards.sourceRefundAttemptId, rows.map((row) => row.id)),
             ))
             .get()
         : undefined;
@@ -415,11 +416,11 @@ async function assertRefundableLines(db: Database, orderId: string, lines: reado
     const [items, refunded] = await db.batch([
         db.select({ id: orderItems.id, quantity: orderItems.quantity })
             .from(orderItems)
-            .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.id, ids))),
+            .where(and(eq(orderItems.orderId, orderId), inJsonArray(orderItems.id, ids))),
         db.select({ orderItemId: orderRefundLines.orderItemId, quantity: sql<number>`sum(${orderRefundLines.quantity})` })
             .from(orderRefundLines)
             .innerJoin(orderRefunds, eq(orderRefunds.id, orderRefundLines.refundId))
-            .where(and(eq(orderRefundLines.orderId, orderId), inArray(orderRefundLines.orderItemId, ids), sql`${orderRefunds.status} <> 'failed'`))
+            .where(and(eq(orderRefundLines.orderId, orderId), inJsonArray(orderRefundLines.orderItemId, ids), sql`${orderRefunds.status} <> 'failed'`))
             .groupBy(orderRefundLines.orderItemId),
     ]);
     const quantities = new Map(items.map((item) => [item.id, item.quantity]));
@@ -442,7 +443,7 @@ function normalizePaymentGateway(value: string): string {
     // A gift-card tender is an internal payment: refundable, never dispatched;
     // a recorded payment is refunded by hand (a manual settlement).
     if (isPaymentMethodId(value) || value === GIFT_CARD_PAYMENT_METHOD || value === RECORDED_PAYMENT_METHOD) return value;
-    throw new ValidationError(`Unsupported payment gateway: ${value}`);
+    throw new ValidationError(`Unsupported payment gateway: ${String(value)}`);
 }
 
 function parseRefundMetadata(metadata: string | null): Record<string, unknown> {
@@ -809,7 +810,7 @@ export async function finalizeAcceptedRefundAttemptIds(
             currency: refundAttempts.currency,
         })
         .from(refundAttempts)
-        .where(inArray(refundAttempts.id, uniqueAttemptIds));
+        .where(inJsonArray(refundAttempts.id, uniqueAttemptIds));
 
     if (attempts.length !== uniqueAttemptIds.length) {
         throw new NotFoundError("One or more refund attempts could not be found for reconciliation.");
@@ -884,7 +885,7 @@ export async function finalizeAcceptedRefundAttemptIds(
     await db.update(orderPayments).set({
         status: PaymentRecordStatus.REFUNDED,
         updatedAt: sql`unixepoch()`,
-    }).where(inArray(orderPayments.id, refundPaymentIds));
+    }).where(inJsonArray(orderPayments.id, refundPaymentIds));
 
     const finalizedOrderIds = new Set<string>();
     const finalizedAttemptIds: string[] = [];
@@ -961,7 +962,7 @@ export async function finalizeAcceptedRefundAttemptIds(
         claimExpiresAt: null,
         refundedAt: sql`unixepoch()`,
         updatedAt: sql`unixepoch()`,
-    }).where(inArray(refundAttempts.id, uniqueAttemptIds));
+    }).where(inJsonArray(refundAttempts.id, uniqueAttemptIds));
     finalizedAttemptIds.push(...uniqueAttemptIds);
 
     return {

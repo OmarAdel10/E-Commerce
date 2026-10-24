@@ -163,3 +163,22 @@ export function chunkRowsForD1<T>(
   }
   return chunkForD1(rows, Math.max(1, Math.floor(D1_SAFE_BOUND_PARAMETER_LIMIT / parametersPerRow)));
 }
+
+/**
+ * Size inserts from compiled rows, including defaults Drizzle binds on the
+ * caller's behalf. Compile each row so optional values with different binding
+ * shapes remain safe. The callback builds a statement without executing it;
+ * include any conflict clauses, whose fixed bindings are counted conservatively.
+ */
+export function chunkInsertRowsForD1<T>(
+  rows: readonly T[],
+  compileRow: (row: T) => { toSQL(): { params: readonly unknown[] } },
+): T[][] {
+  if (rows.length === 0) return [];
+  let parametersPerRow = 1;
+  for (const row of rows) {
+    parametersPerRow = Math.max(parametersPerRow, compileRow(row).toSQL().params.length);
+  }
+  if (parametersPerRow > 100) throw new RangeError("One insert row exceeds D1's 100-parameter limit");
+  return chunkRowsForD1(rows, parametersPerRow);
+}

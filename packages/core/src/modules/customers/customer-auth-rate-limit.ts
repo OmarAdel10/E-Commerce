@@ -1,6 +1,7 @@
+import { sweepExpiredRows } from "../../utils/sweep-expired-rows";
 import { customerAuthOtpRateLimits } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
-import { and, eq, gt, inArray, lt, lte, sql } from "drizzle-orm";
+import { and, eq, gt, lt, lte, sql } from "drizzle-orm";
 import { RateLimitError } from "@scalius/core/errors";
 import { hmacSha256Hex, sha256Hex } from "@scalius/shared/hash";
 
@@ -174,24 +175,7 @@ export async function cleanupExpiredCustomerAuthOtpRateLimits(
     options: { limit?: number } = {},
 ): Promise<CleanupExpiredCustomerAuthOtpRateLimitsResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
-    const rows = await db
-        .select({ key: customerAuthOtpRateLimits.key })
-        .from(customerAuthOtpRateLimits)
-        .where(lte(customerAuthOtpRateLimits.windowExpiresAt, nowSeconds))
-        .limit(limit + 1);
-
-    const deleteKeys = rows.slice(0, limit).map((row) => row.key);
-    if (deleteKeys.length > 0) {
-        await db.delete(customerAuthOtpRateLimits)
-            .where(inArray(customerAuthOtpRateLimits.key, deleteKeys));
-    }
-
-    return {
-        scanned: Math.min(rows.length, limit),
-        deleted: deleteKeys.length,
-        limit,
-        hasMore: rows.length > limit,
-    };
+    return sweepExpiredRows(db, customerAuthOtpRateLimits, customerAuthOtpRateLimits.key, lte(customerAuthOtpRateLimits.windowExpiresAt, nowSeconds), limit);
 }
 
 async function buildCustomerAuthOtpRateLimitKey(

@@ -115,6 +115,7 @@ export { schema };
 export {
   buildBatchGuard,
   chunkForD1,
+  chunkInsertRowsForD1,
   chunkRowsForD1,
   D1_ID_CHUNK_SIZE,
   isBatchGuardError,

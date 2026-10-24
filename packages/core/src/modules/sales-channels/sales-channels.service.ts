@@ -10,7 +10,8 @@
 // products domain (`channel-publications.ts`): it is a product fact.
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { safeBatch, type Database } from "@scalius/database/client";
+import { chunkInsertRowsForD1, safeBatch, type Database } from "@scalius/database/client";
+import { inJsonArray } from "../../utils/in-json-array";
 import {
     inventoryLocations,
     productChannelPublications,
@@ -137,7 +138,7 @@ export async function updateSalesChannel(
         }
         const known = await db.select({ id: inventoryLocations.id, status: inventoryLocations.status })
             .from(inventoryLocations)
-            .where(inArray(inventoryLocations.id, requested));
+            .where(inJsonArray(inventoryLocations.id, requested));
         if (known.length !== requested.length) {
             throw new ValidationError("A location was not found. Reload and try again.", { field: "locationIds" });
         }
@@ -151,14 +152,18 @@ export async function updateSalesChannel(
             const removed = before.filter((locationId) => !requested.includes(locationId));
             // Links first, unlinks second: the unlink trigger (0183) checks the channel's final locations.
             if (added.length > 0) {
-                writes.push(db.insert(salesChannelLocations)
-                    .values(added.map((locationId) => ({ channelId: id, locationId })))
-                    .onConflictDoNothing() as unknown as SQLiteBatchItem);
+                for (const rows of chunkInsertRowsForD1(
+                    added.map((locationId) => ({ channelId: id, locationId })),
+                    (row) => db.insert(salesChannelLocations).values(row).onConflictDoNothing(),
+                )) {
+                    writes.push(db.insert(salesChannelLocations).values(rows)
+                        .onConflictDoNothing() as unknown as SQLiteBatchItem);
+                }
             }
             if (removed.length > 0) {
                 writes.push(db.delete(salesChannelLocations).where(and(
                     eq(salesChannelLocations.channelId, id),
-                    inArray(salesChannelLocations.locationId, removed),
+                    inJsonArray(salesChannelLocations.locationId, removed),
                 )) as unknown as SQLiteBatchItem);
             }
         }

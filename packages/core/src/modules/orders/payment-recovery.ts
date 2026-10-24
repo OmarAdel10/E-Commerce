@@ -1,4 +1,5 @@
-import { and, desc, eq, gt, inArray, lte, ne, or, sql } from "drizzle-orm";
+import { sweepExpiredRows } from "../../utils/sweep-expired-rows";
+import { and, desc, eq, gt, lte, ne, or, sql } from "drizzle-orm";
 import { startsWithText } from "../../utils/text-match";
 import type { Database } from "@scalius/database/client";
 import {
@@ -261,29 +262,14 @@ export async function cleanupExpiredOrderPaymentRecoveryChallenges(
 ): Promise<CleanupExpiredOrderPaymentRecoveryChallengesResult> {
     const limit = Math.max(1, Math.min(options.limit ?? 200, 500));
     const staleTerminalCutoff = nowSeconds - 60 * 60;
-    const rows = await db.select({ challengeKey: orderPaymentRecoveryChallenges.challengeKey })
-        .from(orderPaymentRecoveryChallenges)
-        .where(or(
-            lte(orderPaymentRecoveryChallenges.expiresAt, nowSeconds),
-            and(
-                ne(orderPaymentRecoveryChallenges.status, "pending"),
-                lte(orderPaymentRecoveryChallenges.updatedAt, staleTerminalCutoff),
-            ),
-        ))
-        .limit(limit + 1);
-
-    const deleteIds = rows.slice(0, limit).map((row) => row.challengeKey);
-    if (deleteIds.length > 0) {
-        await db.delete(orderPaymentRecoveryChallenges)
-            .where(inArray(orderPaymentRecoveryChallenges.challengeKey, deleteIds));
-    }
-
-    return {
-        scanned: Math.min(rows.length, limit),
-        deleted: deleteIds.length,
-        limit,
-        hasMore: rows.length > limit,
-    };
+    const expired = or(
+        lte(orderPaymentRecoveryChallenges.expiresAt, nowSeconds),
+        and(
+            ne(orderPaymentRecoveryChallenges.status, "pending"),
+            lte(orderPaymentRecoveryChallenges.updatedAt, staleTerminalCutoff),
+        ),
+    );
+    return sweepExpiredRows(db, orderPaymentRecoveryChallenges, orderPaymentRecoveryChallenges.challengeKey, expired, limit);
 }
 
 async function getRecoveryOrderContact(
