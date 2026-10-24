@@ -20,6 +20,8 @@ let open = 0;
 let marked = false;
 /** The address of that entry, which a replace while it is current may change. */
 let markedHref = "";
+/** The router's state for that address (a replace changes it with the address). */
+let markedState: unknown = null;
 /** Our own `history.back()` that takes the entry off is on its way. */
 let leaving = false;
 let release = 0;
@@ -43,6 +45,7 @@ function patch() {
   const patchedReplace: History["replaceState"] = (data, unused, url) => {
     replaceState.call(history, data, unused, url);
     markedHref = location.href;
+    markedState = history.state;
   };
   // "Back to where settings were opened from" counts the pages the router knows.
   const patchedGo: History["go"] = (delta = 0) => go.call(history, delta < 0 ? delta - 1 : delta);
@@ -59,6 +62,7 @@ function mark() {
   History.prototype.pushState.call(history, history.state, "");
   marked = true;
   markedHref = location.href;
+  markedState = history.state;
   patch();
 }
 
@@ -76,8 +80,12 @@ function closeTop() {
 function onPopState(event: PopStateEvent) {
   if (leaving) {
     leaving = false;
-    // Back on the address the router already shows: nothing for it to do.
-    if (location.href === markedHref) event.stopImmediatePropagation();
+    // Taking our entry off never navigates: the router keeps the address it shows. An
+    // overlay whose own close rewrote the address (a sheet kept in the URL, such as
+    // ?review=) left the old address on the entry below, so that entry takes the new one,
+    // or the router would read the old address and open the overlay again.
+    if (location.href !== markedHref) History.prototype.replaceState.call(history, markedState, "", markedHref);
+    event.stopImmediatePropagation();
     return;
   }
   if (!marked) return;
