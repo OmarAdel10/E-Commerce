@@ -144,29 +144,41 @@ type JsonSchemaNode = {
  * Every field a JSON Schema marks `x-scalius-protected`, as paths. Union
  * variants contribute all their paths (a path that is absent in a value is
  * simply skipped); `$ref`s resolve through `resolveRef` and stop on a cycle.
+ * A path marked more than once (one union variant says email, another phone)
+ * needs every category any marking names, and a marked field needs the
+ * categories marked anywhere inside it too: the strictest reading wins, so a
+ * value never reaches an app that holds only one of its categories.
  */
 export function protectedPathsOf(schema: unknown, resolveRef: (ref: string) => unknown = () => undefined): ProtectedPath[] {
   const found = new Map<string, ProtectedPath>();
-  const walk = (node: unknown, path: string[], refs: ReadonlySet<string>) => {
+  // `inside` collects the categories of a marked field's subtree instead of recording paths.
+  const walk = (node: unknown, path: string[], refs: ReadonlySet<string>, inside?: Set<ProtectedCustomerData>) => {
     if (!node || typeof node !== "object") return;
     const schemaNode = node as JsonSchemaNode;
     const categories = protectedMarkerCategories(schemaNode[PROTECTED_FIELD_KEYWORD]);
-    if (categories && path.length > 0) {
-      found.set(path.join("\u0000"), { path: [...path], categories });
+    if (categories && inside) {
+      for (const category of categories) inside.add(category);
+    } else if (categories && path.length > 0) {
+      const key = path.join("\u0000");
+      const all = new Set([...(found.get(key)?.categories ?? []), ...categories]);
+      walkChildren(schemaNode, path, refs, all);
+      found.set(key, { path: [...path], categories: [...all] });
       return;
     }
-    if (typeof schemaNode.$ref === "string") {
-      if (refs.has(schemaNode.$ref)) return;
-      walk(resolveRef(schemaNode.$ref), path, new Set([...refs, schemaNode.$ref]));
+    walkChildren(schemaNode, path, refs, inside);
+  };
+  const walkChildren = (schemaNode: JsonSchemaNode, path: string[], refs: ReadonlySet<string>, inside?: Set<ProtectedCustomerData>) => {
+    if (typeof schemaNode.$ref === "string" && !refs.has(schemaNode.$ref)) {
+      walk(resolveRef(schemaNode.$ref), path, new Set([...refs, schemaNode.$ref]), inside);
     }
-    for (const [key, child] of Object.entries(schemaNode.properties ?? {})) walk(child, [...path, key], refs);
+    for (const [key, child] of Object.entries(schemaNode.properties ?? {})) walk(child, [...path, key], refs, inside);
     const items = schemaNode.items;
-    if (Array.isArray(items)) for (const item of items) walk(item, [...path, "*"], refs);
-    else if (items) walk(items, [...path, "*"], refs);
+    if (Array.isArray(items)) for (const item of items) walk(item, [...path, "*"], refs, inside);
+    else if (items) walk(items, [...path, "*"], refs, inside);
     if (schemaNode.additionalProperties && typeof schemaNode.additionalProperties === "object") {
-      walk(schemaNode.additionalProperties, [...path, "*"], refs);
+      walk(schemaNode.additionalProperties, [...path, "*"], refs, inside);
     }
-    for (const variant of [...(schemaNode.anyOf ?? []), ...(schemaNode.oneOf ?? []), ...(schemaNode.allOf ?? [])]) walk(variant, path, refs);
+    for (const variant of [...(schemaNode.anyOf ?? []), ...(schemaNode.oneOf ?? []), ...(schemaNode.allOf ?? [])]) walk(variant, path, refs, inside);
   };
   walk(schema, [], new Set());
   return [...found.values()];
