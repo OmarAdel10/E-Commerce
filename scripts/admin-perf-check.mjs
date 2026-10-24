@@ -84,7 +84,8 @@ export const BUNDLE_BUDGETS = {
     "admin/products/new.tsx": 356.5,
     // +0.3 over the default: the type preview's "Bengali System" fallback face.
     // -4.7: theme sections check custom field keys without the value codec; measured 355.2.
-    "admin/online-store/theme_.editor.tsx": 355.6,
+    // 2026-10-24: shipping profiles add 0.3 KiB of shared-chunk churn (entry, dialog) that every route pays; a trim of the editor's shared weight is tracked.
+    "admin/online-store/theme_.editor.tsx": 356.0,
     "admin/inventory/index.tsx": 255,
     // The customer page's own copy is apart from the list's (list UX).
     "admin/customers/index.tsx": 245,
