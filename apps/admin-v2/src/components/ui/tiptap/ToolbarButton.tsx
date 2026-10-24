@@ -19,7 +19,7 @@ export function ToolbarButton({ onClick, isActive, disabled, tooltip, children }
           type="button"
           variant="ghost"
           size="icon"
-          className="h-11 w-11 shrink-0 sm:h-8 sm:w-8 pointer-coarse:h-11 pointer-coarse:w-11"
+          className="h-11 w-11 shrink-0 sm:pointer-fine:h-8 sm:pointer-fine:w-8"
           onClick={onClick}
           onPointerDown={(event) => event.preventDefault()}
           onMouseDown={(event) => event.preventDefault()}

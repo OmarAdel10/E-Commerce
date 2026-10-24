@@ -250,9 +250,9 @@ export const TiptapMenuBar = ({
       <div role="toolbar" aria-label={ariaLabel ?? t("toolbar")} className={TOOLBAR_ROW}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-12 pointer-coarse:h-11 pointer-coarse:w-11 @[38rem]:w-26 pointer-coarse:@[38rem]:w-11" aria-label={`${t("textStyle")}: ${styleLabel}`}>
-              <Pilcrow className="text-muted-foreground @[38rem]:hidden pointer-coarse:@[38rem]:block" />
-              <span className="hidden min-w-0 flex-1 truncate ps-2 text-muted-foreground text-start @[38rem]:inline pointer-coarse:@[38rem]:hidden">{styleLabel}</span>
+            <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:pointer-fine:h-8 sm:pointer-fine:w-12 sm:pointer-fine:@[38rem]:w-26" aria-label={`${t("textStyle")}: ${styleLabel}`}>
+              <Pilcrow className="text-muted-foreground sm:pointer-fine:@[38rem]:hidden" />
+              <span className="hidden min-w-0 flex-1 truncate ps-2 text-muted-foreground text-start sm:pointer-fine:@[38rem]:inline">{styleLabel}</span>
               <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
@@ -295,7 +295,7 @@ export const TiptapMenuBar = ({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-11 w-11 shrink-0 sm:h-8 sm:w-8 pointer-coarse:h-11 pointer-coarse:w-11"
+                  className="h-11 w-11 shrink-0 sm:pointer-fine:h-8 sm:pointer-fine:w-8"
                   onPointerDown={(event) => event.preventDefault()}
                   aria-pressed={toolbarState.link || undefined}
                   aria-label={linkLabel}
@@ -352,7 +352,7 @@ export const TiptapMenuBar = ({
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-12 pointer-coarse:h-11 pointer-coarse:w-11" aria-label={alignmentLabel}>
+                <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:pointer-fine:h-8 sm:pointer-fine:w-12" aria-label={alignmentLabel}>
                   <AlignmentIcon className="text-muted-foreground" />
                   <ChevronDown className="text-muted-foreground" />
                 </Button>
@@ -374,10 +374,10 @@ export const TiptapMenuBar = ({
           <ToolbarButton onClick={() => toggleRichTextOrderedList(editor)} isActive={toolbarState.orderedList} disabled={!toolbarState.canToggleList} tooltip={t("numberedList")}><ListOrdered /></ToolbarButton>
           <DropdownMenu onOpenChange={(open) => { if (open) { insertAnchor.current = insertTrigger.current; inserted.current = false; } }}>
             <DropdownMenuTrigger asChild>
-              <Button ref={insertTrigger} type="button" variant="ghost" size="sm" className="w-11 shrink-0 sm:w-auto pointer-coarse:h-11 pointer-coarse:w-11" aria-label={t("insert")}>
-                <Plus className="hidden text-muted-foreground pointer-coarse:block" />
-                <span className="text-body text-muted-foreground pointer-coarse:hidden">{t("insert")}</span>
-                <ChevronDown className="text-muted-foreground pointer-coarse:hidden" />
+              <Button ref={insertTrigger} type="button" variant="ghost" size="sm" className="w-11 shrink-0 sm:pointer-fine:w-auto" aria-label={t("insert")}>
+                <Plus className="text-muted-foreground sm:pointer-fine:hidden" />
+                <span className="hidden text-body text-muted-foreground sm:pointer-fine:inline">{t("insert")}</span>
+                <ChevronDown className="hidden text-muted-foreground sm:pointer-fine:block" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="z-[10001]" onCloseAutoFocus={finishMenu}>{insertItems()}</DropdownMenuContent>
@@ -386,7 +386,7 @@ export const TiptapMenuBar = ({
         <div className={TOOLBAR_NARROW}>
           <DropdownMenu onOpenChange={(open) => { if (open) { insertAnchor.current = moreTrigger.current; inserted.current = false; } }}>
             <DropdownMenuTrigger asChild>
-              <Button ref={moreTrigger} type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label={t("moreFormatting")}><MoreHorizontal className="text-muted-foreground" /></Button>
+              <Button ref={moreTrigger} type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:pointer-fine:h-8 sm:pointer-fine:w-8" aria-label={t("moreFormatting")}><MoreHorizontal className="text-muted-foreground" /></Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="z-[10001]" onCloseAutoFocus={finishMenu}>
               <DropdownMenuCheckboxItem checked={toolbarState.italic} onSelect={() => runFromMenu(() => { editor.chain().focus().toggleItalic().run(); })}><Italic />{t("italic")}</DropdownMenuCheckboxItem>
