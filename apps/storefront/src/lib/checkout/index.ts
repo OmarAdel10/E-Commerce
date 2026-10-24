@@ -1811,10 +1811,12 @@ export async function initCheckoutPage(): Promise<void> {
   const reviewed = readReviewedCheckoutQuote(checkoutData!.expectedQuoteFingerprint);
   renderSummary(reviewed, true);
 
+  let adopted: CheckoutTaxQuote | null = null;
   try {
     const { quote, notice } = await fetchQuoteForCheckout();
     if (currentInitVersion !== initVersion) return;
     adoptQuote(quote);
+    adopted = quote;
     showGiftCardMessage(notice);
   } catch (error) {
     if (redirectForCartRefusal(error)) return;
@@ -1830,7 +1832,7 @@ export async function initCheckoutPage(): Promise<void> {
   await renderGateways();
   if (currentInitVersion !== initVersion) return;
   // The cart page's total moved on the way here: the buyer pays only after seeing the new one.
-  if (reviewed && authoritativeTaxQuote && reviewed.totalMinor !== authoritativeTaxQuote.totalMinor) {
+  if (reviewed && adopted && reviewed.totalMinor !== adopted.totalMinor) {
     showError(checkoutCopy.totalChangedReviewText);
   }
   applyQueuedGiftCard(true);

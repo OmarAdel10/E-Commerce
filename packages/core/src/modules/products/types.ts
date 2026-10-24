@@ -286,6 +286,8 @@ export interface StorefrontFeedProduct {
     discountAmount: number | null;
     discountedPrice: number;
     freeDelivery: boolean;
+    /** The shipping profile (null: the default): the feed prices its delivery with it. */
+    shippingProfileId: string | null;
     categoryId: string | null;
     /** A buyer input is required: agent carts (variant + quantity only) can't buy it. */
     requiresCustomization: boolean;
