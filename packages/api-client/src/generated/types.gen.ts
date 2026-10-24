@@ -3280,7 +3280,7 @@ export type PriceListResource = {
     id: string;
     name: string;
     description: string | null;
-    kind: 'market' | 'segment' | 'sale';
+    kind: 'market' | 'segment' | 'sale' | 'override';
     marketId: string;
     segmentId: string | null;
     status: 'draft' | 'active';
@@ -3626,9 +3626,9 @@ export type PriceList = {
     name: string;
     description: string | null;
     /**
-     * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.
+     * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.
      */
-    kind: 'market' | 'segment' | 'sale';
+    kind: 'market' | 'segment' | 'sale' | 'override';
     marketId: string;
     marketName: string;
     marketIsBackup: boolean;
@@ -4389,6 +4389,20 @@ export type TranslatableResource = {
         [key: string]: string | null;
     };
     /**
+     * Digests of the source text observed by the author, as returned by the resource read. A missing or changed translated field refuses a guarded save (409).
+     */
+    sourceDigest: {
+        [key: string]: string;
+    };
+    /**
+     * Opaque content revision of the translation and localized handle. Send the value from the read; null asserts neither exists. A competing change refuses the entire save (409).
+     */
+    revision: string | null;
+    /**
+     * On a save response only: the revision committed by this request, captured inside its write transaction. It can differ from revision if another edit committed before the response read.
+     */
+    committedRevision?: string | null;
+    /**
      * The source URL handle (types with handles).
      */
     sourceSlug: string | null;
@@ -4432,6 +4446,16 @@ export type SaveTranslation = {
         [key: string]: string;
     };
     /**
+     * Digests of the source text observed by the author, as returned by the resource read. A missing or changed translated field refuses a guarded save (409).
+     */
+    sourceDigest?: {
+        [key: string]: string;
+    };
+    /**
+     * Opaque content revision of the translation and localized handle. Send the value from the read; null asserts neither exists. A competing change refuses the entire save (409).
+     */
+    revision?: string | null;
+    /**
      * The localized URL handle; empty or null keeps the source address. Every-market translations only.
      */
     slug?: string | null;
@@ -4447,6 +4471,16 @@ export type SaveTranslation = {
         fields: {
             [key: string]: string;
         };
+        /**
+         * Digests of the source text observed by the author, as returned by the resource read. A missing or changed translated field refuses a guarded save (409).
+         */
+        sourceDigest?: {
+            [key: string]: string;
+        };
+        /**
+         * Opaque content revision of the translation and localized handle. Send the value from the read; null asserts neither exists. A competing change refuses the entire save (409).
+         */
+        revision?: string | null;
         type: 'product_option' | 'product_option_value' | 'product_variant';
         id: string;
     }>;
@@ -4664,7 +4698,7 @@ export type Market = {
      */
     fxRateSource: string;
     /**
-     * How long a placed order keeps the rate it was quoted (5 to 1,440 minutes).
+     * Deadline after placement to start a new buyer payment session for a wholly unpaid foreign-currency order (5 to 1,440 minutes). Placed amounts never change.
      */
     fxLockMinutes: number;
     /**
@@ -6523,11 +6557,28 @@ export type GetApiV1CollectionsDirectoryResponse = GetApiV1CollectionsDirectoryR
 export type GetApiV1CollectionsSitemapData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The page's subfolder presence (`en-in`); its market prices the products shown. Omit for the root (the backup market). An inactive or unknown presence answers 404.
+         */
+        presence?: string;
+        /**
+         * Page number
+         */
+        page?: number;
+        /**
+         * Items per page
+         */
+        limit?: number;
+    };
     url: '/api/v1/collections/sitemap';
 };
 
 export type GetApiV1CollectionsSitemapErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
     /**
      * Server error
      */
@@ -6548,6 +6599,12 @@ export type GetApiV1CollectionsSitemapResponses = {
                 canonicalPath: string | null;
                 updatedAt: string | null;
             }>;
+            pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                totalPages: number;
+            };
         };
     };
 };
@@ -6816,11 +6873,28 @@ export type GetApiV1BrandsResponse = GetApiV1BrandsResponses[keyof GetApiV1Brand
 export type GetApiV1BrandsSitemapData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The page's subfolder presence (`en-in`); its market prices the products shown. Omit for the root (the backup market). An inactive or unknown presence answers 404.
+         */
+        presence?: string;
+        /**
+         * Page number
+         */
+        page?: number;
+        /**
+         * Items per page
+         */
+        limit?: number;
+    };
     url: '/api/v1/brands/sitemap';
 };
 
 export type GetApiV1BrandsSitemapErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
     /**
      * Server error
      */
@@ -6841,6 +6915,12 @@ export type GetApiV1BrandsSitemapResponses = {
                 canonicalPath: string | null;
                 updatedAt: string | null;
             }>;
+            pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                totalPages: number;
+            };
         };
     };
 };
@@ -19273,11 +19353,28 @@ export type GetApiV1CategoriesSummariesResponse = GetApiV1CategoriesSummariesRes
 export type GetApiV1CategoriesSitemapData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The page's subfolder presence (`en-in`); its market prices the products shown. Omit for the root (the backup market). An inactive or unknown presence answers 404.
+         */
+        presence?: string;
+        /**
+         * Page number
+         */
+        page?: number;
+        /**
+         * Items per page
+         */
+        limit?: number;
+    };
     url: '/api/v1/categories/sitemap';
 };
 
 export type GetApiV1CategoriesSitemapErrors = {
+    /**
+     * Validation error
+     */
+    400: ErrorResponse;
     /**
      * Server error
      */
@@ -19298,6 +19395,12 @@ export type GetApiV1CategoriesSitemapResponses = {
                 canonicalPath: string | null;
                 updatedAt: string | null;
             }>;
+            pagination: {
+                page: number;
+                limit: number;
+                total: number;
+                totalPages: number;
+            };
         };
     };
 };
@@ -21582,9 +21685,17 @@ export type PostApiV1OrdersCartValidationErrors = {
      */
     400: ErrorResponse;
     /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
      * Server error
      */
     500: ErrorResponse;
+    /**
+     * Service unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type PostApiV1OrdersCartValidationError = PostApiV1OrdersCartValidationErrors[keyof PostApiV1OrdersCartValidationErrors];
@@ -22356,9 +22467,17 @@ export type PostApiV1OrdersTaxQuoteErrors = {
      */
     400: ErrorResponse;
     /**
+     * Rate limit exceeded
+     */
+    429: ErrorResponse;
+    /**
      * Server error
      */
     500: ErrorResponse;
+    /**
+     * Service unavailable
+     */
+    503: ErrorResponse;
 };
 
 export type PostApiV1OrdersTaxQuoteError = PostApiV1OrdersTaxQuoteErrors[keyof PostApiV1OrdersTaxQuoteErrors];
@@ -26799,9 +26918,9 @@ export type PostApiV1AdminResourcesPriceListsData = {
         name: string;
         description?: string | null;
         /**
-         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.
+         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.
          */
-        kind: 'market' | 'segment' | 'sale';
+        kind: 'market' | 'segment' | 'sale' | 'override';
         marketId: string;
         /**
          * Segment lists only.
@@ -26999,9 +27118,9 @@ export type PatchApiV1AdminResourcesPriceListsByIdData = {
         name?: string;
         description?: string | null;
         /**
-         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.
+         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.
          */
-        kind?: 'market' | 'segment' | 'sale';
+        kind?: 'market' | 'segment' | 'sale' | 'override';
         marketId?: string;
         segmentId?: string | null;
         status?: 'draft' | 'active';
@@ -31609,9 +31728,9 @@ export type PostApiV1AdminPriceListsData = {
         name: string;
         description?: string | null;
         /**
-         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.
+         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.
          */
-        kind: 'market' | 'segment' | 'sale';
+        kind: 'market' | 'segment' | 'sale' | 'override';
         marketId: string;
         /**
          * Segment lists only.
@@ -31844,9 +31963,9 @@ export type PatchApiV1AdminPriceListsByIdData = {
         name?: string;
         description?: string | null;
         /**
-         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale in a market; it wins over the others.
+         * `market`: a market's own prices. `segment`: prices for the members of one customer segment (signed-in checkout only). `sale`: a scheduled sale that only lowers the eligible price. `override`: a scheduled price that takes priority over other lists.
          */
-        kind?: 'market' | 'segment' | 'sale';
+        kind?: 'market' | 'segment' | 'sale' | 'override';
         marketId?: string;
         segmentId?: string | null;
         status?: 'draft' | 'active';
@@ -52258,7 +52377,7 @@ export type PatchApiV1AdminSettingsMarketsByIdData = {
          */
         currencyCode?: string | null;
         /**
-         * Minutes a placed order keeps the rate it was quoted (default 30).
+         * Minutes after placement to start a new buyer payment session while wholly unpaid in a foreign currency (default 30). Placed amounts never change.
          */
         fxLockMinutes?: number;
         /**

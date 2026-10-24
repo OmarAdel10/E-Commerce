@@ -2079,7 +2079,7 @@ export const getApiV1AdminResourcesPriceLists = <ThrowOnError extends boolean = 
 /**
  * Create a price list
  *
- * A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, and wins over the market list; a segment list prices the signed-in members of one customer segment in a market. A new list is a draft until set active.
+ * A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, only when it lowers the eligible price; an override list deliberately replaces other list prices; a segment list prices the signed-in members of one customer segment in a market. A new list is a draft until set active.
  */
 export const postApiV1AdminResourcesPriceLists = <ThrowOnError extends boolean = false>(options: Options<PostApiV1AdminResourcesPriceListsData, ThrowOnError>): RequestResult<PostApiV1AdminResourcesPriceListsResponses, PostApiV1AdminResourcesPriceListsErrors, ThrowOnError> => (options.client ?? client).post<PostApiV1AdminResourcesPriceListsResponses, PostApiV1AdminResourcesPriceListsErrors, ThrowOnError>({
     url: '/api/v1/admin/resources/price-lists',
@@ -2722,7 +2722,7 @@ export const getApiV1AdminPriceLists = <ThrowOnError extends boolean = false>(op
 /**
  * Create a price list
  *
- * A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, and wins over the market list; a segment list prices the signed-in members of one customer segment in a market (the backup market included). A new list is a draft until set active.
+ * A market list prices a non-backup market for every buyer; a sale list does too, between its start and end, only when it lowers the eligible price; an override list deliberately replaces other list prices; a segment list prices the signed-in members of one customer segment in a market (the backup market included). A new list is a draft until set active.
  */
 export const postApiV1AdminPriceLists = <ThrowOnError extends boolean = false>(options: Options<PostApiV1AdminPriceListsData, ThrowOnError>): RequestResult<PostApiV1AdminPriceListsResponses, PostApiV1AdminPriceListsErrors, ThrowOnError> => (options.client ?? client).post<PostApiV1AdminPriceListsResponses, PostApiV1AdminPriceListsErrors, ThrowOnError>({
     url: '/api/v1/admin/price-lists',
@@ -4506,7 +4506,7 @@ export const getApiV1AdminTranslationsByTypeById = <ThrowOnError extends boolean
 /**
  * Save a resource's translation in a language
  *
- * Replaces the translation of the resource (and a product's options and option values in `parts`) in the language and market: fields left out or empty fall back to the source. Each field records the source it was translated from, so a later source edit marks it Outdated. `slug` sets the localized web address (every-market translations only); a handle another page of the type uses is refused (409).
+ * Replaces the translation of the resource (and a product's options and option values in `parts`) in the language and market: fields left out or empty fall back to the source. Each field records the source it was translated from, so a later source edit marks it Outdated. Send the sourceDigest and revision returned by the read: stale source or a competing translation/handle edit refuses the whole save (409). These preconditions are optional for legacy clients. `slug` sets the localized web address (every-market translations only); a handle another page of the type uses is refused (409).
  */
 export const putApiV1AdminTranslationsByTypeById = <ThrowOnError extends boolean = false>(options: Options<PutApiV1AdminTranslationsByTypeByIdData, ThrowOnError>): RequestResult<PutApiV1AdminTranslationsByTypeByIdResponses, PutApiV1AdminTranslationsByTypeByIdErrors, ThrowOnError> => (options.client ?? client).put<PutApiV1AdminTranslationsByTypeByIdResponses, PutApiV1AdminTranslationsByTypeByIdErrors, ThrowOnError>({
     url: '/api/v1/admin/translations/{type}/{id}',
