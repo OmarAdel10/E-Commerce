@@ -1,70 +1,15 @@
 import { settingsNavMessages, settingsSummaryMessages } from "~/i18n/settings";
 import { settingsSearchMessages } from "~/i18n/settings-search";
 import { SETTINGS_NAV, type SettingsNavKey } from "./settings-nav";
-
-/**
- * Every settings card, in list order. `card` is the card's DOM id (pass it as
- * `SettingsCard id`) and its name in `settingsSearchMessages`.
- */
-export const SETTINGS_CARDS = [
-  { page: "store", card: "business" },
-  { page: "store", card: "webAddresses" },
-  { page: "store", card: "storeDefaults" },
-  { page: "users", card: "staff" },
-  { page: "users", card: "roles" },
-  { page: "policies", card: "storePolicies" },
-  { page: "policies", card: "returnPolicy" },
-  { page: "payments", card: "paymentMethods" },
-  { page: "payments", card: "paymentOptions" },
-  { page: "checkout", card: "customerContact" },
-  { page: "checkout", card: "checkoutText" },
-  { page: "checkout", card: "customerRequests" },
-  { page: "checkout", card: "digitalDelivery" },
-  { page: "checkout", card: "addressAutocomplete" },
-  { page: "shipping", card: "deliveryCharges" },
-  { page: "shipping", card: "localPickup" },
-  { page: "shipping", card: "shippingProfiles" },
-  { page: "shipping", card: "deliveryAreas" },
-  { page: "shipping", card: "couriers" },
-  { page: "taxes", card: "taxCollection" },
-  { page: "taxes", card: "taxGroups" },
-  { page: "taxes", card: "taxRegions" },
-  { page: "taxes", card: "taxOverrides" },
-  { page: "locations", card: "inventoryLocations" },
-  { page: "markets", card: "markets" },
-  { page: "markets", card: "exchangeRates" },
-  { page: "salesChannels", card: "salesChannels" },
-  { page: "languages", card: "languages" },
-  { page: "languages", card: "machineTranslation" },
-  { page: "customerAccounts", card: "customerFields" },
-  { page: "customerAccounts", card: "customerSignIn" },
-  { page: "customerAccounts", card: "otherSignIn" },
-  { page: "customerAccounts", card: "marketingConsent" },
-  { page: "privacy", card: "cookieBanner" },
-  { page: "privacy", card: "customerData" },
-  { page: "notifications", card: "customerNotifications" },
-  { page: "notifications", card: "staffNotifications" },
-  { page: "notifications", card: "sending" },
-  { page: "notifications", card: "browserNotifications" },
-  { page: "notifications", card: "chatApps" },
-  { page: "webhooks", card: "webhooks" },
-  { page: "customData", card: "customData" },
-  { page: "integrations", card: "google" },
-  { page: "integrations", card: "facebook" },
-  { page: "integrations", card: "tiktok" },
-  { page: "integrations", card: "tracking" },
-  { page: "integrations", card: "fraudCheck" },
-  { page: "integrations", card: "aiAccess" },
-  { page: "integrations", card: "aiDrafting" },
-  { page: "integrations", card: "appSearch" },
-  { page: "integrations", card: "scanner" },
-  { page: "advanced", card: "trustedWebsites" },
-  { page: "advanced", card: "imageDelivery" },
-  { page: "advanced", card: "signInAccess" },
-  { page: "advanced", card: "refreshStore" },
-] as const satisfies ReadonlyArray<{ page: SettingsNavKey; card: keyof typeof settingsSearchMessages.en }>;
-
-export type SettingsCardId = (typeof SETTINGS_CARDS)[number]["card"];
+export {
+  SETTINGS_CARDS,
+  settingsCardLink,
+  subPageForHash,
+  type SettingsCardEntry,
+  type SettingsCardId,
+  type SettingsCardLink,
+} from "./settings-cards";
+import { SETTINGS_CARDS } from "./settings-cards";
 
 /**
  * Things merchants look for by another name (message templates, staff order
@@ -76,8 +21,8 @@ export const SEARCH_SHORTCUTS = [
   { card: "accountPassword", section: "myAccount", to: "/admin/account", hash: "password" },
   { card: "accountTwoStep", section: "myAccount", to: "/admin/account", hash: "two-step" },
   { card: "accountSessions", section: "myAccount", to: "/admin/account", hash: "sessions" },
-  { card: "messageTemplates", section: "notificationsPage", to: "/admin/settings/notifications", hash: "customerNotifications" },
-  { card: "staffOrderEmails", section: "notificationsPage", to: "/admin/settings/notifications", hash: "staffNotifications" },
+  { card: "messageTemplates", section: "notificationsPage", to: "/admin/settings/notifications", search: { part: "customers" }, hash: "customerNotifications" },
+  { card: "staffOrderEmails", section: "notificationsPage", to: "/admin/settings/notifications", search: { part: "staff" }, hash: "staffNotifications" },
   { card: "storeTheme", section: "onlineStore", to: "/admin/online-store/theme" },
   { card: "dashboardLanguage", section: "accountMenu" },
   { card: "dashboardAppearance", section: "accountMenu" },
@@ -85,6 +30,7 @@ export const SEARCH_SHORTCUTS = [
   card: keyof typeof settingsSearchMessages.en;
   section: keyof typeof settingsSearchMessages.en;
   to?: string;
+  search?: { part: string };
   hash?: string;
 }>;
 

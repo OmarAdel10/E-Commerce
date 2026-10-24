@@ -215,7 +215,7 @@ function SettingsForm({
           </Field>
           <p className="text-body text-muted-foreground">
             {t("requestChannels")}{" "}
-            <Link to="/admin/settings/notifications" className="text-link hover:underline">{t("notificationsLink")}</Link>
+            <Link to="/admin/settings/notifications" search={{ part: "customers" }} className="text-link hover:underline">{t("notificationsLink")}</Link>
           </p>
         </fieldset>
 

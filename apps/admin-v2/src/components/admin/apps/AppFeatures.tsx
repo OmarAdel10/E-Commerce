@@ -254,13 +254,13 @@ export function RunningDetail({ app, item, form, canManage, health, inRow = true
   const unused = unusedStatus === "hidden" || unusedStatus === "currency" || unusedStatus === "notChosen" ? unusedStatus : null;
   const tested = health && health.status !== "setup" ? providers.filter((provider) => provider.connection && provider.connection.status !== "none") : [];
   const settingsLink = (kind: "payment" | "sms", text: string) => (
-    <Link key={`use:${kind}`} to={PROVIDER_CAPABILITY[kind].to} className="text-link hover:underline">{text}</Link>
+    <Link key={`use:${kind}`} to={PROVIDER_CAPABILITY[kind].to} search={PROVIDER_CAPABILITY[kind].search} className="text-link hover:underline">{text}</Link>
   );
   const links = [
     ...(unused === "hidden" ? [settingsLink("payment", t("showAtCheckout"))] : []),
     ...(unused === "notChosen" ? [settingsLink("sms", t("chooseIn", { page: settingsPage(PROVIDER_CAPABILITY.sms.page) }))] : []),
     ...kinds.map((kind) => (
-      <Link key={kind} to={PROVIDER_CAPABILITY[kind].to} className="text-link hover:underline">{t("chooseIn", { page: settingsPage(PROVIDER_CAPABILITY[kind].page) })}</Link>
+      <Link key={kind} to={PROVIDER_CAPABILITY[kind].to} search={PROVIDER_CAPABILITY[kind].search} className="text-link hover:underline">{t("chooseIn", { page: settingsPage(PROVIDER_CAPABILITY[kind].page) })}</Link>
     )),
     ...(active ? pages.map((page) => (
       <Link key={page.id} to={appPagePath(app.id, page.id)} className="text-link hover:underline">{t("openPage", { title: page.title })}</Link>

@@ -168,6 +168,22 @@ export function buildAdminNotificationConfig(
  */
 export type CustomerRules = ApiResult<typeof getApiV1AdminSettingsNotificationChannels>;
 
+/** What Settings → Notifications says of each part: messages and alerts on, order emails, and which senders are ready. */
+export function notificationsSummary(rules: Pick<CustomerRules, "channels" | "adminChannels" | "staffEmailRecipients" | "email" | "sms" | "whatsapp">) {
+  const customer = buildCustomerNotificationConfig(rules.channels);
+  const staff = buildAdminNotificationConfig(rules.adminChannels);
+  const customerEvents = CUSTOMER_EVENT_GROUPS.flatMap((group) => group.events);
+  const staffEvents = STAFF_EVENT_GROUPS.flatMap((group) => group.events);
+  return {
+    customerOn: customerEvents.filter((event) => Object.values(customer[event]).some(Boolean)).length,
+    customerTotal: customerEvents.length,
+    staffOn: staffEvents.filter((event) => Object.values(staff[event]).some(Boolean)).length,
+    staffTotal: staffEvents.length,
+    orderEmails: rules.staffEmailRecipients.filter((email) => email.trim()).length,
+    senders: { email: isReady(rules.email), sms: isReady(rules.sms), whatsapp: isReady(rules.whatsapp) },
+  };
+}
+
 /**
  * Web Push signs with the store's https address. Without it, buyers' built-in
  * browser notifications and staff push are both off: one page notice

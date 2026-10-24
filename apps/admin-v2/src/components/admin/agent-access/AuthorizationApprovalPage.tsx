@@ -112,7 +112,7 @@ export function AuthorizationApprovalPage({
       <AccessPage title={t("approveTitle", { name: clientName })}>
         <SettingsCard title={message}>
           <Button asChild variant="outline" className="w-fit">
-            <Link to="/admin/settings/integrations">{t("backToIntegrations")}</Link>
+            <Link to="/admin/settings/integrations" search={{ part: "ai" }}>{t("backToIntegrations")}</Link>
           </Button>
         </SettingsCard>
       </AccessPage>

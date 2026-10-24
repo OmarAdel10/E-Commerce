@@ -74,7 +74,7 @@ export function EmiPlansCard() {
     setValue("plans", values.plans.map((plan) => (plan.id === id ? { ...plan, ...patch } : plan)));
 
   return (
-    <SettingsCard title={t("title")} description={t("description")}>
+    <SettingsCard id="emiPlans" title={t("title")} description={t("description")}>
       <SettingsCheckbox
         id="emi-enabled"
         label={t("enabled")}

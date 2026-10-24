@@ -67,6 +67,7 @@ export function ImportExportHub() {
     <>
       <p className="text-body text-muted-foreground">{t("hubIntro")}</p>
       <SettingsCard
+        id="imports"
         title={t("importsTitle")}
         rows={(
           <>
@@ -77,6 +78,7 @@ export function ImportExportHub() {
         )}
       />
       <SettingsCard
+        id="exports"
         title={t("exportsTitle")}
         description={exporting ? t("exporting", { count: exportRows }) : undefined}
         rows={(

@@ -133,7 +133,7 @@ export function SmsCounter({ text }: { text: string }) {
 function SetUpToTest({ label, channel }: { label: string; channel: "email" | "sms" }) {
   return (
     <Button asChild variant="outline" size="sm">
-      <Link to="/admin/settings/notifications" hash={SENDING_DIALOG[channel]}>{label}</Link>
+      <Link to="/admin/settings/notifications" search={{ part: "sending" }} hash={SENDING_DIALOG[channel]}>{label}</Link>
     </Button>
   );
 }

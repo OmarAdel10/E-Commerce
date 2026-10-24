@@ -75,6 +75,7 @@ export function MarketsList() {
   return (
     <>
       <SettingsCard
+        id="markets"
         title={t("title")}
         description={sole ? t("description") : t("descriptionMany")}
         action={canEdit ? <Button type="button" size="sm" onClick={() => setCreating(true)}>{sole ? t("sellElsewhere") : t("add")}</Button> : null}

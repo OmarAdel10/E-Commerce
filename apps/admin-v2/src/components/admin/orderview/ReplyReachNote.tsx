@@ -37,7 +37,7 @@ export function ReplyReachNote({ order }: { order: Contact }) {
     <p className="mt-2 text-body text-muted-foreground">
       {t("note", { name })}{" "}
       <Link
-        to="/admin/settings/notifications"
+        to="/admin/settings/notifications" search={{ part: "customers" }}
         hash="customer-rule-conversation_reply"
         className="text-link underline underline-offset-2"
       >

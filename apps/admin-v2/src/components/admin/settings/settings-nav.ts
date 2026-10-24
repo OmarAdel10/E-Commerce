@@ -54,6 +54,11 @@ export const SETTINGS_NAV = [
 
 export const SETTINGS_GROUPS = ["general", "selling", "customers", "more"] as const;
 
+/** A split page's search: the part it shows, if any (`validateSearch`). */
+export function settingsPartSearch(search: Record<string, unknown>): { part?: string } {
+  return typeof search.part === "string" && search.part ? { part: search.part } : {};
+}
+
 export type SettingsNavKey = (typeof SETTINGS_NAV)[number]["key"];
 
 /** Route `head` for a settings page, in the dashboard language. */

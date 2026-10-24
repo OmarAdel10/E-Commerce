@@ -139,7 +139,7 @@ export function AccessPage({ title, children }: { title: ReactNode; children: Re
     <Page width="settings" className="space-y-4">
       <div className="flex min-h-11 items-center gap-2 pe-10">
         <Link
-          to="/admin/settings/integrations"
+          to="/admin/settings/integrations" search={{ part: "ai" }}
           aria-label={t("backToIntegrations")}
           className="-ms-2 grid size-11 place-items-center rounded-md text-muted-foreground hover:text-foreground"
         >

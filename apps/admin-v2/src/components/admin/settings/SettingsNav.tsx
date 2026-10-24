@@ -17,7 +17,7 @@ import { StoreBadge, useStoreIdentity } from "../layout/store-identity";
 import { NAV_ROW } from "../layout/nav-button";
 import { matchesPath } from "../layout/AdminNav";
 import { SETTINGS_GROUPS, SETTINGS_NAV } from "./settings-nav";
-import { searchSettings } from "./settings-search";
+import { searchSettings, settingsCardLink } from "./settings-search";
 
 /**
  * The store's name and address, Shopify's store block: an unnamed store is
@@ -86,15 +86,15 @@ export function SettingsNav({ variant, onNavigate }: { variant: "sidebar" | "row
   const pages = allowed.filter((item) => found.pages.includes(item.key));
   const cards = found.cards.flatMap((entry) => {
     const page = allowed.find((item) => item.key === entry.page);
-    return page ? [{ ...entry, to: page.to }] : [];
+    return page ? [{ ...entry, ...settingsCardLink(entry) }] : [];
   });
   const shortcuts = found.shortcuts.filter((entry) => !("to" in entry) || canAccessAdminPath(entry.to, context));
   // Enter opens the first result, in the order shown.
   const first = pages[0]
     ? { to: pages[0].to }
     : cards[0]
-      ? { to: cards[0].to, hash: cards[0].card }
-      : shortcuts.flatMap((entry) => ("to" in entry ? [{ to: entry.to, hash: "hash" in entry ? entry.hash : undefined }] : []))[0];
+      ? { to: cards[0].to, search: cards[0].search, hash: cards[0].card }
+      : shortcuts.flatMap((entry) => ("to" in entry ? [{ to: entry.to, search: "search" in entry ? entry.search : undefined, hash: "hash" in entry ? entry.hash : undefined }] : []))[0];
   const sections = searching || sidebar
     ? [{ key: "pages", label: null, items: searching ? pages : allowed }]
     : SETTINGS_GROUPS.map((group) => ({
@@ -191,12 +191,12 @@ export function SettingsNav({ variant, onNavigate }: { variant: "sidebar" | "row
         <div className="space-y-1">
           <h2 className={cn("px-2", sidebar ? "text-caption font-medium text-sidebar-muted-foreground" : "text-body text-muted-foreground")}>{search("results")}</h2>
           <ul className={sidebar ? "space-y-0.5" : "divide-y divide-border overflow-hidden rounded-xl bg-card shadow-card"}>
-            {cards.map(({ card, page, to }) => (
-              <li key={card}>
-                <Link to={to} hash={card} className={resultRow} onClick={onNavigate}>
+            {cards.map((entry) => (
+              <li key={entry.card}>
+                <Link to={entry.to} search={entry.search} hash={entry.card} className={resultRow} onClick={onNavigate}>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block font-medium", sidebar ? "text-nav" : "text-body")}>{search(card)}</span>
-                    <span className={detail}>{t(page)}</span>
+                    <span className={cn("block font-medium", sidebar ? "text-nav" : "text-body")}>{search(entry.card)}</span>
+                    <span className={detail}>{t(entry.page)}</span>
                   </span>
                   {sidebar ? null : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                 </Link>
@@ -212,7 +212,7 @@ export function SettingsNav({ variant, onNavigate }: { variant: "sidebar" | "row
               return (
                 <li key={entry.card}>
                   {"to" in entry ? (
-                    <Link to={entry.to} hash={"hash" in entry ? entry.hash : undefined} className={resultRow} onClick={onNavigate}>
+                    <Link to={entry.to} search={"search" in entry ? entry.search : undefined} hash={"hash" in entry ? entry.hash : undefined} className={resultRow} onClick={onNavigate}>
                       {label}
                       {sidebar ? null : <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                     </Link>

@@ -1,6 +1,6 @@
 import { ReadOnlyNotice } from "~/components/admin/states/ReadOnlyNotice";
 import { cloneElement, createContext, isValidElement, useContext, useEffect, useState, type ComponentPropsWithoutRef, type ReactElement, type ReactNode } from "react";
-import { useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { PageHeader } from "~/components/admin/resource/PageHeader";
 import { Button } from "~/components/ui/button";
@@ -20,21 +20,29 @@ import { SaveErrorBanner, SaveScope, useSaveScope, useServerFieldError, type Sav
 import { useMessages } from "~/i18n";
 import { saveBarMessages } from "~/i18n/save-bar";
 import { settingsMessages, settingsNavMessages } from "~/i18n/settings";
+import { settingsSubPageMessages } from "~/i18n/settings-sub-pages";
 import { cn } from "@scalius/shared/utils";
 import { SETTINGS_NAV, type SettingsNavKey } from "./settings-nav";
 import { useQueryClient } from "@tanstack/react-query";
 import { PresenceScopeContext, PresenceSlot, presenceKey } from "~/lib/realtime/store";
-import type { SettingsCardId } from "./settings-search";
+import type { SettingsCardId } from "./settings-cards";
+import { SETTINGS_SUB_PAGES, subPageForHash, type SettingsSubPageKey } from "./settings-cards";
 import { Page } from "~/components/admin/resource/Page";
 
-type SettingsNavTo = (typeof SETTINGS_NAV)[number]["to"];
+type SettingsNavTo = (typeof SETTINGS_NAV)[number]["to"] | (typeof SETTINGS_SUB_PAGES)[number]["to"];
 
 /** The card a settings-search result pointed at (the URL hash), outlined on arrival. */
 const TargetCardContext = createContext("");
 
-/** One settings page: title with icon, the save-error banner, then one column of cards. */
+/**
+ * One settings page: title, the save-error banner, then one column of cards.
+ * `subPage` is one part of a split page (`SETTINGS_SUB_PAGES`): its own title,
+ * a back link to the page, and only its own cards, so the save bar saves
+ * that part and leaving it with edits goes through the leave-page guard.
+ */
 export function SettingsPage({
   page,
+  subPage,
   title,
   back,
   status,
@@ -43,6 +51,7 @@ export function SettingsPage({
   children,
 }: {
   page: SettingsNavKey;
+  subPage?: SettingsSubPageKey;
   /** A sub-page of `page` (e.g. delivery areas under shipping). */
   title?: ReactNode;
   back?: { to: SettingsNavTo; label: string };
@@ -54,17 +63,19 @@ export function SettingsPage({
   children: ReactNode;
 }) {
   const t = useMessages(settingsNavMessages);
+  const parts = useMessages(settingsSubPageMessages);
   const hash = useLocation({ select: (location) => location.hash });
-  const key = presenceKey("settings", page);
+  const key = presenceKey("settings", subPage ? `${page}.${subPage}` : page);
+  const backTo = back ?? (subPage ? { to: SETTINGS_NAV.find((item) => item.key === page)!.to, label: t(page) } : undefined);
   return (
     <PresenceScopeContext.Provider value={key}>
     <TargetCardContext.Provider value={hash}>
       <Page width="settings" data-presence-root={key} className="space-y-4">
         <PageHeader
-          title={title ?? t(page)}
-          backTo={back?.to ?? "/admin/settings"}
-          backLabel={back?.label ?? t("settings")}
-          backOnlyWithoutPanel={!back}
+          title={title ?? (subPage ? parts(subPage) : t(page))}
+          backTo={backTo?.to ?? "/admin/settings"}
+          backLabel={backTo?.label ?? t("settings")}
+          backOnlyWithoutPanel={!backTo}
           presence={<SettingsPresence presenceKey={key} />}
           status={status}
           actions={actions}
@@ -364,5 +375,47 @@ export function SettingsDialog({
     >
       {null}
     </SaveScope>
+  );
+}
+
+/**
+ * A split settings page: one row per part (`?part=`), each with what it holds now ("Google:
+ * Browser and server · …"), opening the part's own page (Shopify's
+ * Notifications). A link written before the split (`#sending-sms`,
+ * `#facebook`) is sent on to the part that holds it, replacing this entry so
+ * Back still leaves the page.
+ */
+export function SettingsSubPages({ page, states }: {
+  page: SettingsNavKey;
+  /** Each part's state in one line; leave a part out while its state is unknown. */
+  states: Partial<Record<SettingsSubPageKey, ReactNode>>;
+}) {
+  const t = useMessages(settingsSubPageMessages);
+  const hash = useLocation({ select: (location) => location.hash });
+  const navigate = useNavigate();
+  const target = subPageForHash(page, hash);
+  useEffect(() => {
+    if (target) void navigate({ to: target.to, search: target.search, hash, replace: true });
+  }, [target, hash, navigate]);
+  return (
+    <Card className="overflow-hidden" data-sub-pages={page}>
+      <ul className="divide-y divide-border">
+        {SETTINGS_SUB_PAGES.filter((entry) => entry.page === page).map((entry) => (
+          <li key={entry.key}>
+            <Link
+              to={entry.to}
+              search={entry.search}
+              className="flex min-h-14 items-center gap-3 px-4 py-3 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-body font-medium">{t(entry.key)}</span>
+                {states[entry.key] ? <span className="block text-body text-muted-foreground">{states[entry.key]}</span> : null}
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

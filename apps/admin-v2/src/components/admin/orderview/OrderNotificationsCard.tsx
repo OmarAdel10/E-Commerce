@@ -70,7 +70,7 @@ function MessageRow({ orderId, message, canRetry }: {
             {isOrderNotificationType(message.notificationType) ? (
               <Link to="/admin/settings/notifications/$event" params={{ event: message.notificationType }}>{t("messages.turnOn")}</Link>
             ) : (
-              <Link to="/admin/settings/notifications">{t("messages.turnOn")}</Link>
+              <Link to="/admin/settings/notifications" search={{ part: "customers" }}>{t("messages.turnOn")}</Link>
             )}
           </Button>
         ) : null}

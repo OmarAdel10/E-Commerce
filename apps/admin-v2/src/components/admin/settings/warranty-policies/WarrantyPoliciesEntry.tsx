@@ -23,6 +23,7 @@ export function WarrantyPoliciesEntry() {
     : data.length === 1 ? t("entrySummaryOne") : t("entrySummary", { count: data.length });
   return (
     <SettingsCard
+      id="warrantyPolicies"
       title={t("title")}
       description={t("entryDescription")}
       action={

@@ -128,7 +128,7 @@ export function AiDraftDialog({ open, onOpenChange, page, locale, canConnectAgen
             <p className="text-body text-muted-foreground">
               {t("aiConnectAgentHelp")}{" "}
               {canConnectAgent
-                ? <Link to="/admin/settings/integrations" className="text-link hover:underline">{t("aiConnectAgentAction")}</Link>
+                ? <Link to="/admin/settings/integrations" search={{ part: "ai" }} className="text-link hover:underline">{t("aiConnectAgentAction")}</Link>
                 : t("aiAskOwner")}
             </p>
           </div>

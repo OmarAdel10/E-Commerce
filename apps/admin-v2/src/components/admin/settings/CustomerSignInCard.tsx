@@ -189,7 +189,7 @@ export function CustomerSignInCard() {
                 {hint ? (
                   <p role={on ? "alert" : undefined} className={`pb-1 ps-7 text-body ${on ? "text-destructive" : "text-muted-foreground"}`}>
                     {collected ? (
-                      <Link to="/admin/settings/notifications" hash={SENDING_DIALOG[channel]} className="underline underline-offset-2">{hint}</Link>
+                      <Link to="/admin/settings/notifications" search={{ part: "sending" }} hash={SENDING_DIALOG[channel]} className="underline underline-offset-2">{hint}</Link>
                     ) : hint}
                   </p>
                 ) : null}
