@@ -115,7 +115,7 @@ function compileGlobPatterns(sql: string): string {
 
 function compileNumericJsonChecks(sql: string): string {
   return sql.replace(
-    /json_extract\(([^,]+),\s*('\$\.(?:amountMinor|basisPoints|quantity)')\)\s+BETWEEN/gi,
+    /json_extract\(([^,]+),\s*('\$\.(?:amountMinor|basisPoints|maxRateMinor|quantity)')\)\s+BETWEEN/gi,
     "CAST(json_extract($1, $2) AS bigint) BETWEEN",
   );
 }

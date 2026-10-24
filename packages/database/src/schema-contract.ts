@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 186,
-  name: "0186_customer_erasure_tasks",
+  version: 187,
+  name: "0187_free_shipping_effect_config",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -711,6 +711,11 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 186,
     name: "0186_customer_erasure_tasks",
     sourceSha256: "64047a0022abdc6a33259d5f9bde85d1846d392ac6c4bb929f9f47b5a8106587",
+  },
+  {
+    version: 187,
+    name: "0187_free_shipping_effect_config",
+    sourceSha256: "6b15c29efd1f41b8ebb4c69e549c09ef670171f9c76fdf37c7d1546c2c9f3f21",
   },
 ] as const;
 

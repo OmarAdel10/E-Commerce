@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isIncrementMultipleMinor, MAX_MINOR_AMOUNT, priceIncrementMessage } from "@scalius/shared/money";
 import { isValidTimeZone } from "@scalius/shared/commerce-time";
+import { PROMOTION_CONDITION_CONFIG_MAX_LENGTH, PROMOTION_EFFECT_CONFIG_MAX_LENGTH } from "@scalius/database/schema";
 import { currentStoreTimeZone } from "../../utils/store-time-zone";
 
 import { checkPromotionRule, PROMOTION_CUSTOMER_SEGMENT_LIMIT, PROMOTION_SCOPE_LIMIT } from "./promotions.evaluator";
@@ -165,6 +166,18 @@ function refinePromotionRule(
     context: z.RefinementCtx,
 ): void {
     checkPromotionRule(rule, context);
+    // The stored config's size bound (the row's CHECK): refuse here, never at the database.
+    const tooLong = "This discount lists too many products and collections to save. Target a collection instead.";
+    rule.conditions.forEach((condition, index) => {
+        if (JSON.stringify(condition.config).length > PROMOTION_CONDITION_CONFIG_MAX_LENGTH) {
+            context.addIssue({ code: "custom", path: ["conditions", index, "config"], message: tooLong });
+        }
+    });
+    rule.effects.forEach((effect, index) => {
+        if (JSON.stringify(effect.config).length > PROMOTION_EFFECT_CONFIG_MAX_LENGTH) {
+            context.addIssue({ code: "custom", path: ["effects", index, "config"], message: tooLong });
+        }
+    });
     if (rule.startsAt !== null && rule.endsAt !== null && Date.parse(rule.endsAt) <= Date.parse(rule.startsAt)) {
         context.addIssue({ code: "custom", path: ["endsAt"], message: "The end date must be after the start date." });
     }

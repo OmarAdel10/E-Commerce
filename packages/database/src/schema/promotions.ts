@@ -30,6 +30,13 @@ export const PROMOTION_EFFECT_KINDS = [
 ] as const;
 export const PROMOTION_EFFECT_TARGETS = ["line", "order", "shipping"] as const;
 export const PROMOTION_ALLOCATIONS = ["across", "once"] as const;
+/**
+ * The longest JSON config a condition or effect row stores. Writes refuse a
+ * longer one before the database does (an effect holds a Buy X get Y rule's
+ * two product scopes, migration 0187).
+ */
+export const PROMOTION_CONDITION_CONFIG_MAX_LENGTH = 4000;
+export const PROMOTION_EFFECT_CONFIG_MAX_LENGTH = 16000;
 
 export const promotions = sqliteTable("promotions", {
     id: text("id").primaryKey(),
@@ -145,7 +152,7 @@ export const promotionConditions = sqliteTable("promotion_conditions", {
     check("promotion_conditions_position_range", sql`${table.position} BETWEEN 0 AND 99`),
     check(
         "promotion_conditions_config_valid",
-        sql`json_valid(${table.config}) AND json_type(${table.config}) = 'object' AND length(${table.config}) BETWEEN 2 AND 4000`,
+        sql`json_valid(${table.config}) AND json_type(${table.config}) = 'object' AND length(${table.config}) BETWEEN 2 AND ${sql.raw(String(PROMOTION_CONDITION_CONFIG_MAX_LENGTH))}`,
     ),
     check(
         "promotion_conditions_config_shape",
@@ -199,7 +206,7 @@ export const promotionEffects = sqliteTable("promotion_effects", {
     check("promotion_effects_position_range", sql`${table.position} BETWEEN 0 AND 99`),
     check(
         "promotion_effects_config_valid",
-        sql`json_valid(${table.config}) AND json_type(${table.config}) = 'object' AND length(${table.config}) BETWEEN 2 AND 4000`,
+        sql`json_valid(${table.config}) AND json_type(${table.config}) = 'object' AND length(${table.config}) BETWEEN 2 AND ${sql.raw(String(PROMOTION_EFFECT_CONFIG_MAX_LENGTH))}`,
     ),
     check(
         "promotion_effects_config_shape",
@@ -216,7 +223,12 @@ export const promotionEffects = sqliteTable("promotion_effects", {
                 AND json_extract(${table.config}, '$.currencyCode') = upper(json_extract(${table.config}, '$.currencyCode'))
                 AND json_extract(${table.config}, '$.currencyCode') NOT GLOB '*[^A-Z]*')
             OR
-            (${table.kind} = 'free' AND json(${table.config}) = '{}')
+            (${table.kind} = 'free'
+                AND (json_type(${table.config}, '$.maxRateMinor') IS NULL
+                    OR (json_type(${table.config}, '$.maxRateMinor') = 'integer'
+                        AND json_extract(${table.config}, '$.maxRateMinor') BETWEEN 1 AND 9007199254740991))
+                AND (json_type(${table.config}, '$.excludedProfileIds') IS NULL
+                    OR json_type(${table.config}, '$.excludedProfileIds') = 'array'))
         ), 0)`,
     ),
     check(
