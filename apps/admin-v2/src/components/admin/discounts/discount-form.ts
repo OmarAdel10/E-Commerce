@@ -455,7 +455,7 @@ export function draftToInput(draft: DiscountDraft, currencyCode: string): Discou
     if (draft.freeShippingMinimum.trim()) {
       conditions.push({
         kind: "minimum_merchandise_subtotal",
-        config: { amountMinor: majorToMinor(draft.freeShippingMinimum, currency)!, currency, shippingOnly: true },
+        config: { amountMinor: majorToMinor(draft.freeShippingMinimum, currency)!, currency, shippingOnly: true, ...minimumScope },
       });
     }
   }

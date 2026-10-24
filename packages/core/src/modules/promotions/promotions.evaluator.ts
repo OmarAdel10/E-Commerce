@@ -2,7 +2,7 @@ import { z } from "zod";
 import { defaultPriceIncrementMinor } from "@scalius/shared/currency-policy";
 import { percentOfMinor } from "@scalius/shared/money";
 
-export const PROMOTION_EVALUATOR_VERSION = 2;
+export const PROMOTION_EVALUATOR_VERSION = 3;
 
 const MAX_LINES = 250;
 const MAX_CANDIDATES = 100;
@@ -419,8 +419,6 @@ interface Eligible {
     promotionCode: string | null;
     /** Free shipping bundled with a product or order value. */
     bundledShipping: PromotionEffect | null;
-    /** Merchandise subtotal, after the order's other savings, that shipping savings need. */
-    shippingMinimumMinor: number;
 }
 
 /** One effect's savings: per line id, or under SHIPPING_KEY. */
@@ -693,12 +691,15 @@ function rejectForRules(
     return null;
 }
 
-function shippingMinimum(candidate: PromotionCandidate, shippingClass: boolean): number {
-    return Math.max(0, ...candidate.conditions.flatMap((condition) =>
-        condition.kind === "minimum_merchandise_subtotal"
-        && (condition.config.shippingOnly || (shippingClass && !hasScope(condition.config)))
-            ? [condition.config.amountMinor]
-            : []));
+/** Each shipping threshold counts its own eligible lines after product and order savings. */
+function meetsShippingMinimum(eligible: Eligible, lines: CartLine[], remaining: Map<string, number>): boolean {
+    return eligible.candidate.conditions.every((condition) => {
+        if (condition.kind !== "minimum_merchandise_subtotal"
+            || !(condition.config.shippingOnly || (eligible.discountClass === "shipping" && !hasScope(condition.config)))) return true;
+        const subtotal = lines.reduce((total, line) =>
+            total + (lineInScope(line, condition.config) ? remaining.get(line.id) ?? 0 : 0), 0);
+        return subtotal >= condition.config.amountMinor;
+    });
 }
 
 function toAllocations(computed: Computed, lines: Map<string, CartLine>, cart: PromotionEvaluationCart): PromotionAllocationPlan[] {
@@ -780,7 +781,7 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
     const idCounts = new Map<string, number>();
     rawCandidates.forEach(({ id }) => idCounts.set(id, (idCounts.get(id) ?? 0) + 1));
 
-    const merchandiseMinor = cart.lines.reduce((total, line) => total + line.unitPriceMinor * line.quantity, 0);
+    const fullBases = new Map(cart.lines.map((line) => [line.id, line.unitPriceMinor * line.quantity]));
     const byClass: Record<DiscountClass, Eligible[]> = { product: [], order: [], shipping: [] };
     const duplicateReported = new Set<string>();
     for (const { id, parsed } of rawCandidates) {
@@ -820,9 +821,8 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
             discountClass,
             promotionCode,
             bundledShipping: candidate.effects[1] ?? null,
-            shippingMinimumMinor: shippingMinimum(candidate, discountClass === "shipping"),
         };
-        if (discountClass === "shipping" && merchandiseMinor < eligible.shippingMinimumMinor) {
+        if (discountClass === "shipping" && !meetsShippingMinimum(eligible, cart.lines, fullBases)) {
             reject(candidate.id, "minimum_subtotal_not_met");
             continue;
         }
@@ -854,16 +854,15 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
         }
         return [computed];
     });
-    const fullBases = new Map(cart.lines.map((line) => [line.id, line.unitPriceMinor * line.quantity]));
     const orderOptions = byClass.order.filter((eligible) => {
         const computed = computeOrder(eligible, fullBases, increment);
         if (computed.total <= 0) reject(eligible.candidate.id, "no_savings");
         return computed.total > 0;
     });
 
-    type Selection = { parts: Computed[]; total: number; merchandiseAfterMinor: number };
+    type Selection = { parts: Computed[]; total: number; remaining: Map<string, number> };
     let best: Selection | null = null;
-    const consider = (parts: Computed[], merchandiseAfterMinor: number) => {
+    const consider = (parts: Computed[], remaining: Map<string, number>) => {
         const total = parts.reduce((sum, part) => sum + part.total, 0);
         if (total <= 0) return;
         const count = promotionsOf(parts).length;
@@ -876,13 +875,13 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
                 || (count === promotionsOf(current.parts).length && selectionKey(parts) < selectionKey(current.parts))
             ))
         ) {
-            best = { parts, total, merchandiseAfterMinor };
+            best = { parts, total, remaining };
         }
     };
     /** Bundled free shipping of a chosen discount, when its minimum is met and its budget allows. */
-    const bundledPart = (primary: Computed | null, merchandiseAfterMinor: number): Computed | null => {
+    const bundledPart = (primary: Computed | null, remaining: Map<string, number>): Computed | null => {
         const eligible = primary?.eligible;
-        if (!eligible?.bundledShipping || merchandiseAfterMinor < eligible.shippingMinimumMinor) return null;
+        if (!eligible?.bundledShipping || !meetsShippingMinimum(eligible, cart.lines, remaining)) return null;
         const part = computeShipping(eligible, eligible.bundledShipping, cart.shippingAmountMinor, increment, cart.shippingShares);
         return part.total > 0 && withinBudget(eligible.candidate, primary!.total + part.total) ? part : null;
     };
@@ -893,19 +892,20 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
             if (product && orderEligible && !combines(product.eligible, orderEligible)) continue;
             const order = orderEligible ? computeOrder(orderEligible, remaining, increment) : null;
             if (order && (order.total <= 0 || !withinBudget(order.eligible.candidate, order.total))) continue;
-            const merchandiseAfterMinor = merchandiseMinor - (product?.total ?? 0) - (order?.total ?? 0);
+            const afterSavings = new Map(remaining);
+            order?.amounts.forEach((amount, lineId) => afterSavings.set(lineId, (afterSavings.get(lineId) ?? 0) - amount));
             const primaries = [product, order].filter((part): part is Computed => part !== null);
-            const bundled = bundledPart(product, merchandiseAfterMinor) ?? bundledPart(order, merchandiseAfterMinor);
+            const bundled = bundledPart(product, afterSavings) ?? bundledPart(order, afterSavings);
             if (bundled) {
-                consider([...primaries, bundled], merchandiseAfterMinor);
+                consider([...primaries, bundled], afterSavings);
                 continue;
             }
             for (const shipping of [null, ...shippingOptions]) {
-                if (shipping && merchandiseAfterMinor < shipping.eligible.shippingMinimumMinor) continue;
+                if (shipping && !meetsShippingMinimum(shipping.eligible, cart.lines, afterSavings)) continue;
                 const parts = shipping ? [...primaries, shipping] : primaries;
                 const compatible = parts.every((left, index) =>
                     parts.slice(index + 1).every((right) => combines(left.eligible, right.eligible)));
-                if (compatible) consider(parts, merchandiseAfterMinor);
+                if (compatible) consider(parts, afterSavings);
             }
         }
     }
@@ -919,7 +919,7 @@ export function evaluatePromotionCandidates(input: unknown): PromotionEvaluation
     }
     for (const computed of shippingOptions) {
         if (appliedIds.has(computed.eligible.candidate.id)) continue;
-        const shortOfMinimum = (winner?.merchandiseAfterMinor ?? merchandiseMinor) < computed.eligible.shippingMinimumMinor;
+        const shortOfMinimum = !meetsShippingMinimum(computed.eligible, cart.lines, winner?.remaining ?? fullBases);
         reject(computed.eligible.candidate.id, shortOfMinimum ? "minimum_subtotal_not_met" : "lower_savings", computed.total);
     }
     for (const eligible of orderOptions) {
