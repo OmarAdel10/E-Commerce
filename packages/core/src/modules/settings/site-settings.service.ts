@@ -8,6 +8,7 @@
 import {
   media,
   orders,
+  pluginInstallations,
   products,
   shippingMethods,
   themePreviewSessions,
@@ -43,6 +44,7 @@ import {
   storefrontThemeTranslationProblems,
   storefrontThemeAppIssues,
   storefrontThemeAppProblems,
+  storefrontThemeAppReferences,
   storefrontThemeMediaIds,
   storefrontThemeMediaReferences,
   storefrontThemeWithoutMedia,
@@ -57,6 +59,7 @@ import {
   type ThemeDocumentChange,
 } from "@scalius/shared/storefront-theme";
 import type { StorefrontExtension } from "@scalius/shared/plugins/storefront-components";
+import { STOREFRONT_PRODUCT_SLOTS } from "@scalius/shared/plugins/storefront-protocol";
 import { mergeSeoDiscoverySettings, type SeoDiscoverySettings } from "@scalius/shared/seo-discovery";
 import { mergeSeoReturnPolicySettings, type SeoReturnPolicySettings } from "@scalius/shared/seo-return-policy";
 import {
@@ -505,9 +508,9 @@ export const THEME_VERSION_IMAGES_MISSING = "theme_version_images_missing";
 export const THEME_APPS_UNAVAILABLE = "theme_apps_unavailable";
 
 /**
- * What the store's apps draw, as the publishing route reads it (settings
- * never reads the plugin tables): the active apps' storefront parts (the
- * layout's `appExtensions`) and every installed app's manifest, for names.
+ * What the store's apps draw, as the publishing route reads it: the active
+ * apps' storefront parts (the layout's `appExtensions`) and every installed
+ * app's manifest, for names.
  */
 export interface ThemePublishApps {
   extensions: readonly StorefrontExtension[];
@@ -536,6 +539,53 @@ function assertThemeApps(theme: StorefrontThemeDocument, apps: ThemePublishApps)
     ...(outdated.length > 0 ? [`${englishList(outdated)} no longer ${outdated.length === 1 ? "offers" : "offer"} some parts this theme uses. Remove those parts from the theme.`] : []),
   ];
   throw new AppError(400, THEME_APPS_UNAVAILABLE, sentences.join(" "), problems);
+}
+
+/** The validated app releases must still be active and approved when the theme commits. */
+function buildThemeAppsGuard(db: Database, theme: StorefrontThemeDocument, apps: ThemePublishApps) {
+  const byId = new Map(apps.extensions.map((app) => [app.pluginId, app]));
+  // One list binding keeps even a theme with many different apps inside D1's limit.
+  const parts = storefrontThemeAppReferences(theme).filter((part) => !part.hidden).map((part) => {
+    const app = byId.get(part.pluginId)!; // assertThemeApps already validated every visible part.
+    return {
+      id: app.pluginId, version: app.version, source: app.source, release: app.release,
+      kind: part.kind, type: part.type, target: part.target,
+      slots: part.kind === "product_block" ? STOREFRONT_PRODUCT_SLOTS : undefined,
+    };
+  });
+  return buildBatchGuard(db, sql`NOT EXISTS (
+    SELECT 1 FROM json_each(${JSON.stringify(parts)}) AS required
+    WHERE NOT EXISTS (
+      SELECT 1 FROM ${pluginInstallations}
+      WHERE ${pluginInstallations.pluginId} = json_extract(required.value, '$.id')
+        AND ${pluginInstallations.status} = 'active'
+        AND ${pluginInstallations.version} = json_extract(required.value, '$.version')
+        AND ${pluginInstallations.source} = json_extract(required.value, '$.source')
+        AND ${pluginInstallations.bundleSha256} = json_extract(required.value, '$.release')
+        AND json_type(${pluginInstallations.grantJson}, '$.storefrontCode') = 'true'
+        AND (
+          (json_extract(required.value, '$.kind') = 'section' AND EXISTS (
+            SELECT 1 FROM json_each(json_extract(${pluginInstallations.manifestJson}, '$.storefront.sections')) AS part
+            WHERE json_extract(part.value, '$.type') = json_extract(required.value, '$.type')
+          )) OR
+          (json_extract(required.value, '$.kind') IN ('skin', 'section_skin') AND EXISTS (
+            SELECT 1 FROM json_each(json_extract(${pluginInstallations.manifestJson}, '$.storefront.skins')) AS part
+            WHERE json_extract(part.value, '$.id') = json_extract(required.value, '$.type')
+              AND json_extract(part.value, '$.target') = json_extract(required.value, '$.target')
+          )) OR
+          (json_extract(required.value, '$.kind') = 'product_block' AND EXISTS (
+            SELECT 1 FROM json_each(json_extract(${pluginInstallations.manifestJson}, '$.storefront.components')) AS part
+            WHERE json_extract(part.value, '$.type') = json_extract(required.value, '$.type')
+              AND EXISTS (
+                SELECT 1 FROM json_each(json_extract(part.value, '$.targets')) AS target
+                WHERE CAST(target.value AS TEXT) IN (
+                  SELECT CAST(value AS TEXT) FROM json_each(json_extract(required.value, '$.slots'))
+                )
+              )
+          ))
+        )
+    )
+  )`, THEME_APPS_UNAVAILABLE);
 }
 
 function buildPublishedThemeRevisionGuard(db: Database, expectedRevision: number) {
@@ -793,6 +843,7 @@ export async function publishThemeDraft(
     const results = await safeBatch(db, [
       buildPublishedThemeRevisionGuard(db, expectedPublishedRevision),
       buildThemeDraftRevisionGuard(db, expectedDraftRevision, expectedPublishedRevision),
+      buildThemeAppsGuard(db, normalized.theme, apps),
       publishedThemeWriteStatement(db, normalized.serialized, expectedPublishedRevision) as never,
       db.insert(themeSettingsVersions).values({
         id: versionId,
@@ -812,9 +863,12 @@ export async function publishThemeDraft(
       selectThemeVersionSummaries(db).where(eq(themeSettingsVersions.id, versionId)).limit(1),
       selectThemeDraftRows(db),
     ]);
-    latestRows = results[6] as ThemeVersionSummaryRow[];
-    draftRows = results[7] as Array<{ updatedAt: Date }>;
+    latestRows = results[7] as ThemeVersionSummaryRow[];
+    draftRows = results[8] as Array<{ updatedAt: Date }>;
   } catch (error) {
+    if (isBatchGuardError(error, THEME_APPS_UNAVAILABLE)) {
+      throw new AppError(409, THEME_APPS_UNAVAILABLE, "Apps used by this theme changed while publishing. Review the theme and publish again.");
+    }
     if (isThemeRevisionConflict(error)) throw themeConflict();
     throw error;
   }

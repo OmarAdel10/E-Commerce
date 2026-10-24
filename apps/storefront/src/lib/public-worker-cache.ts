@@ -417,6 +417,24 @@ export interface PublicStorefrontCacheContext {
   now?(): number;
 }
 
+/** Cache storage is disposable: a failed lookup has the same authority as a miss. */
+async function readCachedPage(cache: PublicStorefrontCacheContext["cache"], key: string): Promise<Response | undefined> {
+  try {
+    return await cache.match(key);
+  } catch {
+    return undefined;
+  }
+}
+
+/** A cache write cannot change the outcome of the render or validated hit. */
+async function storeCachedPage(cache: PublicStorefrontCacheContext["cache"], key: string, response: Response): Promise<void> {
+  try {
+    await cache.put(key, response);
+  } catch {
+    // The next request can render again.
+  }
+}
+
 /**
  * Serves one storefront request. Private requests (receipts, accounts, a named
  * session cookie) always render. Public requests and the buyer shells render
@@ -442,7 +460,7 @@ export async function servePublicStorefrontRequest(
 
   const key = publicStorefrontCacheKey(policy.canonicalUrl, context.buildId, workerVersion, generation);
   const pathname = logicalUrl(new URL(policy.canonicalUrl)).pathname;
-  const stored = await context.cache.match(key);
+  const stored = await readCachedPage(context.cache, key);
   if (stored) return fromStoredResponse(stored, request, pathname);
 
   const response = await context.render(withGenerationHeader(
@@ -450,7 +468,7 @@ export async function servePublicStorefrontRequest(
     generation,
   ));
   if (request.method === "GET" && isStorableResponse(response)) {
-    context.waitUntil(context.cache.put(key, toStoredResponse(response.clone())));
+    context.waitUntil(storeCachedPage(context.cache, key, toStoredResponse(response.clone())));
   }
   return response;
 }
@@ -539,7 +557,7 @@ async function serveFrontierValidated(
   // The page and this data center's frontier are read together: a hit needs
   // both, and the second read no longer waits for the first.
   const storedFrontier = readStoredCacheFrontier(context.cache, frontierKey).catch(() => null);
-  const stored = await context.cache.match(key);
+  const stored = await readCachedPage(context.cache, key);
   const entry = stored ? readStoredPageEntry(stored.headers) : null;
   if (stored && entry) {
     const { frontier, waitedMs } = await freshFrontier(context, client, frontierKey, readStorefrontSeenSeq(new URL(request.url)), storedFrontier);
@@ -569,7 +587,7 @@ async function serveFrontierValidated(
         // Only the request that ran the check rebases the stored entry.
         if (flight.created) {
           const copy = stored.clone();
-          context.waitUntil(context.cache.put(key, toStoredResponse(copy, { ...entry, s0: check.S })).catch(() => undefined));
+          context.waitUntil(storeCachedPage(context.cache, key, toStoredResponse(copy, { ...entry, s0: check.S })));
         }
         return fromStoredResponse(stored, request, pathname, waits);
       }
@@ -601,7 +619,7 @@ async function serveFrontierValidated(
       if (!rendered) return;
       const isHtml = copy.headers.get("Content-Type")?.toLowerCase().includes("text/html") ?? false;
       const earlyHints = isHtml ? pageEarlyHintLinks(new TextDecoder().decode(body.slice(0, EARLY_HINT_HEAD_BYTES))) : [];
-      await context.cache.put(key, toStoredResponse(copy, rendered, body, earlyHints));
+      await storeCachedPage(context.cache, key, toStoredResponse(copy, rendered, body, earlyHints));
     })().catch(() => undefined));
   }
   return response;
