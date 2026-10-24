@@ -66,9 +66,10 @@ export const functionCartLineSchema = z.object({
   /**
    * The purchase option the buyer chose for the line (`<app id>.<key>`, an
    * active app's manifest `checkout.purchaseOptions`), or null for a one-time
-   * purchase. Core prices nothing for it: the owning app prices it
-   * (`cart.line_prices`, `checkout.discounts`) and checks eligibility
-   * (`cart.validate`). The same SKU with another option is another line.
+   * purchase. Buyer checkout requires the owning app's valid `cart.line_prices`
+   * quote; `checkout.discounts` and `cart.validate` handle discounts and
+   * eligibility. Staff orders keep staff-set prices. The same SKU with
+   * another option is another line.
    */
   purchaseOption: z.string().max(PURCHASE_OPTION_ID_MAX_LENGTH).regex(PURCHASE_OPTION_ID_PATTERN).nullable().default(null),
 }).strict();
@@ -121,10 +122,12 @@ export const functionCartSchema = z.object({
   }).strict().nullable(),
   discountCodes: z.array(z.string().max(64)).max(10),
   /**
-   * The market the order will be placed in: the market selling to the
-   * shipping country (the billing country for an order that ships nothing),
-   * else the backup market. `country` is the ISO country that chose it, or
-   * null when no country is known yet (then the id is the backup market's).
+   * Checkout's market, selected before transforms from the initial cart and
+   * delivery choice: shipping country for delivery, billing country for
+   * non-shipping lines, backup for pickup. Every later hook and the order
+   * retain it even if a transform changes fulfilment. `country` is the ISO
+   * country that chose it, or null for pickup or an addressless preview;
+   * a preview may use its URL market presence before a country is known.
    */
   market: z.object({
     id,

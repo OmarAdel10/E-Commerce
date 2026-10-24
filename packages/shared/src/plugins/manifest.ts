@@ -583,10 +583,10 @@ export const pluginManifestSchema = z.object({
     attributes: z.array(checkoutAttributeSchema).max(10).refine((fields) => new Set(fields.map((field) => field.key)).size === fields.length, "Attribute keys must be unique.").default([]),
     /**
      * Ways to buy a line the app offers (`<app id>.<key>` on a cart line's
-     * `purchaseOption`): a subscription, a rental. Core applies no pricing or
-     * logic for them; the app prices them with `cart.line_prices` or
-     * `checkout.discounts` and checks eligibility with `cart.validate`. A line
-     * naming an option no active app declares is refused.
+     * `purchaseOption`): a subscription, a rental. Buyer checkout requires a
+     * valid owning-app price from `cart.line_prices`; `checkout.discounts` and
+     * `cart.validate` handle discounts and eligibility. A line naming an option
+     * no active app declares is refused. Staff orders keep their staff-set prices.
      */
     purchaseOptions: z.array(purchaseOptionDeclarationSchema).max(PURCHASE_OPTIONS_MAX).refine((options) => new Set(options.map((option) => option.key)).size === options.length, "Purchase option keys must be unique.").default([]),
   }).strict().optional(),

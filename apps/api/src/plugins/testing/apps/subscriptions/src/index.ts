@@ -6,6 +6,8 @@
 // - a purchase option (`subscribe`) buyers pick on a line; core freezes it on
 //   the order line (`_purchase_option`) and asks the provider to keep the
 //   buyer's payment method when the buyer is signed in;
+// - an explicit owner quote for each subscribed line, keeping its current
+//   unit price for this fixture; declaring the option alone never prices it;
 // - on `order.created`, a subscription contract (an app Object) for every
 //   line bought with it;
 // - a cron job (`renew`) that, for each contract due, places the renewal
@@ -41,6 +43,7 @@ export const manifest = {
   checkout: {
     purchaseOptions: [{ key: "subscribe", title: "Subscribe and save", description: "Delivered again every month; cancel any time." }],
   },
+  functions: [{ point: "cart.line_prices" }],
   settings: [
     { key: "interval_days", label: "Renew every (days)", type: "number", min: 1, max: 365, default: 30 },
   ],
@@ -251,6 +254,14 @@ const card = definePaymentProvider({
 
 export default definePlugin({
   manifest,
+
+  functions: {
+    "cart.line_prices": ({ cart }) => ({
+      prices: cart.lines.flatMap((line) => line.purchaseOption === SUBSCRIBE_OPTION
+        ? [{ lineId: line.lineId, unitPriceMinor: line.unitPriceMinor }]
+        : []),
+    }),
+  },
 
   events: {
     // One contract per subscribed line of an account customer's order (a guest cannot be renewed).

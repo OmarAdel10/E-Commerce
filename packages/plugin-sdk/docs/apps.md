@@ -56,6 +56,8 @@ The platform has six primitives: **Objects**, **Custom fields**, **Functions**, 
 
 The platform refuses a handler the manifest does not declare, and a declared item without a handler. It checks this when you pack the app and again when the store loads it.
 
+A declared purchase option can appear in the storefront, but buyer checkout accepts it only when its owning app returns a positive safe-integer unit price through `cart.line_prices`. A payment provider or a discount alone does not supply that price. Staff orders keep the prices staff set.
+
 **Which seam to use.** A decision inside a request is a function. A provider of a capability is a port. A reaction after a write commits is an event handler.
 
 ## Names
