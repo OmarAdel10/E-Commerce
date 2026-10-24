@@ -21,6 +21,8 @@ const SettingsPanel = lazy(() => import("./SettingsPanel").then((module) => ({ d
 const SidebarMobileSheet = lazy(() =>
   import("@/components/ui/sidebar-mobile-sheet").then((module) => ({ default: module.SidebarMobileSheet })),
 );
+// The collapsed rail's flyouts: requested when the rail first draws, ready long before a hover's intent delay ends.
+const RailFlyouts = lazy(() => import("./RailFlyout"));
 
 interface SidebarProps {
   nav: VisibleNavItem[];
@@ -103,10 +105,11 @@ function NavTooltip({ bind }: { bind: RefObject<(tip: TipState | null) => void> 
 }
 
 /**
- * Shopify's navigation on the near-black frame. From 1100px: a 240px panel (logo
- * and collapse button, the sections, Settings) or, collapsed with ⌘B, a 56px
- * icon rail with tooltips; Settings swaps the panel for the settings list
- * beside the rail. Narrower (phones, tablets, a 1024px laptop) the same panel is a drawer that lists every
+ * Shopify's navigation on the near-black frame. From 1100px: a 240px panel
+ * (wordmark and collapse button, the sections, Settings) or, collapsed with ⌘B,
+ * a 56px icon rail with tooltips and, for sections with sub-pages, flyouts;
+ * Settings swaps the panel for the settings list beside the rail. Narrower
+ * (phones, tablets, a 1024px laptop) the same panel is a drawer that lists every
  * section with its sub-pages open (no accordions). The width eases
  * between states and a new panel slides in; neither moves on first paint.
  * Search, notifications and the store menu live in the canvas' top bar.
@@ -321,14 +324,19 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
   );
 }
 
-/** The collapsed navigation: every section as an icon with a tooltip, groups set apart by a rule. */
+/**
+ * The collapsed navigation: every section as an icon, groups set apart by a
+ * rule. A section with sub-pages shows them in a flyout (`RailFlyout`), the
+ * others a tooltip.
+ */
 function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSettings: boolean; inSettings: boolean }) {
   const t = useMessages(shellMessages);
   const path = useLocation({ select: (location) => location.pathname });
   const { toggleCollapsed } = useShell();
+  const rail = useRef<HTMLElement>(null);
   let lastGroup: string | undefined;
   return (
-    <nav aria-label={t("mainNavigation")} className="flex h-full w-14 shrink-0 flex-col items-center pb-2">
+    <nav ref={rail} aria-label={t("mainNavigation")} className="flex h-full w-14 shrink-0 flex-col items-center pb-2">
       <div className="flex h-14 shrink-0 items-center">
         {inSettings ? (
           <ShellLink to="/admin" current={false} aria-label={t("home")} className={NAV_ICON_BUTTON}>
@@ -359,7 +367,7 @@ function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSe
             <li key={item.key} className="flex flex-col items-center">
               {divider ? <span aria-hidden className="my-2 h-px w-4 bg-sidebar-border" /> : null}
               <ShellLink
-                data-tip=""
+                {...(item.children.length > 0 ? { "data-flyout": item.key } : { "data-tip": "" })}
                 to={item.to}
                 preload="intent"
                 current={!inSettings && isSectionActive(path, item)}
@@ -377,6 +385,9 @@ function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSe
           <SETTINGS_ITEM.icon aria-hidden />
         </ShellLink>
       ) : null}
+      <Suspense fallback={null}>
+        <RailFlyouts rail={rail} nav={nav} inSettings={inSettings} />
+      </Suspense>
     </nav>
   );
 }

@@ -417,7 +417,9 @@ const PHYSICAL_UTILITY = /^-?(?:(?:ml|mr|pl|pr|left|right|scroll-m[lr]|scroll-p[
 export const PHYSICAL_UTILITY_ALLOW = {
   "apps/admin-v2/src/components/ui/dialog.tsx": ["left-1/2"],
   "apps/admin-v2/src/components/admin/online-store/HeroFocalPointEditor.tsx": ["left-1/2", "left-(--focus-x)"],
+  // The rail's tooltip and flyouts sit at measured pixels beside the rail, on its page side in either direction.
   "apps/admin-v2/src/components/admin/layout/AppSidebar.tsx": ["left-(--tip-x)"],
+  "apps/admin-v2/src/components/admin/layout/RailFlyout.tsx": ["left-(--tip-x)"],
   "apps/admin-v2/src/components/admin/analytics/SalesTrendChart.tsx": ["left-(--dot-x)", "left-(--tip-edge)", "right-(--tip-edge)"],
   // The preview frame and its outlines sit at measured pixels from the canvas' left edge (the frame never mirrors).
   "apps/admin-v2/src/components/admin/online-store/theme-editor/EditorCanvas.tsx": ["left-(--ox)", "left-0", "left-1/2"],
