@@ -1,5 +1,6 @@
 // src/server/middleware/admin-auth.ts
 import type { MiddlewareHandler } from "hono";
+import { pendingAdminAuthStep } from "@scalius/shared/admin-auth-step";
 import { and, eq, sql } from "drizzle-orm";
 import { autoSeedRbacIfNeeded, rbacSeedMarker } from "@scalius/core/auth/rbac/auto-seed";
 import { getUserPermissions } from "@scalius/core/auth/rbac/helpers";
@@ -502,16 +503,16 @@ export const adminAuthMiddleware: MiddlewareHandler = async (c, next) => {
         c.set("session", session);
     }
 
+    const pendingStep = pendingAdminAuthStep(user, session);
     if (
-        user.mustChangePassword === true &&
+        pendingStep === "set-password" &&
         !isPasswordOnboardingRequest(pathname, method)
     ) {
         throw new ForbiddenError("Password setup required before admin access");
     }
 
     if (
-        user.mustEnrollTwoFactor === true &&
-        user.twoFactorEnabled !== true &&
+        pendingStep === "enroll-two-factor" &&
         !isTwoFactorOnboardingRequest(pathname, method)
     ) {
         throw new ForbiddenError(
@@ -520,8 +521,7 @@ export const adminAuthMiddleware: MiddlewareHandler = async (c, next) => {
     }
 
     if (
-        user.twoFactorEnabled === true &&
-        session?.twoFactorVerified !== true &&
+        pendingStep === "verify-two-factor" &&
         !isTwoFactorCompletionRequest(pathname, method)
     ) {
         throw new ForbiddenError("Two-factor verification required");

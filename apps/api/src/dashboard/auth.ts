@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 /**
  * Dashboard sign-in surface: `<dashboard>/api/auth/*`.
  *
@@ -7,6 +8,7 @@
  * `GET /api/auth/dashboard-session`.
  */
 import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { pendingAdminAuthStep } from "@scalius/shared/admin-auth-step";
 import { createAuth, twoFactorMethodsForAccount } from "@scalius/core/auth";
 import { adminPrincipalExists } from "@scalius/core/auth/admin-setup";
 import { readStoreName } from "@scalius/core/modules/notifications";
@@ -166,10 +168,7 @@ export async function readDashboardSessionState(
   const twoFactorEnabled = user.twoFactorEnabled === true;
   const twoFactorVerified = session.twoFactorVerified === true;
   const isSuperAdmin = user.isSuperAdmin === true;
-  const passedGates =
-    user.mustChangePassword !== true &&
-    !(user.mustEnrollTwoFactor === true && !twoFactorEnabled) &&
-    (!twoFactorEnabled || twoFactorVerified);
+  const passedGates = pendingAdminAuthStep(user, session) === null;
   const permissions = passedGates
     // Native pushes recheck this answer before display; a cached grant must never outlive revocation.
     ? [...await retryTransientD1(() => getUserPermissions(db, user.id, isSuperAdmin))]
@@ -513,7 +512,7 @@ export async function handleDashboardAuthRequest(
   basePath: string,
 ): Promise<Response> {
   const method = request.method.toUpperCase();
-  const route = path.replace(/\/+$/, "");
+  const route = trimTrailingCharacter(path, "/");
 
   // Only dashboard pages may call sign-in routes (top-level navigations such
   // as the identity handoff carry no Origin and pass).

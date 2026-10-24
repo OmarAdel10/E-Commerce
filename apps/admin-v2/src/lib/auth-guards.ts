@@ -8,6 +8,7 @@
  * The guards redirect; the admin API enforces the same gates on every call.
  */
 import { redirect } from "@tanstack/react-router";
+import { pendingAdminAuthStep } from "@scalius/shared/admin-auth-step";
 import { ADMIN_API_READ_TIMEOUT_MS, AdminApiReadTimeoutError } from "./admin-api-timeout";
 import { AdminApiResponseError } from "./admin-api-error";
 import { withDashboardBasePath } from "./dashboard-base-path";
@@ -42,6 +43,16 @@ export type AdminRouteContext = {
   isSuperAdmin: boolean;
   hasAdminAccess: boolean;
 };
+
+/** The next sign-in step is the same one the API permits for this session. */
+export function dashboardSignInDestination(session: NonNullable<DashboardSessionState["session"]>) {
+  switch (pendingAdminAuthStep(session.user, session)) {
+    case "verify-two-factor": return "/auth/two-factor";
+    case "set-password": return "/auth/forgot-password";
+    case "enroll-two-factor": return "/auth/setup-2fa";
+    default: return "/admin";
+  }
+}
 
 declare global {
   interface Window {
@@ -115,9 +126,8 @@ export async function adminRouteGuard(): Promise<AdminRouteContext> {
   const { session } = await readDashboardSession();
   if (!session) throw redirect({ to: "/auth/login" });
   const { user } = session;
-  if (user.mustChangePassword) throw redirect({ to: "/auth/forgot-password" });
-  if (user.mustEnrollTwoFactor && !user.twoFactorEnabled) throw redirect({ to: "/auth/setup-2fa" });
-  if (user.twoFactorEnabled && !session.twoFactorVerified) throw redirect({ to: "/auth/two-factor" });
+  const destination = dashboardSignInDestination(session);
+  if (destination !== "/admin") throw redirect({ to: destination });
 
   const permissions = session.permissions ?? [];
   return {
@@ -137,11 +147,7 @@ export async function loginPageGuard() {
   const { adminExists, signIn, session, signedOut } = await readDashboardSession();
   if (!adminExists) throw redirect({ to: "/auth/setup" });
   if (session) {
-    const { user } = session;
-    if (user.mustChangePassword) throw redirect({ to: "/auth/forgot-password" });
-    if (user.twoFactorEnabled && !session.twoFactorVerified) throw redirect({ to: "/auth/two-factor" });
-    if (user.mustEnrollTwoFactor && !user.twoFactorEnabled) throw redirect({ to: "/auth/setup-2fa" });
-    throw redirect({ to: "/admin" });
+    throw redirect({ to: dashboardSignInDestination(session) });
   }
   return { signIn, signedOut };
 }
