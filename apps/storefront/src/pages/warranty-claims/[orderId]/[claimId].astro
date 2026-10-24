@@ -79,7 +79,7 @@ const earlierHref = thread?.hasMore ? `${pageHref}?conversationBefore=${earliest
         <p class="text-sm text-muted-foreground"><span data-conversation-thread-status>{conversationStatusLabel(thread.status)}</span></p>
         <div class={`${ui.card} ${ui.cardBody} mt-6`}>
           {earlierHref && <a href={earlierHref} data-conversation-earlier data-before={earliestSeq} data-before-param="conversationBefore" data-astro-prefetch="false" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{conversationCopy().earlierMessages}</a>}
-          <ol id="claimMessages" class="mx-auto max-w-3xl [overflow-anchor:none]" aria-label="Messages" hidden={thread.messages.length === 0} set:html={messagesHtml} />
+          <ol id="claimMessages" class="mx-auto max-w-3xl [overflow-anchor:none]" aria-label={conversationCopy().messagesLabel} hidden={thread.messages.length === 0} set:html={messagesHtml} />
           {beforeSeq ? <a href={`${pageHref}#conversation`} data-astro-prefetch="false" class="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{conversationCopy().latestMessages}</a> : <ConversationReplyForm
             action={`/api/warranties/orders/${encodeURIComponent(target.orderId)}/claims/${encodeURIComponent(target.claimId)}/messages`}
             readAction={`/api/warranties/orders/${encodeURIComponent(target.orderId)}/claims/${encodeURIComponent(target.claimId)}/read`}
@@ -90,8 +90,8 @@ const earlierHref = thread?.hasMore ? `${pageHref}?conversationBefore=${earliest
               lastShownSeq={Math.max(0, ...thread.messages.map((message) => message.seq))}
             idPrefix="claimReply"
             status={readConversationStatusFlag(Astro.url)}
-            label="Reply"
-            placeholder="Write a reply"
+            label={conversationCopy().reply}
+            placeholder={conversationCopy().writeReply}
             note={thread.status === "closed" ? conversationCopy().closedNote : null}
           />}
         </div>

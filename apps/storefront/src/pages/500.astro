@@ -1,27 +1,33 @@
 ---
 import ErrorPageState from "@/components/ErrorPageState.astro";
 import "../styles/global.css";
+import { pageLanguage } from "@/lib/store-time-zone";
+import { storefrontLanguage } from "@/lib/storefront-copy";
+import { pagesCopy } from "@/lib/pages-copy";
 
 const retryHref = `${Astro.url.pathname}${Astro.url.search}`;
+// The store's language when this request read it before failing; English otherwise.
+const language = storefrontLanguage(pageLanguage());
+const copy = pagesCopy(language).unavailable;
 ---
 
-<html lang="en">
+<html lang={language}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.svg" />
     <meta name="robots" content="noindex,nofollow" />
-    <title>Page unavailable</title>
+    <title>{copy.title}</title>
   </head>
   <body class="flex min-h-screen flex-col bg-background text-foreground">
     <ErrorPageState
       code="500"
-      title="Page unavailable"
-      message="We couldn't load this page. Please try again in a moment."
+      title={copy.title}
+      message={copy.message}
       primaryHref={retryHref}
-      primaryLabel="Try again"
+      primaryLabel={copy.retry}
       secondaryHref="/"
-      secondaryLabel="Go to home"
+      secondaryLabel={copy.home}
       fullHeight
     />
   </body>

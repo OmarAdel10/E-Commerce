@@ -23,6 +23,8 @@ import { markRenderUncacheable } from "@/lib/cache-policy";
 import { appMarkup, requestExtensions, resolveSkinSettings } from "@/lib/extensions";
 import { buildAbsoluteStorefrontSeoUrl } from "@/lib/seo-base-url";
 import { sanitizePluginHead } from "@scalius/shared/plugins/storefront";
+import { pageLanguage } from "@/lib/store-time-zone";
+import { pagesCopy } from "@/lib/pages-copy";
 
 export const prerender = false;
 
@@ -63,7 +65,7 @@ const body = extension ? appMarkup(extension, "component", html) : null;
     <h1 class="text-2xl font-bold leading-tight text-foreground [overflow-wrap:anywhere] lg:text-3xl">{page.title}</h1>
     {body
       ? <div class="mt-4 [overflow-wrap:anywhere]" data-app-page-body><AppComponent markup={body} /></div>
-      : <p class="mt-4 text-base text-muted-foreground" data-app-page-unavailable>This page could not be shown right now.</p>}
+      : <p class="mt-4 text-base text-muted-foreground" data-app-page-unavailable>{pagesCopy(pageLanguage()).appPage.unavailable}</p>}
   </div>
 </Layout>
 

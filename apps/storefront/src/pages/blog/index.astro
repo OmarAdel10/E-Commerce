@@ -8,7 +8,8 @@ import { buildAbsoluteStorefrontSeoUrl } from "@/lib/seo-base-url";
 import { storefrontDataUnavailableResponse } from "@/lib/storefront-unavailable-response";
 import { serializeJsonForInlineScript } from "@/lib/safe-json";
 import { htmlToPlainText } from "@scalius/shared/html-sanitize";
-import { formatStoreDateTime } from "@/lib/store-time-zone";
+import { formatCount, formatStoreDateTime, pageLanguage } from "@/lib/store-time-zone";
+import { pagesCopy } from "@/lib/pages-copy";
 
 const pageParam = Number(Astro.url.searchParams.get("page") ?? "1");
 const page = Number.isInteger(pageParam) && pageParam > 0 ? pageParam : 1;
@@ -35,10 +36,10 @@ if (pagination.totalPages > 0 && page > pagination.totalPages) {
 
 const canonicalUrl = buildAbsoluteStorefrontSeoUrl("/blog");
 const isFilteredView = page > 1 || Boolean(tag);
-const description = tag
-  ? `Articles tagged ${tag}.`
-  : "Stories, guides, and updates from our store.";
-const title = tag ? `${tag} articles` : "Blog";
+const language = pageLanguage();
+const copy = pagesCopy(language).blog;
+const description = tag ? copy.taggedDescription(tag) : copy.description;
+const title = tag ? copy.tagged(tag) : copy.title;
 // The newest post image previews the blog when shared.
 const firstFeaturedImage = articles
   .map((article) => article.featuredImage?.url)
@@ -52,7 +53,7 @@ const blogJsonLd =
     ? serializeJsonForInlineScript({
         "@context": "https://schema.org",
         "@type": "Blog",
-        name: "Blog",
+        name: copy.title,
         url: canonicalUrl,
         description,
         blogPost: articles
@@ -80,7 +81,7 @@ function parsedDate(value: number | null): Date | null {
 function dateFor(value: number | null): string | null {
   const date = parsedDate(value);
   return date
-    ? formatStoreDateTime(date, "en", { dateStyle: "medium" })
+    ? formatStoreDateTime(date, language, { dateStyle: "medium" })
     : null;
 }
 
@@ -105,7 +106,7 @@ function pageHref(nextPage: number): string {
     <link
       rel="alternate"
       type="application/rss+xml"
-      title="Blog feed"
+      title={copy.feed}
       href="/blog/feed.xml"
     />
     {
@@ -135,7 +136,7 @@ function pageHref(nextPage: number): string {
       tags.length > 0 && (
         <nav
           class="mt-6 flex gap-2 overflow-x-auto pb-2"
-          aria-label="Article tags"
+          aria-label={copy.tags}
         >
           <a
             href="/blog"
@@ -146,7 +147,7 @@ function pageHref(nextPage: number): string {
                 : "border-border hover:border-foreground/40",
             ]}
           >
-            All
+            {copy.all}
           </a>
           {tags.map((item) => (
             <a
@@ -169,7 +170,7 @@ function pageHref(nextPage: number): string {
       articles.length > 0 ? (
         <section
           class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3"
-          aria-label="Articles"
+          aria-label={copy.articles}
         >
           {articles.map((article) => {
             const image = article.featuredImage?.url
@@ -229,9 +230,9 @@ function pageHref(nextPage: number): string {
         </section>
       ) : (
         <div class="mt-10 rounded-xl border border-dashed border-border px-5 py-14 text-center">
-          <h2 class="text-base font-medium text-foreground">No articles yet</h2>
+          <h2 class="text-base font-medium text-foreground">{copy.emptyTitle}</h2>
           <p class="mt-1 text-sm text-muted-foreground">
-            Published articles will appear here.
+            {copy.emptyText}
           </p>
         </div>
       )
@@ -241,27 +242,27 @@ function pageHref(nextPage: number): string {
       pagination.totalPages > 1 && (
         <nav
           class="mt-12 flex items-center justify-between border-t border-border pt-6"
-          aria-label="Blog pagination"
+          aria-label={copy.pagination}
         >
           {page > 1 ? (
             <a
               href={pageHref(page - 1)}
               class="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
             >
-              Previous
+              {copy.previous}
             </a>
           ) : (
             <span />
           )}
           <span class="text-sm text-muted-foreground">
-            Page {page} of {pagination.totalPages}
+            {copy.pageOf(formatCount(page), formatCount(pagination.totalPages))}
           </span>
           {page < pagination.totalPages ? (
             <a
               href={pageHref(page + 1)}
               class="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
             >
-              Next
+              {copy.next}
             </a>
           ) : (
             <span />

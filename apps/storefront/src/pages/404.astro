@@ -7,6 +7,8 @@ import { getLayoutData, getProductRecommendations } from "@/lib/api";
 import { getUrlRedirect } from "@/lib/api/navigation";
 import { recommendationTitle } from "@/lib/recommendations";
 import { serverPagePath } from "@/lib/server-presence";
+import { pageLanguage } from "@/lib/store-time-zone";
+import { pagesCopy } from "@/lib/pages-copy";
 
 // An old address (a renamed product's handle) leads to its new one: looked up
 // here only, in the same read batch as the suggestions, so pages that exist
@@ -21,17 +23,18 @@ if (redirectTo) {
   return Astro.redirect(`${serverPagePath(redirectTo)}${Astro.url.search}`, 301);
 }
 const products = suggestions?.products ?? [];
+const copy = pagesCopy(pageLanguage()).notFound;
 ---
 
-<Layout title="Page not found" noindex layoutData={layoutData}>
+<Layout title={copy.title} noindex layoutData={layoutData}>
   <ErrorPageState
     code="404"
-    title="Page not found"
-    message="That link may be out of date. Continue shopping or search for what you need."
+    title={copy.title}
+    message={copy.message}
     primaryHref="/"
-    primaryLabel="Continue shopping"
+    primaryLabel={copy.continueShopping}
     secondaryHref="/search"
-    secondaryLabel="Search products"
+    secondaryLabel={copy.searchProducts}
   />
   {suggestions && products.length > 0 && (
     <section aria-labelledby="not-found-suggestions" class="mx-auto w-full max-w-7xl px-4 pb-12 sm:px-6 lg:px-8">
