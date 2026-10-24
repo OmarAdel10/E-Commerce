@@ -14,7 +14,8 @@
  *   units one by one.
  */
 import { z } from "zod";
-import { discountedPriceMinor } from "./money";
+import { discountedPriceMinor, isIncrementMultipleMinor, MAX_MINOR_AMOUNT } from "./money";
+import { allocateProportionalMinor } from "./money-allocation";
 
 export const PRODUCT_BUNDLE_DISCOUNT_TYPES = ["percentage", "fixed_price"] as const;
 export const PRODUCT_BUNDLE_MIN_QUANTITY = 2;
@@ -32,7 +33,7 @@ export const productBundleTierSchema = z.discriminatedUnion("discountType", [
   z.object({
     quantity: z.number().int().min(PRODUCT_BUNDLE_MIN_QUANTITY).max(PRODUCT_BUNDLE_MAX_QUANTITY),
     discountType: z.literal("fixed_price"),
-    priceMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    priceMinor: z.number().int().min(1).max(MAX_MINOR_AMOUNT),
     label: z.string().trim().min(1).max(60).nullable(),
     isActive: z.boolean(),
   }).strict(),
@@ -104,29 +105,6 @@ export interface BundleGroupPricing {
 }
 
 /**
- * Splits `amountMinor` (a multiple of `unit`) over `weights` in whole cash
- * units, largest remainder first and line order on ties, so the same cart
- * always splits the same way.
- */
-function allocateCashUnits(amountMinor: number, weights: readonly number[], unit: number): number[] {
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  if (amountMinor === 0 || total === 0) return weights.map(() => 0);
-  const units = BigInt(amountMinor / unit);
-  const exact = weights.map((weight) => units * BigInt(weight));
-  const shares = exact.map((value) => value / BigInt(total));
-  let left = units - shares.reduce((sum, share) => sum + share, 0n);
-  const order = exact
-    .map((value, index) => ({ index, remainder: value % BigInt(total) }))
-    .sort((a, b) => (a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1));
-  for (const { index } of order) {
-    if (left === 0n) break;
-    shares[index]! += 1n;
-    left -= 1n;
-  }
-  return shares.map((share) => Number(share) * unit);
-}
-
-/**
  * The tier price of every unit of one product in a cart, whatever SKUs its
  * lines hold. The tier is the deepest active one the group's total quantity
  * reaches (`selectBundleTier`).
@@ -137,11 +115,12 @@ function allocateCashUnits(amountMinor: number, weights: readonly number[], unit
  *   first (the buyer gets the saving the tier advertises); a set costs
  *   `priceMinor` but never more than its units bought singly, and leftover
  *   units pay their own price. A set's saving is split over its units by
- *   price in whole increments.
+ *   price in whole increments when the saving and every price align; prices
+ *   off the increment use minor units so no saving exceeds its unit price.
  *
- * With one unit price this equals `bundleTotalMinor`. With prices on the
- * increment (a BDT store's default: whole taka) every saving, and every
- * line's share of it, is on the increment too.
+ * With one unit price this equals `bundleTotalMinor`. With catalog and tier
+ * prices on the increment (a BDT store's default: whole taka) every saving,
+ * and every line's share of it, is on the increment too.
  */
 export function bundleGroupPricing(
   lines: readonly BundleGroupLine[],
@@ -169,7 +148,6 @@ export function bundleGroupPricing(
       savings.set(line.key, (line.unitPriceMinor - unitMinor) * line.quantity);
     }
   } else if (tier?.discountType === "fixed_price") {
-    const unit = incrementMinor;
     // Every unit, dearest first; line order breaks ties.
     const units = lines
       .flatMap((line, index) => Array.from({ length: line.quantity }, () => ({ index, priceMinor: line.unitPriceMinor })))
@@ -179,10 +157,12 @@ export function bundleGroupPricing(
       const members = units.slice(set * tier.quantity, (set + 1) * tier.quantity);
       const setPlainMinor = members.reduce((sum, member) => sum + member.priceMinor, 0);
       const savingMinor = setPlainMinor - Math.min(tier.priceMinor, setPlainMinor);
-      // Only a price off the increment leaves a remainder; it stays on the dearest unit.
-      const cashSavingMinor = savingMinor - (savingMinor % unit);
-      const shares = allocateCashUnits(cashSavingMinor, members.map((member) => member.priceMinor), unit);
-      shares[0] = shares[0]! + savingMinor - cashSavingMinor;
+      // A coarse increment cannot fit a smaller unit price. Allocating its
+      // share in minor units keeps the discount bounded by each unit's price.
+      const unit = isIncrementMultipleMinor(savingMinor, incrementMinor)
+        && members.every((member) => member.priceMinor % incrementMinor === 0)
+        ? incrementMinor : 1;
+      const shares = allocateProportionalMinor(savingMinor, members.map((member) => BigInt(member.priceMinor)), unit);
       members.forEach((member, position) => {
         const key = lines[member.index]!.key;
         savings.set(key, savings.get(key)! + shares[position]!);

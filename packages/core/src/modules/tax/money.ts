@@ -1,4 +1,5 @@
 import { MAX_MINOR_AMOUNT } from "@scalius/shared/money";
+import { allocateProportionalMinor } from "@scalius/shared/money-allocation";
 
 function assertMinorAmount(value: number, label: string): number {
     if (!Number.isSafeInteger(value) || value < 0 || value > MAX_MINOR_AMOUNT) {
@@ -34,6 +35,28 @@ export interface AllocationWeight {
 }
 
 /**
+ * Splits an amount over exact proportional weights. Unlike discount weights,
+ * these are ratios, not monetary caps: a rate share can be arbitrarily small.
+ * Allocate whole increments before restoring minor units so no component is
+ * independently rounded or made negative to reconcile the total.
+ */
+export function allocateWeightedMinorAmount(
+    amountMinor: number,
+    weights: ReadonlyArray<{ key: string; weight: bigint }>,
+    unitMinor = 1,
+): Map<string, number> {
+    assertMinorAmount(amountMinor, "Allocation amount");
+    if (new Set(weights.map(({ key }) => key)).size !== weights.length) {
+        throw new RangeError("Allocation keys must be unique.");
+    }
+    const allocations = new Map(weights.map(({ key }) => [key, 0]));
+    const ordered = [...weights].sort((left, right) => left.key.localeCompare(right.key));
+    const shares = allocateProportionalMinor(amountMinor, ordered.map(({ weight }) => weight), unitMinor);
+    ordered.forEach(({ key }, index) => allocations.set(key, shares[index]!));
+    return allocations;
+}
+
+/**
  * Allocates a bounded amount proportionally with largest-remainder rounding.
  * Stable key ordering resolves exact remainder ties, making retries identical.
  */
@@ -55,35 +78,13 @@ export function allocateMinorAmount(
         key: entry.key,
         weightMinor: assertMinorAmount(entry.weightMinor, `Allocation weight ${entry.key}`),
     }));
-    if (new Set(normalized.map((entry) => entry.key)).size !== normalized.length) {
-        throw new RangeError("Allocation keys must be unique.");
-    }
     const totalWeight = normalized.reduce((sum, entry) => sum + entry.weightMinor, 0);
     if (!Number.isSafeInteger(totalWeight) || totalWeight < 0) {
         throw new RangeError("Allocation weights exceed the safe integer range.");
     }
 
-    const boundedAmount = Math.min(amountMinor, totalWeight);
-    const allocations = new Map<string, number>(normalized.map((entry) => [entry.key, 0]));
-    if (boundedAmount === 0 || totalWeight === 0) return allocations;
-
-    const denominator = BigInt(totalWeight);
-    const shares = normalized.map((entry) => {
-        const numerator = BigInt(boundedAmount) * BigInt(entry.weightMinor);
-        const floor = Number(numerator / denominator);
-        allocations.set(entry.key, floor);
-        return { entry, remainder: numerator % denominator, floor };
-    });
-
-    let remainderUnits = boundedAmount - shares.reduce((sum, share) => sum + share.floor, 0);
-    shares.sort((left, right) => {
-        if (left.remainder === right.remainder) return left.entry.key.localeCompare(right.entry.key);
-        return left.remainder > right.remainder ? -1 : 1;
-    });
-    for (const share of shares) {
-        if (remainderUnits <= 0) break;
-        allocations.set(share.entry.key, (allocations.get(share.entry.key) ?? 0) + 1);
-        remainderUnits -= 1;
-    }
-    return allocations;
+    return allocateWeightedMinorAmount(
+        Math.min(amountMinor, totalWeight),
+        normalized.map(({ key, weightMinor }) => ({ key, weight: BigInt(weightMinor) })),
+    );
 }

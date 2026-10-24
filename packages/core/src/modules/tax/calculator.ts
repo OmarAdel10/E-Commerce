@@ -8,7 +8,7 @@
 import type { TaxCalculateInput, TaxCalculation, TaxCalculationLine } from "@scalius/shared/plugins/providers/tax";
 import { ValidationError } from "@scalius/core/errors";
 import { MAX_LINE_QUANTITY } from "@scalius/shared/order-limits";
-import { allocateMinorAmount, multiplyMinorByRate, roundToUnit } from "./money";
+import { allocateMinorAmount, allocateWeightedMinorAmount, multiplyMinorByRate, roundToUnit } from "./money";
 import {
     isCountryTaxRegion,
     matchTaxRegions,
@@ -87,6 +87,29 @@ function exclusiveComponents(
 const componentTotal = (components: ReadonlyArray<{ amountMinor: number }>) =>
     components.reduce((sum, component) => sum + component.amountMinor, 0);
 
+/** Exact rate shares with a common denominator; same-priority rates share one base. */
+function inclusiveComponentWeights(rates: readonly TaxRateDefinition[]): Array<{ key: string; weight: bigint }> {
+    const shares: Array<{ key: string; numerator: bigint; denominator: bigint }> = [];
+    let denominator = 1n;
+    let completedTax = 0n;
+    let index = 0;
+    while (index < rates.length) {
+        const priority = rates[index]!.priority;
+        const nextDenominator = denominator * 10_000n;
+        let layerTax = 0n;
+        while (index < rates.length && rates[index]!.priority === priority) {
+            const rate = rates[index++]!;
+            const base = rate.isCompound ? denominator + completedTax : denominator;
+            const numerator = base * BigInt(rate.rateBps);
+            shares.push({ key: rate.id, numerator, denominator: nextDenominator });
+            layerTax += numerator;
+        }
+        completedTax = completedTax * 10_000n + layerTax;
+        denominator = nextDenominator;
+    }
+    return shares.map((share) => ({ key: share.key, weight: share.numerator * (denominator / share.denominator) }));
+}
+
 function inclusiveTax(grossMinor: number, rates: readonly TaxRateDefinition[], unitMinor: number): AmountTax {
     if (grossMinor === 0 || rates.length === 0) {
         return { taxableAmountMinor: rates.length > 0 ? grossMinor : 0, taxMinor: 0, components: [] };
@@ -105,12 +128,15 @@ function inclusiveTax(grossMinor: number, rates: readonly TaxRateDefinition[], u
     // The included tax is shown in whole increments (a BDT store's default: whole taka).
     const taxMinor = Math.min(grossMinor, roundToUnit(grossMinor - low, unitMinor));
     const taxableAmountMinor = grossMinor - taxMinor;
-    const components = exclusiveComponents(taxableAmountMinor, rates, unitMinor);
-    const componentRemainder = taxMinor - componentTotal(components);
-    if (componentRemainder !== 0 && components.length > 0) {
-        const last = components[components.length - 1]!;
-        last.amountMinor += componentRemainder;
-    }
+    // Share the one rounded total, not individually rounded components. A
+    // price below an increment can cap tax off-increment; conserve minor
+    // units in that case rather than allocating more than the buyer paid.
+    const amounts = allocateWeightedMinorAmount(
+        taxMinor,
+        inclusiveComponentWeights(rates),
+        taxMinor % unitMinor === 0 ? unitMinor : 1,
+    );
+    const components = rates.map((rate) => ({ rate, amountMinor: amounts.get(rate.id)! }));
     return { taxableAmountMinor, taxMinor, components };
 }
 
