@@ -8,14 +8,14 @@ Every write: dryRun first. [approval] = destructive or financial: the write answ
 ## Create a simple product "Cotton Panjabi", 1,500, 20 in stock, published
 1. read   dashboard.settings.currency_get: prices use this currency
 2. read   dashboard.categories.form_options: pick categoryId; ask if none fits
-3. write  dashboard.products.create needs body.name, body.description, body.price, body.categoryId, body.isActive, body.freeDelivery, ...: isActive:true, price:1500, defaultSku {stock:20}, media:[] or committed images
+3. write  dashboard.products.create needs body.name, body.description, body.price, body.categoryId, body.isActive, body.metaTitle, ...: isActive:true, price:1500, defaultSku {stock:20}, media:[] or committed images
 4. verify dashboard.products.get_section: section base
 Note: A simple product has exactly one hidden SKU: stock goes on defaultSku, never on the product.
 
 ## Create a t-shirt in S/M/L x red/blue, 800 each, 10 of each
 1. search "create an optioned product"
 2. resource scalius://workflows/catalog.optioned-product.v1: matrix rules
-3. write  dashboard.products.create needs body.name, body.description, body.price, body.categoryId, body.isActive, body.freeDelivery, ...: optionMatrix: 2 axes, all 6 SKUs, price 800, stock 10
+3. write  dashboard.products.create needs body.name, body.description, body.price, body.categoryId, body.isActive, body.metaTitle, ...: optionMatrix: 2 axes, all 6 SKUs, price 800, stock 10
 4. verify dashboard.products.get_section: section variants
 Note: Every SKU picks one value of every axis, in axis order; send the whole matrix in one create.
 
