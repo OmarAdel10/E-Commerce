@@ -29,6 +29,7 @@
 import { scrypt as nodeScrypt } from "node:crypto";
 import { verifyPassword as verifyBetterAuthPassword } from "better-auth/crypto";
 import { planLimits, type PasswordHashSpec } from "@scalius/shared/plan-limits";
+import { ServiceUnavailableError } from "../errors";
 
 export const PASSWORD_HASH_PREFIX = "$sc1$";
 const SALT_BYTES = 16;
@@ -45,7 +46,7 @@ const BETTER_AUTH_HASH = /^[0-9a-f]{32}:[0-9a-f]{128}$/;
 export interface PasswordHashOptions {
   /** What a new hash costs; defaults to this deployment's plan profile. */
   spec?: PasswordHashSpec;
-  /** CREDENTIAL_ENCRYPTION_KEY (base64): the pepper's source. Without it hashes are made, and only accepted, unkeyed. */
+  /** CREDENTIAL_ENCRYPTION_KEY (base64): required for creating or verifying a password hash. */
   pepperKey?: string | undefined;
 }
 
@@ -189,9 +190,10 @@ function sameSpec(params: StoredParams, spec: PasswordHashSpec): boolean {
 export async function hashPassword(password: string, options: PasswordHashOptions = {}): Promise<string> {
   const spec = options.spec ?? planLimits().password;
   const pepper = await derivePepper(options.pepperKey);
+  if (!pepper) throw new ServiceUnavailableError("Password signing key is not configured.");
   const params: StoredParams = spec.algorithm === "scrypt"
-    ? { algorithm: "scrypt", N: spec.N, r: spec.r, p: spec.p, keyed: pepper !== null }
-    : { algorithm: "pbkdf2-sha256", iterations: spec.iterations, keyed: pepper !== null };
+    ? { algorithm: "scrypt", N: spec.N, r: spec.r, p: spec.p, keyed: true }
+    : { algorithm: "pbkdf2-sha256", iterations: spec.iterations, keyed: true };
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const hash = await derive(params, await kdfInput(password, pepper), salt);
   const { name, text } = formatParams(params);
@@ -209,19 +211,18 @@ export function isPasswordHash(stored: string): boolean {
  */
 export async function verifyPassword(stored: string, password: string, options: PasswordHashOptions = {}): Promise<PasswordVerdict> {
   const spec = options.spec ?? planLimits().password;
+  const pepper = await derivePepper(options.pepperKey);
+  if (!pepper) return { valid: false, needsRehash: false };
   const parsed = parseStored(stored);
   if (!parsed) {
     if (!BETTER_AUTH_HASH.test(stored)) return { valid: false, needsRehash: false };
     const valid = await verifyBetterAuthPassword({ hash: stored, password }).catch(() => false);
     return { valid, needsRehash: valid };
   }
-  const pepper = await derivePepper(options.pepperKey);
-  // A keyed hash needs the key: without it nothing can be proven.
-  if (parsed.params.keyed && !pepper) return { valid: false, needsRehash: false };
   const derived = await derive(parsed.params, await kdfInput(password, parsed.params.keyed ? pepper : null), parsed.salt);
   const valid = constantTimeEqual(derived, parsed.hash);
   return {
     valid,
-    needsRehash: valid && (!sameSpec(parsed.params, spec) || parsed.params.keyed !== (pepper !== null)),
+    needsRehash: valid && (!sameSpec(parsed.params, spec) || !parsed.params.keyed),
   };
 }
