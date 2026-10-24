@@ -26,6 +26,7 @@ import {
   ValidationError,
 } from "@scalius/core/errors";
 import { applyClaimedInventoryEntryBatchWithImpact } from "../../inventory";
+import { inJsonArray } from "../../../utils/in-json-array";
 import type {
   ApproveOrderReturnInput,
   CancelOrderReturnInput,
@@ -407,16 +408,17 @@ export async function listOrderReturns(
     .orderBy(sql`${orderReturns.createdAt} DESC`)
     .all();
   if (headers.length === 0) return [];
+  const returnIds = headers.map((header) => header.id);
   const lines = await db
     .select({ returnId: orderReturnLines.returnId, ...returnLineFields })
     .from(orderReturnLines)
-    .where(inArray(orderReturnLines.returnId, headers.map((header) => header.id)))
+    .where(inJsonArray(orderReturnLines.returnId, returnIds))
     .orderBy(orderReturnLines.createdAt)
     .all();
   const receipts = await db
     .select({ returnId: orderReturnReceiptLines.returnId, ...returnReceiptFields })
     .from(orderReturnReceiptLines)
-    .where(inArray(orderReturnReceiptLines.returnId, headers.map((header) => header.id)))
+    .where(inJsonArray(orderReturnReceiptLines.returnId, returnIds))
     .orderBy(orderReturnReceiptLines.createdAt)
     .all();
   const linesByReturn = new Map<string, OrderReturnLineView[]>();
@@ -516,7 +518,7 @@ export async function createOrderReturn(
       inventoryTracked: orderItems.inventoryTracked,
     })
     .from(orderItems)
-    .where(and(eq(orderItems.orderId, orderId), inArray(orderItems.id, requestedIds)))
+    .where(and(eq(orderItems.orderId, orderId), inJsonArray(orderItems.id, requestedIds)))
     .all();
   if (itemRows.length !== requestedIds.length) {
     throw new ValidationError("One or more return lines no longer belong to this order.");
@@ -549,7 +551,7 @@ export async function createOrderReturn(
     .innerJoin(orderReturns, eq(orderReturns.id, orderReturnLines.returnId))
     .where(and(
       eq(orderReturnLines.orderId, orderId),
-      inArray(orderReturnLines.orderItemId, requestedIds),
+      inJsonArray(orderReturnLines.orderItemId, requestedIds),
     ))
     .all();
   const committedByItem = new Map<string, number>();

@@ -3,19 +3,23 @@
 // one-active-per-order key, return link, refund-blocking rules and merchant
 // policy (read side still in `orders`), and gains `conversation_id`. The
 // buyer's words become the first public message; status changes become event
-// lines. One batch: case row, thread CAS and messages commit together.
+// lines. One batch: case row, exact requested items, thread CAS and messages
+// commit together.
 //
 // C5: a case is a record for staff review. It never mutates payments, stock,
 // delivery or order status (enforced by scripts/check-source-policies.mjs).
 
-import type { Database } from "@scalius/database/client";
+import { isBatchGuardError, type Database } from "@scalius/database/client";
 import { orderSupportRequests } from "@scalius/database/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { CONVERSATION_LIMITS } from "@scalius/shared/conversation";
 import { ConflictError, NotFoundError, ValidationError } from "../../errors";
 import {
   applyCustomerRequestPolicyToSupportActions,
   buildOrderSupportRequestState,
+  buildOrderSupportRequestCommitGuard,
+  buildOrderEventInsert,
   formatOrderSupportRequest,
   getActiveSupportRequestTypes,
   getAdminOrderSupportRequestTransition,
@@ -23,9 +27,10 @@ import {
   isSupportRequestType,
   listOrderSupportRequests,
   normalizeAdminSupportRequestStatus,
-  recordOrderEvent,
+  orderEventIdForRequest,
   selectSupportRequestOrderState,
   supportRequestSelectFields,
+  SUPPORT_REQUEST_ELIGIBILITY_CHANGED,
   type CreateCustomerOrderSupportRequestInput,
   type CustomerOrderSupportRequestAction,
   type ReturnableOrderLine,
@@ -130,6 +135,23 @@ function requestedReturnLines(
   });
 }
 
+/** Preserve the complete request in bounded messages, preferably split between item lines. */
+function caseMessageBodies(text: string): string[] {
+  const bodies: string[] = [];
+  let remaining = text;
+  while (remaining.length > CONVERSATION_LIMITS.bodyLength) {
+    let end = remaining.lastIndexOf("\n", CONVERSATION_LIMITS.bodyLength);
+    if (end < 1) end = CONVERSATION_LIMITS.bodyLength;
+    // Do not split a Unicode surrogate pair when one long line needs cutting.
+    const last = remaining.charCodeAt(end - 1);
+    if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    bodies.push(remaining.slice(0, end));
+    remaining = remaining.slice(end);
+  }
+  if (remaining) bodies.push(remaining);
+  return bodies;
+}
+
 async function createVerifiedOrderSupportRequest(
   db: Database,
   orderId: string,
@@ -153,6 +175,9 @@ async function createVerifiedOrderSupportRequest(
   if (!order) throw new NotFoundError("Order not found");
 
   const state = await buildOrderSupportRequestState(db, order);
+  if (state.policyInvalid) {
+    throw new ValidationError("This store's request policy is unavailable. Please try again later.");
+  }
   const activeRequestTypes = getActiveSupportRequestTypes(state.supportRequests);
   const selectedAction = state.allSupportRequestActions.find((action) => action.type === input.type);
   if (!selectedAction?.eligible) {
@@ -174,19 +199,22 @@ async function createVerifiedOrderSupportRequest(
       visibility: "public",
       authorType: "system",
       eventKind: "support_request_submitted",
-      eventData: { requestId, type: input.type, status: "submitted", ...(items.length > 0 ? { items: items.map(({ orderItemId, quantity }) => ({ orderItemId, quantity })) } : {}) },
+      // Full item identities live on the order event; the conversation event
+      // is only the bounded status line rendered by both buyer and staff UI.
+      eventData: { requestId, type: input.type, status: "submitted" },
       readBy: ["customer"],
     },
-    {
+    ...caseMessageBodies([reason, itemsText, details].filter(Boolean).join("\n\n")).map((body): ConversationLine => ({
       kind: "message",
       visibility: "public",
       authorType,
       authorCustomerId: actor.actorType === "customer" ? actor.customerId : null,
-      body: [reason, itemsText, details].filter(Boolean).join("\n\n"),
+      body,
       readBy: ["customer"],
-    },
+    })),
   ];
 
+  const submittedEventId = await orderEventIdForRequest(orderId, "request_submitted", requestId);
   let thread = await getOrCreateOrderThread(db, orderId);
   let committed = false;
   for (let attempt = 1; attempt <= CASE_ATTEMPTS && !committed; attempt += 1) {
@@ -195,6 +223,12 @@ async function createVerifiedOrderSupportRequest(
     const plan = planConversationAppend(db, thread, lines, { notify: false });
     try {
       await db.batch([
+        buildOrderSupportRequestCommitGuard(db, order, {
+          type: input.type,
+          policyRevision: state.policyRevision,
+          expectedCustomerId: actor.customerId,
+          items,
+        }),
         db.insert(orderSupportRequests).values({
           id: requestId,
           orderId,
@@ -209,9 +243,21 @@ async function createVerifiedOrderSupportRequest(
           updatedAt: sql`unixepoch()`,
         }),
         ...plan.statements,
+        // Exact requested identities are durable case data, even when their
+        // displayed descriptions match. They must commit with the case.
+        buildOrderEventInsert(db, {
+          id: submittedEventId,
+          orderId,
+          kind: "request_submitted",
+          body: reason,
+          data: { type: input.type, reason, ...(items.length > 0 ? { items: items.map(({ orderItemId, quantity }) => ({ orderItemId, quantity })) } : {}) },
+        }, sql`1 = 1`),
       ] as BatchStatements);
       committed = true;
     } catch (error) {
+      if (isBatchGuardError(error, SUPPORT_REQUEST_ELIGIBILITY_CHANGED)) {
+        throw new ConflictError("This order or its request policy changed. Please refresh before submitting a request.");
+      }
       if (isActiveCaseConflict(error)) throw new ConflictError("A support request is already open for this order.");
       if (!isConstraintError(error) || attempt === CASE_ATTEMPTS) {
         if (isConstraintError(error)) throw new ConflictError("A support request is already open for this order.");
@@ -222,15 +268,6 @@ async function createVerifiedOrderSupportRequest(
       thread = fresh;
     }
   }
-
-  // Staff see the buyer's own words on the order timeline (R2-ORD-15).
-  await recordOrderEvent(db, {
-    orderId,
-    kind: "request_submitted",
-    requestKey: requestId,
-    body: reason,
-    data: { type: input.type, reason, ...(items.length > 0 ? { items: items.map(({ orderItemId, quantity }) => ({ orderItemId, quantity })) } : {}) },
-  });
 
   const updatedSupportRequests = await listOrderSupportRequests(db, orderId);
   const request = updatedSupportRequests.find((item) => item.id === requestId);

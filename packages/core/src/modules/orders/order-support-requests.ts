@@ -4,7 +4,7 @@
 // them on the order thread. Reads only: never mutates payments, stock,
 // delivery or order status.
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import type { Database } from "@scalius/database/client";
+import { buildBatchGuard, type Database } from "@scalius/database/client";
 import {
   deliveryShipments,
   FulfillmentStatus,
@@ -13,9 +13,11 @@ import {
   orderSupportRequests,
   orders,
   PaymentStatus,
+  settings,
 } from "@scalius/database/schema";
 import { ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
 import { listOrderRefundAttempts, summarizeActiveRefundOperation } from "../payments";
+import { noActiveRefundAttemptForOrderIdCondition } from "../order-kernel";
 import {
   cancellationUnavailableReason,
   CUSTOMER_REQUEST_ACTION_COPY,
@@ -25,7 +27,7 @@ import {
   type CustomerRequestPolicy,
   type CustomerRequestType,
   getCustomerRequestIntro,
-  getCustomerRequestPolicy,
+  customerRequestsDocument,
   projectCustomerRequestActions,
 } from "../settings";
 import type { OrderSupportRequestView } from "./types";
@@ -519,6 +521,63 @@ export async function selectSupportRequestOrderState(
     .get();
 }
 
+export const SUPPORT_REQUEST_ELIGIBILITY_CHANGED = "SUPPORT_REQUEST_ELIGIBILITY_CHANGED";
+
+/**
+ * Keep the shared policy projection's facts true until the case commits.
+ * Snapshot comparisons avoid a second implementation of the action policy;
+ * changing any decision input asks the buyer to refresh instead. Related
+ * shipment, refund and return-line facts are checked inside the same batch.
+ */
+export function buildOrderSupportRequestCommitGuard(
+  db: Database,
+  order: SupportRequestActionOrderState,
+  options: {
+    type: CustomerOrderSupportRequestType;
+    policyRevision: number;
+    expectedCustomerId: string | null;
+    items: readonly SupportRequestItemInput[];
+  },
+) {
+  const policyRow = sql`SELECT 1 FROM ${settings}
+    WHERE ${settings.category} = 'customer_requests' AND ${settings.key} = 'document'`;
+  const conditions = [
+    sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${and(
+      eq(orders.id, order.id),
+      isNull(orders.deletedAt),
+      eq(orders.status, order.status),
+      eq(orders.paymentStatus, order.paymentStatus),
+      eq(orders.fulfillmentStatus, order.fulfillmentStatus),
+      eq(orders.paidAmountMinor, order.paidAmountMinor),
+      order.customerId == null ? isNull(orders.customerId) : eq(orders.customerId, order.customerId),
+      options.expectedCustomerId ? customerAccountOwnershipCondition(options.expectedCustomerId) : undefined,
+    )})`,
+    options.policyRevision === 0
+      ? sql`NOT EXISTS (${policyRow})`
+      : sql`EXISTS (${policyRow} AND ${settings.revision} = ${options.policyRevision})`,
+    noActiveRefundAttemptForOrderIdCondition(order.id),
+  ];
+  if (options.type === "cancel_pre_shipment") {
+    conditions.push(sql`NOT EXISTS (SELECT 1 FROM ${deliveryShipments} WHERE ${deliveryShipments.orderId} = ${order.id})`);
+  }
+  if (options.type === "return") {
+    const returnable = and(
+      eq(orderItems.orderId, order.id),
+      sql`${orderItems.fulfillmentType} IN ('ship', 'pickup')`,
+      sql`${orderItems.fulfilledQuantity} > 0`,
+    );
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${orderItems} WHERE ${returnable})`);
+    // A single JSON bind keeps a return with many lines within D1's limit.
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM json_each(${JSON.stringify(options.items.map(({ orderItemId, quantity }) => ({ orderItemId, quantity })))}) AS requested
+      WHERE NOT EXISTS (SELECT 1 FROM ${orderItems} WHERE ${returnable}
+        AND ${orderItems.id} = json_extract(requested.value, '$.orderItemId')
+        AND ${orderItems.fulfilledQuantity} >= CAST(json_extract(requested.value, '$.quantity') AS INTEGER))
+    )`);
+  }
+  return buildBatchGuard(db, and(...conditions)!, SUPPORT_REQUEST_ELIGIBILITY_CHANGED);
+}
+
 /** Cases, eligible actions and policy for one order (reads only). */
 export async function buildOrderSupportRequestState(
   db: Database,
@@ -533,8 +592,10 @@ export async function buildOrderSupportRequestState(
   hasShipment: boolean;
   hasActiveRefundOperation: boolean;
   policy: CustomerRequestPolicy;
+  policyRevision: number;
+  policyInvalid: boolean;
 }> {
-  const [shipmentRows, supportRequests, refundAttemptViews, policy, returnableItems] = await Promise.all([
+  const [shipmentRows, supportRequests, refundAttemptViews, policyDocument, returnableItems] = await Promise.all([
     db
       .select({ id: deliveryShipments.id })
       .from(deliveryShipments)
@@ -542,10 +603,11 @@ export async function buildOrderSupportRequestState(
       .limit(1),
     listOrderSupportRequests(db, order.id),
     listOrderRefundAttempts(db, order.id, { audience: "customer" }),
-    getCustomerRequestPolicy(db),
+    customerRequestsDocument.readDetailed(db),
     // Lines are read only once a return can be asked for (a delivered order).
     RETURN_REQUEST_STATUSES.has(order.status) ? readReturnableOrderLines(db, order.id) : Promise.resolve([]),
   ]);
+  const { value: policy, revision: policyRevision, invalid: policyInvalid } = policyDocument;
   const activeRefundOperation = summarizeActiveRefundOperation(refundAttemptViews, "customer");
   const activeRequestTypes = getActiveSupportRequestTypes(supportRequests);
   const baseActions = getCustomerOrderSupportRequestActions(order, {
@@ -567,5 +629,7 @@ export async function buildOrderSupportRequestState(
     hasShipment: shipmentRows.length > 0,
     hasActiveRefundOperation: Boolean(activeRefundOperation),
     policy,
+    policyRevision,
+    policyInvalid,
   };
 }
