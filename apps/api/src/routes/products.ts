@@ -228,6 +228,7 @@ const storefrontFeedProductSchema = z.object({
   discountAmount: z.number().nullable(),
   discountedPrice: z.number(),
   freeDelivery: z.boolean(),
+  shippingProfileId: z.string().nullable().openapi({ description: "The product's shipping profile (null: the default): shipping-methods profileRates for it price its delivery, as on the product page." }),
   categoryId: z.string().nullable(),
   /** A buyer input is required: an agent (variant + quantity) cart can't buy it; send the buyer to the product page. */
   requiresCustomization: z.boolean(),

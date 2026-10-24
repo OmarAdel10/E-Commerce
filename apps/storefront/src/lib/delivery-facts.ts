@@ -93,6 +93,22 @@ export function shippingMethodsForProfile(
   });
 }
 
+/**
+ * The options as one unit at `unitPrice` pays them: a flat option's free-over
+ * amount it reaches waives the fee, as checkout does for that item alone (a
+ * free-over counts the shipped items of the profile it prices). Banded and
+ * calculated options are left as they are (their price is never claimed).
+ */
+export function shippingMethodsForUnitPrice(
+  shippingMethods: ShippingMethod[] | null | undefined,
+  unitPrice: number,
+): ShippingMethod[] | null | undefined {
+  return shippingMethods?.map((method) =>
+    (!method.rateSource || method.rateSource === "flat") && typeof method.freeOver === "number" && unitPrice >= method.freeOver
+      ? { ...method, fee: 0 }
+      : method);
+}
+
 export interface DeliveryRateSplit {
   /** Rates that deliver to an address in the countries asked about, in merchant order. */
   delivery: ShippingMethod[];

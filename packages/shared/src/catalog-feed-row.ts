@@ -80,6 +80,8 @@ export interface CatalogFeedProductInput {
   discountPercentage?: number | null;
   discountAmount?: number | null;
   freeDelivery?: boolean;
+  /** The product's shipping profile (null: the default); its rates price the item's delivery. */
+  shippingProfileId?: string | null;
   isActive?: boolean;
   availableForSale?: boolean;
   hasVariants?: boolean;
@@ -134,6 +136,8 @@ export interface CatalogFeedRowPricing {
 export interface CatalogFeedRow {
   kind: "product" | "variant";
   productId: string;
+  /** The product's shipping profile (null: the default): the feed prices its delivery with it. */
+  shippingProfileId: string | null;
   variantId: string | null;
   id: string;
   title: string;
@@ -540,6 +544,7 @@ function buildRow(
   return {
     kind: variant ? "variant" : "product",
     productId: product.id,
+    shippingProfileId: product.shippingProfileId ?? null,
     variantId: variant?.id ?? null,
     id: variant
       ? normalizedText(variant.sku) ?? variant.id

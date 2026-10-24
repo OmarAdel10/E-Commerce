@@ -19,7 +19,7 @@ import ThemeEditorMark from "@/components/ThemeEditorMark.astro";
 import { THEME_EDITOR_MARKS, themeEditorModuleMark } from "@scalius/shared/theme-editor-bridge";
 import TemplateSections from "@/components/homepage/TemplateSections.astro";
 import { templateSectionData } from "@/lib/template-sections";
-import { buildDeliveryFacts, productFulfilment, shippingMethodsForProfile } from "@/lib/delivery-facts";
+import { buildDeliveryFacts, productFulfilment, shippingMethodsForProfile, shippingMethodsForUnitPrice } from "@/lib/delivery-facts";
 import { resolveProductPageCopy } from "@/components/product/lib/buyer-inputs";
 import { formatMoney } from "@/lib/currency";
 import { localizedPaths } from "@/lib/localized-paths";
@@ -460,7 +460,8 @@ const pageCountries = presenceMarketCountries(layoutData.markets, getRuntimePres
 // What this product pays behind each option: its shipping profile's rates.
 const productShippingMethods = shippingMethodsForProfile(shippingMethods, product.shippingProfileId);
 const offerShippingDetails = buildOfferShippingDetails({
-  shippingMethods: productShippingMethods,
+  // One unit at its lowest price, as the feeds state it: a free-over it reaches ships it free.
+  shippingMethods: shippingMethodsForUnitPrice(productShippingMethods, buyerDisplayedPrice),
   currencyCode,
   freeDelivery: product.freeDelivery,
   countries: pageCountries,

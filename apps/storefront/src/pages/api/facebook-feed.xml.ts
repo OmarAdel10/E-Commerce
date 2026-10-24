@@ -11,7 +11,7 @@ import { GOOGLE_CHANNEL_ID, META_CHANNEL_ID, type CatalogChannelId } from "@scal
 import type { Product } from "@/lib/api/types";
 import { getLayoutData, getSeoSettings, getShippingMethods } from "@/lib/api";
 import type { ShippingMethod } from "@/lib/api/types";
-import { splitDeliveryRates } from "@/lib/delivery-facts";
+import { shippingMethodsForProfile, shippingMethodsForUnitPrice, splitDeliveryRates } from "@/lib/delivery-facts";
 import { presenceMarketCountries } from "@/lib/checkout/shipping-country";
 import { formatCatalogFeedAmount } from "@scalius/shared/catalog-feed-money";
 import { resolvePriceIncrementMinor } from "@scalius/shared/currency-policy";
@@ -125,12 +125,15 @@ interface FeedShippingPolicy {
 }
 
 /**
- * The delivery charges the presence's feed states, per country its market
- * sells to (MARKETS-DESIGN step 3b), the same ones Product JSON-LD states:
- * a country's delivery rates when its shipping zone serves every address
- * there. Where the charge depends on the address (a region, postal codes or
- * Bangladesh delivery areas price it), none is claimed (use Merchant Center
- * account-level shipping), exactly like the product page.
+ * The delivery charges the presence's feed states for one item, per country
+ * its market sells to (MARKETS-DESIGN step 3b), the same ones Product JSON-LD
+ * states: a country's delivery rates when its shipping zone serves every
+ * address there, as the item's shipping profile pays them
+ * (`shippingMethodsForProfile`) for one unit at its price. Where the charge
+ * depends on the address (a region, postal codes or Bangladesh delivery
+ * areas price it), on the parcel's weight or value (a profile's banded
+ * rates), or on a carrier's quote, none is claimed (Merchant Center then
+ * uses account-level shipping), exactly like the product page.
  */
 function storeFeedShipping(
   shippingMethods: ShippingMethod[] | null,
@@ -156,11 +159,27 @@ function storeFeedShipping(
 /**
  * Generates a single product item for the feed
  */
+/** The charges one item carries: its shipping profile's, for one unit at its current price. */
+function itemFeedShipping(row: CatalogFeedRow, store: FeedShippingSource): FeedShippingPolicy {
+  const methods = shippingMethodsForUnitPrice(
+    shippingMethodsForProfile(store.shippingMethods, row.shippingProfileId),
+    row.pricing.currentAmount,
+  );
+  return storeFeedShipping(methods ?? null, store.currencyCode, store.countries);
+}
+
+interface FeedShippingSource {
+  shippingMethods: ShippingMethod[] | null;
+  currencyCode: string;
+  countries: readonly string[];
+}
+
 function generateProductItem(
   row: CatalogFeedRow,
   format: CatalogFeedFormat,
-  storeShipping: FeedShippingPolicy,
+  store: FeedShippingSource,
 ): string {
+  const storeShipping = itemFeedShipping(row, store);
   // Build the item XML
   let item = "  <item>\n";
 
@@ -251,7 +270,7 @@ function generateCatalogFeed(
   feedsPolicy: SeoDiscoverySettings["feeds"],
   format: CatalogFeedFormat,
   storeName: string | null,
-  storeShipping: FeedShippingPolicy,
+  store: FeedShippingSource,
 ): string {
   const title = feedsPolicy.title || storeName || "Product catalog";
   const description =
@@ -270,7 +289,7 @@ function generateCatalogFeed(
   xml += `<description>${escapeXml(description)}</description>\n`;
 
   for (const row of rows) {
-    xml += generateProductItem(row, format, storeShipping);
+    xml += generateProductItem(row, format, store);
   }
 
   xml += "</channel>\n";
@@ -425,8 +444,8 @@ export function createCatalogFeedGet(format: CatalogFeedFormat): APIRoute {
         feedsPolicy,
         format,
         resolveStoreName(layoutData.business),
-        // Each presence's feed states shipping to its market's countries.
-        storeFeedShipping(shippingMethods, currencyCode, presenceMarketCountries(layoutData.markets, getRuntimePresence())),
+        // Each presence's feed states shipping to its market's countries, per item's shipping profile.
+        { shippingMethods, currencyCode, countries: presenceMarketCountries(layoutData.markets, getRuntimePresence()) },
       );
 
       const headers: Record<string, string> = { ...FEED_XML_HEADERS };

@@ -131,6 +131,7 @@ type StorefrontFeedProductListRow = {
     discountBps: number;
     discountAmountMinor: number;
     freeDelivery: boolean;
+    shippingProfileId: string | null;
     categoryId: string | null;
     productCondition: "new" | "refurbished" | "used" | null;
     createdAt: number;
@@ -470,6 +471,7 @@ export async function getStorefrontFeedProducts(
             discountBps: products.discountBps,
             discountAmountMinor: products.discountAmountMinor,
             freeDelivery: products.freeDelivery,
+            shippingProfileId: products.shippingProfileId,
             categoryId: products.categoryId,
             customizationSchema: products.customizationSchema,
             // The published brand record only; a LEFT JOIN on its key, so the
@@ -607,6 +609,8 @@ export async function getStorefrontFeedProducts(
             discountAmount: price.discountAmount,
             discountedPrice: catalogDiscountedPrice(product, storeCurrency.code, storeCurrency.priceIncrementMinor),
             freeDelivery: product.freeDelivery,
+            // Its delivery charge: the shipping-methods `profileRates` of this profile (null: General).
+            shippingProfileId: product.shippingProfileId ?? null,
             categoryId: category?.id ?? null,
             // Agents and the UCP catalogue can't send buyer inputs: they skip
             // products that require one (an unreadable schema counts too).
