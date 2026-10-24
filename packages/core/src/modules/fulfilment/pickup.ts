@@ -83,23 +83,27 @@ export async function markOrderReadyForPickup(
         notificationType: "order_ready_for_pickup",
         source: "orders-pickup-ready",
     });
+    const readyCondition = and(
+        eq(orders.id, orderId),
+        eq(orders.version, order.version),
+        isNull(orders.deletedAt),
+        isNull(orders.pickupReadyAt),
+        eq(orders.shippingMethodKind, "pickup"),
+        inArray(orders.status, [...OPEN_PICKUP_STATUSES]),
+        ne(orders.fulfillmentStatus, FulfillmentStatus.COMPLETE),
+        noActiveShipmentClaimCondition(),
+    )!;
     const statements: BatchItem<"sqlite">[] = [
+        // Guard the original claim before writing: another writer can also
+        // produce version + 1, so that value alone never proves our update won.
+        buildBatchGuard(db, sql`EXISTS (
+            SELECT 1 FROM ${orders} WHERE ${readyCondition}
+        )`, PICKUP_READY_GUARD),
         db.update(orders).set({
             pickupReadyAt: sql`unixepoch()`,
             version: claimedVersion,
             updatedAt: sql`unixepoch()`,
-        }).where(and(
-            eq(orders.id, orderId),
-            eq(orders.version, order.version),
-            isNull(orders.pickupReadyAt),
-            eq(orders.shippingMethodKind, "pickup"),
-            inArray(orders.status, [...OPEN_PICKUP_STATUSES]),
-            ne(orders.fulfillmentStatus, FulfillmentStatus.COMPLETE),
-            noActiveShipmentClaimCondition(),
-        )) as BatchItem<"sqlite">,
-        buildBatchGuard(db, sql`EXISTS (
-            SELECT 1 FROM ${orders} WHERE ${orders.id} = ${orderId} AND ${orders.version} = ${claimedVersion}
-        )`, PICKUP_READY_GUARD),
+        }).where(readyCondition) as BatchItem<"sqlite">,
         db.insert(notificationOutbox).values(outbox)
             .onConflictDoNothing({ target: notificationOutbox.dedupeKey }) as BatchItem<"sqlite">,
     ];

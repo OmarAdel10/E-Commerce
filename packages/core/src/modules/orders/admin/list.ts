@@ -21,6 +21,7 @@ import { ARCHIVABLE_ORDER_STATUSES } from "../archive-policy";
 import { overdueOrderCondition } from "../payment-terms-columns";
 import { containsText } from "../../../utils/text-match";
 import { anySetIsSmall } from "../../../utils/list-lead";
+import { inJsonArray } from "../../../utils/in-json-array";
 import type { CursorValueKind } from "@scalius/shared/pagination";
 import {
     COUNT_PROBE_COLUMN,
@@ -385,7 +386,7 @@ export function orderListConditions(db: Database, filter: OrderListFilter): { co
     if (filter.appCondition) whereConditions.push(filter.appCondition);
     if (ids) {
         // An explicit selection is exported as picked, archived or not.
-        whereConditions.push(ids.length > 0 ? inArray(orders.id, ids) : sql`1 = 0`);
+        whereConditions.push(ids.length > 0 ? inJsonArray(orders.id, ids) : sql`1 = 0`);
     } else {
         whereConditions.push(showArchived ? sql`${orders.archivedAt} IS NOT NULL` : sql`${orders.archivedAt} IS NULL`);
     }
@@ -694,7 +695,7 @@ export async function listOrders(db: Database, options: {
                     totalQuantity: sql<number>`SUM(${orderItems.quantity})`,
                 })
                 .from(orderItems)
-                .where(inArray(orderItems.orderId, orderIds))
+                .where(inJsonArray(orderItems.orderId, orderIds))
                 .groupBy(orderItems.orderId)
             : db.select({
                 orderId: sql<string>`NULL`.as("orderId"),
@@ -722,7 +723,7 @@ export async function listOrders(db: Database, options: {
                     deliveryProviders,
                     eq(deliveryShipments.providerId, deliveryProviders.id),
                 )
-                .where(inArray(deliveryShipments.orderId, orderIds))
+                .where(inJsonArray(deliveryShipments.orderId, orderIds))
                 .orderBy(desc(deliveryShipments.createdAt))
             : db.select({
                 orderId: sql<string>`NULL`.as("orderId"),
@@ -751,7 +752,7 @@ export async function listOrders(db: Database, options: {
                     updatedAt: paymentSessionAttempts.updatedAt,
                 })
                 .from(paymentSessionAttempts)
-                .where(inArray(paymentSessionAttempts.orderId, orderIds))
+                .where(inJsonArray(paymentSessionAttempts.orderId, orderIds))
                 .orderBy(desc(paymentSessionAttempts.updatedAt), desc(paymentSessionAttempts.createdAt))
             : db.select({
                 orderId: sql<string>`NULL`.as("orderId"),

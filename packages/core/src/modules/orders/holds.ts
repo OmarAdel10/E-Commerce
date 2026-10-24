@@ -190,16 +190,20 @@ export async function releaseAppOrderHold(
   if (order.version !== input.expectedVersion) throw new ConflictError("This order changed. Read it again before releasing the hold.");
 
   const claimedVersion = order.version + 1;
+  const releaseCondition = and(
+    eq(orders.id, input.orderId),
+    eq(orders.version, order.version),
+    isNull(orders.deletedAt),
+    sql`EXISTS (SELECT 1 FROM ${orderHolds} WHERE ${orderHolds.id} = ${id} AND ${orderHolds.releasedAt} IS NULL)`,
+  )!;
   const statements: BatchItem<"sqlite">[] = [
-    db.update(orders).set({ version: claimedVersion, updatedAt: sql`unixepoch()` }).where(and(
-      eq(orders.id, input.orderId),
-      eq(orders.version, order.version),
-      isNull(orders.deletedAt),
-      sql`EXISTS (SELECT 1 FROM ${orderHolds} WHERE ${orderHolds.id} = ${id} AND ${orderHolds.releasedAt} IS NULL)`,
-    )) as BatchItem<"sqlite">,
+    // The original claim must still hold before this batch changes anything;
+    // a competing writer's next version is not proof that our update won.
     buildBatchGuard(db, sql`EXISTS (
-      SELECT 1 FROM ${orders} WHERE ${orders.id} = ${input.orderId} AND ${orders.version} = ${claimedVersion}
+      SELECT 1 FROM ${orders} WHERE ${releaseCondition}
     )`, APP_RELEASE_GUARD),
+    db.update(orders).set({ version: claimedVersion, updatedAt: sql`unixepoch()` })
+      .where(releaseCondition) as BatchItem<"sqlite">,
     db.update(orderHolds).set({ releasedAt: sql`unixepoch()`, releasedBy: null })
       .where(and(eq(orderHolds.id, id), isNull(orderHolds.releasedAt))) as BatchItem<"sqlite">,
   ];
