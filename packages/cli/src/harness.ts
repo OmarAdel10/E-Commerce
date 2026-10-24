@@ -196,7 +196,7 @@ async function installCodex(runtime: Runtime, servers: readonly McpServerEntry[]
   const plugins = await run(runtime, "codex", ["plugin", "--help"], 20_000);
   if (plugins.code === 0) {
     for (const server of servers) {
-      if (new RegExp(`^\\[mcp_servers\\.${server.name.replace(/-/g, "\\-")}\\]`, "m").test(config)) {
+      if (new RegExp(`^\\[mcp_servers\\.${server.name.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\]`, "m").test(config)) {
         await run(runtime, "codex", ["mcp", "remove", server.name], 20_000);
       }
     }

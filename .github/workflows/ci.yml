@@ -23,7 +23,9 @@ jobs:
   quality-gates:
     name: Quality Gates
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # A normal push takes about 10 minutes. A push that touches the test setup or most of
+    # the code selects nearly the whole suite plus every cited proof, which needs about an hour.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v7
         with:
