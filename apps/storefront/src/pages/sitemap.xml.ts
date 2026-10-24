@@ -39,13 +39,14 @@ export const GET: APIRoute = async (_context: APIContext) => {
 
     // Counts use the same visibility predicates as each chunk. Read sequentially:
     // four simultaneous count+page reads would exceed D1's six connections.
-    const catalogCounts = [];
-    for (const [kind, read] of [
+    const catalogReads = [
       ["categories", getSitemapCategories],
       ["brands", getSitemapBrands],
       ["collections", getSitemapCollections],
       ["products", getSitemapProducts],
-    ] as const) {
+    ] as const;
+    const catalogCounts: Array<{ kind: (typeof catalogReads)[number][0]; totalPages: number }> = [];
+    for (const [kind, read] of catalogReads) {
       const response = await read({ limit: 1 });
       if (!response) return xmlDataUnavailableResponse("Sitemap index is temporarily unavailable");
       catalogCounts.push({ kind, totalPages: Math.max(1, Math.ceil(response.pagination.total / SITEMAP_PAGE_SIZE)) });
