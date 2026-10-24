@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
 // One line the buyer is adding, checked by the store before it joins the
 // cart. A line bought with an app's purchase option (a subscription) is
 // priced by that app at checkout, so the product page's price is only the
@@ -24,7 +25,7 @@ export async function validateNewCartLine(
 }
 
 /**
- * The checked line, or null with the store's words for why not. An app's
+ * The checked line, or null with the page's catalogue reason why not. An app's
  * cart rule ("at most 10 per order") is not the line's problem: the cart says
  * it and blocks checkout until it holds.
  */
@@ -33,7 +34,7 @@ export function acceptedNewCartLine(
 ): { item: CartValidationItem; message?: never } | { item?: never; message: string | null } {
   if (!result) return { message: null };
   const item = result.items[0];
-  if (result.issues.length > 0 || !item) return { message: result.issues[0]?.message ?? null };
+  if (result.issues.length > 0 || !item) return { message: result.issues[0] ? buyerApiErrorText(result.issues[0]) : null };
   return { item };
 }
 

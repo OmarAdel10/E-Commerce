@@ -1,3 +1,6 @@
+import { getRuntimeStoreLanguage } from "./api/runtime";
+import { continuationCopy, continuationLanguage } from "./continuation-copy";
+
 const RELAY_PATHS = new Set([
   "/checkout/continue",
   "/agent/continue",
@@ -65,12 +68,14 @@ export function browserContinuationRelayResponse(
     frameAncestors?: readonly string[];
   } = {},
 ): Response {
+  const language = continuationLanguage(getRuntimeStoreLanguage());
+  const copy = continuationCopy(language);
   const spec = scriptJson(fields);
   const allowed = scriptJson(additionalParentOrigins);
   const peer = options.parent ? "window.parent" : "window.opener";
   const framed = options.parent === true && (options.frameAncestors?.length ?? 0) > 0;
   const script = `(() => {
-  const fail = () => { document.body.textContent = "This secure continuation is invalid or expired."; };
+  const fail = () => { document.body.textContent = ${scriptJson(copy.relayInvalid)}; };
   const trustedParentOrigin = (rawOrigin) => {
     try {
       const origin = new URL(rawOrigin);
@@ -116,7 +121,7 @@ export function browserContinuationRelayResponse(
   window.addEventListener("message", receive);
   PEER().postMessage({ type: ${scriptJson(READY_MESSAGE)} }, "*");
 })();`.replace(/PEER\(\)/g, peer);
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow,noarchive"><title>Continue securely</title></head><body><noscript>JavaScript is required to continue securely.</noscript><script>${script}</script></body></html>`;
+  const html = `<!doctype html><html lang="${language}"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow,noarchive"><title>${copy.relayTitle}</title></head><body><noscript>${copy.javascriptRequired}</noscript><script>${script}</script></body></html>`;
   const headers = new Headers({ ...PRIVATE_HEADERS, "Content-Type": "text/html; charset=utf-8" });
   if (framed) {
     // Only the listed origins may frame it; frame-ancestors governs, so no X-Frame-Options.

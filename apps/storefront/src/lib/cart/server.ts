@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
 // src/lib/cart/server.ts
 
 import { MAX_LINE_QUANTITY } from "@scalius/shared/order-limits";
@@ -14,7 +15,7 @@ import {
 } from "@/lib/api/orders";
 import { CART_RULES_REASON } from "@/lib/checkout/tax-quote-error-contract";
 import { validateAndFormatPhone } from "@scalius/shared/customer-utils";
-import { CheckoutBuyerMessage, CheckoutCopyError, checkoutFailureText } from "@/lib/checkout/error-messages";
+import { CheckoutBuyerMessage, CheckoutCopyError, checkoutFailureText, checkoutOrderFailureText } from "@/lib/checkout/error-messages";
 import { isLocationCountry, readForeignAddressFields, shippingCountryName, shippingCountryOf } from "@/lib/checkout/shipping-country";
 import { readDiscountCodes } from "@/lib/checkout/tax-quote-client";
 import { BILLING_ADDRESS_FIELDS, checkoutBillingFields } from "@/lib/checkout/billing-address";
@@ -314,7 +315,7 @@ export async function processOrder(
 
     if (!cartValidation.success) {
       return failedOrder(
-        cartValidation.error || copy.cartAvailabilityFailedText,
+        buyerApiErrorText(cartValidation, { locale: options.languageCode, fallback: copy.cartAvailabilityFailedText }),
         itemIssuesFromDetails(cartValidation.details),
       );
     }
@@ -322,9 +323,7 @@ export async function processOrder(
       const firstIssue = cartValidation.data.issues[0];
       const ruleErrors = cartValidation.data.ruleErrors ?? [];
       return failedOrder(
-        firstIssue?.message ||
-          ruleErrors[0]?.message ||
-          copy.cartRulesBlockedText,
+        firstIssue ? buyerApiErrorText(firstIssue, { locale: options.languageCode }) : copy.cartRulesBlockedText,
         cartValidation.data.issues,
         ruleErrors,
       );
@@ -441,7 +440,10 @@ export async function processOrder(
       }
     }
 
-    return result;
+    return result.success ? result : {
+      ...result,
+      error: checkoutOrderFailureText(result.status, "", copy, result.errorCode, result.details),
+    };
   } catch (error: unknown) {
     console.error("Order processing failed:", error);
     return {

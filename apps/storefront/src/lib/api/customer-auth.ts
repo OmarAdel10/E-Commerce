@@ -1,3 +1,6 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
+import { buyerApiErrorCopy } from "../buyer-api-error-copy";
+import { pageLanguage } from "../store-time-zone";
 import { clearBuyerAttributes } from "../buyer-ui/state";
 // src/lib/api/customer-auth.ts
 // API client for storefront customer sign-in (one-time codes by email, SMS or WhatsApp).
@@ -33,7 +36,7 @@ import { reconcileCheckoutAfterSignIn } from "../checkout/session-state";
 interface AuthApiEnvelope<T = unknown> {
   success: boolean;
   data?: T;
-  error?: string | { message?: string; details?: { retryAfterSeconds?: number; attemptsLeft?: number } };
+  error?: string | { code?: string; message?: string; details?: { retryAfterSeconds?: number; attemptsLeft?: number } };
 }
 
 interface SendOtpData {
@@ -205,22 +208,13 @@ async function readEnvelope<T>(res: Response): Promise<AuthApiEnvelope<T>> {
   }
 }
 
-const UNREACHABLE_MESSAGE = "We couldn't reach the store. Check your connection and try again.";
-
-/** Extract a human-readable error message from the API envelope */
-function extractError(raw: AuthApiEnvelope): string | undefined {
-  if (!raw.error) return undefined;
-  return typeof raw.error === "object" ? raw.error.message : raw.error;
-}
-
 function errorDetails(raw: AuthApiEnvelope): { retryAfterSeconds?: number; attemptsLeft?: number } {
   return typeof raw.error === "object" && raw.error.details ? raw.error.details : {};
 }
 
-/** Server messages for 4xx; one plain sentence for outages (never "Proxy error"). */
+/** Refusals use stable codes and the page language; backend prose stays internal. */
 function failureMessage(res: Response, raw: AuthApiEnvelope): string {
-  if (res.status >= 500 || res.status === 0) return UNREACHABLE_MESSAGE;
-  return extractError(raw) || "Something went wrong. Please try again.";
+  return buyerApiErrorText(raw, { status: res.status });
 }
 
 function isTemporaryReadFailure(status: number): boolean {
@@ -233,7 +227,7 @@ function isFailedEnvelope(raw: AuthApiEnvelope): boolean {
 
 /** Timeouts and network failures read the same to a buyer. */
 function networkErrorMessage(_error: unknown): string {
-  return UNREACHABLE_MESSAGE;
+  return buyerApiErrorText(null, { status: 0 });
 }
 
 function clearInFlightCustomerSessionRead(): void {
@@ -337,7 +331,7 @@ export async function verifyCustomerOtp(input: VerifyCustomerOtpInput): Promise<
     if (data.status === "needs_account_details") {
       return { success: true, status: data.status, suggestion: readSuggestion(data.suggestion) };
     }
-    if (!data.customer) return { success: false, error: "Something went wrong. Please try again." };
+    if (!data.customer) return { success: false, error: buyerApiErrorText(null) };
     if (data.customer.customerId) reconcileCheckoutAfterSignIn(data.customer.customerId);
     clearInFlightCustomerSessionRead();
     if (data.isNewUser === true) {
@@ -374,7 +368,7 @@ export async function getCustomerSession(): Promise<AuthState> {
           authenticated: false,
           unavailable,
           status: res.status,
-          error: extractError(raw) || "Account status could not be read. Please try again.",
+          error: failureMessage(res, raw),
         };
       }
       if (!data.authenticated) clearReadableCustomerAuthMirrorCookie();
@@ -763,7 +757,7 @@ export async function updateCustomerProfile(data: ProfileUpdateData): Promise<{
     if (!res.ok || isFailedEnvelope(raw)) {
       return {
         success: false,
-        error: extractError(raw) || "Profile could not be updated. Please try again.",
+        error: failureMessage(res, raw),
         status: res.status,
         unavailable: isTemporaryReadFailure(res.status) || res.ok,
       };
@@ -808,7 +802,7 @@ export async function getCustomerOrders(options: {
       return {
         success: false,
         orders: [],
-        error: extractError(raw) || "Order history could not be read. Please try again.",
+        error: failureMessage(res, raw),
         status: res.status,
         unavailable: isTemporaryReadFailure(res.status) || res.ok,
       };
@@ -852,9 +846,9 @@ export type VerifyPhoneResult =
   | { success: true; movedOrders: number; message: string }
   | { success: false; error: string; status: number; attemptsLeft?: number };
 
-/** Server messages as they are, even for 503 ("Text message codes aren't available right now."). */
+/** Phone verification uses the same localized refusal boundary as sign-in. */
 function phoneVerificationFailure(res: Response, raw: AuthApiEnvelope): string {
-  return extractError(raw) || (res.status >= 500 ? UNREACHABLE_MESSAGE : "Something went wrong. Please try again.");
+  return failureMessage(res, raw);
 }
 
 /** Text a code to this account's own phone. No body: the server reads the phone from the session. */
@@ -871,7 +865,7 @@ export async function sendPhoneVerificationCode(): Promise<SendPhoneVerification
     }
     return {
       success: true,
-      message: data.message || "We sent a code to your phone.",
+      message: buyerApiErrorCopy(pageLanguage()).phoneCodeSent,
       resendAfterSeconds: data.resendAfterSeconds ?? 60,
     };
   } catch (error: unknown) {
@@ -897,7 +891,7 @@ export async function verifyPhone(code: string): Promise<VerifyPhoneResult> {
     return {
       success: true,
       movedOrders,
-      message: data.message || "Your phone number is verified.",
+      message: buyerApiErrorCopy(pageLanguage()).phoneVerified,
     };
   } catch (error: unknown) {
     return { success: false, error: networkErrorMessage(error), status: 0 };
@@ -915,7 +909,7 @@ export async function getCustomerOrderDetail(orderId: string): Promise<{
   unavailable?: boolean;
 }> {
   if (!orderId) {
-    return { success: false, error: "Order ID is required", status: 400 };
+    return { success: false, error: buyerApiErrorText(null, { status: 400 }), status: 400 };
   }
 
   try {
@@ -929,7 +923,7 @@ export async function getCustomerOrderDetail(orderId: string): Promise<{
     if (!res.ok || isFailedEnvelope(raw) || !detail.order) {
       return {
         success: false,
-        error: extractError(raw) || "Order details could not be read. Please try again.",
+        error: failureMessage(res, raw),
         status: res.status,
         unavailable: isTemporaryReadFailure(res.status) || res.ok,
       };
@@ -954,7 +948,7 @@ export async function createCustomerOrderSupportRequest(
   status?: number;
 }> {
   if (!orderId) {
-    return { success: false, error: "Order ID is required", status: 400 };
+    return { success: false, error: buyerApiErrorText(null, { status: 400 }), status: 400 };
   }
 
   try {
@@ -970,7 +964,7 @@ export async function createCustomerOrderSupportRequest(
     if (!res.ok || isFailedEnvelope(raw) || !data.request) {
       return {
         success: false,
-        error: extractError(raw) || "Request could not be submitted. Please try again.",
+        error: failureMessage(res, raw),
         status: res.status,
       };
     }
@@ -996,7 +990,7 @@ export async function createCustomerOrderPaymentSession(orderId: string, options
   status?: number;
 }> {
   if (!orderId) {
-    return { success: false, error: "Order ID is required", status: 400 };
+    return { success: false, error: buyerApiErrorText(null, { status: 400 }), status: 400 };
   }
 
   try {
@@ -1019,14 +1013,14 @@ export async function createCustomerOrderPaymentSession(orderId: string, options
     if (!res.ok || isFailedEnvelope(raw) || !isCustomerOrderPaymentSession(session)) {
       return {
         success: false,
-        error: extractError(raw) || "Payment could not be prepared. Please try again.",
+        error: failureMessage(res, raw),
         status: res.status,
       };
     }
     return { success: true, session: session as CustomerOrderPaymentSessionData };
   } catch (error: unknown) {
     if (error instanceof PaymentSessionProcessingTimeoutError) {
-      return { success: false, error: error.message, status: error.status };
+      return { success: false, error: buyerApiErrorText({ code: "payment_session_processing" }), status: error.status };
     }
     return { success: false, error: networkErrorMessage(error), status: 0 };
   }

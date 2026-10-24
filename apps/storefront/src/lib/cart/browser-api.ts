@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
 /**
  * The two public API calls the cart makes from the browser, as plain `fetch`
  * calls so the page does not ship the generated SDK and the SSR transport.
@@ -105,15 +106,6 @@ export type DiscountPreview =
   | ({ ok: true; totalDiscount: number } & CheckoutDiscountFacts)
   | { ok: false; message: string | null };
 
-/** The API error envelope is `{ success: false, error: { message } }`. */
-function errorMessage(json: unknown): string | null {
-  const error = (json as { error?: unknown } | null)?.error;
-  const message = typeof error === "string"
-    ? error
-    : (error as { message?: unknown } | null | undefined)?.message;
-  return typeof message === "string" && message.trim() ? message.trim() : null;
-}
-
 /**
  * The cart's discounts before a delivery destination is chosen: every applied
  * code (with why it does or does not apply) plus active automatic discounts.
@@ -150,7 +142,7 @@ async function requestDiscountPreview(body: DiscountPreviewBody): Promise<Discou
     const json = (await response.json().catch(() => null)) as
       | { data?: Record<string, unknown> }
       | null;
-    if (!response.ok || !json?.data) return { ok: false, message: errorMessage(json) };
+    if (!response.ok || !json?.data) return { ok: false, message: buyerApiErrorText(json, { status: response.status }) };
     const totalDiscount = Number(json.data.totalDiscount);
     const facts = parseDiscountFacts(json.data);
     // A quantity-bundle saving is part of totalDiscount; list it like the quote does.

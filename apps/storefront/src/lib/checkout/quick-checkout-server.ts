@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
 /**
  * The API reads behind the no-JavaScript checkout (`/checkout/quick`): the
  * delivery rates for an address and the authoritative quote, fetched by the
@@ -100,7 +101,7 @@ export async function fetchQuickCheckoutQuote(
     return { ok: true, quote: await fetchAuthoritativeTaxQuote(input, fetcher) };
   } catch (error) {
     if (error instanceof TaxQuoteCartChangedError) {
-      return { ok: false, reason: "items", message: error.issues[0]?.message };
+      return { ok: false, reason: "items", message: error.issues[0] ? buyerApiErrorText(error.issues[0]) : undefined };
     }
     if (error instanceof TaxQuoteCartRulesError) {
       return { ok: false, reason: "rules", ruleErrors: error.ruleErrors };

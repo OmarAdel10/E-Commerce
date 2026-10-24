@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "../buyer-api-errors";
 import { readBuyerAttributes, renderBuyerUi } from "@/lib/buyer-ui";
 import { buyerUiLocaleHeaders } from "@/lib/buyer-ui/locale";
 // src/lib/cart/client.ts
@@ -855,7 +856,7 @@ function setCartValidationIssues(
     // An "only N left" the line already follows (read for an older cart) holds nothing back.
     const line = items[key];
     if (line && isFollowedQuantityIssue(issue, line.quantity, byVariant.get(line.variantId ?? "") ?? line.quantity)) continue;
-    grouped[key] = [...(grouped[key] ?? []), issue];
+    grouped[key] = [...(grouped[key] ?? []), { ...issue, message: buyerApiErrorText(issue) }];
   }
   // The estimate counts only buyable units: a line that sold out (or came
   // back) changes the totals, so they are drawn again.
@@ -1142,13 +1143,12 @@ export async function validateCartSnapshot(
     const locationGone = !response.ok && issues.length === 0 ? unavailableDeliveryLocation(json) : null;
     if (locationGone) rejectDeliveryLocation(locationGone);
     if (!response.ok || !json?.success) {
-      // A refusal with a reason (4xx) is said as is; an outage gets the store's own wording.
+      // Refusals use catalogue copy selected by code and status.
       // A refused rate or a removed thana is said at its own field instead.
       cartValidationGlobalError =
         issues.length > 0 || deliveryRateRefused || locationGone
           ? ""
-          : (response.status < 500 ? json?.error || json?.details?.message : "") ||
-            activeCheckoutCopy().cartAvailabilityFailedText;
+          : buyerApiErrorText(json, { status: response.status, fallback: activeCheckoutCopy().cartAvailabilityFailedText });
       cartValidationRetryable = Boolean(cartValidationGlobalError) && (response.status >= 500 || response.status === 429);
       if (issues.length === 0) clearCartValidationSummary();
       updateCartValidationMessage();

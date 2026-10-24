@@ -82,9 +82,7 @@ export function positiveSeconds(value: unknown): number | undefined {
 
 /**
  * Buyer copy for a failed send or verify. Waits and remaining attempts come
- * from the active checkout language; the API's own sentence is shown only
- * where it says something the page can't: why a send was refused (no such
- * order, no way to reach the buyer, too many codes).
+ * from the active checkout language. API prose never enters the page.
  */
 export function getOrderCodeFailureText(
   copy: CheckoutLanguageData,
@@ -93,13 +91,12 @@ export function getOrderCodeFailureText(
   unavailableText: string,
 ): string {
   if (failure.status === 429) {
-    if (!failure.retryAfterSeconds) return failure.message || copy.paymentRecoveryRateLimitedText;
+    if (!failure.retryAfterSeconds) return copy.paymentRecoveryRateLimitedText;
     const wait = formatCheckoutLanguageText(copy.orderCodeTryAgainInText, { time: formatCountdown(failure.retryAfterSeconds) });
-    return failure.message ? `${failure.message} ${wait}.` : wait;
+    return wait;
   }
-  if (operation === "send" && failure.message && (failure.status === 404 || failure.status === 409)) {
-    return failure.message;
-  }
+  if (operation === "send" && failure.status === 404) return copy.trackOrderNotFoundText;
+  if (operation === "send" && failure.status === 409) return unavailableText;
   if (operation === "verify" && typeof failure.attemptsLeft === "number") {
     if (failure.attemptsLeft <= 0) return copy.orderCodeExpiredText;
     return failure.attemptsLeft === 1

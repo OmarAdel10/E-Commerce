@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "@/lib/buyer-api-errors";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -116,11 +117,10 @@ export default function OrderSuccessButtons({
         setAccountCard("saved");
         return;
       }
-      // A refusal is final (another person's order): say why, offer nothing.
-      const reason = typeof payload?.error === "string" ? payload.error : payload?.error?.message;
-      if (response.status === 403 && reason) {
+      // A refusal is final (another person's order), in the page's language.
+      if (response.status === 403) {
         setAccountCard("refused");
-        setAccountMessage(reason);
+        setAccountMessage(buyerApiErrorText(payload, { status: response.status }));
         return;
       }
       throw new Error("account_claim_failed");

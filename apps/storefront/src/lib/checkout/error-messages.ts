@@ -1,8 +1,7 @@
+import { buyerApiErrorKind } from "../buyer-api-errors";
 import type { CheckoutLanguageData, CheckoutLanguageKey } from "@scalius/shared/checkout-language";
 
 const DEFAULT_CHECKOUT_ERROR = "Order creation failed";
-/** Placeholders the proxies write when the API said nothing a buyer can act on. */
-const GENERIC_CHECKOUT_ERRORS = new Set(["", DEFAULT_CHECKOUT_ERROR, "Payment failed"]);
 
 type ErrorRecord = Record<string, unknown>;
 
@@ -71,31 +70,28 @@ export function getCheckoutErrorMessage(
   return fallback;
 }
 
-/**
- * What the buyer reads when the store refused an order: the API's own message
- * for a request it refused (4xx), else the page's copy for the status. A
- * server failure (5xx) never shows its text: it is a proxy's or a provider's,
- * not the buyer's.
- */
+/** Order refusals use the merchant's checkout catalogue, never API prose. */
 export function checkoutOrderFailureText(
   status: number | undefined,
-  message: string,
+  _message: string,
   copy: CheckoutLanguageData,
+  errorCode?: string,
+  details?: unknown,
 ): string {
-  const text = message.trim();
   if (status !== undefined && status >= 500) {
     return status >= 502 && status <= 504 ? copy.checkoutUnavailableMessage : copy.orderProcessingFailedText;
   }
-  if (!GENERIC_CHECKOUT_ERRORS.has(text)) return text;
-  switch (status) {
-    case 401:
-      return copy.signInToCheckoutText;
-    case 409:
-      return copy.checkoutConflictText;
-    case 429:
-      return copy.tooManyCheckoutAttemptsText;
-    default:
-      return copy.orderProcessingFailedText;
+  const kind = buyerApiErrorKind({ errorCode, details }, status);
+  switch (kind) {
+    case "signIn": return copy.signInToCheckoutText;
+    case "conflict": return copy.checkoutConflictText;
+    case "rateLimited": return copy.tooManyCheckoutAttemptsText;
+    case "purchaseOptionUnavailable": return copy.checkoutUnavailableMessage;
+    case "appUnavailable": return copy.checkoutAppUnavailableText;
+    case "paymentWindowExpired": return copy.paymentRateExpiredText;
+    case "priceChanged": return copy.totalChangedReviewText;
+    case "stock": case "notFound": return copy.cartItemChangedText;
+    default: return copy.orderProcessingFailedText;
   }
 }
 
@@ -111,7 +107,7 @@ export class CheckoutCopyError extends Error {
   }
 }
 
-/** A failure already in the buyer's words (the page's copy, or the store's refusal of the order). */
+/** A failure already selected from the buyer's page catalogue. */
 export class CheckoutBuyerMessage extends Error {
   constructor(message: string) {
     super(message);

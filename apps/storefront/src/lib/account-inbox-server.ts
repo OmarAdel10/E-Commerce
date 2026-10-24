@@ -267,25 +267,11 @@ export type WriteResult =
   | { ok: true; flag: ConversationStatusFlag; thread: BuyerConversationThread }
   | { ok: false; flag: ConversationStatusFlag; message?: string };
 
-/** The API's own sentence for refusals the buyer can act on (validation, limits). */
-async function apiRefusalMessage(response: Response): Promise<string | undefined> {
-  if (![400, 403, 409, 429].includes(response.status)) return undefined;
-  const payload = await response.json().catch(() => null) as { error?: unknown } | null;
-  const error = payload?.error;
-  const message = typeof error === "string"
-    ? error
-    : error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string"
-      ? (error as { message: string }).message
-      : "";
-  return message && message.length <= 300 ? message : undefined;
-}
-
 async function refusal(response: Response | null, action: "post" | "start" | "upload"): Promise<WriteResult> {
   if (!response) return { ok: false, flag: "unavailable" };
   return {
     ok: false,
     flag: statusFlagForApiStatus(response.status, action),
-    message: await apiRefusalMessage(response),
   };
 }
 
@@ -459,7 +445,7 @@ export function respondToConversationPost(
 ): Response {
   if (wantsJson(request)) {
     if (!result.ok) {
-      const message = result.message ?? conversationStatusMessage(result.flag).text;
+      const message = conversationStatusMessage(result.flag).text;
       return conversationJson({ success: false, error: { code: result.flag, message } }, JSON_STATUS[result.flag] ?? 400);
     }
     const target = options.target ?? { kind: "thread", conversationId: result.thread.id };

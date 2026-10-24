@@ -1,3 +1,4 @@
+import { buyerApiErrorText } from "./buyer-api-errors";
 // Server side of the account pages: the reads every server-rendered account
 // page makes (the tab counts, the orders, the profile) and the profile write,
 // all through the storefront's proxy transport with the `cs_tok` session
@@ -60,11 +61,9 @@ async function callAccountApi(
     const payload = await response.json().catch(() => null) as {
       success?: unknown;
       data?: unknown;
-      error?: { message?: unknown } | string | null;
+      error?: { code?: unknown; message?: unknown } | string | null;
     } | null;
-    const error = typeof payload?.error === "string"
-      ? payload.error
-      : typeof payload?.error?.message === "string" ? payload.error.message : null;
+    const error = payload?.success === true ? null : buyerApiErrorText(payload, { status: response.status });
     return { status: response.status, data: payload?.success === true ? payload.data : null, error };
   } catch (error) {
     console.warn("[account] API call failed:", error instanceof Error ? error.name : "unknown");
@@ -195,7 +194,7 @@ export type AddressBookResult =
 /**
  * One address-book change: add (no `addressId`), change, delete, make
  * default or make the default billing address. The API checks the address against its country's rules and
- * answers the whole book; a refusal's message names the field.
+ * answers the whole book; refusals use the page's catalogue.
  */
 export async function changeAccountAddresses(
   request: Request,

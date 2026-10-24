@@ -7,6 +7,8 @@ import {
   checkAttachmentFiles,
   conversationCopy,
   conversationStatusMessage,
+  statusFlagForApiStatus,
+  isConversationStatusFlag,
   newClientMessageKey,
 } from "@/lib/account-inbox";
 import { pagePath } from "@/lib/presence-url";
@@ -18,7 +20,7 @@ type Tone = "success" | "error";
 interface PostAnswer {
   success?: boolean;
   data?: { message?: unknown; redirect?: unknown; conversationId?: string; items?: ConversationItem[]; hasOlder?: boolean };
-  error?: { message?: unknown };
+  error?: { code?: unknown; message?: unknown };
 }
 
 function setStatus(element: HTMLElement | null, text: string, tone: Tone): void {
@@ -119,6 +121,7 @@ function bindForm(form: HTMLFormElement): void {
 
     let answer: PostAnswer | null = null;
     let ok = false;
+    let responseStatus = 0;
     const pending = conversationRequest(90_000);
     try {
       const data = new FormData(form);
@@ -132,8 +135,10 @@ function bindForm(form: HTMLFormElement): void {
         cache: "no-store",
         signal: pending.signal,
       });
+      responseStatus = response.status;
       answer = await response.json().catch(() => null) as PostAnswer | null;
       ok = response.ok && answer?.success === true;
+      if (response.ok && !ok) responseStatus = 502;
     } catch {
       answer = null;
     } finally { pending.done(); }
@@ -148,9 +153,10 @@ function bindForm(form: HTMLFormElement): void {
 
     if (!ok) {
       // Keep the text and the same idempotency key so a retry posts once.
-      const message = typeof answer?.error?.message === "string"
-        ? answer.error.message
-        : conversationStatusMessage("unavailable").text;
+      const code = answer?.error?.code;
+      const flag = isConversationStatusFlag(code) && conversationStatusMessage(code).tone === "error"
+        ? code : statusFlagForApiStatus(responseStatus, "post");
+      const message = conversationStatusMessage(flag).text;
       setStatus(status, message, "error");
       unknownDraft = { body: sentBody, files: sentFiles };
       body?.focus();
@@ -176,7 +182,7 @@ function bindForm(form: HTMLFormElement): void {
       clearPreviews();
     }
     if (key) key.value = newClientMessageKey();
-    setStatus(status, typeof answer?.data?.message === "string" ? answer.data.message : conversationStatusMessage("sent").text, "success");
+    setStatus(status, conversationStatusMessage("sent").text, "success");
     body?.focus();
   });
 }

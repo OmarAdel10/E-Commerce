@@ -1,3 +1,5 @@
+import { buyerApiErrorCopy } from "./buyer-api-error-copy";
+import { pageLanguage } from "./store-time-zone";
 // Server side of the order-code pages (Track your order, Finish paying): the
 // API calls, used both by the pages' no-JavaScript form posts and by the JSON
 // proxies their scripts call. The receipt token only ever becomes an httpOnly
@@ -69,13 +71,11 @@ async function postOrderCodeApi(
     const error = isRecord(json) && isRecord(json.error) ? json.error : {};
     const details = isRecord(error.details) ? error.details : {};
     const retryAfterSeconds = positiveSeconds(details.retryAfterSeconds ?? response.headers.get("Retry-After"));
-    const message = trimmedString(error.message);
     return {
       ok: false,
       failure: {
         status: response.ok ? 502 : response.status,
         errorCode: trimmedString(error.code) || options.fallbackCode,
-        ...(message ? { message } : {}),
         ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
         ...(typeof details.attemptsLeft === "number" ? { attemptsLeft: Math.max(0, details.attemptsLeft) } : {}),
       },
@@ -89,7 +89,7 @@ async function postOrderCodeApi(
 /** A send the API accepted. `sent` is false when nothing went out (a neutral answer). */
 export interface OrderCodeSent {
   sent: boolean;
-  /** The API's sentence: "We sent a code to 01•••••678." or the neutral one. */
+  /** Catalogue confirmation or neutral answer in the page language. */
   message: string;
   resendAfterSeconds: number;
   orderNumber: number | null;
@@ -102,7 +102,9 @@ function sentResult(result: OrderCodeResult<Record<string, unknown>>): OrderCode
     ok: true,
     data: {
       sent: Boolean(trimmedString(data.destination)),
-      message: trimmedString(data.message),
+      message: trimmedString(data.destination)
+        ? buyerApiErrorCopy(pageLanguage()).orderCodeSent
+        : buyerApiErrorCopy(pageLanguage()).orderCodeRequested,
       resendAfterSeconds: positiveSeconds(data.resendAfterSeconds) ?? DEFAULT_RESEND_AFTER_SECONDS,
       orderNumber: typeof data.orderNumber === "number" && Number.isSafeInteger(data.orderNumber) ? data.orderNumber : null,
     },
@@ -188,14 +190,12 @@ export async function getOrderLookupStatus(
     if (response.ok && order) return { ok: true, data: order as unknown as OrderLookupStatus };
     const error = isRecord(json) && isRecord(json.error) ? json.error : {};
     const details = isRecord(error.details) ? error.details : {};
-    const message = trimmedString(error.message);
     const retryAfterSeconds = positiveSeconds(details.retryAfterSeconds ?? response.headers.get("Retry-After"));
     return {
       ok: false,
       failure: {
         status: response.ok ? 502 : response.status,
         errorCode: trimmedString(error.code) || "order_lookup_failed",
-        ...(message ? { message } : {}),
         ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
       },
     };
@@ -283,16 +283,12 @@ function orderCodeHeaders(extra?: Record<string, string>): Headers {
   return new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
 }
 
-/** The refusals whose API sentence the buyer sees: no such order, no way to reach them, too many codes. */
-const BUYER_FACING_REFUSALS = new Set([404, 409, 429]);
-
-/** JSON for the page scripts. Other API prose (provider or validation detail) stays on the server. */
+/** JSON for page scripts: machine facts only; the page chooses localized refusal copy. */
 export function orderCodeFailureResponse(failure: OrderCodeFailure): Response {
-  const { status, errorCode, message, retryAfterSeconds, attemptsLeft } = failure;
+  const { status, errorCode, retryAfterSeconds, attemptsLeft } = failure;
   return new Response(JSON.stringify({
     success: false,
     errorCode,
-    ...(message && BUYER_FACING_REFUSALS.has(status) ? { message } : {}),
     ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
     ...(attemptsLeft !== undefined ? { attemptsLeft } : {}),
   }), {

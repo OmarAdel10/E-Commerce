@@ -1,3 +1,5 @@
+import { buyerApiErrorCopy } from "./buyer-api-error-copy";
+import { pageLanguage } from "./store-time-zone";
 // Progressive enhancement for the order-code forms. Without JavaScript the
 // form posts to its own page and the server renders each step; with it, the
 // same form talks to the JSON proxies, keeps what the buyer typed, says where
@@ -179,7 +181,7 @@ export function enhanceOrderCodeForm(
           return;
         }
       } else {
-        const sentMessage = typeof data.message === "string" && data.message ? data.message : text.codeSent;
+        const sentMessage = data.sent === false ? buyerApiErrorCopy(pageLanguage()).orderCodeRequested : text.codeSent;
         if (button && button !== resend) button.disabled = false;
         // A neutral answer: nothing was sent, so there is no code to enter.
         if (data.sent === false) {
