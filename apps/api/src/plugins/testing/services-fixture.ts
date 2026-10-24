@@ -6,6 +6,8 @@
 import { PLUGIN_API_VERSION } from "@scalius/shared/plugins/api-version";
 
 export const SERVICES_FIXTURE_ID = "acme.services";
+// A recent, whole-second provider observation; consumers must retain this exact time.
+export const SERVICES_FIXTURE_FX_AS_OF = new Date((Math.floor(Date.now() / 1_000) - 60) * 1_000).toISOString();
 
 export const SERVICES_FIXTURE_MANIFEST = {
   id: SERVICES_FIXTURE_ID,
@@ -51,7 +53,7 @@ export default {
     rates: {
       kind: "fx",
       async rates(input) {
-        return { rates: input.quotes.map((currency) => ({ currency, rate: currency === "USD" ? "0.0084" : "1.25", asOf: "2026-10-08T06:00:00Z" })) };
+        return { rates: input.quotes.map((currency) => ({ currency, rate: currency === "USD" ? "0.0084" : "1.25", asOf: ${JSON.stringify(SERVICES_FIXTURE_FX_AS_OF)} })) };
       },
       async testConnection(_input, ctx) {
         return { ok: Boolean(ctx.settings.api_key), message: "Key saved." };
