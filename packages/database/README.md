@@ -191,7 +191,7 @@ The API `/readyz` route reads the whole ledger and fails closed on a missing, ex
 | `pnpm --filter @scalius/database migration-plan` | Prints the D1 plan as JSON for an applier that does not use Wrangler (`--out <file>` writes it). |
 | `pnpm --filter @scalius/database compile:migrations` | Compiles an immutable provider bundle (`--provider`, `--out`). |
 
-An ordinary deploy never changes an external database. For TursoDB or PostgreSQL it runs a read-only preflight, which needs `--database-target-host`. The explicit upgrade needs a verified write freeze:
+An ordinary deploy never changes an external database. Select TursoDB or PostgreSQL with `--database-provider turso|postgres`; the read-only preflight needs `--database-target-host`, and live provider verification needs `--api-url`. The selector is a deploy flag, not a new Worker env value or Wrangler var. The explicit upgrade needs a verified write freeze:
 
 ```bash
 # Read-only preflight (PostgreSQL shown; TursoDB uses TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
@@ -202,6 +202,15 @@ POSTGRES_DATABASE_URL='<target-url>' pnpm --filter @scalius/database upgrade:sch
 POSTGRES_DATABASE_URL='<target-url>' pnpm --filter @scalius/database upgrade:schema \
   --provider postgres --acknowledge-target-host '<host>' --freeze-proof-sha256 '<proof>'
 ```
+
+After the upgrade, repeat the read-only check, then deploy with the same target credentials in the operator process environment:
+
+```bash
+pnpm run deploy --database-provider postgres --database-target-host '<host>' \
+  --api-url https://api.example.com --storefront-url https://shop.example.com
+```
+
+Use `turso` for TursoDB. Add `--plan paid --plugin-sandbox` when the store uses uploaded apps on Workers Paid; the normal generated profiles are unchanged. This flag does not change the installed runtime provider pin or credentials. Readiness verifies the provider, not the hostname. A Hyperdrive-backed deployment still needs a local `POSTGRES_DATABASE_URL` for schema preflight; its existing custom binding config and limitations are covered in [the provider guide](../../docs/DATABASE-PORTABILITY.md#release-ledger-and-schema-upgrades).
 
 `--require-current` is valid only with `--dry-run`. A dry run refuses `--freeze-proof-sha256`. A mutation requires it (64 hex characters). The TursoDB runner applies each release in one transaction. The PostgreSQL runner applies each sidecar in one serializable transaction under an advisory lock. A replay after a lost response is a safe no-op. An empty TursoDB target gets the current schema, seed rows and ledger in one transaction: replaying the chain does not run on the Turso engine (the 0143 table rebuilds re-parse the 0131 analytics triggers, and two backfills use SQL it does not parse).
 

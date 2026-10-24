@@ -79,8 +79,24 @@ pnpm --filter @scalius/database upgrade:schema --provider postgres \
 
 - `--acknowledge-target-host` must equal the host of the connection URL.
 - `--freeze-proof-sha256` is rejected with `--dry-run`. The runner checks the format only. The operator proves the freeze.
-- An ordinary deploy never upgrades an external database. `pnpm run deploy` reads the provider from `vars.DATABASE_PROVIDER` of the Wrangler config. A config with a D1 binding and no such var means D1: the script runs `wrangler d1 migrations apply` against that D1 database, whatever the Worker secrets select.
-- For Turso or PostgreSQL, deploy with `--only api --wrangler-config <path>` (that config sets `vars.DATABASE_PROVIDER`) and `--database-target-host <host>`. The script then runs the read-only check above before it deploys.
+- An ordinary deploy never upgrades an external database. Select its schema preflight with `--database-provider turso` or `--database-provider postgres`, and acknowledge the same target with `--database-target-host <host>`. Keep the target credentials in the operator process environment for this preflight. PostgreSQL needs `POSTGRES_DATABASE_URL` here even if the deployed Worker uses Hyperdrive.
+- The flag selects a deployment operation only: it does not install credentials, change the Worker's `DATABASE_PROVIDER` pin or add Wrangler `vars`. Keep the installed runtime credentials and pin pointed at the target you upgraded. Without the flag (or a legacy custom-config selector), a D1 binding still selects D1 for deployment, regardless of the installed Worker secrets.
+- External API deployments require `--api-url <origin>` (or the existing `SCALIUS_API_URL` input). The existing readiness samples must name exactly the selected database provider as healthy; `--health-only` cannot replace this check. This proves the runtime provider, not its hostname: readiness does not expose connection URLs. `--migrate-only` and `--local` remain D1-only modes.
+
+After the frozen upgrade and read-only check succeed, a normal full deployment can retain the Free/Paid and uploaded-app options:
+
+```bash
+# PostgreSQL shown; use --database-provider turso for TursoDB.
+pnpm run deploy --database-provider postgres --database-target-host <host> \
+  --api-url https://api.example.com --storefront-url https://shop.example.com \
+  --plan paid --plugin-sandbox
+```
+
+Omit `--plan paid --plugin-sandbox` for a Free store. The normal generated profiles still supply the CPU limit, plan definition and Worker Loader. Use `--only api` when deploying only the API/dashboard; deploy the storefront separately when it also needs the new release.
+
+A custom config is needed only for distinct bindings such as Hyperdrive, not to select the database provider. Use `--only api --wrangler-config <path>` with the same provider, target-host and API-origin flags, and retain that config's existing binding/profile setup. The current custom-config path does not compose with `--plan paid` or an enabled plugin sandbox (including one selected by the plugin lockfile); it must already carry any required `limits.cpu_ms`, `define.__SCALIUS_PLAN__` and `worker_loaders` settings. This flag does not change that advanced path's restrictions.
+
+Legacy operator-owned configs with `vars.DATABASE_PROVIDER` remain readable for compatibility. A conflicting explicit flag is refused; a matching flag is accepted. New instructions use the flag and installed runtime secrets, not Wrangler vars. Do not remove a legacy runtime pin until its intended provider is represented by the installed secrets/bindings.
 
 ## Write freeze
 

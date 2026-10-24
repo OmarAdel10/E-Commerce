@@ -6,6 +6,8 @@
  *   node scripts/deploy.mjs                  # full deploy (build + migrate + deploy both workers)
  *   node scripts/deploy.mjs --only api       # typecheck + build dashboard SPA and API, migrate D1, deploy API
  *   node scripts/deploy.mjs --only storefront # typecheck + build/deploy storefront
+ *   node scripts/deploy.mjs --database-provider postgres --database-target-host db.example.com
+ *     --api-url https://api.example.com # check the external schema, then deploy and verify its provider
  *   node scripts/deploy.mjs --only api --dry-run # typecheck + build + dist checks only
  *   node scripts/deploy.mjs --plan paid          # Workers Paid: the plan profile's CPU limit
  *     and limits (packages/shared/src/plan-limits.ts); also SCALIUS_PLAN=paid. The default is
@@ -279,23 +281,52 @@ export function getSequentialWorkspaceCommand(task) {
   return `${pnpm} exec turbo run ${task} --concurrency=1`;
 }
 
-// Committed Wrangler configs carry no vars (pnpm check:env enforces it), so a
-// D1 binding selects D1. A custom --wrangler-config used for turso/postgres
-// rehearsals may still set DATABASE_PROVIDER in its own vars.
-export function resolveDeploymentDatabaseProvider(config) {
-  const explicit = typeof config?.vars?.DATABASE_PROVIDER === "string"
+const DATABASE_PROVIDERS = Object.freeze(["d1", "turso", "postgres"]);
+
+// This flag selects the deploy's schema operation, never a Worker binding.
+// Retain operator-owned legacy configs, but never silently override their pin.
+export function resolveDeploymentDatabaseProvider(config, inputArgs = []) {
+  const flags = inputArgs.filter((arg) => arg === "--database-provider" || arg.startsWith("--database-provider="));
+  if (flags.length > 1) throw new Error("Pass --database-provider only once.");
+  const requested = getArgValue(inputArgs, "--database-provider");
+  const explicit = requested?.trim().toLowerCase();
+  if (requested !== undefined && !DATABASE_PROVIDERS.includes(explicit)) {
+    throw new Error("--database-provider must be d1, turso, or postgres.");
+  }
+  const legacy = typeof config?.vars?.DATABASE_PROVIDER === "string"
     ? config.vars.DATABASE_PROVIDER.trim().toLowerCase()
     : "";
-  if (explicit) {
-    if (!["d1", "turso", "postgres"].includes(explicit)) {
-      throw new Error(`Unsupported DATABASE_PROVIDER ${JSON.stringify(explicit)}.`);
-    }
-    return explicit;
+  if (legacy && !DATABASE_PROVIDERS.includes(legacy)) {
+    throw new Error(`Unsupported DATABASE_PROVIDER ${JSON.stringify(legacy)}.`);
   }
+  if (explicit && legacy && explicit !== legacy) {
+    throw new Error(`--database-provider ${explicit} conflicts with Wrangler vars.DATABASE_PROVIDER ${legacy}.`);
+  }
+  if (explicit || legacy) return explicit || legacy;
   if (config?.d1_databases?.[0]) return "d1";
   throw new Error(
-    "API Wrangler config must select DATABASE_PROVIDER or contain a D1 binding.",
+    "Select --database-provider, retain a legacy DATABASE_PROVIDER, or configure a D1 binding.",
   );
+}
+
+/** External upgrades are separate; a deploy proves both schema and live provider. */
+export function assertDatabaseDeploymentOptions({
+  provider, targetHost, apiUrl, onlyTarget = null,
+  dryRun = false, migrateOnly = false, local = false, healthOnly = false,
+}) {
+  if (provider === "d1") return;
+  if (migrateOnly || local) {
+    throw new Error("--migrate-only and --local apply only to D1; use upgrade:schema for an external database.");
+  }
+  if (dryRun || onlyTarget === "storefront") return;
+  // Reuse the preflight's provider and host validation without executing it.
+  getExternalSchemaPreflightCommand(provider, targetHost);
+  if (!apiUrl) {
+    throw new Error(`${provider} deploys require --api-url (or SCALIUS_API_URL) to verify the live database provider.`);
+  }
+  if (healthOnly) {
+    throw new Error("External database deploys require /readyz verification; --health-only cannot prove the provider.");
+  }
 }
 
 export function getExternalSchemaPreflightCommand(provider, targetHost) {
@@ -570,11 +601,20 @@ export function getSetupPendingReadinessChecks(payload) {
     .map(([name]) => name);
 }
 
-function isReadyzPayloadReady(status, payload) {
+function readinessMatchesDatabaseProvider(checks, expectedDatabaseProvider) {
+  if (!expectedDatabaseProvider) return true;
+  const reported = DATABASE_PROVIDERS.filter((provider) => checks && Object.hasOwn(checks, provider));
+  return reported.length === 1 && reported[0] === expectedDatabaseProvider
+    && checks[expectedDatabaseProvider]?.status === "ok";
+}
+
+function isReadyzPayloadReady(status, payload, expectedDatabaseProvider) {
   const checks = payload?.checks;
   if (!checks || typeof checks !== "object" || Object.keys(checks).length === 0) {
     return false;
   }
+
+  if (!readinessMatchesDatabaseProvider(checks, expectedDatabaseProvider)) return false;
 
   // /readyz answers 503 with success=false while Platform origins are unsaved.
   // That is merchant setup state, not a deployment failure, provided every
@@ -596,6 +636,7 @@ function isReadyzPayloadReady(status, payload) {
 async function fetchReadinessSample(url, {
   fetchImpl = fetch,
   timeoutMs = API_READYZ_TIMEOUT_MS,
+  expectedDatabaseProvider,
 } = {}) {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -619,11 +660,12 @@ async function fetchReadinessSample(url, {
     }
 
     return {
-      ok: isReadyzPayloadReady(response.status, payload),
+      ok: isReadyzPayloadReady(response.status, payload, expectedDatabaseProvider),
       status: response.status,
       payload,
       durationMs: Date.now() - startedAt,
-      summary: getReadinessCheckSummary(payload),
+      summary: getReadinessCheckSummary(payload) + (!readinessMatchesDatabaseProvider(payload?.checks, expectedDatabaseProvider)
+        ? `; expected ${expectedDatabaseProvider} database exclusively` : ""),
       setupPending: getSetupPendingReadinessChecks(payload),
     };
   } catch (error) {
@@ -679,6 +721,7 @@ async function waitForSettledApiReadiness(readyzUrl, {
   timeoutMs,
   fetchImpl,
   sleepImpl,
+  expectedDatabaseProvider,
 }) {
   console.log(
     `  Migrations were applied: waiting up to ${Math.round(maxMs / 1000)}s for ` +
@@ -688,7 +731,7 @@ async function waitForSettledApiReadiness(readyzUrl, {
   let stable = 0;
   const startedAt = Date.now();
   for (let index = 1; ; index += 1) {
-    const sample = await fetchReadinessSample(readyzUrl, { fetchImpl, timeoutMs });
+    const sample = await fetchReadinessSample(readyzUrl, { fetchImpl, timeoutMs, expectedDatabaseProvider });
     samples.push(sample);
     const settled = isReadyzSampleSettled(sample);
     stable = settled ? stable + 1 : 0;
@@ -715,6 +758,7 @@ export async function sampleApiReadiness(apiBaseUrl, {
   fetchImpl = fetch,
   sleepImpl = sleep,
   migrationsApplied = false,
+  expectedDatabaseProvider,
   settleMaxMs = API_READYZ_SETTLE_MAX_MS,
   settleDelayMs = API_READYZ_SETTLE_DELAY_MS,
   settleStableCount = API_READYZ_SETTLE_STABLE_COUNT,
@@ -733,6 +777,7 @@ export async function sampleApiReadiness(apiBaseUrl, {
       timeoutMs,
       fetchImpl,
       sleepImpl,
+      expectedDatabaseProvider,
     });
     console.log(`✓ API /readyz settled after migrations (${settleStableCount} stable samples).`);
     return {
@@ -743,7 +788,7 @@ export async function sampleApiReadiness(apiBaseUrl, {
   }
 
   for (let index = 0; index < sampleCount; index += 1) {
-    const sample = await fetchReadinessSample(readyzUrl, { fetchImpl, timeoutMs });
+    const sample = await fetchReadinessSample(readyzUrl, { fetchImpl, timeoutMs, expectedDatabaseProvider });
     samples.push(sample);
     const prefix = sample.ok ? "✓" : "⚠";
     console.log(
@@ -1105,7 +1150,10 @@ async function verifyApiDeploy(config, apiWranglerConfigPath = null, options = {
     console.log("✓ Custom API health-only verification skipped production binding readiness checks.");
     return;
   }
-  await sampleApiReadiness(apiBaseUrl, { migrationsApplied: options.migrationsApplied === true });
+  await sampleApiReadiness(apiBaseUrl, {
+    migrationsApplied: options.migrationsApplied === true,
+    expectedDatabaseProvider: options.databaseProvider,
+  });
 }
 
 const SETUP_KEY_HINT = "If this store has no admin yet, run `pnpm secret:derive --purpose admin-setup` "
@@ -1254,7 +1302,7 @@ export async function main() {
 
   let databaseProvider;
   try {
-    databaseProvider = resolveDeploymentDatabaseProvider(config);
+    databaseProvider = resolveDeploymentDatabaseProvider(config, args);
   } catch (error) {
     console.error(`✗ ${error.message}`);
     process.exit(1);
@@ -1286,6 +1334,18 @@ export async function main() {
   const target = local ? "local" : "remote";
   const persistFlag = local ? ` --persist-to ${shellQuote(localPersistPath)}` : "";
   const requestedTarget = validateOnlyTarget();
+  try {
+    assertDatabaseDeploymentOptions({
+      provider: databaseProvider,
+      targetHost: databaseTargetHost,
+      apiUrl: deploymentUrls.apiUrl,
+      onlyTarget: requestedTarget,
+      dryRun, migrateOnly, local, healthOnly,
+    });
+  } catch (error) {
+    console.error(`✗ ${error.message}`);
+    process.exit(1);
+  }
   // Sandboxed plugins (Dynamic Workers, Workers Paid): the committed config
   // never binds the Worker Loader, so a generated config adds it.
   const pluginSandbox = !migrateOnly && pluginSandboxEnabled(readLockfile(), process.env, args);
@@ -1318,20 +1378,6 @@ export async function main() {
     console.error("✗ --health-only is allowed only with an explicit --wrangler-config API deploy.");
     process.exit(1);
   }
-  if (
-    !dryRun
-    && databaseProvider !== "d1"
-    && !databaseTargetHost
-    && !migrateOnly
-    && (requestedTarget === null || requestedTarget === "api")
-  ) {
-    console.error(
-      `✗ ${databaseProvider} deploys require --database-target-host so the `
-      + "selected database can pass a read-only schema preflight.",
-    );
-    process.exit(1);
-  }
-
   const prepareSelectedProviderSchema = () => {
     if (databaseProvider === "d1") {
       const migrationTarget = customWranglerConfigPath ? "DB" : dbName;
@@ -1441,6 +1487,7 @@ export async function main() {
         healthOnly,
         deploymentUrls,
         migrationsApplied,
+        databaseProvider,
       });
       if (requestedTarget === "api") await reportFirstAdminSetupKey(deploymentUrls?.apiUrl ?? null);
       console.log(`\n✓ Deploy complete (${requestedTarget}).`);
@@ -1467,7 +1514,7 @@ export async function main() {
     for (const targetName of deployTargets) {
       const targetConfigPath = targetName === "api" ? apiDeployConfigPath : null;
       deployTarget(targetName, targetConfigPath, plan, pluginSandbox);
-      await verifyPostDeployTarget(targetName, config, targetConfigPath, { deploymentUrls, migrationsApplied });
+      await verifyPostDeployTarget(targetName, config, targetConfigPath, { deploymentUrls, migrationsApplied, databaseProvider });
     }
     if (deployTargets.includes("api")) await reportFirstAdminSetupKey(deploymentUrls?.apiUrl ?? null);
 
