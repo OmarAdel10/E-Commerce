@@ -157,9 +157,9 @@ export function termsTextKeepsLinks(copy: Record<string, string>): boolean {
   return names.every((name) => name !== "" && text.includes(name));
 }
 
-const FORM_FIELDS: Array<[FieldKey, "orderNotes" | "area"]> = [
-  ["showOrderNotesField", "orderNotes"],
-  ["showAreaField", "area"],
+const FORM_FIELDS: Array<[FieldKey, "orderNotes" | "area", "orderNotesHelp" | "areaHelp"]> = [
+  ["showOrderNotesField", "orderNotes", "orderNotesHelp"],
+  ["showAreaField", "area", "areaHelp"],
 ];
 
 function useCanEditCheckout() {
@@ -220,11 +220,12 @@ function FormFields({ language, disabled }: { language: Language | undefined; di
       await reload();
     },
   });
-  return FORM_FIELDS.map(([key, label]) => (
+  return FORM_FIELDS.map(([key, label, help]) => (
     <SettingsCheckbox
       key={key}
       id={`checkout-field-${key}`}
       label={t(label)}
+      help={t(help)}
       checked={draft[key]}
       disabled={disabled}
       onCheckedChange={(checked) => setDraft((current) => ({ ...current, [key]: checked }))}
@@ -247,7 +248,7 @@ export function CustomerContactCard() {
   if (!isLoaded) return <SettingsCardLoading />;
   const language = checkoutLanguage(languages.data?.languages);
   return (
-    <SettingsCard id="customerContact" title={t("contactTitle")}>
+    <SettingsCard id="customerContact" title={t("contactTitle")} description={t("contactDescription")}>
       <SettingsCheckbox
         id="checkout-guest"
         label={t("guest")}

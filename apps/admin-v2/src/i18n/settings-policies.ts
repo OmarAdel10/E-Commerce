@@ -2,8 +2,8 @@ import { defineMessages } from "./index";
 
 export const policiesMessages = defineMessages({
   en: {
-    returnsTitle: "Return policy",
-    returnsDescription: "Shown to Google with your products once saved.",
+    returnsTitle: "Returns shown on Google",
+    returnsDescription: "The return window Google shows beside your products. The written policy customers read is in Policies above.",
     returns: "Returns",
     notSet: "Not set",
     finite: "Accepted within a set number of days",
@@ -48,8 +48,8 @@ export const policiesMessages = defineMessages({
     needPagesAccess: "You need access to pages to change this.",
   },
   bn: {
-    returnsTitle: "রিটার্ন পলিসি",
-    returnsDescription: "সেভ করলে আপনার পণ্যের সাথে গুগলকে দেখানো হয়।",
+    returnsTitle: "Google-এ দেখানো রিটার্ন",
+    returnsDescription: "Google আপনার পণ্যের পাশে যে রিটার্নের সময় দেখায়। কাস্টমার যে লিখিত পলিসি পড়েন, তা ওপরের পলিসি-তে আছে।",
     returns: "রিটার্ন",
     notSet: "সেট করা নেই",
     finite: "নির্দিষ্ট দিনের মধ্যে ফেরত নেওয়া হয়",
