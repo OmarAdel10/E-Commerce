@@ -1,7 +1,7 @@
 // src/modules/payments/process-payment.ts
 // Applies provider-authenticated payment events to orders, for every gateway.
 
-import { and, desc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import {
   orders,
   orderPayments,
@@ -28,6 +28,7 @@ import {
 } from "../inventory";
 import type { PaymentType, ProcessPaymentParams } from "./types";
 import { buildPaymentReviewHoldInsert, PAYMENT_REVIEW_METADATA_KEY } from "./payment-review";
+import { convergePaymentCommandsAfterFact } from "./command-attempts";
 
 /** A payment row's metadata: the caller's facts, plus the provider's review when it flagged the payment. */
 function paymentMetadataJson(params: Pick<ProcessPaymentParams, "metadata" | "review">): string | null {
@@ -383,11 +384,20 @@ export function acceptsProviderPayment(
  *
  * Idempotent: a provider reference is credited at most once. `retryable: false`
  * failures need manual reconciliation; other failures should be retried.
+ * Once the payment is recorded, the off-session commands it settles (a
+ * pending charge or capture of this reference) are closed
+ * (command-attempts.ts).
  */
 export async function processPaymentConfirmed(
   db: Database,
   params: ProcessPaymentParams
-): Promise<{
+): Promise<ConfirmedPaymentResult> {
+  const result = await applyConfirmedPayment(db, params);
+  if (result.success) await convergePaymentCommandsAfterFact(db, commandFactOf(params));
+  return result;
+}
+
+interface ConfirmedPaymentResult {
   success: boolean;
   error?: string;
   retryable?: boolean;
@@ -395,7 +405,16 @@ export async function processPaymentConfirmed(
   paymentType?: PaymentType;
   /** The payment was recorded, but the order's released stock could not be reserved again: staff must resolve it. */
   inventoryShortfall?: true;
-}> {
+}
+
+function commandFactOf(params: ProcessPaymentParams) {
+  return { orderId: params.orderId, provider: params.provider, providerRef: params.providerRef, correlationId: params.correlationId ?? null };
+}
+
+async function applyConfirmedPayment(
+  db: Database,
+  params: ProcessPaymentParams
+): Promise<ConfirmedPaymentResult> {
   try {
     const shipmentClaim = await db
       .select({
@@ -915,9 +934,27 @@ async function currentPaymentAttempt(
  * the order is cancelled (by staff or the stale-checkout sweep).
  *
  * Marks the attempt failed and an unpaid order's payment status failed, so
- * the buyer can retry or switch gateway.
+ * the buyer can retry or switch gateway. Whatever the order's state, an
+ * off-session command the event names is settled (command-attempts.ts): a
+ * pending charge with nothing recorded is declined, a pending void of a
+ * released authorization is voided.
  */
 export async function processPaymentFailed(
+  db: Database,
+  event: PaymentFailureEvent,
+): Promise<{ applied: boolean }> {
+  const result = await applyFailedPayment(db, event);
+  await convergePaymentCommandsAfterFact(db, {
+    orderId: event.orderId,
+    provider: event.provider,
+    providerRef: event.providerRef ?? null,
+    correlationId: event.correlationId ?? null,
+    failed: true,
+  });
+  return result;
+}
+
+async function applyFailedPayment(
   db: Database,
   event: PaymentFailureEvent,
 ): Promise<{ applied: boolean }> {
@@ -1051,23 +1088,6 @@ export async function processPaymentFailed(
         .returning({ id: orders.id }),
     ];
 
-    // An off-session charge that was waiting for this answer is over: the
-    // order may take another charge (saved-method-charges.ts).
-    const namedAttempt = [
-      ...(event.correlationId ? [eq(paymentSessionAttempts.providerCorrelationId, event.correlationId)] : []),
-      ...(providerRef ? [eq(paymentSessionAttempts.providerSessionId, providerRef)] : []),
-    ];
-    if (namedAttempt.length > 0) {
-      batchStatements.push(db.update(paymentSessionAttempts)
-        .set({ status: "failed", lastError: "The provider reported the payment failed.", updatedAt: sql`unixepoch()` })
-        .where(and(
-          eq(paymentSessionAttempts.orderId, orderId),
-          eq(paymentSessionAttempts.gateway, provider),
-          eq(paymentSessionAttempts.status, "pending"),
-          or(...namedAttempt),
-        )));
-    }
-
     if (existing?.status === PaymentRecordStatus.PENDING) {
       batchStatements.push(
         db
@@ -1164,12 +1184,19 @@ export async function releaseAuthorization(
  *
  * Idempotent on UNIQUE(provider, provider_ref). An open checkout whose
  * released stock is gone keeps the authorization recorded but is not placed
- * (`inventoryShortfall`: staff resolve it).
+ * (`inventoryShortfall`: staff resolve it). Once it is recorded, a pending
+ * manual-capture charge of this reference is closed `authorized`.
  */
 export async function processPaymentAuthorized(
   db: Database,
   params: ProcessPaymentParams,
-): Promise<{
+): Promise<AuthorizedPaymentResult> {
+  const result = await applyAuthorizedPayment(db, params);
+  if (result.success) await convergePaymentCommandsAfterFact(db, commandFactOf(params));
+  return result;
+}
+
+interface AuthorizedPaymentResult {
   success: boolean;
   error?: string;
   retryable?: boolean;
@@ -1178,7 +1205,12 @@ export async function processPaymentAuthorized(
   /** The authorization placed an open checkout (incomplete → pending). */
   placed?: boolean;
   inventoryShortfall?: true;
-}> {
+}
+
+async function applyAuthorizedPayment(
+  db: Database,
+  params: ProcessPaymentParams,
+): Promise<AuthorizedPaymentResult> {
   try {
     const order = await db
       .select({

@@ -11,6 +11,7 @@ import type { Database } from "@scalius/database/client";
 import { orders, PaymentStatus } from "@scalius/database/schema";
 import {
   REFUND_OBSERVED_EVENT_TYPE,
+  canOperateExistingPayments,
   PaymentProviderError,
   type GatewayRequest,
   type GatewaySettings,
@@ -110,9 +111,11 @@ export async function toGatewayRequest(c: Context): Promise<GatewayRequest> {
 }
 
 /**
- * Saved settings for authenticating provider callbacks. A gateway may be
- * disabled after a buyer left for the provider, so callbacks keep working
- * while readable credentials remain; unreadable credentials fail closed.
+ * Saved settings for authenticating provider callbacks and looking a payment
+ * up. Turning a gateway off stops new payments only: a buyer may have left
+ * for the provider before, so callbacks and lookups keep working while
+ * readable credentials remain (`canOperateExistingPayments`, the predicate
+ * refunds, captures and voids share); unreadable credentials fail closed.
  */
 export async function loadCallbackSettings(
   gateway: PaymentGateway,
@@ -131,7 +134,7 @@ export async function loadCallbackSettings(
     console.error(`[payments] ${gateway.id} credentials are not readable`);
     return { status: "unavailable" };
   }
-  return gateway.canVerify(settings) ? { status: "ready", settings } : { status: "skipped" };
+  return canOperateExistingPayments(gateway, settings) ? { status: "ready", settings } : { status: "skipped" };
 }
 
 export type PaymentReconciliationResult = {
@@ -169,7 +172,7 @@ export async function reconcileOrderPayment(input: {
 
   const unavailable = new ServiceUnavailableError(`${gateway.label} payment verification is temporarily unavailable.`);
   const loaded = await loadCallbackSettings(gateway, input.db, input.env);
-  if (loaded.status !== "ready" || !loaded.settings.enabled) throw unavailable;
+  if (loaded.status !== "ready") throw unavailable;
   let query: Awaited<ReturnType<NonNullable<PaymentGateway["queryPayment"]>>>;
   try {
     query = await withPaymentProviderDeadline(

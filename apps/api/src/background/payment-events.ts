@@ -10,10 +10,13 @@ import type { Database } from "@scalius/database/client";
 import { runWithReadObserver } from "@scalius/database/read-observer";
 import {
   LOCAL_REFUND_IN_PROGRESS_REASON,
+  listDuePaymentCommands,
   processPaymentAuthorized,
   processPaymentConfirmed,
   processPaymentFailed,
+  reconcilePaymentCommand,
   verifyObservedRefund,
+  type PaymentCommandDeps,
   type PaymentEvent,
 } from "@scalius/core/modules/payments";
 import { processExistingMetaPurchaseOutboxForOrder } from "@scalius/core/integrations/meta/purchase-outbox";
@@ -81,8 +84,43 @@ export async function applyClaimedPaymentEvent(
   return outcome.status;
 }
 
-/** The tick's drain: due retries and attempts whose invocation died, within the plan's limit. */
+/**
+ * The tick's drain: due retries and attempts whose invocation died, then
+ * the off-session commands (charge, capture, void) still open past their
+ * next look, each within the plan's limit. A command is settled from the
+ * ledger, looked up at its gateway, or expired (core saved-method-charges.ts);
+ * the counts cover both.
+ */
 export async function drainPaymentEvents(db: Database, env: Env, ctx: ExecutionContext): Promise<{ scanned: number; processed: number }> {
+  const events = await drainDuePaymentEvents(db, env, ctx);
+  const commands = await reconcileDuePaymentCommands(db, env, ctx);
+  return { scanned: events.scanned + commands.scanned, processed: events.processed + commands.processed };
+}
+
+async function reconcileDuePaymentCommands(db: Database, env: Env, ctx: ExecutionContext): Promise<{ scanned: number; processed: number }> {
+  const due = await listDuePaymentCommands(db, planLimits().background.paymentEventsPerDrain);
+  if (due.length === 0) return { scanned: 0, processed: 0 };
+  const deps: PaymentCommandDeps = {
+    providers: appPaymentProvidersLoader(env, db, ctx),
+    encryptionKey: getCredentialEncryptionKey(env as unknown as Record<string, unknown>),
+    applyEvent: async ({ provider, event, source }) => {
+      const { claimAndApplyPaymentEventNow } = await import("../routes/payment/payment-events");
+      return claimAndApplyPaymentEventNow({ db, env, ctx, provider, event, source });
+    },
+  };
+  let processed = 0;
+  for (const id of due) {
+    try {
+      const outcome = await reconcilePaymentCommand(db, deps, id);
+      if (outcome === "settled" || outcome === "expired") processed += 1;
+    } catch (error) {
+      console.warn("[payments] An open payment command could not be reconciled; the next tick retries:", error instanceof Error ? error.name : "error");
+    }
+  }
+  return { scanned: due.length, processed };
+}
+
+async function drainDuePaymentEvents(db: Database, env: Env, ctx: ExecutionContext): Promise<{ scanned: number; processed: number }> {
   const due = await listDuePaymentEvents(db, planLimits().background.paymentEventsPerDrain);
   let processed = 0;
   for (const id of due) {
@@ -122,6 +160,7 @@ async function applyPaymentEvent(
         paymentType: event.paymentType,
         providerRef: event.providerRef,
         secondaryRef: event.secondaryRef,
+        correlationId: event.correlationId,
         metadata: { currency, ...event.details },
         // A provider that reports settlement (D2) has it recorded with the payment.
         settlement: event.settlement,
@@ -195,6 +234,7 @@ async function applyPaymentEvent(
         paymentType: event.paymentType,
         providerRef: event.providerRef,
         secondaryRef: event.secondaryRef,
+        correlationId: event.correlationId,
         metadata: { ...event.details },
         savedPaymentMethod: event.savedPaymentMethod ?? null,
         review: event.review ?? null,

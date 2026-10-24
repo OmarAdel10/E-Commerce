@@ -23,7 +23,7 @@ import {
   type PaymentProvidersSource,
 } from "./gateways/registry";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
-import type { GatewayProviderRefund, GatewayRefundProbe } from "./gateways/port";
+import { canOperateExistingPayments, type GatewayProviderRefund, type GatewayRefundProbe } from "./gateways/port";
 import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus } from "./refund-service";
 import type { RefundNotificationFact } from "./refund-service";
 import { ACTIVE_REFUND_ATTEMPT_STATUSES } from "../order-kernel";
@@ -380,7 +380,7 @@ async function probeProviderRefund(
     return { outcome: "unknown", error: `Unsupported refund gateway '${attempt.gateway}'`, manualReview: true };
   }
   const settings = await gateway.loadSettings(db, encryptionKey);
-  if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) {
+  if (!canOperateExistingPayments(gateway, settings)) {
     return { outcome: "unknown", error: `${gateway.label} is not configured for refund reconciliation`, manualReview: true };
   }
   if (!Number.isSafeInteger(attempt.amountMinor) || attempt.amountMinor <= 0) {
@@ -633,7 +633,7 @@ async function reconcileExternalRefundWebhookEvent(
   if (!evidence.secondaryRef) return defer({ reason: "source_reference_missing" });
 
   const settings = await gateway.loadSettings(db, options.encryptionKey);
-  if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) {
+  if (!canOperateExistingPayments(gateway, settings)) {
     return defer({ reason: "provider_settings_unavailable" });
   }
 
@@ -798,7 +798,7 @@ export async function verifyObservedRefund(
     });
     if (!sourcePayment) return "unverified";
     const settings = await gateway.loadSettings(db, options.encryptionKey);
-    if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) return "unverified";
+    if (!canOperateExistingPayments(gateway, settings)) return "unverified";
     const succeeded = (await gateway.listRefunds({ sourceRef: observed.secondaryRef }, { settings, signal: new AbortController().signal }))
       .filter((refund) => refund.sourceRef === observed.secondaryRef && refund.succeeded && refund.amountMinor > 0);
     if (succeeded.length === 0) return "unverified";

@@ -143,6 +143,17 @@ export function gatewayHasCapability(gateway: PaymentGateway, capability: Paymen
     : typeof gateway.capture === "function" && typeof gateway.void === "function";
 }
 
+/**
+ * Whether a gateway can act on payments it already took (verify a callback,
+ * look a payment up, refund, capture, void, remove a kept method): its saved
+ * credentials are readable and complete enough to authenticate with the
+ * provider. Checkout enablement is not asked: turning a gateway off stops new
+ * payments only (`readiness().usable` gates checkout and new charges).
+ */
+export function canOperateExistingPayments<S extends GatewaySettings>(gateway: PaymentGateway<S>, settings: S | null): settings is S {
+  return settings !== null && !settings.credentialErrors?.length && gateway.canVerify(settings);
+}
+
 export function hasText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }

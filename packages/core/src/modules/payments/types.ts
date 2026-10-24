@@ -44,6 +44,8 @@ export interface ProcessPaymentParams {
   paymentType?: PaymentType;
   providerRef: string;
   secondaryRef?: string;
+  /** The merchant reference the provider authenticated with the event: names an off-session command answered without a reference. */
+  correlationId?: string;
   metadata?: Record<string, unknown>;
   /** What the provider reported reached the merchant (the payment port's `settlement`); absent: settled as presented. */
   settlement?: ReportedSettlement | null;

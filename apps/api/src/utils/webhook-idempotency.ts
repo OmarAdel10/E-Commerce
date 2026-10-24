@@ -1,7 +1,7 @@
 import { and, asc, eq, isNotNull, lte, or, sql } from "drizzle-orm";
 import { webhookEvents } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
-import { onlinePaymentMethodCondition } from "@scalius/core/modules/payments";
+import { duePaymentCommandProbes, onlinePaymentMethodCondition } from "@scalius/core/modules/payments";
 
 /**
  * `retrying`: a payment event whose last attempt failed, due again at
@@ -228,13 +228,17 @@ function duePaymentEventCondition(leaseSeconds = DEFAULT_WEBHOOK_PROCESSING_LEAS
 }
 
 /**
- * Whether `listDuePaymentEvents` would find a row: one bounded index probe
- * per due state (the scheduled drain runs only when one finds a row).
+ * Whether `listDuePaymentEvents` (or the drain's open-command sweep,
+ * `listDuePaymentCommands`) would find a row: one bounded index probe per
+ * due state (the scheduled drain runs only when one finds a row).
  */
 export function duePaymentEventProbes(db: Database) {
-  return duePaymentEventBranches().map((branch) =>
-    db.select({ id: webhookEvents.id }).from(webhookEvents)
-      .where(and(isNotNull(webhookEvents.payload), branch)).limit(1));
+  return [
+    ...duePaymentEventBranches().map((branch) =>
+      db.select({ id: webhookEvents.id }).from(webhookEvents)
+        .where(and(isNotNull(webhookEvents.payload), branch)).limit(1)),
+    ...duePaymentCommandProbes(db),
+  ];
 }
 
 export async function listDuePaymentEvents(db: Database, limit: number): Promise<string[]> {

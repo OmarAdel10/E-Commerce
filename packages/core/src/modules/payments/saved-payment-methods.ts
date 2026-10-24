@@ -24,7 +24,7 @@ import { NotFoundError, ServiceUnavailableError, ValidationError } from "@scaliu
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import type { SavedPaymentMethod } from "@scalius/shared/plugins/providers/payment";
 import { paymentProvidersFor, type PaymentProvidersSource } from "./gateways/registry";
-import { gatewayHasCapability } from "./gateways/port";
+import { canOperateExistingPayments, gatewayHasCapability } from "./gateways/port";
 
 type SQLiteBatchItem = BatchItem<"sqlite">;
 
@@ -241,7 +241,7 @@ export async function removeCustomerPaymentMethod(
   const gateway = providers.get(method.providerId);
   if (gateway?.deleteSavedMethod && gatewayHasCapability(gateway, "vault")) {
     const settings = await gateway.loadSettings(db, input.encryptionKey);
-    if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) {
+    if (!canOperateExistingPayments(gateway, settings)) {
       throw new ServiceUnavailableError(`${gateway.label} cannot be reached to remove the payment method. Try again later.`);
     }
     try {

@@ -26,6 +26,7 @@ import {
     RECORDED_PAYMENT_METHOD,
     type PaymentProvidersSource,
 } from "./gateways/registry";
+import { canOperateExistingPayments } from "./gateways/port";
 import { presentedSettlement } from "@scalius/shared/money-chain";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import { applyInventoryForStatusChangeWithImpact } from "../inventory";
@@ -1285,9 +1286,13 @@ async function dispatchRefund(
     if (!gateway?.refund) throw new ValidationError(`Unsupported refund gateway: ${payment.paymentMethod}`);
     const settings = await gateway.loadSettings(db, encryptionKey);
     if (!settings) throw new ServiceUnavailableError(`${gateway.label} is not configured`);
-    // A gateway that is off says why (an app gateway: "Activate … in Apps to use it.").
-    if (!settings.enabled) throw new ServiceUnavailableError(gateway.readiness(settings).blockedReason ?? `${gateway.label} payment gateway is disabled`);
     if (settings.credentialErrors?.length) throw new ServiceUnavailableError(`${gateway.label} credentials are not readable`);
+    // Turning a gateway off stops new payments only: money it took is
+    // refunded while its credentials can reach the provider. One that cannot
+    // says why (an app gateway: "Activate … in Apps to use it.").
+    if (!canOperateExistingPayments(gateway, settings)) {
+        throw new ServiceUnavailableError(gateway.readiness(settings).blockedReason ?? `${gateway.label} cannot be reached with its saved credentials`);
+    }
     if (!payment.providerRef) throw new ValidationError(`No ${gateway.label} payment reference found on payment record`);
     if (!Number.isSafeInteger(refundAmountMinor) || refundAmountMinor <= 0) {
         throw new ValidationError(`${gateway.label} refund must resolve to a positive provider amount.`);

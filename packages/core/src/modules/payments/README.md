@@ -215,9 +215,20 @@ with descriptor capabilities: `vault` (`chargeSavedMethod`,
   are recorded and replayed: `succeeded`, `authorized`, `pending` (a webhook
   follows), `declined` (422 `payment_declined`). No answer leaves the attempt
   `uncertain` (503 `payment_outcome_unknown`): the same request asks the
-  provider again under the same key; meanwhile (and while `pending`) the
-  order takes no other charge. Events go through the one `webhook_events`
-  claim and the kernel, as webhooks do.
+  provider again under the same key; meanwhile (and while `pending`, or while
+  another command of the order calls its provider) the order takes no other
+  charge. Events go through the one `webhook_events` claim and the kernel, as
+  webhooks do.
+- **Convergence** (`command-attempts.ts`): the kernel settles the open
+  commands a fact names (provider reference or correlation id) from the
+  payment row it wrote; replays, new charges and the minute sweep
+  (`reconcilePaymentCommand`, inside the payment-event drain) settle what the
+  ledger already decided, look referenced payments up (`queryPayment`) and
+  expire a command three days after its last answer. A dead invocation's
+  `processing` command becomes `uncertain`.
+- **Turning a gateway off** stops checkout and new charges only:
+  refunds, captures, voids, lookups and callbacks need readable credentials
+  (`canOperateExistingPayments`).
 - **Invoices**: a provider payment lands on a `net_terms` order while nothing
   is paid on it (`acceptsProviderPayment`); the landed payment switches the
   order to the provider in its own batch, a decline changes nothing. An

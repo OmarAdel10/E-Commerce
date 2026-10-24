@@ -17,12 +17,19 @@
 // - A call that may have reached the provider but gave no answer leaves the
 //   attempt `uncertain` and answers 503 `payment_outcome_unknown`. Repeating
 //   the same request asks the provider again under the same key (it answers
-//   its first outcome); while the outcome is unknown, or a charge is
+//   its first outcome); while the outcome is unknown, or a command is
 //   `pending` its webhook, the order takes no other charge.
+// - An open command always ends (command-attempts.ts): the provider's fact
+//   settles it as the kernel applies it, a repeat after a minute asks the
+//   provider again under the same key, the scheduled sweep looks the
+//   payment up, and after three days without an answer it is expired.
 // - A provider-authenticated outcome goes through the one payment kernel:
 //   the event is claimed once in `webhook_events` and applied
 //   (`processPaymentConfirmed` / `processPaymentAuthorized`), exactly as a
 //   webhook would be. A void marks the authorization `cancelled`.
+// - A charge takes new money, so its gateway must be on for payments; a
+//   capture, a void and a lookup act on money already taken and need only
+//   the gateway's readable credentials (`canOperateExistingPayments`).
 import { and, eq, inArray, lte, or, isNull, sql, type SQL } from "drizzle-orm";
 import {
   orderPayments,
@@ -36,21 +43,47 @@ import { sha256Hex } from "@scalius/shared/hash";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import type { PaymentType } from "./types";
 import { buildPaymentCorrelationId } from "./gateways/correlation";
-import { gatewayHasCapability, type GatewaySettings, type PaymentEvent, type PaymentGateway } from "./gateways/port";
+import {
+  canOperateExistingPayments,
+  gatewayHasCapability,
+  type GatewaySettings,
+  type PaymentEvent,
+  type PaymentGateway,
+} from "./gateways/port";
 import { getGatewayAmountIssue, paymentProvidersFor, type PaymentProviders, type PaymentProvidersSource } from "./gateways/registry";
 import { getUnpayableOrderReason } from "./payable-order";
 import { acceptsProviderPayment, inferPaymentType, releaseAuthorization, validateIncomingPaymentState } from "./process-payment";
 import { readCustomerPaymentMethod, savedMethodVisibleTo, type SavedMethodActor } from "./saved-payment-methods";
 import { resolveOrderCurrencySnapshot } from "./order-currency";
 import { hasActiveShipmentClaim, SHIPMENT_CLAIM_CONFLICT_MESSAGE } from "../order-kernel";
+import {
+  closeCommandAttempt,
+  commandAttemptKeyCondition,
+  COMMAND_EXPIRY_SECONDS,
+  commandKindOf,
+  commandOutcomeFromLedger,
+  commandOutcomeOf,
+  convergePaymentCommands,
+  convergePaymentCommandsAfterFact,
+  isOpenCommandStatus,
+  OPEN_COMMAND_STATUSES,
+  PENDING_RECHECK_SECONDS,
+  settleCommandFromLedger,
+  type CommandAttemptRow,
+  type SavedMethodPaymentOutcomeKind,
+  type StoredCommandOutcome,
+} from "./command-attempts";
+
+export type { SavedMethodPaymentOutcomeKind } from "./command-attempts";
 
 /** The provider call's deadline and the request timeout it is told. */
 const PROVIDER_DEADLINE_MS = 12_000;
 const PROVIDER_REQUEST_TIMEOUT_MS = 11_000;
 const LEASE_SECONDS = 5 * 60;
 const CLAIM_GUARD = "saved_method_charge_blocked";
-/** Charge attempts that may still move money: no other charge starts on the order meanwhile. */
-const OPEN_CHARGE_STATUSES = ["uncertain", "pending"] as const;
+/** The sweep looks an open command up again after half its age, at least five minutes and at most six hours apart. */
+const SWEEP_MIN_DELAY_SECONDS = 5 * 60;
+const SWEEP_MAX_DELAY_SECONDS = 6 * 60 * 60;
 
 /** What the kernel applied a provider-authenticated event as (the webhook claim's outcome). */
 export type AppliedPaymentEventStatus = "processed" | "manual_reconciliation" | "retrying" | "failed" | "duplicate";
@@ -60,8 +93,6 @@ export type AppliedPaymentEventStatus = "processed" | "manual_reconciliation" | 
  * it through the kernel before returning (the API's `webhook_events` claim).
  */
 export type ApplyProviderPaymentEvent = (input: { provider: string; event: PaymentEvent; source: string }) => Promise<AppliedPaymentEventStatus>;
-
-export type SavedMethodPaymentOutcomeKind = "succeeded" | "authorized" | "pending" | "declined" | "voided";
 
 /** The outcome of a charge, a capture or a void, as recorded and replayed. */
 export interface SavedMethodPaymentOutcome {
@@ -79,15 +110,16 @@ export interface SavedMethodPaymentOutcome {
   replayed: boolean;
 }
 
-type StoredOutcome = Omit<SavedMethodPaymentOutcome, "replayed"> & { providerRef: string | null };
+type StoredOutcome = StoredCommandOutcome;
 
-interface CommandDeps {
+export interface PaymentCommandDeps {
   providers: PaymentProvidersSource;
   encryptionKey: string | undefined;
   applyEvent: ApplyProviderPaymentEvent;
 }
+type CommandDeps = PaymentCommandDeps;
 
-type AttemptRow = typeof paymentSessionAttempts.$inferSelect;
+type AttemptRow = CommandAttemptRow;
 
 interface ClaimedAttempt {
   id: string;
@@ -103,6 +135,10 @@ function inProgress(): AppError {
   return new AppError(409, "payment_in_progress", "A payment for this order is in progress. Try again shortly.");
 }
 
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 async function withProviderDeadline<T>(run: (signal: AbortSignal, requestTimeoutMs: number) => Promise<T>): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROVIDER_DEADLINE_MS);
@@ -113,11 +149,17 @@ async function withProviderDeadline<T>(run: (signal: AbortSignal, requestTimeout
   }
 }
 
-async function readyGateway(
+/**
+ * The gateway for a command. A charge (`newPayment`) needs it ready to take
+ * payments; a capture or a void acts on money already held and needs only
+ * readable credentials, so turning the gateway off never strands a hold.
+ */
+async function commandGateway(
   db: Database,
   deps: CommandDeps,
   providerId: string,
   capability: "vault" | "manualCapture",
+  use: "newPayment" | "existingPayment",
 ): Promise<{ gateway: PaymentGateway; providers: PaymentProviders; settings: GatewaySettings }> {
   const providers = await paymentProvidersFor(deps.providers, providerId);
   const gateway = providers.get(providerId);
@@ -127,8 +169,14 @@ async function readyGateway(
       : "This payment's provider cannot capture or void authorizations.");
   }
   const settings = await gateway.loadSettings(db, deps.encryptionKey);
-  if (!gateway.readiness(settings).usable || !settings) {
-    throw new ServiceUnavailableError(`${gateway.label} is not ready to take payments. Check its settings.`);
+  if (use === "newPayment") {
+    if (!gateway.readiness(settings).usable || !settings) {
+      throw new ServiceUnavailableError(`${gateway.label} is not ready to take payments. Check its settings.`);
+    }
+    return { gateway, providers, settings };
+  }
+  if (!canOperateExistingPayments(gateway, settings)) {
+    throw new ServiceUnavailableError(`${gateway.label} cannot be reached with its saved credentials. Check its settings.`);
   }
   return { gateway, providers, settings };
 }
@@ -146,28 +194,38 @@ function storedOutcome(row: AttemptRow): StoredOutcome | null {
   }
 }
 
+/** Whether an open command is due another look (a repeat asks its provider again; the sweep looks it up). */
+function commandDue(row: AttemptRow, now = nowSeconds()): boolean {
+  return row.claimExpiresAt === null || Number(row.claimExpiresAt) <= now;
+}
+
+interface Replayed {
+  outcome: SavedMethodPaymentOutcome;
+  /** A `pending` command due another look: the caller asks the provider again under the same key. */
+  recheck: boolean;
+}
+
 /**
- * A recorded outcome, refreshed: a charge that was `pending` its webhook
- * reads the payment it became, once it landed.
+ * A recorded outcome, refreshed: an open command whose provider fact already
+ * landed is settled from the ledger first (and so answers what the payment
+ * became). Null when there is nothing to replay (no outcome yet, or a
+ * failed call the same key may repeat).
  */
-async function replay(db: Database, row: AttemptRow): Promise<SavedMethodPaymentOutcome | null> {
-  if (row.status !== "created" && row.status !== "pending") return null;
-  const stored = storedOutcome(row);
-  if (!stored) throw new ServiceUnavailableError("The recorded payment outcome is unreadable. Try again.");
-  const { providerRef, ...outcome } = stored;
-  if (outcome.outcome === "pending" && providerRef) {
-    const landed = await db.select({ id: orderPayments.id, status: orderPayments.status })
-      .from(orderPayments)
-      .where(and(eq(orderPayments.paymentMethod, row.gateway), eq(orderPayments.providerRef, providerRef)))
-      .get();
-    if (landed?.status === PaymentRecordStatus.SUCCEEDED) return { ...outcome, outcome: "succeeded", paymentId: landed.id, replayed: true };
-    if (landed?.status === PaymentRecordStatus.AUTHORIZED) return { ...outcome, outcome: "authorized", paymentId: landed.id, replayed: true };
+async function replay(db: Database, row: AttemptRow): Promise<Replayed | null> {
+  let current = row;
+  if (isOpenCommandStatus(row.status)) {
+    const settled = await settleCommandFromLedger(db, row);
+    if (settled) return { outcome: { ...stripRef(settled), replayed: true }, recheck: false };
+    current = (await readAttempt(db, row.attemptKey)) ?? row;
   }
-  return { ...outcome, replayed: true };
+  if (current.status !== "created" && current.status !== "pending") return null;
+  const stored = storedOutcome(current);
+  if (!stored) throw new ServiceUnavailableError("The recorded payment outcome is unreadable. Try again.");
+  return { outcome: { ...stripRef(stored), replayed: true }, recheck: current.status === "pending" && commandDue(current) };
 }
 
 function isFreshProcessing(row: AttemptRow): boolean {
-  return row.status === "processing" && row.claimExpiresAt !== null && Number(row.claimExpiresAt) > Math.floor(Date.now() / 1000);
+  return row.status === "processing" && row.claimExpiresAt !== null && Number(row.claimExpiresAt) > nowSeconds();
 }
 
 function isConstraintError(error: unknown): boolean {
@@ -181,9 +239,10 @@ function isConstraintError(error: unknown): boolean {
 
 /**
  * Claim the attempt: a new row, or the same key's row again when its last
- * call failed before reaching the provider, left the outcome unknown, or its
- * lease expired. `guard` must hold in the same batch (the order still takes
- * this payment). Another live payment on the order is 409.
+ * call failed before reaching the provider, left the outcome unknown, is
+ * `pending` and due another look, or its lease expired. `guard` must hold
+ * in the same batch (the order still takes this payment). Another live
+ * payment on the order is 409.
  */
 async function claimAttempt(
   db: Database,
@@ -203,6 +262,7 @@ async function claimAttempt(
   const claimId = `psac_${crypto.randomUUID()}`;
   const lease = sql`unixepoch() + ${LEASE_SECONDS}`;
   const guard = buildBatchGuard(db, input.guard, CLAIM_GUARD);
+  const lapsed = or(isNull(paymentSessionAttempts.claimExpiresAt), lte(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`));
   let rows: Array<{ id: string }>;
   try {
     const result = await safeBatch(db, [
@@ -241,10 +301,8 @@ async function claimAttempt(
           eq(paymentSessionAttempts.requestHash, input.requestHash),
           or(
             inArray(paymentSessionAttempts.status, ["failed", "uncertain"]),
-            and(
-              eq(paymentSessionAttempts.status, "processing"),
-              or(isNull(paymentSessionAttempts.claimExpiresAt), lte(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`)),
-            ),
+            and(eq(paymentSessionAttempts.status, "pending"), lapsed),
+            and(eq(paymentSessionAttempts.status, "processing"), lapsed),
           ),
         )).returning({ id: paymentSessionAttempts.id }),
       ]) as unknown as [unknown, Array<{ id: string }>];
@@ -260,6 +318,11 @@ async function claimAttempt(
   return { id: rows[0]!.id, claimId, attemptKey: input.attemptKey };
 }
 
+/**
+ * Record a call's outcome. An open one (`pending`, `uncertain`) is due
+ * another look after `PENDING_RECHECK_SECONDS` (`claim_expires_at` is its
+ * next look while it is open).
+ */
 async function finishAttempt(
   db: Database,
   attempt: ClaimedAttempt,
@@ -271,7 +334,7 @@ async function finishAttempt(
     ...(values.outcome ? { responsePayload: JSON.stringify(values.outcome) } : {}),
     ...(values.providerRef ? { providerSessionId: values.providerRef } : {}),
     claimId: null,
-    claimExpiresAt: null,
+    claimExpiresAt: isOpenCommandStatus(status) ? sql`unixepoch() + ${PENDING_RECHECK_SECONDS}` : null,
     lastError: values.error ? values.error.slice(0, 500) : null,
     updatedAt: sql`unixepoch()`,
   }).where(and(eq(paymentSessionAttempts.id, attempt.id), eq(paymentSessionAttempts.claimId, attempt.claimId)));
@@ -356,19 +419,20 @@ export async function chargeSavedPaymentMethod(
   const attemptKey = `pcharge_${(await sha256Hex(`${input.orderId}\n${requestKey}`)).slice(0, 48)}`;
   const requestHash = await sha256Hex(JSON.stringify([input.orderId, input.paymentMethodId, input.amountMinor ?? null, capture]));
 
-  const existing = await readAttempt(db, attemptKey);
+  let existing = await readAttempt(db, attemptKey);
   if (existing) {
     if (existing.requestHash !== requestHash) {
       throw new AppError(422, "idempotency_key_reused", "This Idempotency-Key was used for a different charge.");
     }
     const replayed = await replay(db, existing);
-    if (replayed) return replayed;
-    if (isFreshProcessing(existing)) throw inProgress();
+    if (replayed && !replayed.recheck) return replayed.outcome;
+    if (!replayed && isFreshProcessing(existing)) throw inProgress();
+    existing = (await readAttempt(db, attemptKey)) ?? existing;
   }
 
   const method = await readCustomerPaymentMethod(db, input.paymentMethodId);
   if (!method || !savedMethodVisibleTo(method, input.actor)) throw new NotFoundError("Saved payment method not found");
-  // A charge whose outcome is unknown is asked again exactly as it was sent.
+  // A charge whose outcome is unknown, or still pending, is asked again exactly as it was sent.
   const resuming = existing !== undefined && existing.status !== "failed";
 
   const order = await db.select({
@@ -418,9 +482,13 @@ export async function chargeSavedPaymentMethod(
     const stateError = await validateIncomingPaymentState(db, order, inferred, amountMinor);
     if (stateError) throw new ValidationError(stateError);
     paymentType = inferred;
+    // Commands whose provider facts already landed (before this journal
+    // converged, or by an invocation that died after its batch) no longer
+    // hold the order.
+    await convergePaymentCommands(db, { orderId: input.orderId });
   }
 
-  const { gateway, providers, settings } = await readyGateway(db, input, method.providerId, "vault");
+  const { gateway, providers, settings } = await commandGateway(db, input, method.providerId, "vault", "newPayment");
   if (capture === "manual" && !gatewayHasCapability(gateway, "manualCapture")) {
     throw new ValidationError(`${gateway.label} cannot authorize now and capture later.`);
   }
@@ -442,6 +510,10 @@ export async function chargeSavedPaymentMethod(
     amountMinor,
     currency,
     correlationId,
+    // The order still reads as it did, holds no money in flight, and no
+    // other command is open on it or calling its provider now (a deposit
+    // and a full charge are different payment types, so the single-flight
+    // index alone does not keep them apart).
     guard: resuming
       ? sql`1 = 1`
       : sql`EXISTS (
@@ -459,7 +531,10 @@ export async function chargeSavedPaymentMethod(
           SELECT 1 FROM ${paymentSessionAttempts}
           WHERE ${paymentSessionAttempts.orderId} = ${input.orderId}
             AND ${paymentSessionAttempts.attemptKey} <> ${attemptKey}
-            AND ${paymentSessionAttempts.status} IN (${sql.join(OPEN_CHARGE_STATUSES.map((status) => sql`${status}`), sql`, `)})
+            AND (
+              ${paymentSessionAttempts.status} IN (${sql.join(OPEN_COMMAND_STATUSES.map((status) => sql`${status}`), sql`, `)})
+              OR (${paymentSessionAttempts.status} = 'processing' AND ${commandAttemptKeyCondition()})
+            )
         )`,
     guardMessage: "This order changed, or another payment for it is still being settled. Read the order and try again.",
   });
@@ -495,9 +570,12 @@ export async function chargeSavedPaymentMethod(
     return { ...stripRef(declined), replayed: false };
   }
   if (answer.status === "pending") {
-    const pending: StoredOutcome = { ...base, outcome: "pending", paymentId: null, providerRef: answer.providerRef ?? null };
-    await finishAttempt(db, attempt, "pending", { outcome: pending, providerRef: answer.providerRef ?? null });
-    return { ...stripRef(pending), replayed: false };
+    // A repeat may already know the reference the first answer named.
+    const providerRef = answer.providerRef ?? existing?.providerSessionId ?? null;
+    const pending: StoredOutcome = { ...base, outcome: "pending", paymentId: null, providerRef };
+    await finishAttempt(db, attempt, "pending", { outcome: pending, providerRef });
+    // The provider's fact may have landed while this call was out.
+    return settledAfterFinish(db, attemptKey, pending);
   }
   let applied: StoredOutcome;
   try {
@@ -509,7 +587,14 @@ export async function chargeSavedPaymentMethod(
     throw error;
   }
   await finishAttempt(db, attempt, applied.outcome === "pending" ? "pending" : "created", { outcome: applied, providerRef: answer.event.providerRef });
-  return { ...stripRef(applied), replayed: false };
+  return applied.outcome === "pending" ? settledAfterFinish(db, attemptKey, applied) : { ...stripRef(applied), replayed: false };
+}
+
+/** A command just recorded `pending`: settled at once when its fact landed meanwhile. */
+async function settledAfterFinish(db: Database, attemptKey: string, pending: StoredOutcome): Promise<SavedMethodPaymentOutcome> {
+  const row = await readAttempt(db, attemptKey);
+  const settled = row ? await settleCommandFromLedger(db, row) : null;
+  return { ...stripRef(settled ?? pending), replayed: false };
 }
 
 function stripRef(stored: StoredOutcome): Omit<SavedMethodPaymentOutcome, "replayed"> {
@@ -539,21 +624,18 @@ async function readAuthorization(db: Database, paymentId: string) {
   return row;
 }
 
-type AuthorizationRow = Awaited<ReturnType<typeof readAuthorization>>;
-
-/** A capture or void already decided by the row itself (captured, released), or by an earlier call. */
+/** A capture or void already decided by an earlier call (a `pending` one due another look asks again). */
 async function settledAuthorization(
   db: Database,
-  row: AuthorizationRow,
   attemptKey: string,
-): Promise<{ attempt: AttemptRow | undefined; outcome: SavedMethodPaymentOutcome | null }> {
+): Promise<SavedMethodPaymentOutcome | null> {
   const attempt = await readAttempt(db, attemptKey);
   if (attempt) {
     const replayed = await replay(db, attempt);
-    if (replayed) return { attempt, outcome: replayed };
-    if (isFreshProcessing(attempt)) throw inProgress();
+    if (replayed && !replayed.recheck) return replayed.outcome;
+    if (!replayed && isFreshProcessing(attempt)) throw inProgress();
   }
-  return { attempt, outcome: null };
+  return null;
 }
 
 /**
@@ -565,14 +647,14 @@ async function settledAuthorization(
 export async function captureAuthorizedPayment(db: Database, input: AuthorizationCommandInput): Promise<SavedMethodPaymentOutcome> {
   const row = await readAuthorization(db, input.paymentId);
   const attemptKey = `capture:${row.id}`;
-  const settled = await settledAuthorization(db, row, attemptKey);
-  if (settled.outcome) return settled.outcome;
+  const settled = await settledAuthorization(db, attemptKey);
+  if (settled) return settled;
   const base = { orderId: row.orderId, providerId: row.provider, amountMinor: row.amountMinor, currency: row.currency, declineReason: null, declineCode: null };
   if (row.status === PaymentRecordStatus.SUCCEEDED) return { ...base, outcome: "succeeded", paymentId: row.id, replayed: true };
   if (row.status !== PaymentRecordStatus.AUTHORIZED || !row.providerRef) {
     throw new ValidationError("Only an authorized payment can be captured.");
   }
-  const { gateway, providers, settings } = await readyGateway(db, input, row.provider, "manualCapture");
+  const { gateway, providers, settings } = await commandGateway(db, input, row.provider, "manualCapture", "existingPayment");
   const attempt = await claimAttempt(db, {
     attemptKey,
     requestHash: await sha256Hex(attemptKey),
@@ -612,7 +694,7 @@ export async function captureAuthorizedPayment(db: Database, input: Authorizatio
   if (answer.status === "pending") {
     const pending: StoredOutcome = { ...base, outcome: "pending", paymentId: row.id, providerRef: row.providerRef };
     await finishAttempt(db, attempt, "pending", { outcome: pending, providerRef: row.providerRef });
-    return { ...stripRef(pending), replayed: false };
+    return settledAfterFinish(db, attemptKey, pending);
   }
   if (answer.event.providerRef !== row.providerRef) {
     await finishAttempt(db, attempt, "uncertain", { error: "capture answered another payment reference" });
@@ -628,7 +710,7 @@ export async function captureAuthorizedPayment(db: Database, input: Authorizatio
   // Still authorized: the kernel refused the capture (manual reconciliation) or will retry it.
   const outcome = applied.outcome === "authorized" ? { ...applied, outcome: "pending" as const } : applied;
   await finishAttempt(db, attempt, outcome.outcome === "succeeded" ? "created" : "pending", { outcome, providerRef: row.providerRef });
-  return { ...stripRef(outcome), replayed: false };
+  return outcome.outcome === "succeeded" ? { ...stripRef(outcome), replayed: false } : settledAfterFinish(db, attemptKey, outcome);
 }
 
 /**
@@ -639,14 +721,14 @@ export async function captureAuthorizedPayment(db: Database, input: Authorizatio
 export async function voidAuthorizedPayment(db: Database, input: AuthorizationCommandInput): Promise<SavedMethodPaymentOutcome> {
   const row = await readAuthorization(db, input.paymentId);
   const attemptKey = `void:${row.id}`;
-  const settled = await settledAuthorization(db, row, attemptKey);
-  if (settled.outcome) return settled.outcome;
+  const settled = await settledAuthorization(db, attemptKey);
+  if (settled) return settled;
   const base = { orderId: row.orderId, providerId: row.provider, amountMinor: row.amountMinor, currency: row.currency, declineReason: null, declineCode: null };
   if (row.status === PaymentRecordStatus.CANCELLED) return { ...base, outcome: "voided", paymentId: row.id, replayed: true };
   if (row.status !== PaymentRecordStatus.AUTHORIZED || !row.providerRef) {
     throw new ValidationError("Only an authorized payment can be voided; refund a captured one.");
   }
-  const { gateway, settings } = await readyGateway(db, input, row.provider, "manualCapture");
+  const { gateway, settings } = await commandGateway(db, input, row.provider, "manualCapture", "existingPayment");
   const attempt = await claimAttempt(db, {
     attemptKey,
     requestHash: await sha256Hex(attemptKey),
@@ -675,13 +757,162 @@ export async function voidAuthorizedPayment(db: Database, input: AuthorizationCo
     return { ...base, outcome: "declined", paymentId: row.id, declineReason: answer.reason, declineCode: answer.code ?? null, replayed: false };
   }
   if (answer.status === "pending") {
-    // The provider's cancelled event releases the row (processPaymentFailed).
+    // The provider's cancelled event releases the row (processPaymentFailed) and settles this void.
     const pending: StoredOutcome = { ...base, outcome: "pending", paymentId: row.id, providerRef: row.providerRef };
     await finishAttempt(db, attempt, "pending", { outcome: pending, providerRef: row.providerRef });
-    return { ...stripRef(pending), replayed: false };
+    return settledAfterFinish(db, attemptKey, pending);
   }
   await releaseAuthorization(db, { orderId: row.orderId, provider: row.provider, providerRef: row.providerRef });
   const voided: StoredOutcome = { ...base, outcome: "voided", paymentId: row.id, providerRef: row.providerRef };
   await finishAttempt(db, attempt, "created", { outcome: voided, providerRef: row.providerRef });
+  // A capture still pending on the released hold is over too.
+  await convergePaymentCommandsAfterFact(db, { orderId: row.orderId, provider: row.provider, providerRef: row.providerRef });
   return { ...stripRef(voided), replayed: false };
+}
+
+// ── The sweep: open commands nothing settled ────────────────────────────────
+
+/**
+ * Each due state of an open command, one index range of `(status,
+ * claim_expires_at)`: past its next look, recorded before it had one (null),
+ * or `processing` past its lease (the invocation calling the provider died).
+ */
+function dueCommandBranches() {
+  return [
+    ...OPEN_COMMAND_STATUSES.flatMap((status) => [
+      and(eq(paymentSessionAttempts.status, status), lte(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`))!,
+      and(eq(paymentSessionAttempts.status, status), isNull(paymentSessionAttempts.claimExpiresAt))!,
+    ]),
+    and(eq(paymentSessionAttempts.status, "processing"), lte(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`), commandAttemptKeyCondition())!,
+  ];
+}
+
+/**
+ * A command whose invocation died while calling its provider: it may have
+ * reached the provider, so it is `uncertain` (a repeat asks again under the
+ * same key; the order takes no other charge meanwhile). Null when it is not
+ * such a row any more.
+ */
+async function abandonedToUncertain(db: Database, row: AttemptRow): Promise<AttemptRow | null> {
+  if (row.status !== "processing" || isFreshProcessing(row)) return null;
+  const [moved] = await db.update(paymentSessionAttempts).set({
+    status: "uncertain",
+    claimId: null,
+    claimExpiresAt: sql`unixepoch()`,
+    lastError: "The request ended before the provider answered.",
+    updatedAt: sql`unixepoch()`,
+  }).where(and(
+    eq(paymentSessionAttempts.id, row.id),
+    eq(paymentSessionAttempts.status, "processing"),
+    lte(paymentSessionAttempts.claimExpiresAt, sql`unixepoch()`),
+  )).returning();
+  return moved ?? null;
+}
+
+/** Whether the sweep has an open command to look at: one bounded index probe per due state. */
+export function duePaymentCommandProbes(db: Database) {
+  return dueCommandBranches().map((branch) =>
+    db.select({ id: paymentSessionAttempts.id }).from(paymentSessionAttempts).where(branch).limit(1));
+}
+
+/** Open commands due a look, oldest first. */
+export async function listDuePaymentCommands(db: Database, limit: number): Promise<string[]> {
+  const rows = await db.select({ id: paymentSessionAttempts.id })
+    .from(paymentSessionAttempts)
+    .where(or(...dueCommandBranches()))
+    .orderBy(paymentSessionAttempts.updatedAt)
+    .limit(Math.max(1, Math.min(limit, 100)))
+    .all();
+  return rows.map((row) => row.id);
+}
+
+export type PaymentCommandSweepOutcome = "settled" | "expired" | "open" | "skipped";
+
+/**
+ * One open command's look: settled from the ledger when its fact landed;
+ * else, with a provider reference, the gateway's status lookup
+ * (`queryPayment`) applies a captured payment through the kernel; past
+ * `COMMAND_EXPIRY_SECONDS` since it was last answered it is expired (below);
+ * otherwise it is looked at again later. Never calls a command again: a
+ * charge, capture or void is sent only by its caller's request.
+ */
+export async function reconcilePaymentCommand(db: Database, deps: PaymentCommandDeps, attemptId: string): Promise<PaymentCommandSweepOutcome> {
+  const found = await db.select().from(paymentSessionAttempts).where(eq(paymentSessionAttempts.id, attemptId)).get();
+  if (!found || !commandKindOf(found.attemptKey)) return "skipped";
+  const row = found.status === "processing" ? await abandonedToUncertain(db, found) : found;
+  if (!row || !isOpenCommandStatus(row.status) || !commandDue(row)) return "skipped";
+  if (await settleCommandFromLedger(db, row)) return "settled";
+
+  if (row.providerSessionId && await lookUpCommandPayment(db, deps, row)) {
+    const current = await db.select().from(paymentSessionAttempts).where(eq(paymentSessionAttempts.id, row.id)).get();
+    if (!current || !isOpenCommandStatus(current.status) || await settleCommandFromLedger(db, current)) return "settled";
+  }
+
+  const now = nowSeconds();
+  const age = now - Number(row.updatedAt);
+  if (age >= COMMAND_EXPIRY_SECONDS) return (await expireCommand(db, row)) ? "expired" : "skipped";
+  const delay = Math.min(SWEEP_MAX_DELAY_SECONDS, Math.max(SWEEP_MIN_DELAY_SECONDS, Math.floor(age / 2)));
+  await db.update(paymentSessionAttempts)
+    .set({ claimExpiresAt: sql`unixepoch() + ${delay}` })
+    .where(and(eq(paymentSessionAttempts.id, row.id), inArray(paymentSessionAttempts.status, [...OPEN_COMMAND_STATUSES])));
+  return "open";
+}
+
+/** Ask the gateway whether the command's payment was captured, and apply it once if so. True when a fact was applied. */
+async function lookUpCommandPayment(db: Database, deps: PaymentCommandDeps, row: AttemptRow): Promise<boolean> {
+  try {
+    const gateway = (await paymentProvidersFor(deps.providers, row.gateway)).get(row.gateway);
+    if (!gateway?.queryPayment) return false;
+    const settings = await gateway.loadSettings(db, deps.encryptionKey);
+    if (!canOperateExistingPayments(gateway, settings)) return false;
+    const query = await withProviderDeadline((signal, requestTimeoutMs) => gateway.queryPayment!(
+      { providerRef: row.providerSessionId!, orderId: row.orderId, requestTimeoutMs },
+      { settings, signal },
+    ));
+    const event = query.event;
+    if (!event || event.kind !== "confirmed" || event.orderId !== row.orderId || event.providerRef !== row.providerSessionId) return false;
+    await deps.applyEvent({ provider: gateway.id, event, source: "payment_command_reconciliation" });
+    return true;
+  } catch (error) {
+    console.warn(`[payments] Looking up the ${row.gateway} payment of an open command failed; the sweep asks again:`, error instanceof Error ? error.name : "error");
+    return false;
+  }
+}
+
+/**
+ * Expire a command nothing settled within `COMMAND_EXPIRY_SECONDS`. A
+ * capture or a void is `failed`: the authorization is still held (the
+ * ledger keeps it guarded) and the same request may ask again. A charge is
+ * declined `payment_expired` and its order takes charges again, unless a
+ * payment of the same gateway, kind and amount landed on the order since it
+ * was sent (its fact named no reference this journal knew): then it closes
+ * as that payment. A fact arriving later is still applied once by the
+ * kernel; one the order no longer owes goes to manual reconciliation, never
+ * a second credit.
+ */
+async function expireCommand(db: Database, row: AttemptRow): Promise<boolean> {
+  const kind = commandKindOf(row.attemptKey)!;
+  if (kind !== "charge") {
+    return closeCommandAttempt(db, row, "failed", { error: "The provider did not settle this request within three days; send it again to ask." });
+  }
+  const landed = await db.select({ id: orderPayments.id, status: orderPayments.status, providerRef: orderPayments.providerRef })
+    .from(orderPayments)
+    .where(and(
+      eq(orderPayments.orderId, row.orderId),
+      eq(orderPayments.paymentMethod, row.gateway),
+      eq(orderPayments.paymentType, row.paymentType),
+      eq(orderPayments.amountMinor, row.amountMinor),
+      inArray(orderPayments.status, [PaymentRecordStatus.SUCCEEDED, PaymentRecordStatus.REFUNDED, PaymentRecordStatus.AUTHORIZED]),
+      sql`${orderPayments.createdAt} >= ${Number(row.createdAt)}`,
+    ))
+    .get();
+  const verdict = landed ? commandOutcomeFromLedger("charge", landed.status) : null;
+  const outcome = verdict && landed
+    ? commandOutcomeOf(row, verdict, landed, landed.providerRef)
+    : commandOutcomeOf(row, {
+      outcome: "declined",
+      declineReason: "The provider did not settle this payment within three days; nothing was credited. Read the order before charging again.",
+      declineCode: "payment_expired",
+    }, null, row.providerSessionId);
+  return closeCommandAttempt(db, row, "created", { outcome, error: outcome.declineReason });
 }

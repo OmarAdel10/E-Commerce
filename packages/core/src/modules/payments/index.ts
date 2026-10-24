@@ -77,12 +77,18 @@ export {
 export {
   captureAuthorizedPayment,
   chargeSavedPaymentMethod,
+  duePaymentCommandProbes,
+  listDuePaymentCommands,
+  reconcilePaymentCommand,
   voidAuthorizedPayment,
   type AppliedPaymentEventStatus,
   type ApplyProviderPaymentEvent,
   type ChargeSavedPaymentMethodInput,
+  type PaymentCommandDeps,
+  type PaymentCommandSweepOutcome,
   type SavedMethodPaymentOutcome,
 } from "./saved-method-charges";
+export { COMMAND_EXPIRY_SECONDS, convergePaymentCommands } from "./command-attempts";
 export type {
   ComputedOrderPaymentState,
   ComputePaymentStateInput,
