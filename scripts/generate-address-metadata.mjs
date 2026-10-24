@@ -59,9 +59,32 @@ const titleCase = (value) => value.toLowerCase().replace(/(^|[\s'-])(\p{L})/gu, 
 /** `map.put("XX", "..." + "...")` entries of RegionDataConstants.java. */
 export function parseJavaConstants(text) {
   const out = {};
-  for (const match of text.matchAll(/map\.put\(\s*"([A-Z]{2})",\s*((?:"(?:[^"\\]|\\.)*"\s*\+?\s*)+)\);/g)) {
-    const json = [...match[2].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((part) => JSON.parse(`"${part[1]}"`)).join("");
-    out[match[1]] = JSON.parse(json);
+  const entries = /map\.put\(\s*"([A-Z]{2})",\s*/g;
+  let match;
+  while ((match = entries.exec(text)) !== null) {
+    let cursor = entries.lastIndex;
+    const literals = [];
+    // Scan each literal once: repeated quotes/whitespace in an incomplete entry
+    // must not make the parser backtrack over possible string boundaries.
+    while (text[cursor] === '"') {
+      const start = cursor++;
+      while (cursor < text.length && text[cursor] !== '"') {
+        cursor += text[cursor] === "\\" ? 2 : 1;
+      }
+      if (cursor >= text.length) break;
+      literals.push(text.slice(start, ++cursor));
+      while (cursor < text.length && /\s/.test(text[cursor])) cursor++;
+      if (text[cursor] === "+") {
+        cursor++;
+        while (cursor < text.length && /\s/.test(text[cursor])) cursor++;
+      }
+    }
+    if (literals.length > 0 && text.startsWith(");", cursor)) {
+      out[match[1]] = JSON.parse(literals.map((literal) => JSON.parse(literal)).join(""));
+      cursor += 2;
+    }
+    // Even malformed entries advance: do not rescan their already-read body.
+    entries.lastIndex = cursor;
   }
   return out;
 }
@@ -69,9 +92,28 @@ export function parseJavaConstants(text) {
 /** `{"XX", "{" R"(...)" ... "}"}` entries of region_metadata_constants.cc. */
 export function parseCppConstants(text) {
   const out = {};
-  for (const match of text.matchAll(/\{"([A-Z]{2})", "\{"\s*((?:R"\((?:[^)]|\)(?!"))*\)"\s*)*)"\}"\}/g)) {
-    const body = [...match[2].matchAll(/R"\(((?:[^)]|\)(?!"))*)\)"/g)].map((part) => part[1]).join("");
-    out[match[1]] = JSON.parse(`{${body}}`);
+  const entries = /\{"([A-Z]{2})", "\{"\s*/g;
+  let match;
+  while ((match = entries.exec(text)) !== null) {
+    let cursor = entries.lastIndex;
+    const parts = [];
+    while (text.startsWith('R"(', cursor)) {
+      const start = cursor + 3;
+      const end = text.indexOf(')"', start);
+      if (end < 0) {
+        cursor = text.length;
+        break;
+      }
+      parts.push(text.slice(start, end));
+      cursor = end + 2;
+      while (cursor < text.length && /\s/.test(text[cursor])) cursor++;
+    }
+    if (text.startsWith('"}"}', cursor)) {
+      out[match[1]] = JSON.parse(`{${parts.join("")}}`);
+      cursor += 4;
+    }
+    // An incomplete raw string may contain more entry prefixes; scan it once.
+    entries.lastIndex = cursor;
   }
   return out;
 }
