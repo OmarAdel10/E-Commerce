@@ -222,6 +222,56 @@ export interface RemoveCustomerPaymentMethodInput {
 }
 
 /**
+ * A detach the provider did not confirm. `code` is a short identifier
+ * (`provider_unavailable` when the gateway's credentials cannot reach it,
+ * else the provider's error code) and the message names only the gateway;
+ * `declinedReason` is the provider's own words when it refused for good.
+ */
+export class SavedMethodDetachError extends Error {
+  constructor(
+    readonly code: string,
+    readonly label: string,
+    readonly declinedReason: string | null = null,
+  ) {
+    super(`${label} did not detach the payment method (${code}).`);
+    this.name = "SavedMethodDetachError";
+  }
+}
+
+/**
+ * Detach a kept method at its provider (`deleteSavedMethod`) under the one
+ * key every removal of it sends, `delete:<method id>`, so a staff removal, a
+ * buyer's and an erasure repeat one request. Resolves when nothing is left
+ * there: detached, already unknown to the provider (`not_found`), or a
+ * gateway that is gone or never kept methods. Throws `SavedMethodDetachError`
+ * to retry later.
+ */
+export async function detachSavedPaymentMethod(
+  db: Database,
+  input: {
+    method: { id: string; providerId: string; ref: string };
+    providers: PaymentProvidersSource;
+    encryptionKey: string | undefined;
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  const { method } = input;
+  const gateway = (await paymentProvidersFor(input.providers, method.providerId)).get(method.providerId);
+  if (!gateway?.deleteSavedMethod || !gatewayHasCapability(gateway, "vault")) return;
+  const settings = await gateway.loadSettings(db, input.encryptionKey);
+  if (!canOperateExistingPayments(gateway, settings)) throw new SavedMethodDetachError("provider_unavailable", gateway.label);
+  try {
+    await gateway.deleteSavedMethod(
+      { ref: method.ref, idempotencyKey: `delete:${method.id}` },
+      { settings, signal: input.signal ?? AbortSignal.timeout(12_000) },
+    );
+  } catch (error) {
+    const failure = providerErrorOf(error);
+    throw new SavedMethodDetachError(failure?.code ?? "provider_failed", gateway.label, failure?.category === "declined" ? failure.message : null);
+  }
+}
+
+/**
  * Remove a saved method: detach it at the provider when the gateway can
  * (`deleteSavedMethod`), then mark it `removed`. A provider that refuses or
  * cannot be reached keeps it active (retry later, nothing is lost); a
@@ -237,23 +287,20 @@ export async function removeCustomerPaymentMethod(
   const { providerMethodRef, ...view } = method;
   if (method.status === "removed") return view;
 
-  const providers = await paymentProvidersFor(input.providers, method.providerId);
-  const gateway = providers.get(method.providerId);
-  if (gateway?.deleteSavedMethod && gatewayHasCapability(gateway, "vault")) {
-    const settings = await gateway.loadSettings(db, input.encryptionKey);
-    if (!canOperateExistingPayments(gateway, settings)) {
-      throw new ServiceUnavailableError(`${gateway.label} cannot be reached to remove the payment method. Try again later.`);
+  try {
+    await detachSavedPaymentMethod(db, {
+      method: { id: method.id, providerId: method.providerId, ref: providerMethodRef },
+      providers: input.providers,
+      encryptionKey: input.encryptionKey,
+      signal: input.signal,
+    });
+  } catch (error) {
+    if (!(error instanceof SavedMethodDetachError)) throw error;
+    if (error.code === "provider_unavailable") {
+      throw new ServiceUnavailableError(`${error.label} cannot be reached to remove the payment method. Try again later.`);
     }
-    try {
-      await gateway.deleteSavedMethod(
-        { ref: providerMethodRef, idempotencyKey: `delete:${method.id}` },
-        { settings, signal: input.signal ?? AbortSignal.timeout(12_000) },
-      );
-    } catch (error) {
-      const failure = providerErrorOf(error);
-      if (failure?.category === "declined") throw new ValidationError(failure.message);
-      throw new ServiceUnavailableError(`${gateway.label} did not confirm removing the payment method. Try again later.`);
-    }
+    if (error.declinedReason) throw new ValidationError(error.declinedReason);
+    throw new ServiceUnavailableError(`${error.label} did not confirm removing the payment method. Try again later.`);
   }
   await db.update(customerPaymentMethods)
     .set({ status: "removed", updatedAt: sql`unixepoch()` })

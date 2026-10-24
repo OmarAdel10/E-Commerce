@@ -66,6 +66,8 @@ export { processPaymentAuthorized, releaseAuthorization } from "./process-paymen
 export {
   buildSavedPaymentMethodUpsert,
   CUSTOMER_PAYMENT_METHODS_LIST_LIMIT,
+  detachSavedPaymentMethod,
+  SavedMethodDetachError,
   listCustomerPaymentMethods,
   readSavedPaymentMethodOwner,
   removeCustomerPaymentMethod,

@@ -349,9 +349,10 @@ export interface ErasureProviderDetacher {
    * Detaches one saved method at its provider. Resolves when nothing is left
    * to detach there (deleted, unknown to the provider, or a gateway that no
    * longer exists or never kept methods); throws to retry later. The thrown
-   * error's `code` (a short identifier) is recorded, never its message.
+   * error's `code` (a short identifier) is recorded, never its message. It
+   * sends the key every removal of the method sends (`delete:<method id>`).
    */
-  detach(method: { providerId: string; ref: string; idempotencyKey: string }): Promise<void>;
+  detach(method: { methodId: string; providerId: string; ref: string }): Promise<void>;
 }
 
 export interface ErasureEffects {
@@ -463,10 +464,9 @@ export async function drainCustomerErasureTasks(
   for (const method of methods) {
     try {
       await effects.detacher.detach({
+        methodId: method.id.slice("method:".length),
         providerId: method.providerId!,
         ref: method.ref,
-        // The key a staff or buyer removal of the same method sends (`delete:<method id>`).
-        idempotencyKey: `delete:${method.id.slice("method:".length)}`,
       });
       detached.push(method.id);
     } catch (error) {

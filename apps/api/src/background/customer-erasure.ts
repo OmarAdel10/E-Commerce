@@ -8,42 +8,24 @@ import { getCredentialEncryptionKey } from "../utils/encryption-key";
 import { appPaymentProvidersLoader } from "../plugins/providers/payment";
 import { afterResponse, executionContextOf, type BackgroundCaller } from "./after-response";
 
-/** A short, stable failure code for the task row; never the provider's text. */
-class DetachRetry extends Error {
-  constructor(readonly code: string) {
-    super(code);
-    this.name = "DetachRetry";
-  }
-}
-
 /**
- * Detaches a saved method at its provider, as a staff or buyer removal does
- * (`removeCustomerPaymentMethod`): a gateway that is gone or never kept
- * methods has nothing to detach; one that cannot be reached, or does not
- * confirm, is retried later.
+ * Detaches a saved method at its provider with the payments module's one
+ * detach (`detachSavedPaymentMethod`, the key a staff or buyer removal
+ * sends): a gateway that is gone or never kept methods has nothing to
+ * detach; one that cannot be reached, or does not confirm, throws its short
+ * `code` and the task retries later.
  */
 export function erasureDetacher(env: Env, db: Database, ctx?: ExecutionContext) {
   const providers = appPaymentProvidersLoader(env, db, ctx);
   const encryptionKey = getCredentialEncryptionKey(env as unknown as Record<string, unknown>);
   return {
-    async detach(method: { providerId: string; ref: string; idempotencyKey: string }): Promise<void> {
-      const { gatewayHasCapability, paymentProvidersFor } = await import("@scalius/core/modules/payments");
-      const { providerErrorOf } = await import("@scalius/shared/plugins/providers/kinds");
-      const gateway = (await paymentProvidersFor(providers, method.providerId)).get(method.providerId);
-      if (!gateway?.deleteSavedMethod || !gatewayHasCapability(gateway, "vault")) return;
-      const settings = await gateway.loadSettings(db, encryptionKey);
-      if (!settings || settings.credentialErrors?.length || !gateway.canVerify(settings)) {
-        throw new DetachRetry("provider_unavailable");
-      }
-      try {
-        // `not_found` is an answer too: the provider already let it go.
-        await gateway.deleteSavedMethod(
-          { ref: method.ref, idempotencyKey: method.idempotencyKey },
-          { settings, signal: AbortSignal.timeout(12_000) },
-        );
-      } catch (error) {
-        throw new DetachRetry(providerErrorOf(error)?.code ?? "provider_failed");
-      }
+    async detach(method: { methodId: string; providerId: string; ref: string }): Promise<void> {
+      const { detachSavedPaymentMethod } = await import("@scalius/core/modules/payments");
+      await detachSavedPaymentMethod(db, {
+        method: { id: method.methodId, providerId: method.providerId, ref: method.ref },
+        providers,
+        encryptionKey,
+      });
     },
   };
 }
