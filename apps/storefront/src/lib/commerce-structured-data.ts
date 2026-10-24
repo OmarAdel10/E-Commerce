@@ -103,11 +103,11 @@ export function toHttpUrl(value: string | null | undefined): string | null {
   }
 }
 
-export function normalizeSchemaCountryCode(value: string | null | undefined): string {
+export function normalizeSchemaCountryCode(value: string | null | undefined): string | null {
   const normalized = cleanString(value)?.toLowerCase();
-  if (!normalized) return "BD";
+  if (!normalized) return null;
   if (normalized === "bd" || normalized === "bangladesh") return "BD";
-  return cleanString(value) ?? "BD";
+  return cleanString(value);
 }
 
 function normalizeReturnPolicyCountryCode(
@@ -116,7 +116,7 @@ function normalizeReturnPolicyCountryCode(
   const trimmed = cleanString(value);
   if (!trimmed) return null;
 
-  const normalized = normalizeSchemaCountryCode(trimmed).toUpperCase();
+  const normalized = normalizeSchemaCountryCode(trimmed)?.toUpperCase() ?? "";
   return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
 }
 
@@ -283,7 +283,7 @@ function buildPostalAddress(business: StorefrontBusinessInfo | null | undefined)
     ...(addressLocality ? { addressLocality } : {}),
     ...(addressRegion ? { addressRegion } : {}),
     ...(postalCode ? { postalCode } : {}),
-    addressCountry,
+    ...(addressCountry ? { addressCountry } : {}),
   };
 }
 
@@ -309,6 +309,7 @@ export function buildOnlineStoreJsonLd({
   const email = cleanString(business?.email);
   const taxID = cleanString(business?.taxId);
   const address = buildPostalAddress(business);
+  const areaServed = normalizeSchemaCountryCode(business?.country);
   const sameAs = (social ?? [])
     .map((item) => toHttpUrl(item.url))
     .filter((url): url is string => Boolean(url));
@@ -333,7 +334,7 @@ export function buildOnlineStoreJsonLd({
             contactType: "customer service",
             ...(telephone ? { telephone } : {}),
             ...(email ? { email } : {}),
-            areaServed: normalizeSchemaCountryCode(business?.country),
+            ...(areaServed ? { areaServed } : {}),
           },
         }
       : {}),

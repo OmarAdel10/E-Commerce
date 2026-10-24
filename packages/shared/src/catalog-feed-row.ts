@@ -558,7 +558,8 @@ function buildRow(
     pricing,
     brand,
     gtin,
-    identifierExists: !brand && !gtin ? "no" : null,
+    // Missing catalog data is not a merchant assertion that identifiers do not exist.
+    identifierExists: null,
     itemGroupId,
     itemGroupTitle: variant
       ? product.name.trim().slice(0, 150) || product.name

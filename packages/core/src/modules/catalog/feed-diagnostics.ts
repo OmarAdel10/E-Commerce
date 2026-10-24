@@ -2,13 +2,9 @@ import { products, productVariants } from "@scalius/database/schema";
 import { chunkForD1, type Database, D1_ID_CHUNK_SIZE } from "@scalius/database/client";
 import type { SeoDiscoverySettings } from "@scalius/shared/seo-discovery";
 import { defaultPriceIncrementMinor } from "@scalius/shared/currency-policy";
-import {
-    calculateCatalogFeedDiscountedAmount,
-    isPositiveCatalogFeedAmount,
-} from "@scalius/shared/catalog-feed-money";
+import { projectCatalogFeedRows, type CatalogFeedProductInput, type CatalogFeedOmissionReason } from "@scalius/shared/catalog-feed-row";
 import {
     normalizeCatalogDiscoveryBaseUrl,
-    resolveCatalogDiscoveryImageUrl,
 } from "@scalius/shared/catalog-discovery-media";
 import { and, desc, inArray, isNull, sql } from "drizzle-orm";
 import { GOOGLE_CHANNEL_ID, ONLINE_STORE_CHANNEL_ID, type CatalogChannelId } from "@scalius/shared/sales-channels";
@@ -16,9 +12,11 @@ import {
   channelOnHandSql,
   loadProductMediaProjections,
   presentCatalogPrice,
+  publicProductHasBuyerResolvableSku,
   productPublishedToChannelSql,
   readStoreDecimalPlaces,
   resolveProductImageRepresentation,
+  resolveSkuImageRepresentation,
   salesChannelActiveSql,
 } from "../products";
 
@@ -88,6 +86,8 @@ export interface ProductFeedDiagnosticScanProduct {
     /** Published to the online store, where a feed row links (else unpublished). */
     publishedToOnlineStore: boolean;
     deletedAt: number | null;
+    /** The feed's SQL predicate checks live option definitions, values and assignments together. */
+    hasBuyerResolvableSku: boolean;
     /** Gift cards never enter the merchant feeds. Omitted means false. */
     isGiftCard?: boolean;
     price: number;
@@ -107,6 +107,8 @@ export interface ProductFeedDiagnosticScanVariant {
     price: number;
     /** Only physical SKUs enter the merchant feeds. Omitted means physical. */
     fulfillmentKind?: string;
+    imageId?: string | null;
+    imageUrl?: string | null;
     discountType: string | null;
     discountPercentage: number | null;
     discountAmount: number | null;
@@ -211,69 +213,18 @@ function isVariantAvailable(variant: ProductFeedDiagnosticScanVariant): boolean 
     return !variant.trackInventory || variant.stock - variant.reservedStock > 0;
 }
 
-function hasSavedDiscount(value: {
-    discountType: string | null;
-    discountPercentage: number | null;
-    discountAmount: number | null;
-}): boolean {
-    return (
-        value.discountType === "percentage" &&
-        (value.discountPercentage ?? 0) > 0
-    ) || (
-        value.discountType === "flat" &&
-        (value.discountAmount ?? 0) > 0
-    );
-}
-
-function getProductFeedPricing(
-    product: ProductFeedDiagnosticScanProduct,
-    currencyCode: string,
-    priceIncrementMinor: number,
-) {
-    return {
-        basePrice: product.price,
-        feedPrice: calculateCatalogFeedDiscountedAmount(
-            product.price,
-            product.discountType,
-            product.discountPercentage,
-            product.discountAmount,
-            currencyCode,
-            priceIncrementMinor,
-        ),
-    };
-}
-
-function getVariantFeedPricing(
-    product: ProductFeedDiagnosticScanProduct,
-    variant: ProductFeedDiagnosticScanVariant,
-    currencyCode: string,
-    priceIncrementMinor: number,
-): { basePrice: number; feedPrice: number } {
-    const basePrice = variant.price ?? product.price;
-    const discount = hasSavedDiscount(variant) ? variant : product;
-    return {
-        basePrice,
-        feedPrice: calculateCatalogFeedDiscountedAmount(
-            basePrice,
-            discount.discountType,
-            discount.discountPercentage,
-            discount.discountAmount,
-            currencyCode,
-            priceIncrementMinor,
-        ),
-    };
-}
-
-function hasPositiveFeedPricing(
-    pricing: { basePrice: number; feedPrice: number },
-    currencyCode: string,
-): boolean {
-    return isPositiveCatalogFeedAmount(pricing.basePrice, currencyCode) &&
-        isPositiveCatalogFeedAmount(pricing.feedPrice, currencyCode);
-}
-
-function hasValidFeedImage(imageUrl: string | null | undefined, storefrontBaseUrl: string): boolean {
-    return Boolean(resolveCatalogDiscoveryImageUrl(imageUrl, storefrontBaseUrl));
+/** The XML projection owns price, image, SKU-shape and availability decisions. */
+function diagnosticReason(reason: CatalogFeedOmissionReason): ProductFeedDiagnosticReason {
+    switch (reason) {
+        case "unavailable_product":
+        case "unavailable_variant": return "unavailable_excluded";
+        case "missing_image": return "missing_image";
+        case "non_positive_price": return "non_positive_price";
+        case "unresolved_variant_shape":
+        case "input_bounds_exceeded": return "inconsistent_option_axes";
+        case "excluded_from_product_feed": return "product_feed_excluded";
+        case "inactive_product": return "inactive_deleted_unpublished";
+    }
 }
 
 function finalReasonSummaries(
@@ -344,6 +295,14 @@ export function buildProductFeedDiagnosticsFromScan({
         }
 
         const topology = getBuyerTopology(physicalVariants);
+        // A non-empty combination key does not prove a complete live assignment.
+        // Read the same correlated SQL predicate used by feed pagination.
+        if (product.hasBuyerResolvableSku === false && topology.mode !== "none") {
+            recordIssue(product, "inconsistent_option_axes", feedsPolicy.variantStrategy === "products"
+                ? 1
+                : physicalVariants.filter(isBuyerOptionSku).length);
+            continue;
+        }
         const nonPhysicalOptionRows = productVariantsForProduct
             .filter((variant) => !isPhysicalSku(variant) && isBuyerOptionSku(variant)).length;
         if (topology.mode === "optioned" && nonPhysicalOptionRows > 0) {
@@ -368,60 +327,46 @@ export function buildProductFeedDiagnosticsFromScan({
             continue;
         }
 
-        const hasImage = absoluteStorefrontBaseUrl
-            ? hasValidFeedImage(primaryImageUrls.get(product.id), absoluteStorefrontBaseUrl)
-            : false;
-
-        if (feedsPolicy.variantStrategy === "products" || topology.mode === "simple") {
-            if (!hasPositiveFeedPricing(
-                getProductFeedPricing(product, currencyCode, priceIncrementMinor),
-                currencyCode,
-            )) {
-                recordIssue(product, "non_positive_price", 1);
-                continue;
-            }
-            const available =
-                topology.mode === "simple"
-                    ? isVariantAvailable(topology.variant)
-                    : topology.variants.some(isVariantAvailable);
-
-            if (!feedsPolicy.includeUnavailableProducts && !available) {
-                recordIssue(product, "unavailable_excluded", 1);
-                continue;
-            }
-            if (!absoluteStorefrontBaseUrl) {
-                recordIssue(product, "storefront_url_unavailable", 1);
-                continue;
-            }
-            if (!hasImage) {
-                recordIssue(product, "missing_image", 1);
-                continue;
-            }
-            emittedProductRows += 1;
-            continue;
+        const rowVariants = topology.mode === "simple" ? [topology.variant] : topology.variants;
+        const projectionProduct: CatalogFeedProductInput = {
+            ...product,
+            discountType: product.discountType === "flat" || product.discountType === "percentage"
+                ? product.discountType : null,
+            imageUrl: primaryImageUrls.get(product.id),
+            hasVariants: productVariantsForProduct.some(isBuyerOptionSku),
+            availableForSale: rowVariants.some(isVariantAvailable),
+            variants: physicalVariants.map((variant) => ({
+                ...variant,
+                // Feed enrichment clears stale options on a protected default SKU too.
+                optionCombinationKey: variant.isDefault ? null : variant.optionCombinationKey,
+                discountType: variant.discountType === "flat" || variant.discountType === "percentage"
+                    ? variant.discountType : null,
+            })),
+        };
+        // A missing store URL blocks output, but unavailable rows still get their
+        // useful policy reason. This origin is internal to the count-only projection;
+        // neither its URLs nor any row fields are exposed by diagnostics.
+        const projection = projectCatalogFeedRows({
+            products: [projectionProduct],
+            storefrontBaseUrl: absoluteStorefrontBaseUrl ?? "https://diagnostics.invalid",
+            currencyCode,
+            priceIncrementMinor,
+            policy: feedsPolicy,
+            maxReportedOmissions: 250,
+        });
+        for (const omission of projection.omissions) {
+            const reason = diagnosticReason(omission.reason);
+            recordIssue(product, !absoluteStorefrontBaseUrl && reason === "missing_image"
+                ? "storefront_url_unavailable" : reason, 1);
         }
-
-        for (const variant of topology.variants) {
-            if (!hasPositiveFeedPricing(
-                getVariantFeedPricing(product, variant, currencyCode, priceIncrementMinor),
-                currencyCode,
-            )) {
-                recordIssue(product, "non_positive_price", 1);
-                continue;
-            }
-            if (!feedsPolicy.includeUnavailableProducts && !isVariantAvailable(variant)) {
-                recordIssue(product, "unavailable_excluded", 1);
-                continue;
-            }
+        for (const row of projection.rows) {
             if (!absoluteStorefrontBaseUrl) {
                 recordIssue(product, "storefront_url_unavailable", 1);
-                continue;
+            } else if (row.kind === "variant") {
+                emittedVariantRows += 1;
+            } else {
+                emittedProductRows += 1;
             }
-            if (!hasImage) {
-                recordIssue(product, "missing_image", 1);
-                continue;
-            }
-            emittedVariantRows += 1;
         }
     }
 
@@ -481,6 +426,7 @@ export async function getProductFeedDiagnostics(
             name: products.name,
             slug: products.slug,
             isActive: products.isActive,
+            hasBuyerResolvableSku: publicProductHasBuyerResolvableSku(productId),
             publishedToChannel: sql<number>`(${productPublishedToChannelSql(productId, channel)} AND ${salesChannelActiveSql(channel)})`,
             publishedToOnlineStore: productPublishedToChannelSql(productId, ONLINE_STORE_CHANNEL_ID),
             isGiftCard: products.isGiftCard,
@@ -504,6 +450,7 @@ export async function getProductFeedDiagnostics(
             name: row.name,
             slug: row.slug,
             isActive: Boolean(row.isActive),
+            hasBuyerResolvableSku: Boolean(row.hasBuyerResolvableSku),
             publishedToChannel: Boolean(row.publishedToChannel),
             publishedToOnlineStore: Boolean(row.publishedToOnlineStore),
             isGiftCard: Boolean(row.isGiftCard),
@@ -546,11 +493,13 @@ export async function getProductFeedDiagnostics(
         discountBps: number;
         discountAmountMinor: number;
         fulfillmentKind: string;
+        imageId: string | null;
     }> = [];
     for (const productIdChunk of chunkForD1(productIds, D1_ID_CHUNK_SIZE)) {
         variantRows.push(...await db
             .select({
                 id: productVariants.id,
+                imageId: productVariants.imageId,
                 productId: productVariants.productId,
                 optionCombinationKey: productVariants.optionCombinationKey,
                 // The units the feed's channel sells (its linked locations' on-hand).
@@ -598,6 +547,8 @@ export async function getProductFeedDiagnostics(
             discountPercentage: price.discountPercentage,
             discountAmount: price.discountAmount,
             fulfillmentKind: row.fulfillmentKind,
+            imageId: row.imageId,
+            imageUrl: resolveSkuImageRepresentation(mediaMap.get(row.productId) ?? [], row.imageId)?.url ?? null,
         });
         variantMap.set(row.productId, productVariantsForProduct);
     }
