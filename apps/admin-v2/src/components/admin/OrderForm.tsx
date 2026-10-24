@@ -72,6 +72,7 @@ import { orderNeedsAddress } from "./order-form/order-line-properties";
 import { useDebounce } from "@/hooks/use-debounce";
 import { queryKeys } from "@/lib/query-keys";
 import { getServerFnError } from "@/lib/api-mutations/shared";
+import { readAdminApiErrorCode } from "@/lib/admin-api-error";
 import { isAdminApiRetryableReadError, readCheckoutRuleErrors, readManualOrderDiscountLimitError, readManualOrderItemIssues } from "@/lib/manual-order-errors";
 import { useCurrency } from "@/hooks/use-currency";
 import { getDecimalPlaces } from "@scalius/shared/currency";
@@ -616,17 +617,24 @@ function OrderEditor({
     try {
       const requestKey = createRequestKey.current ?? getOrCreateAdminOrderRequestKey();
       createRequestKey.current = requestKey;
+      // The total the summary shows: the order is created only at it.
+      const reviewed = manualQuote.isCurrent ? manualQuote.data as ApiResult<typeof postApiV1AdminOrdersQuote> | null : null;
       const result = await executeManualOrderCreateWithRecovery({
         requestKey,
         submit: (submittedRequestKey) => {
           rememberSubmittedAdminOrderRequestKey(submittedRequestKey);
-          return createMutation.mutateAsync(
-            toCreateOrderInput(enrichedValues, submittedRequestKey, initialBilling),
-          );
+          return createMutation.mutateAsync({
+            ...toCreateOrderInput(enrichedValues, submittedRequestKey, initialBilling),
+            ...(reviewed ? { expectedTotal: reviewed.totalAmount } : {}),
+          });
         },
         replaceRequestKey: replaceSubmittedAdminOrderRequestKey,
       });
       createRequestKey.current = result.requestKey;
+      if (result.outcome === "error" && readAdminApiErrorCode(result.error) === "manual_order_total_changed") {
+        void quoteQuery.refetch();
+        throw new SaveNotCompleted(t("totalChanged"));
+      }
 
       if (result.outcome === "created" || result.outcome === "open-existing") {
         clearAdminOrderRequestKey(result.requestKey);

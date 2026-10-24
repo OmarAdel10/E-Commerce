@@ -1891,6 +1891,16 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
     let submitAfterCustomerSessionCheck = false;
     let submitAfterCartValidation = false;
     let awaitingPhoneValidator = false;
+    // A press confirms the total it was made on. Checking the cart before the
+    // order re-prices it (a rate, a shipping profile, a price, a discount, tax
+    // or the rate of exchange may have changed since): a different total is
+    // shown and confirmed again, never placed (shipping-profiles QA D5).
+    let confirmedTotal = "";
+    let resubmitting = false;
+    const resubmit = () => {
+      resubmitting = true;
+      form.requestSubmit();
+    };
 
     // The order total rides on the phone summary bar and beside the button's
     // label ("Place order · ৳1,500"), as the summary shows it: an amount only,
@@ -1899,9 +1909,12 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
     const submitTotal = document.getElementById("submitButtonTotal");
     const summaryBarTotal = document.getElementById("orderSummaryToggleTotal");
     let submitShowsLabel = true;
+    // The total as the buyer last saw it beside Place order (an amount, never "Calculating…").
+    let lastShownTotal = "";
     const syncOrderTotal = () => {
       const text = totalNode?.textContent?.trim() ?? "";
       const amount = /\p{Nd}/u.test(text) ? text : "";
+      if (amount) lastShownTotal = amount;
       if (summaryBarTotal && summaryBarTotal.textContent !== amount) summaryBarTotal.textContent = amount;
       const amountSlot = submitTotal?.querySelector("[data-amount]");
       if (amountSlot && amountSlot.textContent !== amount) amountSlot.textContent = amount;
@@ -2053,6 +2066,11 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
     form.addEventListener(
       "submit",
       async (e) => {
+        if (!resubmitting) {
+          syncOrderTotal();
+          confirmedTotal = lastShownTotal;
+        }
+        resubmitting = false;
         clearCheckoutFormError();
         for (const control of document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[data-buyer-attribute]")) {
           if (!control.reportValidity()) { e.preventDefault(); return; }
@@ -2072,7 +2090,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
           await loadCheckoutPhoneValidator();
           awaitingPhoneValidator = false;
           restoreSubmitButton();
-          form.requestSubmit();
+          resubmit();
           return;
         }
         if (checkoutUnavailable) {
@@ -2123,7 +2141,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
 
           if (codOnly) {
             submitAfterCustomerSessionCheck = true;
-            form.requestSubmit();
+            resubmit();
             return;
           }
         }
@@ -2167,7 +2185,7 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
           await window.cartTotalsSettled?.();
           restoreSubmitButton();
           if (quoted()) {
-            form.requestSubmit();
+            resubmit();
             return;
           }
           // Still no total: said here, on the page the buyer is on.
@@ -2223,13 +2241,24 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
 
           if (codOnly) {
             submitAfterCartValidation = true;
-            form.requestSubmit();
+            resubmit();
             return;
           }
         }
 
         if (submitAfterCartValidation) {
           submitAfterCartValidation = false;
+        }
+
+        // The payment step's handoff waits for a total still on its way (cash posts only once quoted).
+        if (!codOnly) await window.cartTotalsSettled?.();
+        syncOrderTotal();
+        if (lastShownTotal !== confirmedTotal) {
+          // The summary already shows the new total; the next press confirms it.
+          e.preventDefault();
+          restoreSubmitButton();
+          showCheckoutFormError(checkoutCopy.totalChangedReviewText, submitButton);
+          return;
         }
 
         const attributesInput = document.getElementById("attributesInput") as HTMLInputElement | null;

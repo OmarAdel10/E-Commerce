@@ -17,7 +17,8 @@ import { generateOrderId } from "@scalius/shared/order-utils";
 import { normalizeOrderChannelSource } from "@scalius/shared/order-channel-source";
 import { nanoid } from "nanoid";
 import type { CreateOrderInput } from "../validation";
-import { ValidationError, ConflictError, ServiceUnavailableError } from "@scalius/core/errors";
+import { AppError, ValidationError, ConflictError, ServiceUnavailableError } from "@scalius/core/errors";
+import { fromMinor, toMinor } from "@scalius/shared/money";
 import { computeOrderPaymentState } from "../../payments";
 import { paymentMethodsDocument, validateCustomerPhoneCountry } from "../../settings";
 import {
@@ -37,6 +38,14 @@ import { commitOrder, type OrderCustomer } from "../commit-order";
 import type { OrderFacts, OrderLine } from "../types";
 import type { SQLiteBatchItem } from "./shared";
 import type { AppliedAppDiscount, ManualOrderAppFunctions } from "@scalius/shared/checkout-app-facts";
+
+/** The order would total something other than what staff reviewed; `details.totalAmount` is the new total. */
+export class ManualOrderTotalChangedError extends AppError {
+    constructor(totalAmount: number) {
+        super(409, "manual_order_total_changed", "The order total changed. Review the new total, then create the order again.", { totalAmount });
+        this.name = "ManualOrderTotalChangedError";
+    }
+}
 
 /** What this request committed (absent on a replay). */
 export interface ManualOrderCommitted {
@@ -168,6 +177,9 @@ export async function createManualOrder(
             channel: data.channel ?? "admin",
             salesChannelId,
         });
+        if (data.expectedTotal !== undefined && toMinor(data.expectedTotal, taxQuote.decimalPlaces) !== taxQuote.totalMinor) {
+            throw new ManualOrderTotalChangedError(fromMinor(taxQuote.totalMinor, taxQuote.decimalPlaces));
+        }
         if (requiresShipping && !data.shippingAddress?.trim()) {
             throw new ValidationError("Enter the delivery address, or choose a pickup method.");
         }

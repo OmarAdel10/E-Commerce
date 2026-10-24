@@ -197,6 +197,13 @@ export const createOrderObjectSchema = sellableOrderContentSchema.extend({
         via: z.enum(RECORDED_PAYMENT_VIAS),
         reference: z.string().trim().max(120).nullable().optional(),
     }).strict().optional(),
+    /**
+     * The total staff reviewed (the quote's `totalAmount`). When the order
+     * would total anything else (a price, a rate, a discount or tax changed
+     * since), it is refused with 409 `manual_order_total_changed` and nothing
+     * is created. Omitted: the order is placed at its current total.
+     */
+    expectedTotal: z.number().min(0).optional(),
 });
 
 /** Schema for creating a new order (POST /api/orders). */

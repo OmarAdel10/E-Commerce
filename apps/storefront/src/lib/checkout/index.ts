@@ -1791,7 +1791,8 @@ export async function initCheckoutPage(): Promise<void> {
   const existingRecovery = readHostedPaymentRecoverySession();
   if (existingRecovery && await recoverExistingCheckout(existingRecovery)) return;
   // The summary the buyer just reviewed, at once; the page's quote follows.
-  renderSummary(readReviewedCheckoutQuote(checkoutData!.expectedQuoteFingerprint), true);
+  const reviewed = readReviewedCheckoutQuote(checkoutData!.expectedQuoteFingerprint);
+  renderSummary(reviewed, true);
 
   try {
     const { quote, notice } = await fetchQuoteForCheckout();
@@ -1811,6 +1812,10 @@ export async function initCheckoutPage(): Promise<void> {
   renderSummary();
   await renderGateways();
   if (currentInitVersion !== initVersion) return;
+  // The cart page's total moved on the way here: the buyer pays only after seeing the new one.
+  if (reviewed && authoritativeTaxQuote && reviewed.totalMinor !== authoritativeTaxQuote.totalMinor) {
+    showError(checkoutCopy.totalChangedReviewText);
+  }
   applyQueuedGiftCard(true);
 
   const payBtn = document.getElementById("payButton");
