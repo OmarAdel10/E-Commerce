@@ -11,7 +11,7 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { LOCALES, setLocale, useLocale, useMessages } from "~/i18n";
 import { authMessages } from "~/i18n/auth";
-// See AppSidebar: bundled asset URLs are host-root and the prefix is runtime.
+// See layout/brand.tsx: bundled asset URLs are host-root and the prefix is runtime.
 import { withDashboardBasePath } from "~/lib/dashboard-base-path";
 
 export const Route = createFileRoute("/auth")({

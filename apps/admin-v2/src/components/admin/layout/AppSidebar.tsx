@@ -3,17 +3,16 @@ import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
 import type { UserMenuUser } from "@/components/auth/UserMenu";
-import markImg from "@/assets/favicon.png";
 import { InboxNavBadge } from "~/components/admin/inbox/InboxNavBadge";
 import { ReviewsNavBadge } from "~/components/admin/reviews/ReviewsNavBadge";
 import { useMediaQuery } from "~/hooks/use-media-query";
 import { useStorefrontUrl } from "~/hooks/use-storefront-url";
-import { withDashboardBasePath } from "~/lib/dashboard-base-path";
 import { useMessages } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import { SETTINGS_ITEM, activeNavChild, isSectionActive, matchesPath, type VisibleNavItem } from "./AdminNav";
 import { NAV_ICON_BUTTON, NAV_ROW, NAV_PANEL_QUERY } from "./nav-button";
 import { ariaKeys, comboCaps, SHORTCUTS } from "./shortcuts";
+import { Mark, Wordmark } from "./brand";
 import { ShellLink } from "./ShellLink";
 import { useShell } from "./shell";
 
@@ -32,10 +31,6 @@ interface SidebarProps {
 function historyIndex(state: unknown): number {
   const index = (state as { __TSR_index?: unknown } | null)?.__TSR_index;
   return typeof index === "number" ? index : 0;
-}
-
-function Mark() {
-  return <img src={withDashboardBasePath(markImg)} alt="" className="size-5" />;
 }
 
 interface TipState {
@@ -188,14 +183,25 @@ export function AppSidebar({ nav, user, showSettings }: SidebarProps) {
   );
 }
 
-/** The panel's top row, level with the top bar: the mark (home) and the collapse button, or Close in the phone drawer. */
+/**
+ * The panel's top row, level with the top bar: the wordmark (home), its letters
+ * starting in line with the section icons and lifted 4px (its arrow rises
+ * above the letters, so the letters, not the image, sit on the row's centre),
+ * and the collapse button, or Close in the phone drawer.
+ */
 function PanelTop({ onClose }: { onClose?: () => void }) {
   const t = useMessages(shellMessages);
   const { toggleCollapsed } = useShell();
   return (
     <div className="flex h-14 shrink-0 items-center justify-between px-2">
-      <ShellLink to="/admin" current={false} aria-label={t("home")} onClick={onClose} className={NAV_ICON_BUTTON}>
-        <Mark />
+      <ShellLink
+        to="/admin"
+        current={false}
+        aria-label={t("home")}
+        onClick={onClose}
+        className="flex h-11 items-center rounded-lg px-2 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring md:h-8"
+      >
+        <Wordmark />
       </ShellLink>
       {onClose ? (
         <button type="button" onClick={onClose} aria-label={t("closeMenu")} className={NAV_ICON_BUTTON}>
