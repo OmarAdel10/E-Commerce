@@ -50,13 +50,15 @@ import {
     MAX_FX_LOCK_MINUTES,
     MIN_FX_LOCK_MINUTES,
     marketCurrencyIncrementMinor,
+    isMarketFxRateFresh,
 } from "@scalius/shared/presentment";
 import { readStoreCurrency } from "./pricing";
-import { checkoutCopyFollowsDefaultWrites, ensureStoreLanguageWrites } from "../translations";
+import { checkoutCopyFollowsDefaultWrites, ensureStoreLanguageWrites, storeLanguageWriteError } from "../translations";
 
 type SQLiteBatchItem = BatchItem<"sqlite">;
 
 export const MARKET_REVISION_CONFLICT = "market_revision_conflict";
+const MARKET_TOTAL_LIMIT = "market_total_limit";
 
 export interface MarketPresenceRecord {
     value: string;
@@ -90,7 +92,7 @@ export interface MarketRecord {
     priceIncrementInherited: boolean;
     /** When its manual rate was last set; null without one. */
     fxRateAsOf: Date | null;
-    /** How long a placed order keeps its rate, in minutes. */
+    /** Minutes after placement an unpaid foreign-currency order may start a new buyer payment session; placed amounts never change. */
     fxLockMinutes: number;
     /** Whether its prices include tax (MARKETS-DESIGN D8): checkout and the order's tax snapshot read it. */
     pricesIncludeTax: boolean;
@@ -163,7 +165,7 @@ export interface MarketUpdate extends MarketPricingUpdate {
      * rate (`fxRate`) and prices in `fx` mode.
      */
     currencyCode?: string | null;
-    /** Minutes a placed order keeps its rate (5 to 1,440). */
+    /** Minutes after placement to begin a new buyer payment for an unpaid foreign-currency order (5 to 1,440). */
     fxLockMinutes?: number;
     /**
      * `manual` or an app FX provider id, for a market in its own currency.
@@ -171,6 +173,8 @@ export interface MarketUpdate extends MarketPricingUpdate {
      * rate as `fxRate` in the same update.
      */
     fxRateSource?: string;
+    /** Provider-observed epoch seconds, passed by the trusted app-rate reader with fxRate. */
+    fxRateAsOf?: number;
 }
 
 const KNOWN_COUNTRIES: ReadonlySet<string> = new Set(getCountries());
@@ -339,10 +343,12 @@ function collectErrorText(error: unknown, depth = 0): string {
 
 /** Database refusals a concurrent writer can still cause, as merchant-facing errors. */
 function marketWriteError(error: unknown): unknown {
+    error = storeLanguageWriteError(error);
     if (error instanceof AppError) return error;
     if (isBatchGuardError(error, MARKET_REVISION_CONFLICT)) {
         return new ConflictError("This market changed in another session. Reload it, then save again.");
     }
+    if (isBatchGuardError(error, MARKET_TOTAL_LIMIT)) return new ValidationError(`A store has at most ${MAX_MARKETS} markets.`);
     const text = collectErrorText(error);
     if (/markets_handle_unique|markets\.handle|lower\(trim\("?handle/i.test(text)) return new ConflictError("Another market uses this handle.");
     if (/market_countries/i.test(text) && /UNIQUE|PRIMARY|duplicate/i.test(text)) return new ConflictError("Each country belongs to one market. Another market took one of these countries.");
@@ -397,8 +403,6 @@ export async function createMarket(db: Database, input: MarketInput): Promise<Ma
     const countries = cleanCountries(input.countries);
     if (countries.length === 0) throw new ValidationError("Add at least one country to the market.");
     const presence = input.presence ? cleanPresence(input.presence) : null;
-    const [count] = await db.select({ n: sql<number>`count(*)` }).from(markets);
-    if (Number(count?.n ?? 0) >= MAX_MARKETS) throw new ValidationError(`A store has at most ${MAX_MARKETS} markets.`);
     await Promise.all([assertCountriesFree(db, countries, null), assertPresenceFree(db, presence, null)]);
     const handle = input.handle ? cleanHandle(input.handle) : await derivedHandle(db, name);
     const id = `mkt_${nanoid(16)}`;
@@ -408,10 +412,11 @@ export async function createMarket(db: Database, input: MarketInput): Promise<Ma
         : input.pricesIncludeTax;
     try {
         await safeBatch(db, [
+            buildBatchGuard(db, sql`(SELECT count(*) FROM ${markets}) < ${MAX_MARKETS}`, MARKET_TOTAL_LIMIT),
             db.insert(markets).values({ id, handle, name, status: input.status, isBackup: false, priceIncrementMinor: null, pricesIncludeTax, revision: 1 }),
             ...countryWrites(db, id, countries),
-            // The presence's language joins the store's languages (published) when it is new.
-            ...(presence ? ensureStoreLanguageWrites(db, [presence.locale]) : []),
+            // Draft presences never publish a language; activation makes it public.
+            ...(presence ? ensureStoreLanguageWrites(db, [presence.locale], { publish: input.status === "active" }) : []),
             ...(presence ? [db.insert(marketPresences).values({ id: `mkp_${nanoid(16)}`, marketId: id, kind: "subfolder", ...presence })] : []),
         ] as never);
     } catch (error) {
@@ -458,6 +463,12 @@ export async function updateMarket(
     const currency = cleanCurrency(current, update, currencyPolicy);
     const pricing = cleanPricing(current, update, currency);
     const fxRateSource = cleanFxRateSource(current, update, currency);
+    if (update.fxRateAsOf !== undefined && (
+        fxRateSource === MANUAL_FX_RATE_SOURCE_ID
+        || update.fxRate === undefined
+        || !Number.isSafeInteger(update.fxRateAsOf)
+        || !isMarketFxRateFresh({ fxSource: fxRateSource, fxAsOf: update.fxRateAsOf })
+    )) throw new ValidationError("The exchange rate app has not given a current rate. Try again.");
     if (update.fxLockMinutes !== undefined) {
         if (current.isBackup) throw new ValidationError("The backup market sells in the shop currency, so it locks no rate.");
         if (!Number.isSafeInteger(update.fxLockMinutes) || update.fxLockMinutes < MIN_FX_LOCK_MINUTES || update.fxLockMinutes > MAX_FX_LOCK_MINUTES) {
@@ -486,11 +497,15 @@ export async function updateMarket(
                 await assertPresenceFree(db, presence, id);
                 writes.push(db.delete(marketPresences).where(and(eq(marketPresences.marketId, id), eq(marketPresences.kind, "subfolder"))));
                 if (presence) {
-                    writes.push(...ensureStoreLanguageWrites(db, [presence.locale]));
+                    writes.push(...ensureStoreLanguageWrites(db, [presence.locale], { publish: status === "active" }));
                     writes.push(db.insert(marketPresences).values({ id: `mkp_${nanoid(16)}`, marketId: id, kind: "subfolder", ...presence }));
                 }
             }
         }
+    }
+    if (!current.isBackup && current.status !== "active" && status === "active") {
+        const presence = update.presence === undefined ? current.presence : update.presence;
+        if (presence) writes.push(...ensureStoreLanguageWrites(db, [presence.locale], { publish: true }));
     }
     if (update.countries !== undefined) {
         await assertCountriesFree(db, countries, id);
@@ -505,7 +520,9 @@ export async function updateMarket(
         ...pricing,
         ...(currency.changed ? { currencyCode: currency.own ? currency.code : null } : {}),
         // The rate's as-of time: a new manual rate is set now.
-        ...("fxRate" in pricing && pricing.fxRate !== current.fxRate ? { fxRateAsOf: pricing.fxRate === null ? null : sql`unixepoch()` } : {}),
+        ...(update.fxRateAsOf !== undefined
+            ? { fxRateAsOf: update.fxRateAsOf }
+            : "fxRate" in pricing && pricing.fxRate !== current.fxRate ? { fxRateAsOf: pricing.fxRate === null ? null : sql`unixepoch()` } : {}),
         ...(update.fxLockMinutes === undefined ? {} : { fxLockMinutes: update.fxLockMinutes }),
         ...(fxRateSource === current.fxRateSource ? {} : { fxRateSource }),
         revision: sql`${markets.revision} + 1`,

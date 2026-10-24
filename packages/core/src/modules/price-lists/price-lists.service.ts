@@ -1,6 +1,6 @@
 // Price lists (MARKETS-DESIGN D5): the dashboard aggregate. A list is its row
 // and its prices, written under one monotonic revision. The database keeps
-// the invariants that must never break (market and sale lists off the backup
+// the invariants that must never break (market, sale and override lists off the backup
 // market, a segment for every segment list, positive prices, compare-at above
 // the amount, one row per SKU, currency and quantity break); this service
 // turns them into merchant-facing errors, keeps the limits and enters every
@@ -40,6 +40,7 @@ import { getDecimalPlaces } from "@scalius/shared/currency";
 type SQLiteBatchItem = BatchItem<"sqlite">;
 
 export const PRICE_LIST_REVISION_CONFLICT = "price_list_revision_conflict";
+const PRICE_LIST_TOTAL_LIMIT = "price_list_total_limit";
 
 /** What a list does now: its status read with its schedule. */
 export type PriceListState = "draft" | "scheduled" | "active" | "expired";
@@ -370,7 +371,7 @@ async function assertMarketAndSegment(db: Database, kind: PriceListKind, marketI
     const market = await db.select({ isBackup: markets.isBackup }).from(markets).where(eq(markets.id, marketId)).get();
     if (!market) throw new ValidationError("Choose a market for the price list.");
     if (kind !== "segment" && market.isBackup) {
-        throw new ValidationError("The backup market sells at your product prices. Market and sale price lists are for your other markets; use a customer segment list for wholesale prices here.");
+        throw new ValidationError("The backup market sells at your product prices. Market, sale and override price lists are for your other markets; use a customer segment list for wholesale prices here.");
     }
     if (kind === "segment") {
         if (!segmentId) throw new ValidationError("Choose the customer segment this price list is for.");
@@ -396,8 +397,9 @@ function priceListWriteError(error: unknown): unknown {
     if (isBatchGuardError(error, PRICE_LIST_REVISION_CONFLICT)) {
         return new ConflictError("This price list changed in another session. Reload it, then save again.");
     }
+    if (isBatchGuardError(error, PRICE_LIST_TOTAL_LIMIT)) return new ValidationError(`A store has at most ${MAX_PRICE_LISTS} price lists.`);
     const text = collectErrorText(error);
-    if (/PRICE_LIST_BACKUP_MARKET/.test(text)) return new ValidationError("Market and sale price lists are for markets other than the backup market.");
+    if (/PRICE_LIST_BACKUP_MARKET/.test(text)) return new ValidationError("Market, sale and override price lists are for markets other than the backup market.");
     if (/FOREIGN KEY|foreign key/i.test(text)) return new ConflictError("A market, segment or product of this price list was removed. Reload and try again.");
     if (/price_list_prices/i.test(text) && /UNIQUE|PRIMARY|duplicate/i.test(text)) return new ConflictError("A product has two prices for the same quantity.");
     return error;
@@ -425,23 +427,24 @@ export async function createPriceList(db: Database, input: PriceListInput): Prom
     cleanSchedule(startsAt, endsAt);
     const segmentId = input.kind === "segment" ? input.segmentId ?? null : input.segmentId ?? null;
     await assertMarketAndSegment(db, input.kind, input.marketId, segmentId);
-    const [count] = await db.select({ n: sql<number>`count(*)` }).from(priceLists);
-    if (Number(count?.n ?? 0) >= MAX_PRICE_LISTS) throw new ValidationError(`A store has at most ${MAX_PRICE_LISTS} price lists.`);
     const id = `pl_${nanoid(16)}`;
     try {
-        await db.insert(priceLists).values({
-            id,
-            name,
-            description,
-            kind: input.kind,
-            marketId: input.marketId,
-            segmentId,
-            status: input.status ?? "draft",
-            startsAt,
-            endsAt,
-            priority,
-            revision: 1,
-        });
+        await safeBatch(db, [
+            buildBatchGuard(db, sql`(SELECT count(*) FROM ${priceLists}) < ${MAX_PRICE_LISTS}`, PRICE_LIST_TOTAL_LIMIT),
+            db.insert(priceLists).values({
+                id,
+                name,
+                description,
+                kind: input.kind,
+                marketId: input.marketId,
+                segmentId,
+                status: input.status ?? "draft",
+                startsAt,
+                endsAt,
+                priority,
+                revision: 1,
+            }),
+        ] as never);
     } catch (error) {
         throw priceListWriteError(error);
     }
