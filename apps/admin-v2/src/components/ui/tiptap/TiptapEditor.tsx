@@ -229,7 +229,7 @@ export function TiptapEditor({
       aria-labelledby={isFullscreen ? fullscreenTitleId : undefined}
       className={cn(
         "flex w-full min-w-0 flex-col bg-card",
-        isFullscreen ? "fixed inset-0 z-[9999] h-dvh" : "overflow-hidden rounded-xl border border-input",
+        isFullscreen ? "fixed inset-0 z-[9999] h-dvh" : "overflow-hidden rounded-xl border border-input focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
         !isFullscreen && className,
       )}
     >

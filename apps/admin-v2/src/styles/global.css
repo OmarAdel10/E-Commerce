@@ -854,9 +854,33 @@ body.editor-fullscreen-active [data-slot="dialog-content"] {
   }
 }
 
-/* Keep the keyboard ring above utility resets; inset keeps it visible inside
-   clipped cards, scroll regions and full-width menu items. */
-:focus-visible {
+/* One keyboard ring for every control, as on the storefront: unlayered, so it
+   stays above utility resets; inset, so it shows inside clipped cards, scroll
+   regions and full-width menu items. Text fields are left out: :focus-visible
+   also matches them on a click, and they draw their own focus (the field's
+   border and ring, or the open picker or palette they sit in), so the browser
+   blue never doubles it. */
+:where(
+    a,
+    button,
+    summary,
+    select,
+    [tabindex]:not([tabindex="-1"]),
+    [role="button"],
+    [role="switch"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="tab"],
+    [role="option"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="treeitem"],
+    [role="gridcell"],
+    [role="slider"],
+    [role="combobox"]:not(input),
+    input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="button"], [type="submit"], [type="reset"])
+  ):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
