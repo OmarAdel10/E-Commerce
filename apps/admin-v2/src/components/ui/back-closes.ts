@@ -1,3 +1,5 @@
+import type { RouterHistory } from "@tanstack/react-router";
+
 /*
  * Back (the browser's button, Android's back gesture) closes the open modal
  * overlay instead of changing the page under it: the navigation drawer, the
@@ -31,6 +33,27 @@ let markedState: unknown = null;
 let leaving = false;
 let release = 0;
 let restore: (() => void) | null = null;
+let routerHistory: RouterHistory | undefined;
+let unsubscribe: (() => void) | undefined;
+let reconcile = 0;
+
+/** A blocked traversal changes the browser address before the router accepts it. */
+function onAcceptedPage(): boolean {
+  if (!routerHistory) return true;
+  const current = routerHistory.location;
+  return current.href === location.pathname + location.search + location.hash &&
+    historyKey(current.state) === historyKey(history.state);
+}
+
+function scheduleSync() {
+  window.clearTimeout(reconcile);
+  reconcile = window.setTimeout(sync);
+}
+
+function historyKey(state: unknown): unknown {
+  const value = state as { __TSR_key?: unknown; key?: unknown } | null;
+  return value?.__TSR_key ?? value?.key;
+}
 
 /** While the entry is current, the app's own history calls must step over it. */
 function patch() {
@@ -45,7 +68,7 @@ function patch() {
   const patchedPush: History["pushState"] = (data, unused, url) => {
     unmark();
     history.replaceState(data, unused, url);
-    window.setTimeout(() => open > 0 && mark());
+    scheduleSync();
   };
   const patchedReplace: History["replaceState"] = (data, unused, url) => {
     replaceState.call(history, data, unused, url);
@@ -63,7 +86,10 @@ function patch() {
 }
 
 function mark() {
-  if (marked) return;
+  // Pushing at a proposed Back destination would erase the forward entry a
+  // dirty editor needs when the merchant chooses Stay. The router owns that
+  // decision; only its accepted page may acquire an overlay entry.
+  if (marked || leaving || !onAcceptedPage()) return;
   History.prototype.pushState.call(history, history.state, "");
   marked = true;
   markedHref = location.href;
@@ -93,17 +119,21 @@ function onPopState(event: PopStateEvent) {
     event.stopImmediatePropagation();
     return;
   }
-  if (!marked) return;
+  if (!marked) {
+    // A cancelled page traversal is restored by a later native popstate.
+    scheduleSync();
+    return;
+  }
   unmark();
   // A multi-step jump to another page is the router's; the overlay stays.
-  if (location.href !== markedHref) {
-    window.setTimeout(() => open > 0 && mark());
+  if (location.href !== markedHref || historyKey(history.state) !== historyKey(markedState)) {
+    scheduleSync();
     return;
   }
   event.stopImmediatePropagation();
   closeTop();
   // Still open (Escape refused, or another overlay below): Back closes it next time.
-  window.setTimeout(() => open > 0 && mark());
+  scheduleSync();
 }
 
 /**
@@ -139,8 +169,12 @@ let watching: MutationObserver | null = null;
  * their portals come and go. The capture listener runs before the router's,
  * so a Back that only closes an overlay never reaches it.
  */
-export function watchOverlaysForBack(): void {
+export function watchOverlaysForBack(routeHistory?: RouterHistory): void {
   if (watching) return;
+  routerHistory = routeHistory;
+  // Successful navigation and a rejected traversal both notify. A rejected
+  // traversal still waits for its restoring popstate before onAcceptedPage.
+  unsubscribe = routeHistory?.subscribe(scheduleSync);
   window.addEventListener("popstate", onPopState, { capture: true });
   watching = new MutationObserver(sync);
   watching.observe(document.body, { childList: true });
@@ -153,6 +187,10 @@ export function resetBackClosesForTest() {
   watching = null;
   window.removeEventListener("popstate", onPopState, { capture: true });
   window.clearTimeout(release);
+  window.clearTimeout(reconcile);
+  unsubscribe?.();
+  unsubscribe = undefined;
+  routerHistory = undefined;
   unmark();
   open = 0;
   leaving = false;

@@ -1,3 +1,4 @@
+import { trimTrailingCharacter } from "@scalius/shared/text-scan";
 import { useBlocker } from "@tanstack/react-router";
 import { useEffect } from "react";
 import {
@@ -60,12 +61,8 @@ export function UnsavedChangesGuard({
       // the global leave-page guard must not intercept that navigation.
       if (
         allowSamePathStateNavigation &&
-        (
-          current.routeId === next.routeId ||
-          current.fullPath === next.fullPath ||
-          current.pathname.replace(/\/+$/, "") ===
-            next.pathname.replace(/\/+$/, "")
-        )
+        trimTrailingCharacter(current.pathname, "/") ===
+          trimTrailingCharacter(next.pathname, "/")
       ) {
         return false;
       }

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
-import { createFileRoute, Outlet, redirect, useMatchRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect, useMatchRoute, useRouter } from "@tanstack/react-router";
 import { AppSidebar } from "@/components/admin/layout/AppSidebar";
 import { AdminHeader } from "@/components/admin/layout/AdminHeader";
 import { AdminNavigationProgress } from "@/components/admin/layout/AdminNavigationProgress";
@@ -67,6 +67,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminLayout() {
+  const router = useRouter();
   const authContext = Route.useRouteContext();
   const { user, permissions, isSuperAdmin } = authContext;
   const t = useMessages(shellMessages);
@@ -88,7 +89,7 @@ function AdminLayout() {
   const sidebarNav = useMemo(() => withoutUnusedPages(nav, reach), [nav, reach]);
   useWarmEverydayRouteCode(canOpen);
   // Back closing overlays, and the staff member's own language: started after the first render.
-  useEffect(() => void import("@/components/admin/layout/shell-after-paint").then(({ startAfterPaint }) => startAfterPaint()), []);
+  useEffect(() => void import("@/components/admin/layout/shell-after-paint").then(({ startAfterPaint }) => startAfterPaint(router.history)), [router.history]);
   // The theme editor is a workspace of its own (Shopify's): the frame steps aside.
   // So is the new-store setup step (Shopify's "Tell us about your store").
   const matchRoute = useMatchRoute();
