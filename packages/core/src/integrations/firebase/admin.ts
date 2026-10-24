@@ -1,3 +1,4 @@
+import { randomInteger } from "@scalius/shared/random";
 // src/lib/firebase/admin.ts
 // FCM REST API implementation for Cloudflare Workers
 // Replaces firebase-admin SDK with direct HTTP calls
@@ -222,15 +223,7 @@ function randomJitterMs(maxMs: number): number {
     return 0;
   }
 
-  const range = 0x1_0000_0000;
-  const acceptedLimit = Math.floor(range / maxMs) * maxMs;
-  const values = new Uint32Array(1);
-  do {
-    runtimeCrypto.getRandomValues(values);
-  } while ((values[0] ?? 0) >= acceptedLimit);
-
-  const value = values[0] ?? 0;
-  return value - Math.floor(value / maxMs) * maxMs;
+  return randomInteger(maxMs);
 }
 
 async function mapWithConcurrency<T, R>(

@@ -1,3 +1,4 @@
+import { randomInteger } from "@scalius/shared/random";
 import { eq } from "drizzle-orm";
 
 import { rateLimit } from "./schema";
@@ -22,9 +23,7 @@ export class CachedReadError extends Error {
 }
 
 function nextProbeValue(previous: number | null): number {
-  const values = new Uint32Array(1);
-  crypto.getRandomValues(values);
-  const candidate = (values[0]! % MAX_PROBE_VALUE) + 1;
+  const candidate = randomInteger(MAX_PROBE_VALUE) + 1;
   return candidate === previous ? (candidate % MAX_PROBE_VALUE) + 1 : candidate;
 }
 

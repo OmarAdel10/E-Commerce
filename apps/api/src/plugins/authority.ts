@@ -1,3 +1,4 @@
+import { randomInteger } from "@scalius/shared/random";
 // Plugin principals (packages/plugin-sdk/docs/apps.md, "Execution boundary"): a plugin
 // calls `/api/v1` operations through the same dispatcher and admin
 // authorization as agents (agent-access/dispatch.ts), as itself.
@@ -157,7 +158,7 @@ export function pluginWithinRateLimit(env: Env, purpose: "api" | "http", pluginI
 export async function pluginWithinMessageRate(env: Env, pluginId: string, perMinute: number): Promise<boolean> {
   if (!env.RL_STANDARD) return false;
   const shards = Math.max(1, Math.ceil(perMinute / 60));
-  const shard = shards === 1 ? 0 : crypto.getRandomValues(new Uint32Array(1))[0]! % shards;
+  const shard = randomInteger(shards);
   try {
     return await isWithinRateLimit(env, "RL_STANDARD", "plugin-messaging", shards === 1 ? pluginId : `${pluginId}:${shard}`);
   } catch {

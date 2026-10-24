@@ -1,3 +1,4 @@
+import { randomInteger } from "@scalius/shared/random";
 // The plugin host facade (packages/plugin-sdk/docs/apps.md): picks the loader for an
 // installation (bundled in-process, or a sandboxed Dynamic Worker), seeds the
 // invocation (identity, store facts, opened settings), races it against the
@@ -661,7 +662,7 @@ export function isolateLimitOf(thrown: unknown): "cpu" | "subrequests" | null {
 export async function pluginWithinInvocationRate(env: Env, pluginId: string, perMinute: number): Promise<boolean> {
   if (!env.RL_STANDARD) return true;
   const shards = Math.max(1, Math.ceil(perMinute / 60));
-  const shard = shards === 1 ? 0 : crypto.getRandomValues(new Uint32Array(1))[0]! % shards;
+  const shard = randomInteger(shards);
   try {
     return await isWithinRateLimit(env, "RL_STANDARD", "plugin-run", `${pluginId}:${shard}`);
   } catch {

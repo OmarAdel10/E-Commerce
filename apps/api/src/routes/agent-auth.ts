@@ -1,3 +1,4 @@
+import { randomString } from "@scalius/shared/random";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { nanoid } from "nanoid";
 import { and, eq, gt, isNull } from "drizzle-orm";
@@ -50,8 +51,7 @@ function randomBase64Url(bytes: number): string {
 }
 
 function randomUserCode(): string {
-  const random = crypto.getRandomValues(new Uint8Array(8));
-  return Array.from(random, (byte) => USER_CODE_ALPHABET[byte % USER_CODE_ALPHABET.length]).join("");
+  return randomString(USER_CODE_ALPHABET, 8);
 }
 
 function verificationUri(env: Env): string {
