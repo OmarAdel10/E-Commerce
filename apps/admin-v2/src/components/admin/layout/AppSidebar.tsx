@@ -3,7 +3,7 @@ import { useLocation, useRouter } from "@tanstack/react-router";
 import { ChevronRight, Eye, PanelLeft, X } from "lucide-react";
 import { cn } from "@scalius/shared/utils";
 import type { UserMenuUser } from "@/components/auth/UserMenu";
-import { InboxNavBadge } from "~/components/admin/inbox/InboxNavBadge";
+import { InboxNavBadge, useInboxUnread } from "~/components/admin/inbox/InboxNavBadge";
 import { ReviewsNavBadge } from "~/components/admin/reviews/ReviewsNavBadge";
 import { useMediaQuery } from "~/hooks/use-media-query";
 import { useStorefrontUrl } from "~/hooks/use-storefront-url";
@@ -282,6 +282,29 @@ function MainPanel({ nav, showSettings, onClose }: { nav: VisibleNavItem[]; show
   );
 }
 
+/** A section's rail icon: a flyout for one with sub-pages, else a tooltip. */
+function RailIcon({ item, current, unread = 0 }: { item: VisibleNavItem; current: boolean; unread?: number }) {
+  const t = useMessages(shellMessages);
+  return (
+    <ShellLink
+      {...(item.children.length > 0 ? { "data-flyout": item.key } : { "data-tip": "" })}
+      to={item.to}
+      preload="intent"
+      current={current}
+      aria-label={unread > 0 ? t("inboxWithUnread", { count: unread }) : t(item.key)}
+      className={cn(NAV_ICON_BUTTON, "relative")}
+    >
+      <item.icon aria-hidden />
+      {unread > 0 ? <span aria-hidden className="absolute end-1 top-1 size-2 rounded-full bg-topbar-progress" /> : null}
+    </ShellLink>
+  );
+}
+
+/** Inbox on the rail: Shopify's unread dot (the panel badge's count), and the count in its name and tooltip. */
+function InboxRailIcon(props: { item: VisibleNavItem; current: boolean }) {
+  return <RailIcon {...props} unread={useInboxUnread()} />;
+}
+
 /**
  * The collapsed navigation: every section as an icon, groups set apart by a
  * rule. A section with sub-pages shows them in a flyout, the others a
@@ -323,16 +346,11 @@ function Rail({ nav, showSettings, inSettings }: { nav: VisibleNavItem[]; showSe
           return (
             <li key={item.key} className="flex flex-col items-center">
               {divider ? <span aria-hidden className="my-2 h-px w-4 bg-sidebar-border" /> : null}
-              <ShellLink
-                {...(item.children.length > 0 ? { "data-flyout": item.key } : { "data-tip": "" })}
-                to={item.to}
-                preload="intent"
-                current={!inSettings && isSectionActive(path, item)}
-                aria-label={t(item.key)}
-                className={NAV_ICON_BUTTON}
-              >
-                <item.icon aria-hidden />
-              </ShellLink>
+              {item.badge === "inbox" ? (
+                <InboxRailIcon item={item} current={!inSettings && isSectionActive(path, item)} />
+              ) : (
+                <RailIcon item={item} current={!inSettings && isSectionActive(path, item)} />
+              )}
             </li>
           );
         })}

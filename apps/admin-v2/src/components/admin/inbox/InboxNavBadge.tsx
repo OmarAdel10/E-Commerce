@@ -3,11 +3,16 @@ import { formatNumber, useMessages } from "~/i18n";
 import { shellMessages } from "~/i18n/shell";
 import { inboxSummaryQueryOptions } from "~/lib/api-query-options/inbox";
 
+/** Unread incoming messages: the one summary read behind the panel's badge and the rail's dot. */
+export function useInboxUnread(): number {
+  const { data } = useQuery(inboxSummaryQueryOptions());
+  return data?.unread ?? 0;
+}
+
 /** The sidebar's unread incoming-message count beside "Inbox" (hidden at zero). */
 export function InboxNavBadge() {
   const t = useMessages(shellMessages);
-  const { data } = useQuery(inboxSummaryQueryOptions());
-  const unread = data?.unread ?? 0;
+  const unread = useInboxUnread();
   if (unread <= 0) return null;
   return (
     <span
