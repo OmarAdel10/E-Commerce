@@ -20,4 +20,4 @@ jobs:
       - name: Label PR
         uses: actions/labeler@v6
         with:
-          configuration-file: .github/labeler.yml
+          configuration-path: .github/labeler.yml

@@ -1,7 +1,17 @@
-# .github/labeler.yml — Automatic pull-request labeling
-
-# This file drives the `actions/labeler` action (see .github/workflows/label.yml).
-# Labels are applied to PRs based on branch names and changed file paths.
+# .github/labeler.yml — Automatic pull-request labeling (actions/labeler v6)
+#
+# Schema: https://github.com/actions/labeler
+#
+# Top-level keys are actual GitHub label names. Each label maps to an array of
+# condition objects. A label is applied when ANY condition matches (OR logic).
+#
+# Condition types:
+#   head-branch:      array of regex patterns matched against the PR head branch
+#   changed-files:    array of objects, each with `any-glob-to-any-file`
+#                     mapping to an array of glob patterns matched against
+#                     changed files
+#   any:              array of conditions; label applied when ANY matches (OR)
+#   all:              array of conditions; label applied when ALL match (AND)
 #
 # Design principles:
 # - Every label here must already exist (or be created) on GitHub — the action
@@ -9,110 +19,187 @@
 # - `status:*` and `priority:*` labels are intentionally excluded: they are
 #   reserved for issue triage per .github/LABELS.md and must never be
 #   automatically applied to pull requests.
-# - A PR may receive multiple labels (e.g. `type: feature` + `area: payments`
-#   + `infra: database`) when it touches multiple areas.
+# - `area:*` labels are reserved for business-domain ownership per LABELS.md.
+#   Technical components use `component:*` instead.
+# - A PR may receive multiple labels when multiple label conditions match.
 
-# ── Branch-based rules ──────────────────────────────────────────────────────
-# Match PR branch names against regex patterns. Anchored with ^ so that
-# unrelated branches (e.g. `fix-legacy` vs `legacy/fix`) are not matched.
+# ── Change classification (type: *) ──────────────────────────────────────────
 
-branches:
-  "type: feature":
-    - "^feature/"
-  "type: bug":
-    - "^fix/"
-  "type: refactor":
-    - "^refactor/"
-  "type: maintenance":
-    - "^chore/"
-  "type: docs":
-    - "^docs/"
-  "type: test":
-    - "^test/"
-  "type: performance":
-    - "^perf/"
-  "type: security":
-    - "^security/"
-  "type: breaking":
-    - "^break/"
-    - "^breaking/"
-  "type: dependencies":
-    - "^deps/"
-    - "^dependabot/"
+"type: feature":
+  - head-branch:
+      - "^feature/"
 
-# ── Changed-file rules ─────────────────────────────────────────────────────
-# Match changed file paths against glob patterns. Multiple labels may apply
-# to a single PR when it spans several areas.
+"type: bug":
+  - head-branch:
+      - "^fix/"
 
-files:
-  # ── Application ownership (area: *) ─────────────────────────────────────
-  "area: api":
-    - "apps/api/**"
-  "area: storefront":
-    - "apps/storefront/**"
-  "area: dashboard":
-    - "apps/admin-v2/**"
-  "area: database":
-    - "packages/database/**"
-  "area: plugins":
-    - "plugins/**"
-    - "packages/plugin-sdk/**"
-  "area: core":
-    - "packages/core/src/modules/**"
-  "area: cli":
-    - "packages/cli/**"
-  "area: integrations":
-    - "packages/core/src/integrations/**"
+"type: refactor":
+  - head-branch:
+      - "^refactor/"
 
-  # ── Infrastructure & platform (infra: *) ────────────────────────────────
-  "infra: database":
-    - "packages/database/migrations/**"
-    - "packages/database/src/schema/**"
-    - "packages/database/src/client.ts"
-    - "packages/database/src/postgres-adapter.ts"
-    - "packages/database/src/portability.ts"
-  "infra: cloudflare":
-    - "apps/api/wrangler.jsonc"
-    - "apps/api/wrangler.local.jsonc"
-    - "apps/storefront/wrangler.jsonc"
-  "infra: deployment":
-    - "scripts/deploy.mjs"
-    - "scripts/plan.mjs"
-    - "scripts/copy-flags.mjs"
-  "infra: ci":
-    - ".github/workflows/**"
-  "infra: security":
-    - "packages/core/src/auth/**"
-    - "packages/shared/src/runtime-secrets.ts"
+"type: maintenance":
+  - head-branch:
+      - "^chore/"
 
-  # ── Quality & maintenance (quality: *) ──────────────────────────────────
-  "quality: ci":
-    - ".github/workflows/ci.yml"
-  "quality: test":
-    - "vitest.config.ts"
-    - "scripts/test-*.mjs"
-    - "scripts/test-runner.mjs"
-    - "scripts/test-affected.mjs"
-    - "scripts/test-passes.mjs"
-  "quality: docs":
-    - "docs/**"
-  "quality: code-quality":
-    - ".oxlintrc.json"
-    - "eslint.config.js"
-    - "scripts/lint*.mjs"
+"type: docs":
+  - any:
+      - head-branch:
+          - "^docs/"
+      - changed-files:
+          - any-glob-to-any-file:
+              - "docs/**"
+              - "README.md"
+              - "CONTRIBUTING.md"
+              - "SECURITY.md"
+              - "SUPPORT.md"
 
-  # ── Change classification via file content (type: *) ────────────────────
-  # These overlap with branch rules but also catch PRs whose branch name does
-    # not follow a prefix convention yet still change only docs/tests/etc.
-  "type: docs":
-    - "docs/**"
-    - "README.md"
-    - "CONTRIBUTING.md"
-    - "SECURITY.md"
-    - "SUPPORT.md"
-  "type: test":
-    - "*.test.ts"
-    - "*.test.tsx"
-    - "*.test.mjs"
-    - "__tests__/**"
-    - "packages/database/__tests__/**"
+"type: test":
+  - any:
+      - head-branch:
+          - "^test/"
+      - changed-files:
+          - any-glob-to-any-file:
+              - "*.test.ts"
+              - "*.test.tsx"
+              - "*.test.mjs"
+              - "**/*.test.ts"
+              - "**/*.test.tsx"
+              - "**/*.test.mjs"
+              - "__tests__/**"
+              - "packages/database/__tests__/**"
+
+"type: performance":
+  - head-branch:
+      - "^perf/"
+
+"type: security":
+  - head-branch:
+      - "^security/"
+
+"type: breaking":
+  - head-branch:
+      - "^break/"
+      - "^breaking/"
+
+"type: dependencies":
+  - head-branch:
+      - "^deps/"
+      - "^dependabot/"
+
+# ── Domain & application ownership (area: *) ─────────────────────────────────
+# Business domains only, per LABELS.md issue-triage taxonomy.
+# No auto-rules: code package names and UI surfaces are evidence, not ownership
+# labels. These labels are applied manually during issue triage.
+#
+# area: auth, area: catalog, area: checkout, area: content, area: customers,
+# area: inventory, area: media, area: orders, area: payments, area: platform,
+# area: promotions, area: settings, area: setup
+
+# ── Component ownership (component: *) ───────────────────────────────────────
+# Technical components, auto-applied via changed files.
+# Separate namespace from `area:*` business domains per LABELS.md.
+
+"component: api":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/api/**"
+
+"component: storefront":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/storefront/**"
+
+"component: dashboard":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/admin-v2/**"
+
+"component: database":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/database/**"
+
+"component: plugins":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "plugins/**"
+          - "packages/plugin-sdk/**"
+
+"component: core":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/core/src/modules/**"
+
+"component: cli":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/cli/**"
+
+"component: integrations":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/core/src/integrations/**"
+
+# ── Infrastructure & platform (infra: *) ─────────────────────────────────────
+
+"infra: database":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/database/migrations/**"
+          - "packages/database/src/schema/**"
+          - "packages/database/src/client.ts"
+          - "packages/database/src/postgres-adapter.ts"
+          - "packages/database/src/portability.ts"
+
+"infra: cloudflare":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "apps/api/wrangler.jsonc"
+          - "apps/api/wrangler.local.jsonc"
+          - "apps/storefront/wrangler.jsonc"
+
+"infra: deployment":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "scripts/deploy.mjs"
+          - "scripts/plan.mjs"
+          - "scripts/copy-flags.mjs"
+
+"infra: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/**"
+
+"infra: security":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "packages/core/src/auth/**"
+          - "packages/shared/src/runtime-secrets.ts"
+
+# ── Quality & maintenance (quality: *) ───────────────────────────────────────
+
+"quality: ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/workflows/ci.yml"
+
+"quality: test":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "vitest.config.ts"
+          - "scripts/test-*.mjs"
+          - "scripts/test-runner.mjs"
+          - "scripts/test-affected.mjs"
+          - "scripts/test-passes.mjs"
+
+"quality: docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "docs/**"
+
+"quality: code-quality":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".oxlintrc.json"
+          - "eslint.config.js"
+          - "scripts/lint*.mjs"
