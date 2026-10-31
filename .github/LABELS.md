@@ -40,3 +40,77 @@ Code package names and UI surfaces are evidence, not ownership labels. Do not ad
 5. Decide whether the behavior breaks a business invariant, an accessibility requirement, a documented contract, or a well-supported user expectation, rather than one person's taste.
 6. Set `status: ready` and a priority only after that decision is supported.
 7. Link the implementation pull request with a closing keyword. Include focused and live verification that match its risk.
+
+---
+
+## Pull-request labels (automatic)
+
+Pull requests are labeled automatically by `.github/workflows/label.yml` using
+`.github/labeler.yml`. PR labels describe the *change* and its *technical
+ownership* — they are separate from issue triage labels (`status:*`,
+`priority:*`) which are applied manually to issues only and are never set on
+pull requests.
+
+### Change classification (`type:`)
+
+| Label | Meaning |
+|-------|---------|
+| `type: bug` | Bug fix |
+| `type: feature` | New functionality |
+| `type: enhancement` | Improvement to existing behavior |
+| `type: refactor` | Internal restructuring, no behavior change |
+| `type: maintenance` | Repo upkeep, non-feature work |
+| `type: docs` | Documentation only |
+| `type: test` | Test changes only |
+| `type: performance` | Performance improvement |
+| `type: security` | Security fix |
+| `type: breaking` | Breaking change |
+| `type: dependencies` | Dependency update |
+
+Triggered by branch prefixes (`feature/`, `fix/`, `chore/`, `docs/`, `test/`,
+`perf/`, `security/`, `break/`, `deps/`, …) and by changed-file globs
+(`docs/**`, `*.test.*`, `__tests__/**`, …).
+
+### Domain & application ownership (`area:`)
+
+Reuses all issue-triage `area:*` labels plus technical surfaces:
+
+- Commerce domains (from `.github/LABELS.md`): `area: auth`, `area: catalog`,
+  `area: checkout`, `area: content`, `area: customers`, `area: inventory`,
+  `area: media`, `area: orders`, `area: payments`, `area: platform`,
+  `area: promotions`, `area: settings`, `area: setup`
+- Technical surfaces (auto-applied via changed files): `area: api`,
+  `area: storefront`, `area: dashboard`, `area: database`, `area: plugins`,
+  `area: integrations`, `area: core`, `area: cli`
+
+### Infrastructure & platform (`infra:`)
+
+| Label | Meaning |
+|-------|---------|
+| `infra: database` | Schema, migrations, database providers |
+| `infra: cloudflare` | Wrangler / Workers configuration |
+| `infra: deployment` | Deploy scripts, release process |
+| `infra: ci` | GitHub Actions workflows |
+| `infra: security` | Auth, secrets, encryption |
+| `infra: build` | Build tooling, turbo, bundler config |
+
+### Quality & maintenance (`quality:`, `chore:`)
+
+| Label | Meaning |
+|-------|---------|
+| `quality: ci` | CI workflow changes |
+| `quality: test` | Test infrastructure |
+| `quality: docs` | Documentation improvements |
+| `quality: code-quality` | Lint, typecheck, formatting |
+| `quality: performance` | Performance budgets |
+| `chore: dependencies` | Dependency updates (manual label) |
+
+### Labeling rules
+
+- `status:*` and `priority:*` are **never** auto-applied to PRs.
+- A PR may carry multiple labels (e.g. `type: feature` + `area: payments` +
+  `infra: database`).
+- Existing `area:*` labels from issue triage may also be auto-applied to PRs
+  when changed files fall under that domain.
+- Labels must already exist on GitHub before the labeler can apply them — see
+  the label audit below for the full list.
