@@ -1,0 +1,85 @@
+version: 2
+updates:
+  # ── pnpm / npm workspace dependencies ───────────────────────────────────
+  # Scalius is a pnpm monorepo (apps/*, packages/*, plugins/*). A single
+  # pnpm-lock.yaml at the root locks all workspace dependencies. Dependabot's
+  # npm ecosystem reads pnpm-lock.yaml natively, so one entry at the root
+  # covers every workspace package and plugin.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+    open-pull-requests-limit: 15
+    labels:
+      - "type: dependencies"
+      - "chore: dependencies"
+    groups:
+      # Framework & tooling pins (turbo, vitest, typescript, wrangler, oxlint)
+      scalius-tooling:
+        patterns:
+          - "turbo"
+          - "vitest"
+          - "typescript*"
+          - "typescript7"
+          - "wrangler"
+          - "oxlint*"
+          - "@oxlint/*"
+          - "@turbo/*"
+      # Cloudflare & Workers ecosystem
+      cloudflare-workers:
+        patterns:
+          - "wrangler"
+          - "@cloudflare/*"
+          - "workerd"
+          - "miniflare"
+          - "@cloudflare/vite-plugin"
+          - "@astrojs/cloudflare"
+      # UI framework stack (React, TanStack, Radix, Tiptap, Tailwind)
+      ui-stack:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-is"
+          - "@tanstack/*"
+          - "@radix-ui/*"
+          - "@tiptap/*"
+          - "tailwindcss*"
+          - "@tailwindcss/*"
+      # Better Auth & Hono (API surface)
+      auth-and-api:
+        patterns:
+          - "better-auth"
+          - "hono"
+          - "@hono/*"
+          - "@cloudflare/workers-oauth-provider"
+      # Database & ORM (Drizzle, Turso, PostgreSQL drivers)
+      database-stack:
+        patterns:
+          - "drizzle-*"
+          - "@tursodatabase/*"
+          - "@neondatabase/*"
+          - "pg"
+          - "pg-copy-streams"
+      # Stripe & payments
+      payments:
+        patterns:
+          - "stripe"
+      # Scalius internal workspace packages (workspace:*)
+      scalius-workspace:
+        patterns:
+          - "@scalius/*"
+
+  # ── GitHub Actions ──────────────────────────────────────────────────────
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:30"
+    open-pull-requests-limit: 5
+    labels:
+      - "type: dependencies"
+      - "chore: dependencies"
+      - "infra: ci"

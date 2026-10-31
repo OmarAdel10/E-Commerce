@@ -1,0 +1,118 @@
+# .github/labeler.yml — Automatic pull-request labeling
+
+# This file drives the `actions/labeler` action (see .github/workflows/label.yml).
+# Labels are applied to PRs based on branch names and changed file paths.
+#
+# Design principles:
+# - Every label here must already exist (or be created) on GitHub — the action
+#   does not create labels.
+# - `status:*` and `priority:*` labels are intentionally excluded: they are
+#   reserved for issue triage per .github/LABELS.md and must never be
+#   automatically applied to pull requests.
+# - A PR may receive multiple labels (e.g. `type: feature` + `area: payments`
+#   + `infra: database`) when it touches multiple areas.
+
+# ── Branch-based rules ──────────────────────────────────────────────────────
+# Match PR branch names against regex patterns. Anchored with ^ so that
+# unrelated branches (e.g. `fix-legacy` vs `legacy/fix`) are not matched.
+
+branches:
+  "type: feature":
+    - "^feature/"
+  "type: bug":
+    - "^fix/"
+  "type: refactor":
+    - "^refactor/"
+  "type: maintenance":
+    - "^chore/"
+  "type: docs":
+    - "^docs/"
+  "type: test":
+    - "^test/"
+  "type: performance":
+    - "^perf/"
+  "type: security":
+    - "^security/"
+  "type: breaking":
+    - "^break/"
+    - "^breaking/"
+  "type: dependencies":
+    - "^deps/"
+    - "^dependabot/"
+
+# ── Changed-file rules ─────────────────────────────────────────────────────
+# Match changed file paths against glob patterns. Multiple labels may apply
+# to a single PR when it spans several areas.
+
+files:
+  # ── Application ownership (area: *) ─────────────────────────────────────
+  "area: api":
+    - "apps/api/**"
+  "area: storefront":
+    - "apps/storefront/**"
+  "area: dashboard":
+    - "apps/admin-v2/**"
+  "area: database":
+    - "packages/database/**"
+  "area: plugins":
+    - "plugins/**"
+    - "packages/plugin-sdk/**"
+  "area: core":
+    - "packages/core/src/modules/**"
+  "area: cli":
+    - "packages/cli/**"
+  "area: integrations":
+    - "packages/core/src/integrations/**"
+
+  # ── Infrastructure & platform (infra: *) ────────────────────────────────
+  "infra: database":
+    - "packages/database/migrations/**"
+    - "packages/database/src/schema/**"
+    - "packages/database/src/client.ts"
+    - "packages/database/src/postgres-adapter.ts"
+    - "packages/database/src/portability.ts"
+  "infra: cloudflare":
+    - "apps/api/wrangler.jsonc"
+    - "apps/api/wrangler.local.jsonc"
+    - "apps/storefront/wrangler.jsonc"
+  "infra: deployment":
+    - "scripts/deploy.mjs"
+    - "scripts/plan.mjs"
+    - "scripts/copy-flags.mjs"
+  "infra: ci":
+    - ".github/workflows/**"
+  "infra: security":
+    - "packages/core/src/auth/**"
+    - "packages/shared/src/runtime-secrets.ts"
+
+  # ── Quality & maintenance (quality: *) ──────────────────────────────────
+  "quality: ci":
+    - ".github/workflows/ci.yml"
+  "quality: test":
+    - "vitest.config.ts"
+    - "scripts/test-*.mjs"
+    - "scripts/test-runner.mjs"
+    - "scripts/test-affected.mjs"
+    - "scripts/test-passes.mjs"
+  "quality: docs":
+    - "docs/**"
+  "quality: code-quality":
+    - ".oxlintrc.json"
+    - "eslint.config.js"
+    - "scripts/lint*.mjs"
+
+  # ── Change classification via file content (type: *) ────────────────────
+  # These overlap with branch rules but also catch PRs whose branch name does
+    # not follow a prefix convention yet still change only docs/tests/etc.
+  "type: docs":
+    - "docs/**"
+    - "README.md"
+    - "CONTRIBUTING.md"
+    - "SECURITY.md"
+    - "SUPPORT.md"
+  "type: test":
+    - "*.test.ts"
+    - "*.test.tsx"
+    - "*.test.mjs"
+    - "__tests__/**"
+    - "packages/database/__tests__/**"
