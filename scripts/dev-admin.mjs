@@ -10,13 +10,13 @@
  * This is intentionally local-only. It creates admins through the real
  * /api/v1/setup endpoint so Better Auth owns password hashing. The same
  * request sets up the new store (country, currency, time zone, units: the
- * dashboard's "Tell us about your store" step); Bangladesh by default.
+ * dashboard's "Tell us about your store" step); Egypt by default.
  */
 
 import { execFileSync, spawn } from "child_process";
 import { readFileSync } from "fs";
 import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { DEV_PORT_ENV, devOrigins, readDevPorts, syncLocalPlatform } from "./dev-ports.mjs";
 import { localAuthResetSql } from "./dev-admin-reset.mjs";
 import {
@@ -33,108 +33,139 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 const apiDir = resolve(root, "apps", "api");
 const pnpmExecutable = resolvePnpmExecutable();
-const args = process.argv.slice(2);
-const validCommands = new Set(["create", "reset", "status", "help"]);
 
-const positionalCommand = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
-const command = positionalCommand || "create";
-const options = parseOptions(positionalCommand ? args.slice(1) : args);
-
-// The stack's ports (`--api-port` ... or the SCALIUS_DEV_*_PORT variables, as scripts/dev.sh takes
-// them) are the one source of every origin below and of the Platform settings written to the store.
-for (const [name, key] of [["api-port", "api"], ["storefront-port", "storefront"], ["admin-port", "admin"]]) {
-  if (options[name] === true) {
-    console.error(`Option --${name} requires a value.`);
-    process.exit(1);
-  }
-  if (options[name]) process.env[DEV_PORT_ENV[key]] = String(options[name]);
-}
-try {
-  readDevPorts();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-}
-
-const defaults = {
-  apiBaseUrl: process.env.LOCAL_API_BASE_URL || devOrigins().apiUrl,
-  email: process.env.LOCAL_ADMIN_EMAIL || "admin@local.scalius.test",
-  password: process.env.LOCAL_ADMIN_PASSWORD || "ScaliusLocal123!",
-  name: process.env.LOCAL_ADMIN_NAME || "Local Admin",
-  country: process.env.LOCAL_STORE_COUNTRY || "BD",
-  storeName: process.env.LOCAL_STORE_NAME || "Scalius Local",
-  wranglerState: resolveLocalStatePath(root, process.env.SCALIUS_WRANGLER_STATE),
+/** Default time zone by country when no `--time-zone` override is supplied. */
+const DEFAULT_TIME_ZONE_BY_COUNTRY = {
+  BD: "Asia/Dhaka",
+  EG: "Africa/Cairo",
 };
 
-if (options.help || command === "help") {
-  printHelp();
-  process.exit(0);
+/** Build the default configuration from environment variables. */
+export function buildDefaults(env = process.env) {
+  return {
+    apiBaseUrl: env.LOCAL_API_BASE_URL || devOrigins().apiUrl,
+    email: env.LOCAL_ADMIN_EMAIL || "admin@local.scalius.test",
+    password: env.LOCAL_ADMIN_PASSWORD || "ScaliusLocal123!",
+    name: env.LOCAL_ADMIN_NAME || "Local Admin",
+    country: env.LOCAL_STORE_COUNTRY || "EG",
+    storeName: env.LOCAL_STORE_NAME || "Scalius Local",
+    wranglerState: resolveLocalStatePath(root, env.SCALIUS_WRANGLER_STATE),
+  };
 }
 
-if (!validCommands.has(command)) {
-  console.error(`Unknown command: ${command}`);
-  printHelp();
-  process.exit(1);
+/** Resolve the store time zone: explicit override, country default, then machine/UTC fallback. */
+export function resolveStoreTimeZone(timeZone, country) {
+  return (
+    timeZone ??
+    DEFAULT_TIME_ZONE_BY_COUNTRY[country] ??
+    Intl.DateTimeFormat().resolvedOptions().timeZone ??
+    "UTC"
+  );
 }
 
-try {
-  assertStringOptions(options, ["api", "email", "password", "name", "state", "country", "store-name", "time-zone", "currency"]);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+/** Build the runtime config from parsed CLI options and defaults. CLI options take precedence. */
+export function buildConfig(options, defaults) {
+  return {
+    apiBaseUrl: trimTrailingSlash(options.api || defaults.apiBaseUrl),
+    email: options.email || defaults.email,
+    password: options.password || defaults.password,
+    name: options.name || defaults.name,
+    country: String(options.country || defaults.country).trim().toUpperCase(),
+    storeName: options["store-name"] || defaults.storeName,
+    timeZone: options["time-zone"] || null,
+    currency: options.currency || null,
+    noStart: Boolean(options["no-start"]),
+    skipMigrations: Boolean(options["skip-migrations"] || options["no-migrate"]),
+    wranglerState: resolveLocalStatePath(root, options.state || defaults.wranglerState),
+  };
 }
 
-const config = {
-  apiBaseUrl: trimTrailingSlash(options.api || defaults.apiBaseUrl),
-  email: options.email || defaults.email,
-  password: options.password || defaults.password,
-  name: options.name || defaults.name,
-  country: String(options.country || defaults.country).trim().toUpperCase(),
-  storeName: options["store-name"] || defaults.storeName,
-  timeZone: options["time-zone"] || null,
-  currency: options.currency || null,
-  noStart: Boolean(options["no-start"]),
-  skipMigrations: Boolean(options["skip-migrations"] || options["no-migrate"]),
-  wranglerState: resolveLocalStatePath(root, options.state || defaults.wranglerState),
-};
-
-try {
-  assertLocalUrl(config.apiBaseUrl);
-  if (command !== "status") {
-    assertPassword(config.password);
-  }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-}
-
+let defaults = buildDefaults();
+let config = buildConfig({}, defaults);
 let migrationsApplied = false;
 
-try {
-  if (command === "status") {
-    await withApi(async () => {
-      const status = await getSetupStatus();
-      console.log(status.adminExists ? "Local admin exists." : "No local admin exists.");
-    });
-  } else if (command === "create") {
-    await withApi(async () => {
-      await createAdmin({ allowExisting: true });
-    });
-  } else if (command === "reset") {
-    ensureLocalMigrations();
-    await withApi(async () => {
-      resetLocalAuthTables();
-      await createAdmin({ allowExisting: false });
-    });
-  } else {
+async function run() {
+  const args = process.argv.slice(2);
+  const validCommands = new Set(["create", "reset", "status", "help"]);
+
+  const positionalCommand = args[0] && !args[0].startsWith("--") ? args[0] : undefined;
+  const command = positionalCommand || "create";
+  const options = parseOptions(positionalCommand ? args.slice(1) : args);
+
+  // The stack's ports (`--api-port` ... or the SCALIUS_DEV_*_PORT variables, as scripts/dev.sh takes
+  // them) are the one source of every origin below and of the Platform settings written to the store.
+  for (const [name, key] of [["api-port", "api"], ["storefront-port", "storefront"], ["admin-port", "admin"]]) {
+    if (options[name] === true) {
+      console.error(`Option --${name} requires a value.`);
+      process.exit(1);
+    }
+    if (options[name]) process.env[DEV_PORT_ENV[key]] = String(options[name]);
+  }
+  try {
+    readDevPorts();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  defaults = buildDefaults();
+
+  if (options.help || command === "help") {
+    printHelp();
+    process.exit(0);
+  }
+
+  if (!validCommands.has(command)) {
     console.error(`Unknown command: ${command}`);
     printHelp();
     process.exit(1);
   }
-} catch (error) {
-  console.error(`\nLocal admin ${command} failed.`);
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+
+  try {
+    assertStringOptions(options, ["api", "email", "password", "name", "state", "country", "store-name", "time-zone", "currency"]);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  config = buildConfig(options, defaults);
+
+  try {
+    assertLocalUrl(config.apiBaseUrl);
+    if (command !== "status") {
+      assertPassword(config.password);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+
+  try {
+    if (command === "status") {
+      await withApi(async () => {
+        const status = await getSetupStatus();
+        console.log(status.adminExists ? "Local admin exists." : "No local admin exists.");
+      });
+    } else if (command === "create") {
+      await withApi(async () => {
+        await createAdmin({ allowExisting: true });
+      });
+    } else if (command === "reset") {
+      ensureLocalMigrations();
+      await withApi(async () => {
+        resetLocalAuthTables();
+        await createAdmin({ allowExisting: false });
+      });
+    } else {
+      console.error(`Unknown command: ${command}`);
+      printHelp();
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(`\nLocal admin ${command} failed.`);
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 }
 
 function printHelp() {
@@ -152,7 +183,7 @@ Options:
   --name <name>         Admin name (default: ${defaults.name})
   --country <code>      The new store's country, ISO 3166-1 alpha-2 (default: ${defaults.country})
   --store-name <name>   The new store's name (default: ${defaults.storeName})
-  --time-zone <zone>    IANA time zone (default: Asia/Dhaka for BD, else this machine's)
+  --time-zone <zone>    IANA time zone (default: Africa/Cairo for EG, Asia/Dhaka for BD, else this machine's)
   --currency <code>     Currency (default: the country's)
   --api <url>           Local API origin (default: ${defaults.apiBaseUrl})
   --api-port <n>, --storefront-port <n>, --admin-port <n>
@@ -170,7 +201,7 @@ Environment overrides:
 }
 
 async function withApi(work) {
-  const alreadyRunning = await isApiReady();
+  const alreadyRunning = await isApiReady(config.apiBaseUrl);
   let child = null;
 
   if (!alreadyRunning) {
@@ -206,7 +237,7 @@ async function withApi(work) {
     process.once("SIGTERM", stop);
 
     try {
-      await waitForApi(() => childStatus);
+      await waitForApi(config.apiBaseUrl, () => childStatus);
     } catch (error) {
       stop();
       throw error;
@@ -223,10 +254,12 @@ async function withApi(work) {
   }
 }
 
-async function isApiReady() {
+const API_READY_TIMEOUT_MS = 30_000;
+
+export async function isApiReady(apiBaseUrl, timeoutMs = API_READY_TIMEOUT_MS) {
   try {
-    const response = await fetch(`${config.apiBaseUrl}/api/v1/setup`, {
-      signal: AbortSignal.timeout(1200),
+    const response = await fetch(`${apiBaseUrl}/api/v1/setup`, {
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return response.ok;
   } catch {
@@ -234,18 +267,49 @@ async function isApiReady() {
   }
 }
 
-async function waitForApi(getChildStatus = () => null) {
+export async function waitForApi(apiBaseUrl, getChildStatus = () => null) {
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
-    if (await isApiReady()) return;
-    const childStatus = getChildStatus();
-    if (childStatus) {
-      const reason = childStatus.signal ? `signal ${childStatus.signal}` : `exit code ${childStatus.code}`;
-      throw new Error(`Temporary API worker exited before it was ready (${reason}).`);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const requestTimeout = Math.min(API_READY_TIMEOUT_MS, remaining);
+
+    // Cancellable child-exit polling: the timer is always cleared in finally
+    // so no unresolved timer outlives the readiness attempt.
+    let childExitTimer;
+    let childExitResolved = false;
+    const childExit = new Promise((resolve) => {
+      const poll = () => {
+        if (childExitResolved) return;
+        const status = getChildStatus();
+        if (status) {
+          childExitResolved = true;
+          resolve(status);
+        } else {
+          childExitTimer = setTimeout(poll, 200);
+        }
+      };
+      poll();
+    });
+
+    try {
+      const ready = isApiReady(apiBaseUrl, requestTimeout);
+      const outcome = await Promise.race([ready, childExit]);
+
+      if (outcome === true) return;
+      if (outcome && typeof outcome === "object" && !Array.isArray(outcome)) {
+        const reason = outcome.signal ? `signal ${outcome.signal}` : `exit code ${outcome.code}`;
+        throw new Error(`Temporary API worker exited before it was ready (${reason}).`);
+      }
+      // outcome === false: not ready yet, continue
+    } finally {
+      childExitResolved = true;
+      if (childExitTimer) clearTimeout(childExitTimer);
     }
-    await sleep(1000);
+
+    await sleep(Math.min(1000, deadline - Date.now()));
   }
-  throw new Error(`Timed out waiting for API at ${config.apiBaseUrl}.`);
+  throw new Error(`Timed out waiting for API at ${apiBaseUrl}.`);
 }
 
 function ensureLocalMigrations() {
@@ -271,7 +335,7 @@ async function getSetupStatus() {
   return requestJson("GET", "/api/v1/setup");
 }
 
-async function createAdmin({ allowExisting }) {
+export async function createAdmin({ allowExisting }) {
   const status = await getSetupStatus();
   if (status.adminExists) {
     if (allowExisting) {
@@ -306,17 +370,17 @@ async function createAdmin({ allowExisting }) {
 
 /**
  * The new store's setup: the country's currency and units (the API derives
- * them), and its time zone (Bangladesh: Asia/Dhaka; elsewhere this machine's
- * unless --time-zone names one).
+ * them), and its time zone (Egypt: Africa/Cairo; Bangladesh: Asia/Dhaka;
+ * elsewhere this machine's unless --time-zone names one).
  */
-function storeSetup() {
-  const timeZone = config.timeZone
-    || (config.country === "BD" ? "Asia/Dhaka" : Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+export function storeSetup(configOverride) {
+  const cfg = configOverride ?? config;
+  const timeZone = resolveStoreTimeZone(cfg.timeZone, cfg.country);
   return {
-    storeName: config.storeName,
-    countryCode: config.country,
+    storeName: cfg.storeName,
+    countryCode: cfg.country,
     timeZone,
-    ...(config.currency ? { currencyCode: String(config.currency).toUpperCase() } : {}),
+    ...(cfg.currency ? { currencyCode: String(cfg.currency).toUpperCase() } : {}),
   };
 }
 
@@ -367,4 +431,13 @@ function readLocalD1DatabaseName() {
     throw new Error("Could not find d1_databases[0].database_name in apps/api/wrangler.jsonc.");
   }
   return dbName;
+}
+
+// Only execute when run directly as a script, not when imported as a module.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((error) => {
+    console.error("\nLocal admin failed.");
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
 }

@@ -273,7 +273,7 @@ async function withLocalWorkers(config, work) {
       const child = spawnWorker("api", ["--filter", "@scalius/api", "dev"], config);
       children.push(child);
       workers.apiStarted = true;
-      await waitForService("API", () => isApiReady(config), () => getChildStatus(child));
+      await waitForService("API", (timeoutMs) => isApiReady(config, timeoutMs), () => getChildStatus(child));
     }
 
     if (!adminWasRunning) {
@@ -282,7 +282,7 @@ async function withLocalWorkers(config, work) {
       const child = spawnWorker("admin", ["--filter", "@scalius/admin-v2", "dev"], config);
       children.push(child);
       workers.adminStarted = true;
-      await waitForService("admin", () => isAdminReady(config), () => getChildStatus(child));
+      await waitForService("admin", (timeoutMs) => isAdminReady(config, timeoutMs), () => getChildStatus(child));
     }
 
     return await work(workers);
@@ -321,11 +321,11 @@ function getChildStatus(child) {
   return child.__scaliusStatus;
 }
 
-async function isApiReady(config) {
+async function isApiReady(config, timeoutMs = 30_000) {
   try {
     const response = await fetch(`${config.apiBaseUrl}/api/v1/health`, {
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(1200),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return response.ok;
   } catch {
@@ -333,11 +333,11 @@ async function isApiReady(config) {
   }
 }
 
-async function isAdminReady(config) {
+async function isAdminReady(config, timeoutMs = 30_000) {
   try {
     const response = await fetch(`${config.adminBaseUrl}/api/auth/get-session`, {
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(1200),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     return response.status < 500;
   } catch {
@@ -348,13 +348,44 @@ async function isAdminReady(config) {
 async function waitForService(label, isReady, getChildStatus = () => null) {
   const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
-    if (await isReady()) return;
-    const childStatus = getChildStatus();
-    if (childStatus) {
-      const reason = childStatus.signal ? `signal ${childStatus.signal}` : `exit code ${childStatus.code}`;
-      throw new Error(`Temporary ${label} worker exited before it was ready (${reason}).`);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const requestTimeout = Math.min(30_000, remaining);
+
+    // Cancellable child-exit polling: the timer is always cleared in finally
+    // so no unresolved timer outlives the readiness attempt.
+    let childExitTimer;
+    let childExitResolved = false;
+    const childExit = new Promise((resolve) => {
+      const poll = () => {
+        if (childExitResolved) return;
+        const status = getChildStatus();
+        if (status) {
+          childExitResolved = true;
+          resolve(status);
+        } else {
+          childExitTimer = setTimeout(poll, 200);
+        }
+      };
+      poll();
+    });
+
+    try {
+      const ready = isReady(requestTimeout);
+      const outcome = await Promise.race([ready, childExit]);
+
+      if (outcome === true) return;
+      if (outcome && typeof outcome === "object" && !Array.isArray(outcome)) {
+        const reason = outcome.signal ? `signal ${outcome.signal}` : `exit code ${outcome.code}`;
+        throw new Error(`Temporary ${label} worker exited before it was ready (${reason}).`);
+      }
+      // outcome === false: not ready yet, continue
+    } finally {
+      childExitResolved = true;
+      if (childExitTimer) clearTimeout(childExitTimer);
     }
-    await sleep(1000);
+
+    await sleep(Math.min(1000, deadline - Date.now()));
   }
   throw new Error(`Timed out waiting for ${label} worker.`);
 }
