@@ -172,6 +172,8 @@ export const orders = sqliteTable("orders", {
     /** Valid: regular | preorder | backorder (see InventoryPool enum) */
     inventoryPool: text("inventory_pool").notNull().default(InventoryPool.REGULAR),
     inventoryAction: text("inventory_action").notNull().default("none"),
+    /** Timestamp of the last failed inventory reconciliation attempt, used to deprioritize repeatedly failing orders. Null when no failure has occurred or after a successful reconciliation. */
+    lastInventoryFailureAt: integer("last_inventory_failure_at", { mode: "timestamp" }),
     /**
      * Where this order's physical stock is deducted from (and, absent a deduct
      * movement, restored to). Null means the store's default location. It can
