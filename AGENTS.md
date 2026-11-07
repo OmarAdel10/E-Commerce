@@ -78,7 +78,7 @@ Turborepo monorepo (pnpm workspaces: `apps/*`, `packages/*`, `plugins/*`).
 
 ## Testing
 
-Root `vitest.config.ts`: two projects — `pure` (`packages/shared/**`, `packages/plugin-sdk/**`; `isolate: false`) and `app` (everything else; serial files only in the serial pass). `SERIAL_TESTS` are three Turso/D1 export tests that build full migrated DBs and run for minutes. `testTimeout`/`hookTimeout` are 30s. The `@/` alias resolves per-importer to `apps/admin-v2/src/` or `apps/storefront/src/`; `.txt` imports return their text; `cloudflare:workers` is stubbed. Setup file: `scripts/vitest-setup.mjs`. Excludes `.Codex/**` and `audit/**`.
+Root `vitest.config.ts`: two projects — `pure` (`packages/shared/**`, `packages/plugin-sdk/**`; `isolate: false`) and `app` (everything else; serial files only in the serial pass). `SERIAL_TESTS` are three Turso/D1 export tests that build full migrated DBs and run for minutes. `testTimeout`/`hookTimeout` are 30s. The `@/` alias resolves per-importer to `apps/admin-v2/src/` or `apps/storefront/src/`; `.txt` imports return their text; `cloudflare:workers` is stubbed. Setup file: `scripts/vitest-setup.mjs`. Excludes `.claude/**` and `audit/**`.
 
 Apps have no separate test scripts: admin-v2 has no vitest config; storefront has `apps/storefront/vitest.config.ts` but no npm test script.
 
@@ -118,6 +118,19 @@ No `.cursor` rules or `GEMINI.md` exist in this repository. The project does not
 ## Secrets reminder
 
 Never commit `.dev.vars`, `.env*`, real buyer data, or secrets. Install secrets via `wrangler secret put` (API: `SCALIUS_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`; storefront: `SCALIUS_SECRET`).
+
+## GitHub Repository Policies
+
+- **Canonical repository:** `OmarAdel10/E-Commerce`.
+- **Authorized delivery remote:** `origin` (`https://github.com/OmarAdel10/E-Commerce.git`); `upstream` (`https://github.com/scaliuslabs/scalius-commerce-lite.git`) is fetch-only.
+- **Always use fully qualified GitHub repository identifiers.** For `gh`, use `--repo OmarAdel10/E-Commerce`; for GitHub APIs/connectors, specify owner and repository explicitly.
+- **Never infer the repository from a PR number, branch name, or GitHub CLI automatic resolution.**
+- **Verify head repository, base repository, and target branch before creating or modifying PRs.**
+- **Feature branches target `development`; promotion to `master` requires an explicitly approved release workflow.**
+- **Never create, close, retarget, merge, or force-push PRs without explicit authorization. Never write to upstream without separate explicit authorization.**
+- **Follow the `implement-review-ship` workflow:** branch from development → implement → fresh context-free reviewers → quality gate → PR. Two fresh independent reviews, scores above 90, zero Critical/High/Medium findings, zero untested changed units.
+- **Never claim a gate passed if it failed, was skipped, or only ran partially.**
+- **Preserve unrelated files, secrets, and existing business configuration.**
 
 ## Agent skills
 
