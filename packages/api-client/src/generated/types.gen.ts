@@ -11744,6 +11744,13 @@ export type GetApiV1CheckoutConfigResponses = {
                     bn: string;
                 };
             };
+            codDeposit: {
+                enabled: boolean;
+                mode: 'fixed' | 'percentage';
+                amount: number;
+                percent: number;
+                instructions: string;
+            };
         };
     };
 };
@@ -13454,6 +13461,19 @@ export type GetApiV1CustomerAuthOrdersByIdResponses = {
              */
             supportRequestIntro: string | null;
             paymentPlan: {
+                kind: string;
+                instructions: string | null;
+                contactSnapshot: {
+                    phone: string | null;
+                    email: string | null;
+                    whatsappUrl: string | null;
+                    socialLinks: Array<{
+                        id: string;
+                        label: string;
+                        url: string;
+                        iconUrl: string | null;
+                    }>;
+                } | null;
                 totalAmount: number;
                 depositAmount: number;
                 balanceDue: number;
@@ -20684,6 +20704,24 @@ export type GetApiV1OrdersReceiptByIdResponses = {
         success: true;
         data: {
             order: {
+                paymentPlan: {
+                    kind: string;
+                    status: string;
+                    depositAmount: number;
+                    balanceDue: number;
+                    instructions: string | null;
+                    contactSnapshot: {
+                        phone: string | null;
+                        email: string | null;
+                        whatsappUrl: string | null;
+                        socialLinks: Array<{
+                            id: string;
+                            label: string;
+                            url: string;
+                            iconUrl: string | null;
+                        }>;
+                    } | null;
+                } | null;
                 buyerUi: Array<{
                     appId: string;
                     releaseId: string;
@@ -25655,6 +25693,10 @@ export type PostApiV1AdminResourcesOrdersByIdPaymentsData = {
          * The order `revision` you read; a different one is refused with 409.
          */
         expectedRevision?: number;
+        /**
+         * `"deposit"` when recording a manual COD deposit. Staff only.
+         */
+        paymentType?: 'deposit';
     };
     headers?: {
         /**
@@ -50144,6 +50186,11 @@ export type GetApiV1AdminSettingsCheckoutFlowResponses = {
             partialPaymentAmount: number;
             autoFulfilMode: 'after_payment' | 'after_confirmation';
             requireFullBillingAddress: boolean;
+            codDepositEnabled: boolean;
+            codDepositMode: 'fixed' | 'percentage';
+            codDepositAmount: number;
+            codDepositPercent: number;
+            codDepositInstructions: string;
             revision: number;
         };
     };
@@ -50159,6 +50206,11 @@ export type PutApiV1AdminSettingsCheckoutFlowData = {
         partialPaymentAmount: number;
         autoFulfilMode?: 'after_payment' | 'after_confirmation';
         requireFullBillingAddress?: boolean;
+        codDepositEnabled?: boolean;
+        codDepositMode?: 'fixed' | 'percentage';
+        codDepositAmount?: number;
+        codDepositPercent?: number;
+        codDepositInstructions?: string;
         expectedRevision: number;
     };
     path?: never;
@@ -50212,6 +50264,11 @@ export type PutApiV1AdminSettingsCheckoutFlowResponses = {
             partialPaymentAmount: number;
             autoFulfilMode: 'after_payment' | 'after_confirmation';
             requireFullBillingAddress: boolean;
+            codDepositEnabled: boolean;
+            codDepositMode: 'fixed' | 'percentage';
+            codDepositAmount: number;
+            codDepositPercent: number;
+            codDepositInstructions: string;
             revision: number;
         };
     };

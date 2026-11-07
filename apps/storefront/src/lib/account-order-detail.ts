@@ -6,6 +6,7 @@ import {
   createCustomerOrderSupportRequest,
   getCustomerOrderDetail,
   getCustomerSession,
+  type ContactSnapshot,
   type CustomerOrderDetail,
   type CustomerOrderPaymentSession,
   type CustomerOrderShipment,
@@ -40,6 +41,7 @@ import { isPaymentMethodIdShape } from "@/lib/payment-method-id";
 import { isGatewayEligibleForPaymentAmount } from "@/lib/checkout/gateway-amount-eligibility";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 import { escapeHtml } from "@scalius/shared/html-escape";
+import { isValidUrlScheme } from "@scalius/shared/url-scheme";
 import { fromMinor } from "@scalius/shared/money";
 import { formatOrderNumber } from "@scalius/shared/order-utils";
 import { formatBdMobile } from "@scalius/shared/phone-input";
@@ -726,6 +728,40 @@ function renderDelivery(detail: AccountOrderDetail): void {
   }
 }
 
+/** Renders a single contact line: label + value (link when scheme is valid, plain text otherwise). */
+function contactLine(
+  label: string,
+  value: string,
+  asLink: boolean,
+  copy: ReturnType<typeof accountCopy>,
+): string {
+  const escapedLabel = escapeHtml(label);
+  if (asLink && isValidUrlScheme(value)) {
+    return `<p class="text-sm text-muted-foreground"><span class="font-medium">${escapedLabel}:</span> <a href="${escapeHtml(value)}" class="text-primary underline underline-offset-2">${escapeHtml(value)}</a></p>`;
+  }
+  return `<p class="text-sm text-muted-foreground"><span class="font-medium">${escapedLabel}:</span> ${escapeHtml(value)}</p>`;
+}
+
+/** Renders the contact snapshot the buyer was shown at order placement: phone, WhatsApp, email, social links. */
+export function renderManualCodDepositContact(snapshot: ContactSnapshot, copy: ReturnType<typeof accountCopy>): string {
+  const parts: string[] = [];
+  if (snapshot.phone) {
+    parts.push(`<p class="text-sm text-muted-foreground"><span class="font-medium">${copy.contactPhoneText}:</span> ${escapeHtml(formatBdMobile(snapshot.phone))}</p>`);
+  }
+  if (snapshot.email) {
+    parts.push(`<p class="text-sm text-muted-foreground"><span class="font-medium">${copy.contactEmailText}:</span> ${escapeHtml(snapshot.email)}</p>`);
+  }
+  if (snapshot.whatsappUrl) {
+    parts.push(contactLine(copy.contactWhatsappText, snapshot.whatsappUrl, true, copy));
+  }
+  for (const link of snapshot.socialLinks ?? []) {
+    parts.push(contactLine(link.label, link.url, true, copy));
+  }
+  return parts.length > 0
+    ? `<div class="mt-2 text-sm"><p class="font-medium text-foreground">${copy.contactStoreText}</p>${parts.join("")}</div>`
+    : "";
+}
+
 function renderPayment(detail: AccountOrderDetail): void {
   const { order } = detail;
   // "Gift card + Cash on delivery" and "৳800 due on delivery" when cards paid part.
@@ -754,6 +790,22 @@ function renderPayment(detail: AccountOrderDetail): void {
       line.balanceDue > 0 && order.paidAmount > 0 && !paidByGiftCards ? `<p class="text-muted-foreground">${escapeHtml(words.paid(money(order.paidAmount)))}</p>` : "",
       detail.cod?.collectedAmount ? `<p class="text-muted-foreground">${escapeHtml(words.collected(money(detail.cod.collectedAmount)))}</p>` : "",
       detail.paymentPlan ? `<p class="text-muted-foreground">${escapeHtml(words.advance(money(detail.paymentPlan.depositAmount)))}</p>` : "",
+      // Manual COD deposit: status, merchant instructions, and the contact the buyer was told to use.
+      detail.paymentPlan?.kind === "manual" ? `
+        <div class="mt-3 rounded-lg border border-border bg-muted/50 p-3">
+          <p class="font-medium text-foreground" data-manual-cod-deposit-status>${escapeHtml(
+            detail.paymentPlan.status === "pending"
+              ? copy.codDepositRequiredText ?? "Deposit required before dispatch"
+              : detail.paymentPlan.status === "deposit_paid"
+                ? copy.codDepositReceivedText
+                : detail.paymentPlan.status === "completed"
+                  ? copy.codDepositCompletedText
+                : copy.codDepositCancelledText
+          )}</p>
+          ${detail.paymentPlan.instructions ? `<p class="mt-1 text-sm text-muted-foreground whitespace-pre-line break-words" data-manual-cod-deposit-instructions>${escapeHtml(detail.paymentPlan.instructions)}</p>` : ""}
+          ${detail.paymentPlan.contactSnapshot ? renderManualCodDepositContact(detail.paymentPlan.contactSnapshot, accountCopy()) : ""}
+        </div>
+      ` : "",
       refunds,
     ].join("");
   }

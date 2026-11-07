@@ -45424,6 +45424,40 @@
                             "channels",
                             "label"
                           ]
+                        },
+                        "codDeposit": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "fixed",
+                                "percentage"
+                              ]
+                            },
+                            "amount": {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            "percent": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 99
+                            },
+                            "instructions": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "mode",
+                            "amount",
+                            "percent",
+                            "instructions"
+                          ]
                         }
                       },
                       "required": [
@@ -45440,7 +45474,8 @@
                         "checkoutReadiness",
                         "unavailable",
                         "market",
-                        "marketingConsent"
+                        "marketingConsent",
+                        "codDeposit"
                       ]
                     }
                   },
@@ -52704,6 +52739,64 @@
                           "type": "object",
                           "nullable": true,
                           "properties": {
+                            "kind": {
+                              "type": "string"
+                            },
+                            "instructions": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "contactSnapshot": {
+                              "type": "object",
+                              "nullable": true,
+                              "properties": {
+                                "phone": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "email": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "whatsappUrl": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "socialLinks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "iconUrl": {
+                                        "type": "string",
+                                        "nullable": true
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label",
+                                      "url",
+                                      "iconUrl"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "phone",
+                                "email",
+                                "whatsappUrl",
+                                "socialLinks"
+                              ]
+                            },
                             "totalAmount": {
                               "type": "number"
                             },
@@ -52734,6 +52827,9 @@
                             }
                           },
                           "required": [
+                            "kind",
+                            "instructions",
+                            "contactSnapshot",
                             "totalAmount",
                             "depositAmount",
                             "balanceDue",
@@ -77195,6 +77291,87 @@
                         "order": {
                           "type": "object",
                           "properties": {
+                            "paymentPlan": {
+                              "type": "object",
+                              "nullable": true,
+                              "properties": {
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string"
+                                },
+                                "depositAmount": {
+                                  "type": "number"
+                                },
+                                "balanceDue": {
+                                  "type": "number"
+                                },
+                                "instructions": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "contactSnapshot": {
+                                  "type": "object",
+                                  "nullable": true,
+                                  "properties": {
+                                    "phone": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "email": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "whatsappUrl": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "socialLinks": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "id": {
+                                            "type": "string"
+                                          },
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "url": {
+                                            "type": "string"
+                                          },
+                                          "iconUrl": {
+                                            "type": "string",
+                                            "nullable": true
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "label",
+                                          "url",
+                                          "iconUrl"
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "required": [
+                                    "phone",
+                                    "email",
+                                    "whatsappUrl",
+                                    "socialLinks"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "status",
+                                "depositAmount",
+                                "balanceDue",
+                                "instructions",
+                                "contactSnapshot"
+                              ]
+                            },
                             "buyerUi": {
                               "type": "array",
                               "items": {
@@ -81361,6 +81538,7 @@
                             }
                           },
                           "required": [
+                            "paymentPlan",
                             "buyerUi",
                             "id",
                             "orderNumber",
@@ -98162,8 +98340,8 @@
         "tags": [
           "App API - Orders"
         ],
-        "summary": "Record a payment against an invoice order",
-        "description": "Records money received for a deferred (net terms) order: a bank transfer, cheque or cash against its invoice. No provider is called. The order's paid amount and payment status advance in the same write, `payment.updated` (and `order.paid` once nothing is due) follow, and a refund of it is a manual settlement. When an app records it on an order with gift cards or downloads still owed, the order is held for staff review in the same write: they are handed over once staff release the hold. Send an Idempotency-Key: a repeat returns the first payment.",
+        "summary": "Record a payment against an invoice order or a manual COD deposit",
+        "description": "Records money received for a deferred (net terms) order: a bank transfer, cheque or cash against its invoice. Also records a manual COD deposit when `paymentType` is `\"deposit\"` against a pending manual payment plan. No provider is called. The order's paid amount and payment status advance in the same write, `payment.updated` (and `order.paid` once nothing is due) follow, and a refund of it is a manual settlement. When an app records it on an order with gift cards or downloads still owed, the order is held for staff review in the same write: they are handed over once staff release the hold. Send an Idempotency-Key: a repeat returns the first payment.",
         "parameters": [
           {
             "schema": {
@@ -98228,6 +98406,13 @@
                     "type": "integer",
                     "minimum": 1,
                     "description": "The order `revision` you read; a different one is refused with 409."
+                  },
+                  "paymentType": {
+                    "type": "string",
+                    "enum": [
+                      "deposit"
+                    ],
+                    "description": "`\"deposit\"` when recording a manual COD deposit. Staff only."
                   }
                 },
                 "required": [
@@ -178001,6 +178186,25 @@
                         "requireFullBillingAddress": {
                           "type": "boolean"
                         },
+                        "codDepositEnabled": {
+                          "type": "boolean"
+                        },
+                        "codDepositMode": {
+                          "type": "string",
+                          "enum": [
+                            "fixed",
+                            "percentage"
+                          ]
+                        },
+                        "codDepositAmount": {
+                          "type": "number"
+                        },
+                        "codDepositPercent": {
+                          "type": "number"
+                        },
+                        "codDepositInstructions": {
+                          "type": "string"
+                        },
                         "revision": {
                           "type": "integer",
                           "minimum": 0
@@ -178013,6 +178217,11 @@
                         "partialPaymentAmount",
                         "autoFulfilMode",
                         "requireFullBillingAddress",
+                        "codDepositEnabled",
+                        "codDepositMode",
+                        "codDepositAmount",
+                        "codDepositPercent",
+                        "codDepositInstructions",
                         "revision"
                       ]
                     }
@@ -178160,6 +178369,25 @@
                   "requireFullBillingAddress": {
                     "type": "boolean"
                   },
+                  "codDepositEnabled": {
+                    "type": "boolean"
+                  },
+                  "codDepositMode": {
+                    "type": "string",
+                    "enum": [
+                      "fixed",
+                      "percentage"
+                    ]
+                  },
+                  "codDepositAmount": {
+                    "type": "number"
+                  },
+                  "codDepositPercent": {
+                    "type": "number"
+                  },
+                  "codDepositInstructions": {
+                    "type": "string"
+                  },
                   "expectedRevision": {
                     "type": "integer",
                     "minimum": 0
@@ -178221,6 +178449,25 @@
                         "requireFullBillingAddress": {
                           "type": "boolean"
                         },
+                        "codDepositEnabled": {
+                          "type": "boolean"
+                        },
+                        "codDepositMode": {
+                          "type": "string",
+                          "enum": [
+                            "fixed",
+                            "percentage"
+                          ]
+                        },
+                        "codDepositAmount": {
+                          "type": "number"
+                        },
+                        "codDepositPercent": {
+                          "type": "number"
+                        },
+                        "codDepositInstructions": {
+                          "type": "string"
+                        },
                         "revision": {
                           "type": "integer",
                           "minimum": 0
@@ -178233,6 +178480,11 @@
                         "partialPaymentAmount",
                         "autoFulfilMode",
                         "requireFullBillingAddress",
+                        "codDepositEnabled",
+                        "codDepositMode",
+                        "codDepositAmount",
+                        "codDepositPercent",
+                        "codDepositInstructions",
                         "revision"
                       ]
                     }

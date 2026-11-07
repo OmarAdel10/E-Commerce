@@ -32,6 +32,8 @@ import { checkoutAttemptRecoveryHref } from "./attempt-recovery";
 import { inspectCheckoutRecovery } from "./recovery-status";
 import {
   isDepositPaymentRequired,
+  isManualCodDepositRequired,
+  manualCodDepositAmount,
   resolveCheckoutPaymentRequest,
 } from "./payment-mode";
 import type { CartRuleError, CartValidationIssue } from "../api/orders";
@@ -912,6 +914,32 @@ export function renderOrderSummaryDetails(
       currencyFmt(quoteAmountDue(quote).amountDue, quote),
       "flex justify-between rounded-lg border border-primary/20 bg-primary/10 p-2 font-semibold text-primary-ink",
     );
+  } else if (
+    selectedMethod === "cod"
+    && isManualCodDepositRequired(
+      config,
+      quote.totalAmount,
+      quoteLineTypes(quote),
+      config.currency?.code,
+      quote.currencyCode,
+      quote.decimalPlaces,
+    )
+  ) {
+    const deposit = manualCodDepositAmount(config, quote.totalAmount, quote.decimalPlaces);
+    if (deposit !== null) {
+      appendSummaryRow(
+        details,
+        checkoutCopy.codDepositRequiredText,
+        currencyFmt(deposit, quote),
+        "flex justify-between rounded-lg border border-primary/20 bg-primary/10 p-2 font-semibold text-primary-ink",
+      );
+      appendSummaryRow(
+        details,
+        checkoutCopy.codDepositBalanceText,
+        currencyFmt(quote.totalAmount - deposit, quote),
+        "flex justify-between px-2 text-xs text-muted-foreground",
+      );
+    }
   } else if (isDepositPaymentRequired(config, quote.totalAmount, quoteLineTypes(quote))) {
     const advance = config.partialPaymentAmount;
     const balance = quote.totalAmount - advance;
@@ -985,10 +1013,29 @@ function eligibleCheckoutGateways(): CheckoutConfig["gateways"] {
       ? [{ id: GIFT_CARD_PAYMENT_METHOD, flow: "cod", name: giftCopy.paidWithGiftCardText }]
       : [];
   }
+  // A manual COD deposit (codDeposit.enabled) replaces COD for qualifying
+  // carts: COD is shown only when the cart qualifies (physical lines, store
+  // currency, no gift cards, deposit < total). Otherwise COD is unavailable
+  // for this order — never silently degraded to unrestricted full COD.
+  // When codDeposit is off, COD is excluded only while partial payment
+  // (online advance) is on, exactly as before.
+  const codDepositApplies = currentConfig.codDeposit?.enabled
+    && isManualCodDepositRequired(
+      currentConfig,
+      currentQuote.totalAmount,
+      quoteLineTypes(currentQuote),
+      currentConfig.currency?.code,
+      currentQuote.currencyCode,
+      currentQuote.decimalPlaces,
+    )
+    && !hasGiftCardTender(currentQuote);
+  const codExcluded = currentConfig.codDeposit?.enabled
+    ? !codDepositApplies
+    : currentConfig.partialPaymentEnabled;
   const eligible = gateways.filter(
     (gateway) => (
       gateway.id !== GIFT_CARD_PAYMENT_METHOD
-      && !(currentConfig.partialPaymentEnabled && gateway.id === "cod")
+      && !(codExcluded && gateway.id === "cod")
       && allowed.includes(gateway.id)
       && isGatewayEligibleForPaymentAmount(
         gateway,
@@ -1021,7 +1068,19 @@ function quotedPaymentMethodName(gateway: CheckoutConfig["gateways"][number]): s
 
 function paymentActionLabel(methodId: string): string {
   if (!checkoutConfig || !authoritativeTaxQuote) return checkoutCopy.continueText;
-  if (methodId === "cod" || methodId === GIFT_CARD_PAYMENT_METHOD || isDeferredMethod(methodId)) return checkoutCopy.placeOrderText;
+  if (methodId === "cod") {
+    const isManualCodDeposit = isManualCodDepositRequired(
+      checkoutConfig,
+      authoritativeTaxQuote.totalAmount,
+      quoteLineTypes(authoritativeTaxQuote),
+      checkoutConfig.currency?.code,
+      authoritativeTaxQuote.currencyCode,
+      authoritativeTaxQuote.decimalPlaces,
+    );
+    if (isManualCodDeposit) return checkoutCopy.codDepositRequiredText;
+    return checkoutCopy.placeOrderText;
+  }
+  if (methodId === GIFT_CARD_PAYMENT_METHOD || isDeferredMethod(methodId)) return checkoutCopy.placeOrderText;
   if (isHostedMethod(methodId)) {
     return formatCheckoutLanguageText(checkoutCopy.continueToProviderText, {
       provider: providerLabelFor(methodId),

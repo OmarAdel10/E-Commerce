@@ -1324,6 +1324,20 @@
       "when": 1792770000000,
       "tag": "0188_platform_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "6",
+      "when": 1793664581457,
+      "tag": "0189_magical_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "6",
+      "when": 1794023120495,
+      "tag": "0190_striped_puppet_master",
+      "breakpoints": true
     }
   ]
 }

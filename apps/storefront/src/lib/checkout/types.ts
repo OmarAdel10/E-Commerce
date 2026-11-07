@@ -75,6 +75,20 @@ export interface CheckoutConfig {
   checkoutMode: string;
   partialPaymentEnabled: boolean;
   partialPaymentAmount: number;
+  /** Store currency used for amounts. */
+  currency: {
+    code: string;
+    symbol: string;
+    decimalPlaces: number;
+  };
+  /** Settings → Checkout flow: manual COD deposit required before dispatch. */
+  codDeposit?: {
+    enabled: boolean;
+    mode: "fixed" | "percentage";
+    amount: number;
+    percent: number;
+    instructions: string;
+  };
   /** Settings → Checkout: every order asks for a full billing address (absent: off). */
   requireFullBillingAddress?: boolean;
   allowedCountries?: string[];

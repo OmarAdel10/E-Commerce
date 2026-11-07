@@ -1,6 +1,7 @@
 // The order status kernel: validated status changes, inventory reconciliation, COD gates and cancel guards. Fulfilment actions call it.
 import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import { hasOrderEvent, recordOrderEvent } from "../timeline";
+import { assertManualCodDepositVerified } from "../../payments";
 import {
     GIFT_CARD_PAYMENT_METHOD,
     buildGiftCardReleaseStatements,
@@ -55,6 +56,90 @@ export async function reconcileInventoryForStatus(
     const impact = await applyInventoryForStatusChangeWithImpact(db, orderId, status);
     await db.update(orders).set({ inventoryAction: impact.inventoryAction }).where(eq(orders.id, orderId));
     return impact.availabilityTransitionVariantIds;
+}
+
+/**
+ * Reconciles inventory for orders that were cancelled and refunded but
+ * whose inventory was not restored due to a failure in the refund finalization
+ * inventory release step.
+ *
+ * Finds orders with:
+ *   - status = CANCELLED
+ *   - paymentStatus = REFUNDED
+ *   - inventoryAction IN ('reserved', 'deducted')  (i.e., not yet 'restored')
+ *
+ * For each such order, calls reconcileInventoryForStatus to restore the stock.
+ * This is idempotent: if inventory was already restored, reconcileInventoryForStatus
+ * will detect the current inventoryAction and return without changes.
+ *
+ * Can be called from a scheduled drain to provide durable recovery.
+ */
+export async function reconcileRefundedOrderInventory(
+    db: Database,
+    options: { limit?: number } = {},
+): Promise<{
+    scanned: number;
+    reconciled: number;
+    failed: number;
+    errors: string[];
+    hasMore: boolean;
+}> {
+    const limit = options.limit ?? 25;
+    const pendingActions = ["reserved", "deducted"] as const;
+    // Orders that failed within the last 60 minutes are deprioritized to avoid
+    // repeatedly hammering orders that keep failing. They retried after the
+    // cooldown expires. Timestamps are stored as unix seconds (see UNIX_NOW).
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const sixtyMinutesAgo = nowSeconds - 60 * 60;
+
+    // Find orders that need inventory reconciliation
+    const candidateOrders = await db
+        .select({
+            id: orders.id,
+            inventoryAction: orders.inventoryAction,
+        })
+        .from(orders)
+        .where(and(
+            eq(orders.status, OrderStatus.CANCELLED),
+            eq(orders.paymentStatus, PaymentStatus.REFUNDED),
+            inArray(orders.inventoryAction, pendingActions),
+            // Skip orders whose last failure was within the cooldown window.
+            sql`${orders.lastInventoryFailureAt} IS NULL OR ${orders.lastInventoryFailureAt} < ${sixtyMinutesAgo}`,
+        ))
+        .limit(limit)
+        .all();
+
+    const result = {
+        scanned: candidateOrders.length,
+        reconciled: 0,
+        failed: 0,
+        errors: [] as string[],
+        hasMore: candidateOrders.length === limit,
+    };
+
+    for (const order of candidateOrders) {
+        try {
+            await reconcileInventoryForStatus(db, order.id, OrderStatus.CANCELLED);
+            // Clear the failure timestamp on successful reconciliation.
+            await db
+                .update(orders)
+                .set({ lastInventoryFailureAt: null })
+                .where(eq(orders.id, order.id));
+            result.reconciled++;
+        } catch (error) {
+            result.failed++;
+            const message = error instanceof Error ? error.message : String(error);
+            result.errors.push(`Order ${order.id}: ${message}`);
+            // Record the failure timestamp so this order is deprioritized
+            // for the next 60 minutes.
+            await db
+                .update(orders)
+                .set({ lastInventoryFailureAt: sql`${nowSeconds}` })
+                .where(eq(orders.id, order.id));
+        }
+    }
+
+    return result;
 }
 
 const CANCELLATION_REQUIRES_REFUND_MESSAGE =
@@ -499,6 +584,14 @@ export async function applyOrderStatusChange(
         if (!giftCardTenders) {
             await assertGenericCancellationPaymentSafe(db, orderId, existingOrder);
         }
+    }
+
+    // A manual COD deposit order cannot enter a fulfilment-eligible state until
+    // staff have verified the deposit (plan is `deposit_paid` or `completed`).
+    // Cancellation remains possible: a pending or cancelled plan does not block
+    // cancelling the order itself.
+    if (existingOrder.paymentMethod === PaymentMethod.COD && nextStatus !== OrderStatus.CANCELLED) {
+        await assertManualCodDepositVerified(db, orderId);
     }
 
     // Optimistic locking: CAS update FIRST — only proceed with side effects
