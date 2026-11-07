@@ -86,6 +86,11 @@ export async function reconcileRefundedOrderInventory(
 }> {
     const limit = options.limit ?? 25;
     const pendingActions = ["reserved", "deducted"] as const;
+    // Orders that failed within the last 60 minutes are deprioritized to avoid
+    // repeatedly hammering orders that keep failing. They retried after the
+    // cooldown expires. Timestamps are stored as unix seconds (see UNIX_NOW).
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const sixtyMinutesAgo = nowSeconds - 60 * 60;
 
     // Find orders that need inventory reconciliation
     const candidateOrders = await db
@@ -98,6 +103,8 @@ export async function reconcileRefundedOrderInventory(
             eq(orders.status, OrderStatus.CANCELLED),
             eq(orders.paymentStatus, PaymentStatus.REFUNDED),
             inArray(orders.inventoryAction, pendingActions),
+            // Skip orders whose last failure was within the cooldown window.
+            sql`${orders.lastInventoryFailureAt} IS NULL OR ${orders.lastInventoryFailureAt} < ${sixtyMinutesAgo}`,
         ))
         .limit(limit)
         .all();
@@ -113,11 +120,22 @@ export async function reconcileRefundedOrderInventory(
     for (const order of candidateOrders) {
         try {
             await reconcileInventoryForStatus(db, order.id, OrderStatus.CANCELLED);
+            // Clear the failure timestamp on successful reconciliation.
+            await db
+                .update(orders)
+                .set({ lastInventoryFailureAt: null })
+                .where(eq(orders.id, order.id));
             result.reconciled++;
         } catch (error) {
             result.failed++;
             const message = error instanceof Error ? error.message : String(error);
             result.errors.push(`Order ${order.id}: ${message}`);
+            // Record the failure timestamp so this order is deprioritized
+            // for the next 60 minutes.
+            await db
+                .update(orders)
+                .set({ lastInventoryFailureAt: sql`${nowSeconds}` })
+                .where(eq(orders.id, order.id));
         }
     }
 
