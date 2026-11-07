@@ -837,8 +837,8 @@ export function computePaymentStateFromLedger(params: {
 export async function finalizeAcceptedRefundAttemptIds(
     db: Database,
     attemptIds: string[],
-    /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. */
-    masterSecret?: string,
+    /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
+    masterSecret?: string | string[],
 ): Promise<FinalizeAcceptedRefundAttemptsResult> {
     const uniqueAttemptIds = [...new Set(attemptIds.filter(Boolean))];
     if (uniqueAttemptIds.length === 0) {
@@ -871,12 +871,26 @@ export async function finalizeAcceptedRefundAttemptIds(
     // Never commit a signed refund when its integrity cannot be verified.
     // In particular, recovery must not mark the attempt terminal while leaving
     // a refunded manual deposit plan eligible for fulfilment.
+    // When SCALIUS_SECRET rotates, try prior secrets so pending signed refunds
+    // remain verifiable across rotation without weakening signature validation.
+    const secrets = (masterSecret ? (Array.isArray(masterSecret) ? masterSecret : [masterSecret]) : []) as string[];
     for (const attempt of attempts) {
         const metadata = parseRefundMetadata(attempt.metadata);
         if (Object.hasOwn(metadata, "_hmac")) {
             const { _hmac, ...payload } = metadata;
-            const env = masterSecret ? { SCALIUS_SECRET: masterSecret } : null;
-            if (typeof _hmac !== "string" || !await verifyRefundMetadataHmac(env, JSON.stringify(payload), _hmac)) {
+            if (typeof _hmac !== "string") {
+                throw new ValidationError("Refund metadata integrity verification failed.");
+            }
+            const payloadStr = JSON.stringify(payload);
+            let verified = false;
+            for (const secret of secrets) {
+                const env = { SCALIUS_SECRET: secret };
+                if (await verifyRefundMetadataHmac(env, payloadStr, _hmac)) {
+                    verified = true;
+                    break;
+                }
+            }
+            if (!verified) {
                 throw new ValidationError("Refund metadata integrity verification failed.");
             }
         }

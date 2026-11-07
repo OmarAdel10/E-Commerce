@@ -103,7 +103,8 @@ export interface ExternalRefundWebhookReconciliationResult {
 
 export interface RefundReconciliationOptions {
   encryptionKey?: string;
-  masterSecret?: string;
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
+  masterSecret?: string | string[];
   limit?: number;
   nowSeconds?: number;
   /** The gateways to ask (built-in and app providers); built-in ones alone by default. */
@@ -128,7 +129,8 @@ export interface ManualRefundAttemptReconciliationResult {
 
 export interface ExternalRefundWebhookReconciliationOptions {
   encryptionKey?: string;
-  masterSecret?: string;
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
+  masterSecret?: string | string[];
   limit?: number;
   nowSeconds?: number;
   providers?: PaymentProvidersSource;
