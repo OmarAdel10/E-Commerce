@@ -20,7 +20,7 @@ import { type CreateStorefrontOrderInput, type CreateStorefrontOrderCustomerIden
 import { ValidationError } from "@scalius/core/errors";
 import { PaymentMethod } from "@scalius/database/schema";
 import type { TaxQuote } from "../tax/browser";
-import { type StorefrontTaxAuthoritySnapshot, markTrustedStorefrontTaxAuthorityForTest } from "../tax/tax.service";
+import { type StorefrontTaxAuthoritySnapshot, markTrustedStorefrontTaxAuthorityForTest } from "../tax";
 import type { PresentmentMoney } from "@scalius/shared/presentment";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 
