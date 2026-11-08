@@ -228,7 +228,7 @@ export async function updateOrderStatusFromShipment(
       // (e.g. admin + webhook) both apply inventory before either detects the conflict.
       // A manual COD deposit order cannot move to a fulfilment-eligible state
       // until staff verify the deposit.
-      if (newOrderStatus === "shipped" || newOrderStatus === "delivered") {
+      if (newOrderStatus === "processing" || newOrderStatus === "confirmed" || newOrderStatus === "shipped" || newOrderStatus === "delivered" || newOrderStatus === "completed") {
         await assertManualCodDepositVerified(db, order.id);
       }
       const result = await db
