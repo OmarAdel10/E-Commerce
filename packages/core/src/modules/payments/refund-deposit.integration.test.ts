@@ -26,13 +26,13 @@ describe("manual deposit refund persisted ledger", () => {
   afterEach(() => f.sqlite.close());
   const plan = () => f.sqlite.prepare("SELECT status FROM payment_plans WHERE id='p'").get()!.status;
   it("a forged marker on the other allocation cannot cancel the plan, then a legacy deposit refund does", async () => {
-    await finalizeAcceptedRefundAttemptIds(f.db, ["ao"]);
+    await finalizeAcceptedRefundAttemptIds(f.db, ["ao"], secret);
     expect(plan()).toBe("deposit_paid");
     expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='ro'").get()!.status).toBe("refunded");
-    await finalizeAcceptedRefundAttemptIds(f.db, ["ad"]);
+    await finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret);
     expect(plan()).toBe("cancelled");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(0);
-    await finalizeAcceptedRefundAttemptIds(f.db, ["ad", "ad"]);
+    await finalizeAcceptedRefundAttemptIds(f.db, ["ad", "ad"], secret);
     expect(plan()).toBe("cancelled");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(0);
   });
@@ -40,7 +40,7 @@ describe("manual deposit refund persisted ledger", () => {
     const payload = { manualDepositRefund: true };
     const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: secret }, JSON.stringify(payload));
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ ...payload, _hmac: hmac }));
-    await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"])).rejects.toThrow(/integrity/);
+    await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret)).rejects.toThrow(/integrity/);
     expect(plan()).toBe("deposit_paid");
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ manualDepositRefund: false, _hmac: hmac }));
     await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret)).rejects.toThrow(/integrity/);
@@ -48,13 +48,13 @@ describe("manual deposit refund persisted ledger", () => {
   });
   it("rejects partial store-credit deposit allocation through the production refund entry", async () => {
     f.sqlite.exec("DELETE FROM refund_attempts; DELETE FROM order_payments WHERE payment_type='refund'; UPDATE order_payments SET created_at=1 WHERE id='other'; UPDATE order_payments SET created_at=2 WHERE id='deposit'");
-    await expect(processRefund(f.db, { orderId: "o", amountMinor: 1000, settlement: "store_credit", caller: "staff", actorUserId: "staff", reason: "return" })).rejects.toThrow(/Partial refunds of a manual COD deposit/);
+    await expect(processRefund(f.db, { orderId: "o", amountMinor: 1000, settlement: "store_credit", caller: "staff", actorUserId: "staff", reason: "return" }, secret, undefined, undefined)).rejects.toThrow(/Partial refunds of a manual COD deposit/);
     expect(plan()).toBe("deposit_paid");
     expect(f.sqlite.prepare("SELECT count(*) AS n FROM refund_attempts").get()!.n).toBe(0);
   });
   it.each([2000, 3000])("production refund %i cancels only the actual deposit and marks its allocation", async (amountMinor) => {
     f.sqlite.exec("DELETE FROM refund_attempts; DELETE FROM order_payments WHERE payment_type='refund'; UPDATE order_payments SET created_at=1 WHERE id='other'; UPDATE order_payments SET created_at=2 WHERE id='deposit'");
-    await processRefund(f.db, { orderId: "o", amountMinor, caller: "staff", reason: "return", manualSettlementConfirmed: true }, undefined, undefined, secret);
+    await processRefund(f.db, { orderId: "o", amountMinor, caller: "staff", reason: "return", manualSettlementConfirmed: true }, secret, undefined, undefined);
     expect(plan()).toBe("cancelled");
     const attempts = f.sqlite.prepare("SELECT source_payment_id, status, metadata FROM refund_attempts").all();
     const attempt = attempts.find((row) => row.source_payment_id === "deposit")!;

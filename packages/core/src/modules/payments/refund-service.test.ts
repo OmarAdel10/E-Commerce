@@ -14,6 +14,9 @@ import { PaymentRecordStatus, PaymentStatus, PaymentPlanStatus, OrderStatus } fr
 
 type PaymentInput = Parameters<typeof computePaymentStateFromLedger>[0]["payments"][number];
 
+/** A valid 32+ character master secret for testing HMAC integrity. */
+const TEST_MASTER_SECRET = "test-master-secret-at-least-32-chars-long";
+
 function payment(
   overrides: Partial<{
     paymentType: string;
@@ -416,7 +419,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
         { id: "payment_1", paymentType: "refund", paymentMethod: "cod", status: PaymentRecordStatus.PENDING, amountMinor: 2000, currency: "EGP" },
       ],
     });
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
     expect(db.__setCalls.some(([table]: [unknown]) => table === paymentPlans)).toBe(false);
   });
 
@@ -429,7 +432,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
       attempt: { id: "attempt_1", orderId: "order_1", refundPaymentId: "payment_1", providerRefundId: null, amountMinor: 2000, currency: "EGP", metadata: JSON.stringify({ ...payload, _hmac: hmac }) },
     });
 
-    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"])).rejects.toThrow();
+    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], "wrong-master-secret-for-hmac-test-32-chars!!")).rejects.toThrow();
     expect(db.batch).not.toHaveBeenCalled();
   });
 
@@ -451,7 +454,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
       plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const planUpdate = (db as any).__setCalls.find(([table]: [unknown, Record<string, unknown>]) => table === paymentPlans);
     expect(planUpdate).toBeDefined();
@@ -464,7 +467,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
       plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "online" },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const planUpdate = (db as any).__setCalls.find(([table]: [unknown, Record<string, unknown>]) => table === paymentPlans);
     expect(planUpdate).toBeUndefined();
@@ -475,7 +478,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
       plan: { id: "plan_1", status: PaymentPlanStatus.PENDING, kind: "manual" },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const planUpdate = (db as any).__setCalls.find(([table]: [unknown, Record<string, unknown>]) => table === paymentPlans);
     expect(planUpdate).toBeUndefined();
@@ -484,7 +487,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
   it("does not cancel plan when no plan exists", async () => {
     const db = refundDb({ plan: null });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const planUpdate = (db as any).__setCalls.find(([table]: [unknown, Record<string, unknown>]) => table === paymentPlans);
     expect(planUpdate).toBeUndefined();
@@ -497,7 +500,7 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
       plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
@@ -516,7 +519,7 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
       attempt: { id: "attempt_1", orderId: "order_1", refundPaymentId: "payment_1", providerRefundId: null, amountMinor: 2000, currency: "EGP", metadata: '{"manualDepositRefund": true}' },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
@@ -530,7 +533,7 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
       attempt: { id: "attempt_1", orderId: "order_1", refundPaymentId: "payment_1", providerRefundId: null, amountMinor: 2000, currency: "EGP", metadata: '{"manualDepositRefund": false}' },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
@@ -544,7 +547,7 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
       attempt: { id: "attempt_1", orderId: "order_1", refundPaymentId: "payment_1", providerRefundId: null, amountMinor: 2000, currency: "EGP", metadata: '{}' },
     });
 
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"]);
+    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
@@ -560,7 +563,7 @@ describe("finalizeAcceptedRefundAttemptIds — CAS conflict rollback (Fix A)", (
       batchError: guardError,
     });
 
-    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"])).rejects.toThrow("REFUND_FINALIZE_ORDER_CONFLICT");
+    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET)).rejects.toThrow("REFUND_FINALIZE_ORDER_CONFLICT");
 
     // batch was attempted (statements built and passed to db.batch) but no writes committed.
     const batchCalls = (db as any).__batchCalls;
@@ -574,7 +577,7 @@ describe("finalizeAcceptedRefundAttemptIds — CAS conflict rollback (Fix A)", (
       batchError: guardError,
     });
 
-    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"])).rejects.toThrow("REFUND_FINALIZE_PLAN_CONFLICT");
+    await expect(finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET)).rejects.toThrow("REFUND_FINALIZE_PLAN_CONFLICT");
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(0);
@@ -587,7 +590,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       plan: { id: "plan_1", depositAmountMinor: 2000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: { id: "order_1", totalAmountMinor: 10000, paidAmountMinor: 2000, status: OrderStatus.CONFIRMED, version: 1, currencyCode: "EGP", currencyDecimalPlaces: 2, paymentTermsDays: null },
     });
-    await expect(processRefund(db, { orderId: "order_1", amountMinor: 1500, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" })).rejects.toThrow("Partial refunds of a manual COD deposit");
+    await expect(processRefund(db, { orderId: "order_1", amountMinor: 1500, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" }, TEST_MASTER_SECRET, undefined, undefined)).rejects.toThrow("Partial refunds of a manual COD deposit");
     expect(db.batch).not.toHaveBeenCalled();
   });
 
@@ -596,7 +599,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       plan: { id: "plan_1", depositAmountMinor: 2000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: { id: "order_1", totalAmountMinor: 10000, paidAmountMinor: 2000, status: OrderStatus.CONFIRMED, version: 1, currencyCode: "EGP", currencyDecimalPlaces: 2, paymentTermsDays: null },
     });
-    await expect(processRefund(db, { orderId: "order_1", amountMinor: 2000, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" })).rejects.toThrow("Confirm that the customer has already received the refund by hand");
+    await expect(processRefund(db, { orderId: "order_1", amountMinor: 2000, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" }, TEST_MASTER_SECRET, undefined, undefined)).rejects.toThrow("Confirm that the customer has already received the refund by hand");
     expect(db.batch).not.toHaveBeenCalled();
   });
 
@@ -636,7 +639,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
 
     // Should not throw the deposit validation error - it may fail later at finalize
     // but the key validation (depositAmountMinor check) passes
-    await expect(processRefund(db as any, params)).rejects.not.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
       "Partial refunds of a manual COD deposit are not supported"
     );
   });
@@ -674,7 +677,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
     };
 
     // Should not throw the deposit validation error
-    await expect(processRefund(db as any, params)).rejects.not.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
       "Partial refunds of a manual COD deposit are not supported"
     );
   });
@@ -708,7 +711,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    await expect(processRefund(db as any, params)).rejects.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.toThrow(
       "Partial refunds of a manual COD deposit are not supported. The deposit allocation must equal the full deposit amount."
     );
   });
@@ -742,7 +745,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    await expect(processRefund(db as any, params)).rejects.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.toThrow(
       "Partial refunds of a manual COD deposit are not supported. The deposit allocation must equal the full deposit amount."
     );
   });
@@ -780,7 +783,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
     };
 
     // Should not throw the deposit validation error
-    await expect(processRefund(db as any, params)).rejects.not.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
       "Partial refunds of a manual COD deposit are not supported"
     );
   });
@@ -812,7 +815,7 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    await expect(processRefund(db as any, params)).rejects.toThrow(
+    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.toThrow(
       "Confirm that the customer has already received the refund by hand"
     );
   });
@@ -835,8 +838,6 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
  * - masterSecret propagation through processRefund → finalizeAcceptedRefundAttemptIds
  */
 describe("HMAC metadata integrity (manual COD deposit refund)", () => {
-  // A valid 32+ character master secret for testing
-  const TEST_MASTER_SECRET = "test-master-secret-at-least-32-chars-long";
   const TEST_ENV = { SCALIUS_SECRET: TEST_MASTER_SECRET };
 
   describe("getRefundHmacKey", () => {
@@ -1003,7 +1004,7 @@ describe("HMAC metadata integrity (manual COD deposit refund)", () => {
       expect(parsed.manualDepositRefund).toBe(true);
     });
 
-    it("omits HMAC when masterSecret is not provided", async () => {
+    it("always includes HMAC when masterSecret is provided", async () => {
       const metadata = await buildRefundAttemptMetadata({
         request: mockRequest,
         allocation: mockAllocation,
@@ -1011,11 +1012,12 @@ describe("HMAC metadata integrity (manual COD deposit refund)", () => {
         claimVersion: 1,
         allocationCount: 1,
         manualDepositRefund: true,
-        // masterSecret not provided
+        masterSecret: TEST_MASTER_SECRET,
       });
 
       const parsed = JSON.parse(metadata);
-      expect(parsed._hmac).toBeUndefined();
+      expect(parsed._hmac).toBeDefined();
+      expect(typeof parsed._hmac).toBe("string");
       expect(parsed.manualDepositRefund).toBe(true);
     });
 

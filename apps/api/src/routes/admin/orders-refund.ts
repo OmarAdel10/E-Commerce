@@ -341,14 +341,17 @@ export async function executeOrderRefund(
     const caller: RefundCaller = c.get("pluginPrincipal") ? "app" : c.get("agentPrincipal") ? "agent" : "staff";
     try {
         // Pass master secret for HMAC integrity on refund metadata
-        const masterSecret = (c.env as Record<string, unknown>).SCALIUS_SECRET as string | undefined;
+        const masterSecret = (c.env as Record<string, unknown>).SCALIUS_SECRET as string;
+        if (!masterSecret || masterSecret.length < 32) {
+            throw new Error("SCALIUS_SECRET is not installed or is too short.");
+        }
         result = await processRefund(
             db,
             { ...request, caller },
+            masterSecret,
             encryptionKey,
             // App gateways refund through the same port as built-in ones (read only when one is named).
             () => requestPaymentProviders(c),
-            masterSecret,
         );
     } catch (error: unknown) {
         if (error instanceof PartialRefundProcessedError) {
@@ -457,7 +460,7 @@ app.openapi(reconcileRefundAttemptRoute, async (c) => {
         attemptId,
         {
             encryptionKey: getCredentialEncryptionKey(c.env as Record<string, unknown>),
-            masterSecret: (c.env as Record<string, unknown>).SCALIUS_SECRET as string | undefined,
+            masterSecret: (c.env as Record<string, unknown>).SCALIUS_SECRET as string,
             providers: () => requestPaymentProviders(c),
         },
     );

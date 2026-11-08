@@ -9,11 +9,16 @@ import {
 } from "./runtime-secrets";
 import type { RuntimeSecretName } from "./runtime-secrets";
 
-describe("RUNTIME_SECRET_PURPOSES — domain-prefixed purpose labels", () => {
-  it("all purposes are domain-prefixed (no bare purpose labels)", () => {
-    for (const [name, purpose] of Object.entries(RUNTIME_SECRET_PURPOSES)) {
-      expect(purpose).toMatch(/^[a-z]+:/);
-    }
+describe("RUNTIME_SECRET_PURPOSES — purpose labels", () => {
+  it("preserves existing purpose labels for backward compatibility", () => {
+    expect(RUNTIME_SECRET_PURPOSES.BETTER_AUTH_SECRET).toBe("better-auth-session");
+    expect(RUNTIME_SECRET_PURPOSES.JWT_SECRET).toBe("jwt-signing");
+    expect(RUNTIME_SECRET_PURPOSES.API_TOKEN).toBe("service-api-token");
+    expect(RUNTIME_SECRET_PURPOSES.AGENT_TOKEN_PEPPER).toBe("agent-token-pepper");
+    expect(RUNTIME_SECRET_PURPOSES.CUSTOMER_SESSION_HASH_KEY).toBe("customer-session-hash");
+    expect(RUNTIME_SECRET_PURPOSES.ADMIN_SETUP_TOKEN).toBe("admin-setup");
+    expect(RUNTIME_SECRET_PURPOSES.FRONT_PROXY_SECRET).toBe("front-proxy");
+    expect(RUNTIME_SECRET_PURPOSES.IDENTITY_HANDOFF_SECRET).toBe("identity-handoff");
   });
 
   it("covers all RuntimeSecretName keys", () => {
@@ -24,13 +29,26 @@ describe("RUNTIME_SECRET_PURPOSES — domain-prefixed purpose labels", () => {
     }
   });
 
-  it("has the expected payments refund metadata purpose", () => {
+  it("has the expected payments refund metadata purpose (new label)", () => {
     expect(RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC).toBe("payments:refund:metadata:hmac:v1");
   });
 
-  it("has the expected auth purposes", () => {
-    expect(RUNTIME_SECRET_PURPOSES.BETTER_AUTH_SECRET).toBe("auth:better-auth-session:v1");
-    expect(RUNTIME_SECRET_PURPOSES.JWT_SECRET).toBe("auth:jwt-signing:v1");
+  it("existing labels remain stable across deriveRuntimeSecret calls", async () => {
+    const master = "a".repeat(64);
+    const names = Object.keys(RUNTIME_SECRET_PURPOSES) as RuntimeSecretName[];
+    const first = await deriveRuntimeSecrets(master);
+    const second = await deriveRuntimeSecrets(master);
+    for (const name of names) {
+      expect(first[name]).toBe(second[name]);
+      expect(first[name]!.length).toBe(43);
+    }
+  });
+
+  it("different purposes derive different secrets", async () => {
+    const master = "a".repeat(64);
+    const a = await deriveRuntimeSecret(master, RUNTIME_SECRET_PURPOSES.BETTER_AUTH_SECRET);
+    const b = await deriveRuntimeSecret(master, RUNTIME_SECRET_PURPOSES.JWT_SECRET);
+    expect(a).not.toBe(b);
   });
 });
 

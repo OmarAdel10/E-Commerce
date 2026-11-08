@@ -103,8 +103,8 @@ export interface ExternalRefundWebhookReconciliationResult {
 
 export interface RefundReconciliationOptions {
   encryptionKey?: string;
-  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
-  masterSecret?: string | string[];
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+  masterSecret: string | string[];
   limit?: number;
   nowSeconds?: number;
   /** The gateways to ask (built-in and app providers); built-in ones alone by default. */
@@ -129,8 +129,8 @@ export interface ManualRefundAttemptReconciliationResult {
 
 export interface ExternalRefundWebhookReconciliationOptions {
   encryptionKey?: string;
-  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
-  masterSecret?: string | string[];
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+  masterSecret: string | string[];
   limit?: number;
   nowSeconds?: number;
   providers?: PaymentProvidersSource;
@@ -822,7 +822,7 @@ export async function verifyObservedRefund(
 
 export async function reconcileExternalRefundWebhooks(
   db: Database,
-  options: ExternalRefundWebhookReconciliationOptions = {},
+  options: ExternalRefundWebhookReconciliationOptions,
 ): Promise<ExternalRefundWebhookReconciliationResult> {
   const limit = normalizeLimit(options.limit);
   const rows = await db
@@ -882,7 +882,7 @@ export async function reconcileExternalRefundWebhooks(
 export async function reconcileRefundAttemptById(
   db: Database,
   attemptId: string,
-  options: Omit<RefundReconciliationOptions, "limit"> = {},
+  options: Omit<RefundReconciliationOptions, "limit">,
 ): Promise<{
   status: "finalized" | "failed" | "deferred";
   orderIds: string[];
@@ -981,7 +981,7 @@ export async function reconcileRefundAttemptForOrder(
   db: Database,
   orderId: string,
   attemptId: string,
-  options: Omit<RefundReconciliationOptions, "limit"> = {},
+  options: Omit<RefundReconciliationOptions, "limit">,
 ): Promise<ManualRefundAttemptReconciliationResult> {
   const nowSeconds = options.nowSeconds ?? Math.floor(Date.now() / 1000);
   const attempt = await db
@@ -1041,7 +1041,7 @@ export async function reconcileRefundAttemptForOrder(
 
 export async function reconcileDueRefundAttempts(
   db: Database,
-  options: RefundReconciliationOptions = {},
+  options: RefundReconciliationOptions,
 ): Promise<RefundReconciliationResult> {
   const limit = normalizeLimit(options.limit);
   const nowSeconds = options.nowSeconds ?? Math.floor(Date.now() / 1000);

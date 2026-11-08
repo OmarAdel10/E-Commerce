@@ -837,8 +837,8 @@ export function computePaymentStateFromLedger(params: {
 export async function finalizeAcceptedRefundAttemptIds(
     db: Database,
     attemptIds: string[],
-    /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). */
-    masterSecret?: string | string[],
+    /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+    masterSecret: string | string[],
 ): Promise<FinalizeAcceptedRefundAttemptsResult> {
     const uniqueAttemptIds = [...new Set(attemptIds.filter(Boolean))];
     if (uniqueAttemptIds.length === 0) {
@@ -1234,8 +1234,8 @@ export async function buildRefundAttemptMetadata(params: {
      * Survives async finalization, retries and crash recovery — not just an
      * in-memory parameter that would be lost across process restarts. */
     manualDepositRefund?: boolean;
-    /** Master secret for HMAC derivation. Optional; if not provided, no HMAC is added. */
-    masterSecret?: string;
+    /** Master secret for HMAC derivation. Required for HMAC integrity protection on refund metadata. */
+    masterSecret: string;
 }): Promise<string> {
     const mode = allocationSettlementMode(params.allocation);
     const payload = {
@@ -1286,7 +1286,7 @@ async function buildRefundAttemptInsert(params: {
     requestHash: string;
     currency: string;
     manualDepositRefund?: boolean;
-    masterSecret?: string;
+    masterSecret: string;
 }) {
     const mode = allocationSettlementMode(params.allocation);
     // An internal settlement commits in this very batch: the attempt starts
@@ -1746,11 +1746,12 @@ async function assignAllocationSettlements(
 export async function processRefund(
     db: Database,
     params: RefundRequest,
+    /** The master secret (SCALIUS_SECRET) for deriving HMAC keys. Required for HMAC integrity on refund metadata. */
+    masterSecret: string,
+    /** The credential encryption key for sealing store-credit card codes. */
     encryptionKey?: string,
     /** The request's gateways (built-in and app providers); built-in ones alone by default. */
     providers?: PaymentProvidersSource,
-    /** The master secret (SCALIUS_SECRET) for deriving HMAC keys. Optional; if not provided, HMAC is not used. */
-    masterSecret?: string,
 ): Promise<RefundResult> {
     // 1. Fetch order (include version for CAS to prevent concurrent refund races)
     const order = await db
