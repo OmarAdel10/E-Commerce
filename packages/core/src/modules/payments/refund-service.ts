@@ -1952,7 +1952,7 @@ export async function processRefund(
             "Partial refunds of a manual COD deposit are not supported. The deposit allocation must equal the full deposit amount.",
         );
     }
-    if (hasManualAllocationOnManualCod && params.manualSettlementConfirmed !== true) {
+    if (hasManualAllocation && params.manualSettlementConfirmed !== true) {
         throw new ValidationError(
             "Confirm that the customer has already received the refund by hand (cash or transfer) before recording it.",
         );

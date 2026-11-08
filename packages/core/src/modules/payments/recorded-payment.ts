@@ -147,6 +147,10 @@ export async function recordOrderPayment(
     metadata: orderPayments.metadata,
   }).from(orderPayments).where(eq(orderPayments.id, paymentId)).get();
   if (existing) {
+    const recorded = readMetadata(existing.metadata);
+    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via) {
+      throw new ConflictError("This retry key already recorded a different payment.");
+    }
     // Replay: fetch current order state and return full result
     const currentOrder = await db.select({
       paidAmountMinor: orders.paidAmountMinor,
@@ -209,6 +213,9 @@ export async function recordOrderPayment(
   }
   if (CLOSED_STATUSES.has(order.status)) {
     throw new ValidationError("This order is closed, so no payment can be recorded on it.");
+  }
+  if (input.expectedVersion !== undefined && input.expectedVersion !== order.version) {
+    throw new ConflictError("This order changed. Reload it and record the payment again.");
   }
   if (order.balanceDueMinor <= 0) {
     throw new ValidationError("This order has nothing left to pay.");

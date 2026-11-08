@@ -588,9 +588,18 @@ export async function applyOrderStatusChange(
 
     // A manual COD deposit order cannot enter a fulfilment-eligible state until
     // staff have verified the deposit (plan is `deposit_paid` or `completed`).
+    // Fulfilment-eligible statuses are those where actual fulfilment work happens;
+    // PENDING/INCOMPLETE are pre-fulfilment, CANCELLED/REFUNDED/RETURNED are closed.
     // Cancellation remains possible: a pending or cancelled plan does not block
     // cancelling the order itself.
-    if (existingOrder.paymentMethod === PaymentMethod.COD && nextStatus !== OrderStatus.CANCELLED) {
+    const FULFILMENT_ELIGIBLE_STATUSES = [
+        OrderStatus.PROCESSING,
+        OrderStatus.CONFIRMED,
+        OrderStatus.SHIPPED,
+        OrderStatus.DELIVERED,
+        OrderStatus.COMPLETED,
+    ] as const;
+    if (existingOrder.paymentMethod === PaymentMethod.COD && FULFILMENT_ELIGIBLE_STATUSES.includes(nextStatus as OrderStatus)) {
         await assertManualCodDepositVerified(db, orderId);
     }
 

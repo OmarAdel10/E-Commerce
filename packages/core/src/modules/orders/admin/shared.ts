@@ -510,8 +510,15 @@ export function orderListFactsSelection() {
               AND ${orderEvents.kind} = 'refund_kept'
         ), 0)`,
         // Payment plan for manual COD deposit status in the list
-        paymentPlanKind: paymentPlans.kind,
-        paymentPlanStatus: paymentPlans.status,
+        // Correlated subquery: no join, no name collision with orders.status.
+        paymentPlanKind: sql<string | null>`(
+            SELECT ${paymentPlans.kind} FROM ${paymentPlans}
+            WHERE ${paymentPlans.orderId} = ${outerOrderId} LIMIT 1
+        )`,
+        paymentPlanStatus: sql<string | null>`(
+            SELECT ${paymentPlans.status} FROM ${paymentPlans}
+            WHERE ${paymentPlans.orderId} = ${outerOrderId} LIMIT 1
+        )`,
     };
 }
 

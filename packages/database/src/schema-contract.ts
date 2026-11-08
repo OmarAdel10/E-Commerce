@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 189,
-  name: "0189_magical_lucky_pierre",
+  version: 190,
+  name: "0190_striped_puppet_master",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -726,6 +726,11 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 189,
     name: "0189_magical_lucky_pierre",
     sourceSha256: "d3ab0c1e4bd3581e52a82bd8a8629f8b3d5868eb033ad133552ec6d3aa336993",
+  },
+  {
+    version: 190,
+    name: "0190_striped_puppet_master",
+    sourceSha256: "f984cdef7546dc90201cdc4bcb9987eaeaec3707aa8c645164ff2f1143cd4145",
   },
 ] as const;
 

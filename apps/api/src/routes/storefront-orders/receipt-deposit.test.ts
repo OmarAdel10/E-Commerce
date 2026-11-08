@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { createGiftCardCheckoutFixture, line, DELIVERY } from "../../../../../packages/core/src/testing/gift-card-checkout";
+import { createGiftCardCheckoutFixture, line, DELIVERY } from "@scalius/core/testing/gift-card-checkout";
 import { recordOrderReceipt, getCustomerOrderDetail } from "@scalius/core/modules/orders";
 import { businessDocument, checkoutDocument } from "@scalius/core/modules/settings";
 import { receiptRoutes } from "./receipt";
