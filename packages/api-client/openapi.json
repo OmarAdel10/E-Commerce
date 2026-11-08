@@ -45446,17 +45446,13 @@
                               "type": "number",
                               "minimum": 0,
                               "maximum": 99
-                            },
-                            "instructions": {
-                              "type": "string"
                             }
                           },
                           "required": [
                             "enabled",
                             "mode",
                             "amount",
-                            "percent",
-                            "instructions"
+                            "percent"
                           ]
                         }
                       },
@@ -178197,10 +178193,13 @@
                           ]
                         },
                         "codDepositAmount": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
                         },
                         "codDepositPercent": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 99
                         },
                         "codDepositInstructions": {
                           "type": "string"
@@ -178380,10 +178379,13 @@
                     ]
                   },
                   "codDepositAmount": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0
                   },
                   "codDepositPercent": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 99
                   },
                   "codDepositInstructions": {
                     "type": "string"
@@ -178460,10 +178462,13 @@
                           ]
                         },
                         "codDepositAmount": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0
                         },
                         "codDepositPercent": {
-                          "type": "number"
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 99
                         },
                         "codDepositInstructions": {
                           "type": "string"

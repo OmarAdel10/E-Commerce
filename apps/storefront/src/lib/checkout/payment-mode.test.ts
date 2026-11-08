@@ -20,7 +20,6 @@ function codDepositConfig(
       mode: "fixed",
       amount: 100,
       percent: 20,
-      instructions: "Pay via bKash",
       ...overrides,
     },
   };
@@ -479,7 +478,7 @@ describe("resolveCheckoutPaymentRequest", () => {
   const baseConfig: Pick<CheckoutConfig, "partialPaymentEnabled" | "partialPaymentAmount" | "codDeposit"> = {
     partialPaymentEnabled: true,
     partialPaymentAmount: 200,
-    codDeposit: { enabled: false, mode: "fixed", amount: 0, percent: 0, instructions: "" },
+    codDeposit: { enabled: false, mode: "fixed", amount: 0, percent: 0 },
   };
 
   it("returns deposit when partialPaymentEnabled and physical lines", () => {

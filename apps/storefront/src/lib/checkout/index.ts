@@ -1302,6 +1302,7 @@ async function selectMethod(
   selectedMethod = methodId;
   writeCheckoutPaymentSelection(methodId);
   applySelectedMethodStyles(methodId);
+  renderSummary();
 
   setPayButton(
     paymentActionLabel(methodId),

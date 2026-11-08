@@ -11749,7 +11749,6 @@ export type GetApiV1CheckoutConfigResponses = {
                 mode: 'fixed' | 'percentage';
                 amount: number;
                 percent: number;
-                instructions: string;
             };
         };
     };

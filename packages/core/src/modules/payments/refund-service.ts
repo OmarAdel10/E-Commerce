@@ -1904,7 +1904,7 @@ export async function processRefund(
         refundRows: priorRefundRows,
         currency,
     });
-    if (settlement === "store_credit" && (params.caller ?? "app") !== "staff"
+    if (settlement === "store_credit" && (params.caller ?? "staff") !== "staff"
         && allocations.some((allocation) => isManualSettlementMethod(allocation.sourcePayment.paymentMethod))) {
         // Store credit over money no provider captured would mint a live
         // gift card from a claim (an app's own "bank transfer").
@@ -1938,10 +1938,10 @@ export async function processRefund(
     const hasManualCodAllocation = manualDepositPlan !== undefined
         && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
         && depositAllocations.length > 0;
-    // Any manual settlement allocation on a manual COD order requires confirmation.
-    const hasManualAllocationOnManualCod = manualDepositPlan !== undefined
-        && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
-        && allocations.some((allocation) => isManualSettlementMethod(allocation.sourcePayment.paymentMethod));
+    // Any allocation repaid by hand (COD, recorded payment) requires confirmation.
+    const hasManualAllocation = allocations.some((allocation) =>
+        isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
+    );
     // A manual COD deposit can only be refunded in full — the total amount
     // allocated to the deposit must exactly equal the plan's depositAmountMinor.
     // This prevents partial deposit refunds and double-counting across attempts.
@@ -2320,7 +2320,7 @@ export async function processRefund(
         refundId: getCompletedRefundIds(completedAllocations),
         amount: fromMinor(refundAmount, currency.decimalPlaces),
         isFullRefund,
-        manualSettlementRecorded: hasManualCodAllocation,
+        manualSettlementRecorded: hasManualAllocation,
         settlement,
         ...(storeCredit && storeCreditCard ? {
             storeCredit: {

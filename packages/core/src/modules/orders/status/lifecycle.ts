@@ -104,7 +104,7 @@ export async function reconcileRefundedOrderInventory(
             eq(orders.paymentStatus, PaymentStatus.REFUNDED),
             inArray(orders.inventoryAction, pendingActions),
             // Skip orders whose last failure was within the cooldown window.
-            sql`${orders.lastInventoryFailureAt} IS NULL OR ${orders.lastInventoryFailureAt} < ${sixtyMinutesAgo}`,
+            or(isNull(orders.lastInventoryFailureAt), lt(orders.lastInventoryFailureAt, sixtyMinutesAgo)),
         ))
         .limit(limit)
         .all();

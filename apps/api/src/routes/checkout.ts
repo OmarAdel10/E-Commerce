@@ -103,7 +103,6 @@ const checkoutConfigSchema = z.object({
     mode: z.enum(["fixed", "percentage"]),
     amount: z.number().min(0),
     percent: z.number().min(0).max(99),
-    instructions: z.string(),
   }),
 });
 

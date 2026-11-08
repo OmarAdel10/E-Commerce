@@ -204,10 +204,10 @@ export interface StorefrontCheckoutPolicySnapshot {
     codDepositInstructions: string;
 }
 
-const STOREFRONT_DELIVERY_PREFLIGHT_RESULT_PROOF = Symbol("scalius.storefrontDeliveryPreflightResult");
+export const STOREFRONT_DELIVERY_PREFLIGHT_RESULT_PROOF = Symbol("scalius.storefrontDeliveryPreflightResult");
 const STOREFRONT_CHECKOUT_POLICY_SNAPSHOT_PROOF = Symbol("scalius.storefrontCheckoutPolicySnapshot");
 
-export function markTrustedStorefrontDeliveryPreflightResult(
+function markTrustedStorefrontDeliveryPreflightResult(
     result: StorefrontDeliveryPreflightResult,
 ): StorefrontDeliveryPreflightResult {
     Object.defineProperty(result, STOREFRONT_DELIVERY_PREFLIGHT_RESULT_PROOF, {
@@ -1048,7 +1048,7 @@ export async function createStorefrontOrder(
     // The deposit plan's balance is cash on delivery: it applies only where
     // cash fits every line, so a download or a gift card is paid in full
     // online and delivered at once (isDepositPaymentRequired).
-    const codDepositSettings = checkoutPolicySnapshot ?? {
+    const codDepositSettings = checkoutPolicySnapshot ?? fallbackSettings ?? {
         codDepositEnabled: false,
         codDepositMode: "fixed",
         codDepositAmount: 0,
@@ -1069,7 +1069,10 @@ export async function createStorefrontOrder(
         if (codDepositSettings.codDepositMode === "fixed") {
             depositMinor = toMinor(codDepositSettings.codDepositAmount, requestCurrency.decimalPlaces);
         } else {
-            depositMinor = Math.min(taxQuote.totalMinor - 1, Math.ceil(taxQuote.totalMinor * codDepositSettings.codDepositPercent / 100));
+            const step = Math.max(1, requestCurrency.priceIncrementMinor);
+            const raw = Math.ceil(taxQuote.totalMinor * codDepositSettings.codDepositPercent / 100);
+            depositMinor = Math.ceil(raw / step) * step;
+            if (depositMinor >= taxQuote.totalMinor) depositMinor -= step;
         }
         // The deposit must be a positive amount after rounding; otherwise COD
         // is unavailable for this order (never silently accept a zero deposit).
@@ -1084,13 +1087,14 @@ export async function createStorefrontOrder(
     }
     const onlineDepositApplies = isPartialEnabled && !deferred && allowsCashOnDelivery && paymentMethod !== PaymentMethod.COD;
     const depositApplies = manualDepositApplies || onlineDepositApplies;
-    if (paymentMethod === PaymentMethod.COD && !manualDepositApplies) {
+    if (paymentMethod === PaymentMethod.COD) {
         // Cash on delivery collects cash amounts (whole taka in BDT): an
         // amount due it cannot collect exactly is refused before the commit.
-        // When a manual COD deposit applies, the deposit is paid online and the
-        // remaining COD balance can be any amount (merchant discretion).
+        // When a manual COD deposit applies, the deposit is paid offline and
+        // the remaining COD balance must still fit what cash can collect.
+        const cashDueMinor = manualDepositApplies ? taxQuote.totalMinor - depositMinor : giftCardTender.amountDueMinor;
         const cashIssue = (appOptions.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS)
-            .amountIssue(paymentMethod, giftCardTender.amountDueMinor, taxQuote.currencyCode);
+            .amountIssue(paymentMethod, cashDueMinor, taxQuote.currencyCode);
         if (cashIssue) throw new ValidationError(cashIssue, { reason: CASH_ON_DELIVERY_AMOUNT_REASON });
     }
 
@@ -1151,7 +1155,8 @@ export async function createStorefrontOrder(
         ]);
         let whatsappUrl: string | null = null;
         if (customerAuth?.whatsapp === "same_as_phone" && business?.phone) {
-            whatsappUrl = `https://wa.me/${business.phone}`;
+            const digits = business.phone.replace(/\D/g, "");
+            whatsappUrl = digits ? `https://wa.me/${digits}` : null;
         } else if (customerAuth?.whatsapp === "separate" && business?.socialLinks) {
             whatsappUrl = business.socialLinks
                 .find((s) => s.label.toLowerCase() === "whatsapp")?.url ?? null;

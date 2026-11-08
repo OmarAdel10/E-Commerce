@@ -47,7 +47,7 @@ export interface StorefrontTaxAuthoritySnapshot {
     originCountry: string | null;
 }
 
-const STOREFRONT_TAX_AUTHORITY_PROOF = Symbol("scalius.storefrontTaxAuthority");
+export const STOREFRONT_TAX_AUTHORITY_PROOF = Symbol("scalius.storefrontTaxAuthority");
 
 function markTrustedStorefrontTaxAuthority(
     snapshot: StorefrontTaxAuthoritySnapshot,
@@ -59,7 +59,7 @@ function markTrustedStorefrontTaxAuthority(
     return snapshot;
 }
 
-export function markTrustedStorefrontTaxAuthorityForTest(
+function markTrustedStorefrontTaxAuthorityForTest(
     snapshot: StorefrontTaxAuthoritySnapshot,
 ): StorefrontTaxAuthoritySnapshot {
     return markTrustedStorefrontTaxAuthority(snapshot);

@@ -473,8 +473,8 @@ app.openapi(createRoute({
   const recordedBy = appPrincipal ? `app:${appPrincipal.pluginId}` : `staff:${user?.id ?? "unknown"}`;
   // A manual COD deposit is recorded by staff verifying the buyer's offline
   // payment — apps cannot record it.
-  if (body.paymentType === "deposit" && appPrincipal) {
-    throw new ValidationError("A manual COD deposit must be recorded by staff, not an app.");
+  if (body.paymentType === "deposit" && (appPrincipal || c.get("agentPrincipal"))) {
+    throw new ValidationError("A manual COD deposit must be recorded by staff, not an app or agent.");
   }
   const result = await recordOrderPayment(db, {
     orderId,

@@ -12,15 +12,13 @@ import {
     type StorefrontCheckoutPolicySnapshot,
     type StorefrontDeliveryPreflightResult,
     type StorefrontCartValidationResult,
-    markTrustedStorefrontDeliveryPreflightResult,
-    markTrustedStorefrontCartValidationResult,
     createTrustedStorefrontCheckoutPolicySnapshot,
 } from "@scalius/core/modules/checkout";
 import { type CreateStorefrontOrderInput, type CreateStorefrontOrderCustomerIdentity } from "@scalius/core/modules/orders";
 import { ValidationError } from "@scalius/core/errors";
 import { PaymentMethod } from "@scalius/database/schema";
 import type { TaxQuote } from "../tax/browser";
-import { type StorefrontTaxAuthoritySnapshot, markTrustedStorefrontTaxAuthorityForTest } from "../tax";
+import { markTrustedStorefrontCartValidationResult, markTrustedStorefrontDeliveryPreflightResult, type StorefrontTaxAuthoritySnapshot, markTrustedStorefrontTaxAuthorityForTest } from "@scalius/core/testing/checkout-trust";
 import type { PresentmentMoney } from "@scalius/shared/presentment";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 

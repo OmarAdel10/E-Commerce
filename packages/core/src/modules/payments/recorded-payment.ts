@@ -217,6 +217,9 @@ export async function recordOrderPayment(
   if (input.expectedVersion !== undefined && input.expectedVersion !== order.version) {
     throw new ConflictError("This order changed. Reload it and record the payment again.");
   }
+  if (!isDeposit && order.paymentTermsDays === null) {
+    throw new ValidationError("Payments are recorded here only for invoice (net terms) orders or a pending manual deposit. Record cash on delivery with Collect cash.");
+  }
   if (order.balanceDueMinor <= 0) {
     throw new ValidationError("This order has nothing left to pay.");
   }
