@@ -322,8 +322,8 @@ const checkoutFlowSettingsSchema = z.object({
     codDepositMode: z.enum(["fixed", "percentage"]),
     /** Fixed-mode deposit amount in major units. */
     codDepositAmount: z.number().min(0),
-    /** Percentage-mode deposit: whole percent 0-99 of the order total. */
-    codDepositPercent: z.number().min(0).max(99),
+    /** Percentage-mode deposit: whole percent 1-99 of the order total (0 means no deposit). */
+    codDepositPercent: z.number().min(1).max(99),
     /** Merchant-authored payment instructions shown to the buyer; snapshotted at order placement. */
     codDepositInstructions: z.string(),
     revision: z.number().int().nonnegative(),
