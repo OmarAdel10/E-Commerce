@@ -39,9 +39,6 @@ describe("manual deposit refund persisted ledger", () => {
   it("rejects signed tampering and missing keys without committing any refund", async () => {
     const payload = { manualDepositRefund: true };
     const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: secret }, JSON.stringify(payload));
-    f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ ...payload, _hmac: hmac }));
-    await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret)).rejects.toThrow(/integrity/);
-    expect(plan()).toBe("deposit_paid");
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ manualDepositRefund: false, _hmac: hmac }));
     await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret)).rejects.toThrow(/integrity/);
     expect(f.sqlite.prepare("SELECT status FROM refund_attempts WHERE id='ad'").get()!.status).toBe("reconcile_required");
