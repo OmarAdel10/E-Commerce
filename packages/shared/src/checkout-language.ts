@@ -1210,7 +1210,7 @@ export const BANGLA_CHECKOUT_LANGUAGE_DATA: CheckoutLanguageData = {
   includedText: "অন্তর্ভুক্ত",
   dueNowText: "এখন পরিশোধযোগ্য",
   dueOnDeliveryText: "ডেলিভারির সময় পরিশোধযোগ্য",
-  codDepositRequiredText: "আপনার অর্ডার প্রস্তুত করার আগে ডিপোজিট লাগবے",
+  codDepositRequiredText: "আপনার অর্ডার প্রস্তুত করার আগে ডিপোজিট লাগবে",
   codDepositBalanceText: "ডেলিভারিতে বাকি টাকা",
   codDepositReceivedText: "ডিপোজিট গ্রহণ করা হয়েছে — আপনার অর্ডার প্রস্তুত করা হচ্ছে",
   codDepositCancelledText: "ডিপোজিট বাতিল করা হয়েছে",
