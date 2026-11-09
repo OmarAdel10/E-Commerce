@@ -730,7 +730,7 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   {
     version: 190,
     name: "0190_striped_puppet_master",
-    sourceSha256: "02864bc643af79c8fa4414c64f91b02b0ef52c1fd3afbe6ece59f897948b6869",
+    sourceSha256: "59ee55d643e98a3bc7d0e0dd4a46f75bb354123319eb90ce30b87043e97f83e5",
   },
 ] as const;
 
