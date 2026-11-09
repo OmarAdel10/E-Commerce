@@ -47,7 +47,6 @@ export interface CheckoutConfig {
     mode: "fixed" | "percentage";
     amount: number;
     percent: number;
-    instructions: string;
   };
   /** Settings → Checkout: every order asks for a full billing address (absent: off). */
   requireFullBillingAddress?: boolean;
