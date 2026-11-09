@@ -438,9 +438,27 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
   {
     name: "external_refund_reconciliation",
     async run({ db, env, timed }) {
-      const masterSecret = (env as unknown as Record<string, unknown>).SCALIUS_SECRET as string;
+      // App tax-provider documents still owed (commit, void, refund): the
+      // provider-side half of orders and refunds, with backoff. One indexed
+      // read when none is due. Unrelated to SCALIUS_SECRET — runs regardless.
+      const { drainTaxDocumentCommands } = await import("@scalius/core/modules/tax");
+      const { detachedAppProviders } = await import("./plugins/providers/app-providers");
+      const apps = detachedAppProviders(env, db, getCredentialEncryptionKey(env as unknown as Record<string, unknown>));
+      const taxDocuments = await timed("tax_document_drain", () =>
+        drainTaxDocumentCommands(db, apps, { limit: scaled(TAX_DOCUMENT_DRAIN_LIMIT) }),
+      );
+      if (taxDocuments.scanned > 0) {
+        console.log(
+          `[scheduled] Tax documents: scanned=${taxDocuments.scanned}, done=${taxDocuments.done}, failed=${taxDocuments.failed}, ` +
+            `skipped=${taxDocuments.skipped}, dead=${taxDocuments.dead}, deferred=${taxDocuments.deferred}, busy=${taxDocuments.busy}`,
+        );
+      }
+
+      // Refund reconciliation requires SCALIUS_SECRET — skip if not installed.
+      const masterSecret = (env as unknown as Record<string, unknown>).SCALIUS_SECRET as string | undefined;
       if (!masterSecret || masterSecret.length < 32) {
-        throw new Error("SCALIUS_SECRET is not installed or is too short.");
+        console.log("[scheduled] External refund reconciliation skipped: SCALIUS_SECRET not installed.");
+        return;
       }
       const externalRefunds = await timed("external_refund_reconciliation", () =>
         reconcileExternalRefundWebhooks(db, {
@@ -468,21 +486,6 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
             `skipped=${externalRefunds.skipped}, deferred=${externalRefunds.deferred}, ` +
             `errors=${externalRefunds.errors.length}, limit=${externalRefunds.limit}, ` +
             `hasMore=${externalRefunds.hasMore}`,
-        );
-      }
-      // App tax-provider documents still owed (commit, void, refund): the
-      // provider-side half of orders and refunds, with backoff. One indexed
-      // read when none is due.
-      const { drainTaxDocumentCommands } = await import("@scalius/core/modules/tax");
-      const { detachedAppProviders } = await import("./plugins/providers/app-providers");
-      const apps = detachedAppProviders(env, db, getCredentialEncryptionKey(env as unknown as Record<string, unknown>));
-      const taxDocuments = await timed("tax_document_drain", () =>
-        drainTaxDocumentCommands(db, apps, { limit: scaled(TAX_DOCUMENT_DRAIN_LIMIT) }),
-      );
-      if (taxDocuments.scanned > 0) {
-        console.log(
-          `[scheduled] Tax documents: scanned=${taxDocuments.scanned}, done=${taxDocuments.done}, failed=${taxDocuments.failed}, ` +
-            `skipped=${taxDocuments.skipped}, dead=${taxDocuments.dead}, deferred=${taxDocuments.deferred}, busy=${taxDocuments.busy}`,
         );
       }
     },
