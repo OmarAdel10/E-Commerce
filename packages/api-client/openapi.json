@@ -178198,7 +178198,7 @@
                         },
                         "codDepositPercent": {
                           "type": "number",
-                          "minimum": 0,
+                          "minimum": 1,
                           "maximum": 99
                         },
                         "codDepositInstructions": {
@@ -178384,7 +178384,7 @@
                   },
                   "codDepositPercent": {
                     "type": "number",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 99
                   },
                   "codDepositInstructions": {
@@ -178467,7 +178467,7 @@
                         },
                         "codDepositPercent": {
                           "type": "number",
-                          "minimum": 0,
+                          "minimum": 1,
                           "maximum": 99
                         },
                         "codDepositInstructions": {
