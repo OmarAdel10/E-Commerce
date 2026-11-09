@@ -740,15 +740,15 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             );
         });
 
-        it("caps percentage deposit at totalMinor - 1 when percentage would equal or exceed total (1 BDT = 100 minor, 100% capped at 99)", async () => {
-            // Use BDT with totalMinor = 100 (1 BDT) to test the cap logic
-            // percent = 100 would give ceil(100 * 100 / 100) = 100, but cap is totalMinor - 1 = 99
+        it("caps percentage deposit at totalMinor - step when percentage would equal or exceed total (2 BDT = 200 minor, 100% capped at 100)", async () => {
+            // Use BDT with totalMinor = 200 (2 BDT) to test the cap logic
+            // percent = 100 would give ceil(200 * 100 / 100) = 200, but cap is totalMinor - step = 100
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
                 codDepositPercent: 100, // Would be 100% but schema limits to 1-99; testing cap logic
             });
-            // Create cart with 1 BDT subtotal (100 minor) and 0 shipping
+            // Create cart with 2 BDT subtotal (200 minor) and 0 shipping
             const cart = createMockCartValidation({
                 items: [
                     {
@@ -756,8 +756,8 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
                         productId: "prod_1",
                         variantId: "var_1",
                         quantity: 1,
-                        unitPriceMinor: 100, // 1.00 BDT
-                        baseUnitPriceMinor: 100,
+                        unitPriceMinor: 200, // 2.00 BDT
+                        baseUnitPriceMinor: 200,
                         priceSource: "base",
                         bundle: null,
                         sourceIndex: 0,
@@ -778,7 +778,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
                         productImage: null,
                     },
                 ],
-                subtotalMinor: 100,
+                subtotalMinor: 200,
             });
             const delivery = createMockDeliveryPreflight({
                 shippingMinor: 0, // Free shipping
@@ -786,10 +786,10 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const input = createMockOrderInput();
 
-            // ceil(100 * 100 / 100) = 100, cap = 100 - 1 = 99, so deposit = 99
+            // ceil(200 * 100 / 100) = 200, ceil to step 100 = 200, cap = 200 - 100 = 100
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(99);
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(100);
         });
     });
 
@@ -798,7 +798,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "fixed",
-                codDepositAmount: 25.50, // 25.50 BDT = 2550 minor (less than 10500 total)
+                codDepositAmount: 25.00, // 25.00 BDT = 2500 minor (less than 10500 total)
                 codDepositInstructions: "Deposit to bKash 01XXXXXXXXX",
             });
             const cart = createMockCartValidation();
@@ -810,7 +810,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
             expect(result.commitPayload.codDeposit).toEqual({
-                amountMinor: 2550, // 25.50 * 100
+                amountMinor: 2500, // 25.00 * 100
                 instructions: "Deposit to bKash 01XXXXXXXXX",
                 percent: null,
                 contactSnapshot: expect.any(String), // JSON string with business contact info
