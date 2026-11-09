@@ -30,7 +30,7 @@ import {
   noActiveRefundAttemptForOrderIdCondition,
   validateTransition,
 } from "../../order-kernel";
-import { sql, eq, and, inArray, type SQL } from "drizzle-orm";
+import { sql, eq, and, or, inArray, isNull, lt, type SQL } from "drizzle-orm";
 import { NotFoundError, ValidationError, ConflictError } from "@scalius/core/errors";
 import {
     canProcessOrderCodAction,
@@ -90,7 +90,7 @@ export async function reconcileRefundedOrderInventory(
     // repeatedly hammering orders that keep failing. They retried after the
     // cooldown expires. Timestamps are stored as unix seconds (see UNIX_NOW).
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const sixtyMinutesAgo = nowSeconds - 60 * 60;
+    const sixtyMinutesAgo = new Date((nowSeconds - 60 * 60) * 1000);
 
     // Find orders that need inventory reconciliation
     const candidateOrders = await db
