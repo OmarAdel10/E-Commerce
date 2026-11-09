@@ -594,12 +594,14 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
     expect(db.batch).not.toHaveBeenCalled();
   });
 
-  it("rejects full store-credit deposit refund without manual settlement confirmation", async () => {
+  it("rejects store-credit deposit refund without gift card availability", async () => {
     const db = processRefundDb({
       plan: { id: "plan_1", depositAmountMinor: 2000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: { id: "order_1", totalAmountMinor: 10000, paidAmountMinor: 2000, status: OrderStatus.CONFIRMED, version: 1, currencyCode: "EGP", currencyDecimalPlaces: 2, paymentTermsDays: null },
     });
-    await expect(processRefund(db, { orderId: "order_1", amountMinor: 2000, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" }, TEST_MASTER_SECRET, undefined, undefined)).rejects.toThrow("Confirm that the customer has already received the refund by hand");
+    // Store credit does not require manual settlement confirmation (no cash changes hands).
+    // It fails later at gift-card availability instead.
+    await expect(processRefund(db, { orderId: "order_1", amountMinor: 2000, settlement: "store_credit", caller: "staff", reason: "return", actorUserId: "admin_1" }, TEST_MASTER_SECRET, undefined, undefined)).rejects.toThrow("Gift cards are unavailable right now.");
     expect(db.batch).not.toHaveBeenCalled();
   });
 

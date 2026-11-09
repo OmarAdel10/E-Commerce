@@ -959,12 +959,30 @@ export async function finalizeAcceptedRefundAttemptIds(
         }
         // Source identity is a durable column, not caller-editable metadata. This
         // also recovers legacy unsigned attempts without trusting their flags.
+        // Read the manual-kind payment plan once, before the deposit check, so it can
+        // scope the equality check to match processRefund's predicate.
+        const plan = await db
+            .select({
+                id: paymentPlans.id,
+                depositAmountMinor: paymentPlans.depositAmountMinor,
+                status: paymentPlans.status,
+                kind: paymentPlans.kind,
+            })
+            .from(paymentPlans)
+            .where(and(
+                eq(paymentPlans.orderId, orderId),
+                eq(paymentPlans.kind, "manual"),
+            ))
+            .get();
+        manualPlansByOrder.set(orderId, plan ?? null);
+        const manualPlan = manualPlansByOrder.get(orderId);
         const depositRefundAmount = orderAttempts.reduce((sum, attempt) => {
             const source = ledgerRows.find((payment) => payment.id === attempt.sourcePaymentId);
             const refund = ledgerRows.find((payment) => payment.id === attempt.refundPaymentId);
             if (!source || source.paymentType !== "deposit"
                 || source.status !== PaymentRecordStatus.SUCCEEDED
                 || !isManualSettlementMethod(source.paymentMethod)) return sum;
+            if (!manualPlan || manualPlan.status !== PaymentPlanStatus.DEPOSIT_PAID && manualPlan.status !== PaymentPlanStatus.COMPLETED) return sum;
             if (!refund || refund.paymentType !== "refund" || refund.amountMinor !== attempt.amountMinor
                 || attempt.amountMinor !== source.amountMinor) {
                 throw new ValidationError("Manual deposit refund allocation does not match its source payment.");
@@ -999,22 +1017,6 @@ export async function finalizeAcceptedRefundAttemptIds(
             shouldReleaseInventory,
         });
 
-        // Read the manual-kind payment plan once, before the batch, so it can
-        // be guarded and updated atomically.
-        const plan = await db
-            .select({
-                id: paymentPlans.id,
-                depositAmountMinor: paymentPlans.depositAmountMinor,
-                status: paymentPlans.status,
-                kind: paymentPlans.kind,
-            })
-            .from(paymentPlans)
-            .where(and(
-                eq(paymentPlans.orderId, orderId),
-                eq(paymentPlans.kind, "manual"),
-            ))
-            .get();
-        manualPlansByOrder.set(orderId, plan ?? null);
     }
 
     // ---- Atomic batch: all order/payment/plan writes in one D1 transaction ----
@@ -1940,9 +1942,13 @@ export async function processRefund(
         && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
         && depositAllocations.length > 0;
     // Any allocation repaid by hand (COD, recorded payment) requires confirmation.
-    const hasManualAllocation = allocations.some((allocation) =>
-        isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
-    );
+    // Store credit settles as a gift card with no cash changing hands, so it
+    // does not require manual settlement confirmation.
+    const hasManualAllocation =
+        params.settlement !== "store_credit" &&
+        allocations.some((allocation) =>
+            isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
+        );
     // A manual COD deposit can only be refunded in full — the total amount
     // allocated to the deposit must exactly equal the plan's depositAmountMinor.
     // This prevents partial deposit refunds and double-counting across attempts.
