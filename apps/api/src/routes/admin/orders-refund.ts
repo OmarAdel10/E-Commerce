@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "@scalius/shared/order-limits";
+import { readMasterSecret } from "@scalius/shared/runtime-secrets";
 import { recordOrderEvent } from "@scalius/core/modules/orders";
 import type { Database } from "@scalius/database/client";
 import {
@@ -341,8 +342,8 @@ export async function executeOrderRefund(
     const caller: RefundCaller = c.get("pluginPrincipal") ? "app" : c.get("agentPrincipal") ? "agent" : "staff";
     try {
         // Pass master secret for HMAC integrity on refund metadata
-        const masterSecret = (c.env as Record<string, unknown>).SCALIUS_SECRET as string;
-        if (!masterSecret || masterSecret.length < 32) {
+        const masterSecret = readMasterSecret(c.env);
+        if (!masterSecret) {
             throw new Error("SCALIUS_SECRET is not installed or is too short.");
         }
         result = await processRefund(

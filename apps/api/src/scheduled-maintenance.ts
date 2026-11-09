@@ -27,6 +27,7 @@ import {
   cleanupExpiredScannerTokenClaims,
   pruneExpiredIdentityHandoffEvents,
 } from "@scalius/core/auth";
+import { readMasterSecret } from "@scalius/shared/runtime-secrets";
 import { reconcileDueRefundAttempts, reconcileExternalRefundWebhooks } from "@scalius/core/modules/payments";
 import { reconcileRefundedOrderInventory } from "@scalius/core/modules/orders";
 import { planLimits } from "@scalius/shared/plan-limits";
@@ -121,7 +122,7 @@ async function timedScheduledOperation<T>(
     console.error(
       `[scheduled] event=scheduled_operation_failed, runId=${runContext.runId}, operation=${operation}, ` +
         `durationMs=${Date.now() - startedAt}`,
-      String(error),
+      error instanceof Error ? error.stack ?? String(error) : String(error),
     );
     throw error;
   }
@@ -401,8 +402,8 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
   {
     name: "refund_attempt_reconciliation",
     async run({ db, env, timed }) {
-      const masterSecret = (env as unknown as Record<string, unknown>).SCALIUS_SECRET as string;
-      if (!masterSecret || masterSecret.length < 32) {
+      const masterSecret = readMasterSecret(env);
+      if (!masterSecret) {
         throw new Error("SCALIUS_SECRET is not installed or is too short.");
       }
       const refundReconciliation = await timed("refund_attempt_reconciliation", () =>

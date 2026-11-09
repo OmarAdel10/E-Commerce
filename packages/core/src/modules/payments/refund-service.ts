@@ -1260,8 +1260,9 @@ export async function buildRefundAttemptMetadata(params: {
     };
     // Add HMAC if master secret is provided
     if (params.masterSecret) {
-        const trimmedSecret = params.masterSecret.trim();
-        const key = await deriveRuntimeSecret(trimmedSecret, RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC);
+        const master = readMasterSecret({ SCALIUS_SECRET: params.masterSecret });
+        if (!master) return JSON.stringify(payload);
+        const key = await deriveRuntimeSecret(master, RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC);
         const encoder = new TextEncoder();
         const cryptoKey = await crypto.subtle.importKey(
             "raw",
