@@ -42,14 +42,14 @@ function stringField(record: Record<string, unknown> | null, key: string): strin
     return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function cleanShipmentRecoveryMetadata(metadata: Record<string, unknown>): string | null {
+export function cleanShipmentRecoveryMetadata(metadata: Record<string, unknown>): string | null {
     const next = { ...metadata };
     delete next.reconciliation;
     delete next.orderStatusSync;
     return Object.keys(next).length > 0 ? JSON.stringify(next) : null;
 }
 
-function safeFinalizedShipmentStatus(
+export function safeFinalizedShipmentStatus(
     shipment: { rawStatus?: string | null },
     metadata: Record<string, unknown>,
 ): { status: string; hasExplicitProviderState: boolean } {
@@ -90,7 +90,7 @@ type UnknownShipmentResolutionEvidence = {
     confirmedAt: string;
 };
 
-function getUnknownShipmentResolutionEvidence(
+export function getUnknownShipmentResolutionEvidence(
     metadata: Record<string, unknown>,
 ): UnknownShipmentResolutionEvidence | null {
     const value = asRecord(metadata.unknownOutcomeResolution);
