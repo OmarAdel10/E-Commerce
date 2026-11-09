@@ -440,7 +440,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "fixed",
-                codDepositAmount: 104.99, // 104.99 BDT < 105.00 BDT total
+                codDepositAmount: 104.00, // 104.00 BDT < 105.00 BDT total
             });
             const cart = createMockCartValidation();
             const delivery = createMockDeliveryPreflight();
@@ -451,7 +451,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
             expect(result.depositPlan).toBe(true);
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10499); // 104.99 * 100 = 10499
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400); // 104.00 * 100 = 10400
         });
     });
 
@@ -510,11 +510,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             expect(result.depositPlan).toBe(true);
             expect(result.commitPayload.codDeposit).toBeDefined();
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(1050); // ceil(10500 * 10 / 100) = 1050
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(1100); // ceil(1050 / 100) * 100 = 1100
             expect(result.commitPayload.codDeposit?.percent).toBe(10);
         });
 
-        it("accepts percentage that rounds up (33% of 10500 = 3465 minor, ceil = 3465)", async () => {
+        it("accepts percentage that rounds up (33% of 10500 = 3465 minor, ceil to step = 3500)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
@@ -528,11 +528,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            // ceil(10500 * 33 / 100) = ceil(3465) = 3465
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(3465);
+            // ceil(10500 * 33 / 100) = ceil(3465) = 3465, ceil to step 100 = 3500
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(3500);
         });
 
-        it("caps percentage deposit at totalMinor - 1 (99% of 10500 = 10395, cap = 10499)", async () => {
+        it("caps percentage deposit at totalMinor - 1 when percentage would exceed (99% of 10500 = 10395, ceil to step = 10400)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
@@ -546,13 +546,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            // Math.min(10500 - 1, ceil(10500 * 99 / 100)) = Math.min(10499, 10395) = 10395
-            // Wait: 10500 * 99 / 100 = 10395, ceil = 10395
-            // But cap is totalMinor - 1 = 10499, so result is 10395
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10395);
+            // ceil(10500 * 99 / 100) = ceil(10395) = 10395, ceil to step 100 = 10400, below totalMinor
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400);
         });
 
-        it("caps at totalMinor - 1 when percentage would exceed (100% would be 10500, cap = 10499)", async () => {
+        it("caps at totalMinor - 1 when percentage would exceed (100% would be 10500, ceil to step = 10500, cap = 10400)", async () => {
             // The schema should prevent 100% but let's test the cap logic with a value that would exceed
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
@@ -565,11 +563,10 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const input = createMockOrderInput();
 
-            // 100% is not a valid schema value but let's see what happens
-            // Math.min(10500 - 1, ceil(10500 * 100 / 100)) = Math.min(10499, 10500) = 10499
+            // ceil(10500 * 100 / 100) = ceil(10500) = 10500, ceil to step 100 = 10500, cap at totalMinor - step = 10400
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10499);
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400);
         });
     });
 
