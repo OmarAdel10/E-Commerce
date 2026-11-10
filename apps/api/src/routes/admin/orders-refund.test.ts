@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Database } from "@scalius/database/client";
-import type { Env } from "../../../api/src/env";
 import { executeOrderRefund } from "./orders-refund";
 import { NotFoundError, ValidationError } from "../../utils/api-error";
 

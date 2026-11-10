@@ -21,7 +21,7 @@ import type { CheckoutConfig } from "./config";
 vi.mock("../settings", async (importOriginal) => {
     const actual = await importOriginal();
     return {
-        ...actual,
+        ...(actual as Record<string, unknown>),
         checkoutDocument: {
             fromRows: vi.fn(),
         },
@@ -67,7 +67,7 @@ vi.mock("./readiness", () => ({
 vi.mock("@scalius/shared/readiness", async (importOriginal) => {
     const actual = await importOriginal();
     return {
-        ...actual,
+        ...(actual as Record<string, unknown>),
         isReady: vi.fn(() => true),
     };
 });
@@ -107,37 +107,59 @@ describe("getCheckoutConfig — codDeposit output", () => {
     it("returns codDeposit with enabled=false when checkout settings have codDepositEnabled=false", async () => {
         const checkout = {
             guestCheckoutEnabled: true,
-            checkoutMode: "all",
+            checkoutMode: "all" as const,
             partialPaymentEnabled: false,
             partialPaymentAmount: 0,
+            autoFulfilMode: "after_payment" as const,
             requireFullBillingAddress: false,
             codDepositEnabled: false,
-            codDepositMode: "fixed",
+            codDepositMode: "fixed" as const,
             codDepositAmount: 0,
             codDepositPercent: 0,
             codDepositInstructions: "",
         };
-        const currency = { code: "BDT", currencyCode: "BDT", symbol: "Tk", currencySymbol: "Tk" };
-        const customerAuth = {};
-        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" };
-        const marketing = { checkout: { enabled: false, channels: [], label: { en: "", bn: "" } } };
+        const currency = { code: "BDT", currencyCode: "BDT" as const, symbol: "Tk", currencySymbol: "Tk" };
+        const customerAuth = {
+            email: "optional" as const,
+            whatsapp: "off" as const,
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        };
+        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" as const };
+        const marketing = {
+            checkout: { enabled: false, channels: [], label: { en: "", bn: "" } },
+            emailDoubleOptIn: false,
+        };
 
         (vi.mocked(selectDocumentsWithSellingCountries)).mockResolvedValue({
             rows: [],
             sellingCountries: ["BD"],
         });
-        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout });
-        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency });
-        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth });
-        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries });
-        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing });
-        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({});
-        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({});
+        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout } as any);
+        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency } as any);
+        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth } as any);
+        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries } as any);
+        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing } as any);
+        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({
+            email: "optional",
+            whatsapp: "off",
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        });
+        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({
+            status: "ready",
+            issues: [],
+            hasActiveShippingMethod: true,
+            hasActiveDeliveryHierarchy: true,
+            customerSignInRequired: false,
+            hasUsableCustomerSignIn: true,
+        });
         (vi.mocked(isReady)).mockReturnValue(true);
         (vi.mocked(getPaymentGatewaySettingsSnapshot)).mockResolvedValue({
-            activePaymentMethods: { enabledMethods: [], defaultMethod: undefined, netTerms: { dueInDays: 0 } },
+            preferences: { enabledMethods: [], defaultMethod: "cod", hasExplicitEnabledMethods: false, netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
+            activePaymentMethods: { enabledMethods: [], defaultMethod: "cod", netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
             providers: undefined,
-            settings: {},
+            settings: { stripe: null, cod: { enabled: true } },
         });
 
         const db = mockDb([]) as any;
@@ -154,37 +176,59 @@ describe("getCheckoutConfig — codDeposit output", () => {
     it("returns codDeposit with enabled=true when checkout settings have codDepositEnabled=true", async () => {
         const checkout = {
             guestCheckoutEnabled: true,
-            checkoutMode: "all",
+            checkoutMode: "all" as const,
             partialPaymentEnabled: false,
             partialPaymentAmount: 0,
+            autoFulfilMode: "after_payment" as const,
             requireFullBillingAddress: false,
             codDepositEnabled: true,
-            codDepositMode: "percentage",
+            codDepositMode: "percentage" as const,
             codDepositAmount: 0,
             codDepositPercent: 10,
             codDepositInstructions: "Pay 10% deposit before delivery.",
         };
-        const currency = { code: "BDT", currencyCode: "BDT", symbol: "Tk", currencySymbol: "Tk" };
-        const customerAuth = {};
-        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" };
-        const marketing = { checkout: { enabled: false, channels: [], label: { en: "", bn: "" } } };
+        const currency = { code: "BDT", currencyCode: "BDT" as const, symbol: "Tk", currencySymbol: "Tk" };
+        const customerAuth = {
+            email: "optional" as const,
+            whatsapp: "off" as const,
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        };
+        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" as const };
+        const marketing = {
+            checkout: { enabled: false, channels: [], label: { en: "", bn: "" } },
+            emailDoubleOptIn: false,
+        };
 
         (vi.mocked(selectDocumentsWithSellingCountries)).mockResolvedValue({
             rows: [],
             sellingCountries: ["BD"],
         });
-        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout });
-        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency });
-        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth });
-        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries });
-        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing });
-        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({});
-        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({});
+        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout } as any);
+        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency } as any);
+        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth } as any);
+        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries } as any);
+        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing } as any);
+        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({
+            email: "optional",
+            whatsapp: "off",
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        });
+        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({
+            status: "ready",
+            issues: [],
+            hasActiveShippingMethod: true,
+            hasActiveDeliveryHierarchy: true,
+            customerSignInRequired: false,
+            hasUsableCustomerSignIn: true,
+        });
         (vi.mocked(isReady)).mockReturnValue(true);
         (vi.mocked(getPaymentGatewaySettingsSnapshot)).mockResolvedValue({
-            activePaymentMethods: { enabledMethods: [], defaultMethod: undefined, netTerms: { dueInDays: 0 } },
+            preferences: { enabledMethods: [], defaultMethod: "cod", hasExplicitEnabledMethods: false, netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
+            activePaymentMethods: { enabledMethods: [], defaultMethod: "cod", netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
             providers: undefined,
-            settings: {},
+            settings: { stripe: null, cod: { enabled: true } },
         });
 
         const db = mockDb([]) as any;
@@ -201,37 +245,59 @@ describe("getCheckoutConfig — codDeposit output", () => {
     it("returns codDeposit instructions from checkout settings", async () => {
         const checkout = {
             guestCheckoutEnabled: true,
-            checkoutMode: "all",
+            checkoutMode: "all" as const,
             partialPaymentEnabled: false,
             partialPaymentAmount: 0,
+            autoFulfilMode: "after_payment" as const,
             requireFullBillingAddress: false,
             codDepositEnabled: true,
-            codDepositMode: "fixed",
+            codDepositMode: "fixed" as const,
             codDepositAmount: 500,
             codDepositPercent: 0,
             codDepositInstructions: "Deposit 500 BDT before fulfilment.",
         };
-        const currency = { code: "BDT", currencyCode: "BDT", symbol: "Tk", currencySymbol: "Tk" };
-        const customerAuth = {};
-        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" };
-        const marketing = { checkout: { enabled: false, channels: [], label: { en: "", bn: "" } } };
+        const currency = { code: "BDT", currencyCode: "BDT" as const, symbol: "Tk", currencySymbol: "Tk" };
+        const customerAuth = {
+            email: "optional" as const,
+            whatsapp: "off" as const,
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        };
+        const merchantCountries = { allowedCountries: ["BD"], allowedCountriesMode: "include" as const };
+        const marketing = {
+            checkout: { enabled: false, channels: [], label: { en: "", bn: "" } },
+            emailDoubleOptIn: false,
+        };
 
         (vi.mocked(selectDocumentsWithSellingCountries)).mockResolvedValue({
             rows: [],
             sellingCountries: ["BD"],
         });
-        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout });
-        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency });
-        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth });
-        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries });
-        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing });
-        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({});
-        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({});
+        (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout } as any);
+        (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency } as any);
+        (vi.mocked(customerAuthDocument.fromRows)).mockResolvedValue({ value: customerAuth } as any);
+        (vi.mocked(customerCountriesDocument.fromRows)).mockResolvedValue({ value: merchantCountries } as any);
+        (vi.mocked(marketingConsentDocument.fromRows)).mockResolvedValue({ value: marketing } as any);
+        (vi.mocked(getOfferedCustomerIdentity)).mockResolvedValue({
+            email: "optional",
+            whatsapp: "off",
+            channels: ["email"],
+            phoneOptionalForDigital: false,
+        });
+        (vi.mocked(getCheckoutReadiness)).mockResolvedValue({
+            status: "ready",
+            issues: [],
+            hasActiveShippingMethod: true,
+            hasActiveDeliveryHierarchy: true,
+            customerSignInRequired: false,
+            hasUsableCustomerSignIn: true,
+        });
         (vi.mocked(isReady)).mockReturnValue(true);
         (vi.mocked(getPaymentGatewaySettingsSnapshot)).mockResolvedValue({
-            activePaymentMethods: { enabledMethods: [], defaultMethod: undefined, netTerms: { dueInDays: 0 } },
+            preferences: { enabledMethods: [], defaultMethod: "cod", hasExplicitEnabledMethods: false, netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
+            activePaymentMethods: { enabledMethods: [], defaultMethod: "cod", netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
             providers: undefined,
-            settings: {},
+            settings: { stripe: null, cod: { enabled: true } },
         });
 
         const db = mockDb([]) as any;

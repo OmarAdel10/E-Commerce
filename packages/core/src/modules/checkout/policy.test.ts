@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { assertStorefrontCheckoutPolicy, assertGuestStorefrontCheckoutPolicy } from "./policy";
 import type { StorefrontCheckoutAuthoritySnapshot } from "./authority";
 import { BUILT_IN_PAYMENT_PROVIDERS } from "../payments";
+import type { NetTermsSettings } from "@scalius/shared/payment-terms";
 
 function makeAuthority(overrides: {
     checkoutMode?: "guest_cod_only" | "gateways_only" | "all";
     codDepositEnabled?: boolean;
     guestCheckoutEnabled?: boolean;
     allowedCountries?: { allowedCountries: string[]; allowedCountriesMode: "include" | "exclude" };
-    activePaymentMethods?: { enabledMethods: string[]; defaultMethod?: string; netTerms?: { dueInDays: number } };
+    activePaymentMethods?: { enabledMethods: string[]; defaultMethod: string; netTerms: NetTermsSettings };
 }): Pick<StorefrontCheckoutAuthoritySnapshot, "checkoutSettings" | "allowedCountries" | "activePaymentMethods"> {
     return {
         checkoutSettings: {
@@ -17,6 +18,11 @@ function makeAuthority(overrides: {
             partialPaymentAmount: 0,
             codDepositEnabled: overrides.codDepositEnabled ?? false,
             guestCheckoutEnabled: overrides.guestCheckoutEnabled ?? true,
+            requireFullBillingAddress: false,
+            codDepositMode: "fixed",
+            codDepositAmount: 0,
+            codDepositPercent: 0,
+            codDepositInstructions: "",
         },
         allowedCountries: overrides.allowedCountries ?? {
             allowedCountries: ["BD"],
@@ -25,6 +31,7 @@ function makeAuthority(overrides: {
         activePaymentMethods: overrides.activePaymentMethods ?? {
             enabledMethods: ["cod", "stripe"],
             defaultMethod: "cod",
+            netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false },
         },
     };
 }
@@ -64,7 +71,7 @@ describe("assertStorefrontCheckoutPolicy — codDepositEnabled assertion", () =>
 
     it("rejects payment method not in enabled methods", () => {
         const authority = makeAuthority({
-            activePaymentMethods: { enabledMethods: ["stripe"] },
+            activePaymentMethods: { enabledMethods: ["stripe"], defaultMethod: "stripe", netTerms: { dueInDays: 30, customerTags: [], segmentIds: [], appsDecide: false } },
         });
         expect(() =>
             assertStorefrontCheckoutPolicy("+8801712345678", "cod", authority, BUILT_IN_PAYMENT_PROVIDERS),

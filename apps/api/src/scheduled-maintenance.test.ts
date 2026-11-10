@@ -1,8 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { runScheduledMaintenance } from "./scheduled-maintenance";
 import { MAINTENANCE_SWEEPS } from "./scheduled-maintenance";
-import type { Env } from "../env";
-import type { ExecutionContext } from "cloudflare:workers";
 import { getDb } from "@scalius/database/client";
 
 vi.mock("@scalius/database/client", () => ({
@@ -71,7 +69,7 @@ describe("runScheduledMaintenance — SCALIUS_SECRET gating", () => {
                 env: env as Env,
                 executionCtx: makeExecutionContext(),
                 runContext: { runId: "test", startedAt: 0, cron: "test", scheduledTime: "test", scheduledAt: 0 },
-                timed: async (_op: string, fn: () => Promise<unknown>) => await fn(),
+                timed: async <T>(_op: string, fn: () => Promise<T>) => await fn(),
             }),
         ).rejects.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
@@ -85,7 +83,7 @@ describe("runScheduledMaintenance — SCALIUS_SECRET gating", () => {
                 env: env as Env,
                 executionCtx: makeExecutionContext(),
                 runContext: { runId: "test", startedAt: 0, cron: "test", scheduledTime: "test", scheduledAt: 0 },
-                timed: async (_op: string, fn: () => Promise<unknown>) => await fn(),
+                timed: async <T>(_op: string, fn: () => Promise<T>) => await fn(),
             }),
         ).rejects.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
@@ -101,7 +99,7 @@ describe("runScheduledMaintenance — SCALIUS_SECRET gating", () => {
                 env: env as Env,
                 executionCtx: makeExecutionContext(),
                 runContext: { runId: "test", startedAt: 0, cron: "test", scheduledTime: "test", scheduledAt: 0 },
-                timed: async (_op: string, fn: () => Promise<unknown>) => await fn(),
+                timed: async <T>(_op: string, fn: () => Promise<T>) => await fn(),
             }),
         ).rejects.toThrow(); // Fails at db usage, not at SCALIUS_SECRET check
     });
