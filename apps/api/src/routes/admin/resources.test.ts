@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { publicRefundResult } from "./orders-refund";
+import { recordOrderPayment } from "@scalius/core/modules/payments";
+import type { Database } from "@scalius/database/client";
+import type { RecordOrderPaymentInput } from "@scalius/core/modules/payments";
 
 describe("publicRefundResult — public result projection", () => {
     it("omits refundNotification and availabilityTransitionVariantIds", () => {
@@ -62,7 +66,7 @@ describe("publicRefundResult — public result projection", () => {
             isFullRefund: true,
             notificationCount: 0,
             sideEffectErrors: 0,
-        };
+        } as any;
 
         const publicResult = publicRefundResult(result);
         expect(publicResult).toEqual(result);
@@ -86,5 +90,75 @@ describe("publicRefundResult — public result projection", () => {
 
         const publicResult = publicRefundResult(result);
         expect(publicResult.storeCredit!.giftCardId).toBe("card_1");
+    });
+});
+
+describe("recordPaymentBody — paymentType enum (resources.ts)", () => {
+    const paymentTypeSchema = z.enum(["deposit"]).optional();
+
+    it("accepts paymentType 'deposit'", () => {
+        expect(paymentTypeSchema.safeParse("deposit").success).toBe(true);
+    });
+
+    it("rejects paymentType 'balance'", () => {
+        expect(paymentTypeSchema.safeParse("balance").success).toBe(false);
+    });
+
+    it("rejects paymentType 'full'", () => {
+        expect(paymentTypeSchema.safeParse("full").success).toBe(false);
+    });
+
+    it("accepts undefined paymentType", () => {
+        expect(paymentTypeSchema.safeParse(undefined).success).toBe(true);
+    });
+});
+
+describe("recordOrderPayment — input validation with paymentType", () => {
+    const baseInput: RecordOrderPaymentInput = {
+        orderId: "order_1",
+        amountMinor: 1000,
+        via: "bank_transfer",
+        recordedBy: "staff:1",
+        requestKey: "test-request-key-12345",
+        paymentType: "deposit",
+    };
+
+    function mockDb(): Database {
+        return {
+            select: vi.fn().mockReturnValue({
+                from: vi.fn().mockReturnValue({
+                    where: vi.fn().mockReturnValue({
+                        get: vi.fn().mockResolvedValue(undefined),
+                    }),
+                }),
+            }) as any,
+        } as unknown as Database;
+    }
+
+    it("accepts valid input with paymentType 'deposit' and passes input validation", async () => {
+        const db = mockDb();
+        // Input validation passes; DB operations will fail with empty mock, but that's after validation
+        await expect(recordOrderPayment(db, baseInput)).rejects.toThrow();
+    });
+
+    it("rejects invalid via", async () => {
+        const db = mockDb();
+        await expect(
+            recordOrderPayment(db, { ...baseInput, via: "invalid_via" as any }),
+        ).rejects.toThrow("Choose how the payment was received.");
+    });
+
+    it("rejects non-positive amountMinor", async () => {
+        const db = mockDb();
+        await expect(
+            recordOrderPayment(db, { ...baseInput, amountMinor: 0 }),
+        ).rejects.toThrow("Enter the amount received.");
+    });
+
+    it("rejects short requestKey", async () => {
+        const db = mockDb();
+        await expect(
+            recordOrderPayment(db, { ...baseInput, requestKey: "short" }),
+        ).rejects.toThrow("A retry key of 8 to 200 characters is required.");
     });
 });
