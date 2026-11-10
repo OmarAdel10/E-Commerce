@@ -599,7 +599,7 @@ export async function applyOrderStatusChange(
         OrderStatus.DELIVERED,
         OrderStatus.COMPLETED,
     ] as const;
-    if (existingOrder.paymentMethod === PaymentMethod.COD && FULFILMENT_ELIGIBLE_STATUSES.includes(nextStatus as OrderStatus)) {
+    if (existingOrder.paymentMethod === PaymentMethod.COD && FULFILMENT_ELIGIBLE_STATUSES.includes(nextStatus as typeof FULFILMENT_ELIGIBLE_STATUSES[number])) {
         await assertManualCodDepositVerified(db, orderId);
     }
 
