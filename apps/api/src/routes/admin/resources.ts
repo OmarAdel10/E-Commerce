@@ -435,7 +435,7 @@ const recordPaymentHeaders = z.object({
   }),
 });
 
-const recordPaymentBody = z.object({
+export const recordPaymentBody = z.object({
   amountMinor: z.number().int().min(1).max(MAX_MINOR_AMOUNT).openapi({
     description: "What was received, in minor units of the order's `currency`; at most its `balanceDueMinor`.",
   }),
