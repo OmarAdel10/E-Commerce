@@ -69,7 +69,7 @@ describe("assertDatabaseSchemaCompatible — validation", () => {
     });
 
     it("rejects a divergent sourceSha256 at version 190", () => {
-        const tampered = [...validRows];
+        const tampered: Array<{ version: number; name: string; sourceSha256: string }> = [...validRows];
         tampered[tampered.length - 1] = {
             ...tampered[tampered.length - 1]!,
             sourceSha256: "0".repeat(64),
@@ -80,7 +80,7 @@ describe("assertDatabaseSchemaCompatible — validation", () => {
     });
 
     it("rejects a divergent name at version 190", () => {
-        const tampered = [...validRows];
+        const tampered: Array<{ version: number; name: string; sourceSha256: string }> = [...validRows];
         tampered[tampered.length - 1] = {
             ...tampered[tampered.length - 1]!,
             name: "0190_tampered_name",
@@ -91,7 +91,7 @@ describe("assertDatabaseSchemaCompatible — validation", () => {
     });
 
     it("rejects a non-hex sourceSha256", () => {
-        const tampered = [...validRows];
+        const tampered: Array<{ version: number; name: string; sourceSha256: string }> = [...validRows];
         tampered[tampered.length - 1] = {
             ...tampered[tampered.length - 1]!,
             sourceSha256: "not-a-valid-hash",
