@@ -6,7 +6,7 @@
 import { inJsonArray } from "../../utils/in-json-array";
 import { orderPricePolicy, readGiftCardSettings, toStoreMinor } from "../settings";
 import { readStoreCurrency } from "../markets";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { eq, ne, sql, desc, and } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
     orders,
@@ -841,16 +841,15 @@ export async function finalizeAcceptedRefundAttemptIds(
     masterSecret: string | string[],
 ): Promise<FinalizeAcceptedRefundAttemptsResult> {
     const uniqueAttemptIds = [...new Set(attemptIds.filter(Boolean))];
-    if (uniqueAttemptIds.length === 0) {
-        return {
-            orderIds: [],
-            finalizedAttemptIds: [],
-            refundNotifications: [],
-            availabilityTransitionVariantIds: [],
-        };
-    }
+    const noChanges: FinalizeAcceptedRefundAttemptsResult = {
+        orderIds: [],
+        finalizedAttemptIds: [],
+        refundNotifications: [],
+        availabilityTransitionVariantIds: [],
+    };
+    if (uniqueAttemptIds.length === 0) return noChanges;
 
-    const attempts = await db
+    const requestedAttempts = await db
         .select({
             id: refundAttempts.id,
             orderId: refundAttempts.orderId,
@@ -859,13 +858,28 @@ export async function finalizeAcceptedRefundAttemptIds(
             sourcePaymentId: refundAttempts.sourcePaymentId,
             amountMinor: refundAttempts.amountMinor,
             currency: refundAttempts.currency,
+            status: refundAttempts.status,
+            providerStatus: refundAttempts.providerStatus,
             metadata: refundAttempts.metadata,
         })
         .from(refundAttempts)
         .where(inJsonArray(refundAttempts.id, uniqueAttemptIds));
 
-    if (attempts.length !== uniqueAttemptIds.length) {
+    if (requestedAttempts.length !== uniqueAttemptIds.length) {
         throw new NotFoundError("One or more refund attempts could not be found for reconciliation.");
+    }
+    const attempts = requestedAttempts.filter((attempt) => attempt.status !== "refunded");
+    if (attempts.length === 0) return noChanges;
+    for (const attempt of attempts) {
+        const accepted = attempt.status === "reconcile_required"
+            || (attempt.status === "processing" && (
+                attempt.providerStatus === "accepted"
+                || attempt.providerStatus === "manual_confirmed"
+                || isInternalRefundProviderStatus(attempt.providerStatus)
+            ));
+        if (!accepted) {
+            throw new ConflictError("One or more refund attempts are not accepted for finalization.");
+        }
     }
 
     // Never commit a signed refund when its integrity cannot be verified.
@@ -1022,7 +1036,19 @@ export async function finalizeAcceptedRefundAttemptIds(
     // ---- Atomic batch: all order/payment/plan writes in one D1 transaction ----
     const batchStatements: BatchItem<"sqlite">[] = [];
 
-    // Guard 1: order version CAS — each order must still be at the version we read.
+    // The refund attempt and order must still be at the state we read.
+    for (const attempt of attempts) {
+        const state = and(
+            eq(refundAttempts.id, attempt.id),
+            eq(refundAttempts.status, attempt.status),
+            sql`${refundAttempts.providerStatus} IS NOT DISTINCT FROM ${attempt.providerStatus ?? null}`,
+        );
+        batchStatements.push(buildBatchGuard(
+            db,
+            sql`EXISTS (SELECT 1 FROM ${refundAttempts} WHERE ${state})`,
+            "REFUND_FINALIZE_ATTEMPT_CONFLICT",
+        ));
+    }
     for (const [orderId, reconciliation] of reconciliationByOrder) {
         const { order } = reconciliation;
         batchStatements.push(
@@ -1105,29 +1131,27 @@ export async function finalizeAcceptedRefundAttemptIds(
             claimExpiresAt: null,
             refundedAt: sql`unixepoch()`,
             updatedAt: sql`unixepoch()`,
-        }).where(inJsonArray(refundAttempts.id, uniqueAttemptIds)),
+    }).where(inJsonArray(refundAttempts.id, attempts.map((attempt) => attempt.id))),
     );
 
     await safeBatch(db, batchStatements);
 
     // ---- Inventory release: separate from the atomic batch ----
     // applyInventoryForStatusChangeWithImpact calls safeBatch() internally and
-    // cannot be nested inside an outer db.batch(). If it fails, the order and
-    // plan are already finalized; fulfilment guards block progression regardless
-    // of inventory state. A subsequent shipment reconciliation
-    // (reconcile.ts → reconcileInventoryForStatus → applyInventoryForStatusChangeWithImpact)
-    // can retry the failed release through a reachable execution path.
+    // cannot be nested inside an outer db.batch(). The scheduled inventory
+    // drain retries cancelled, refunded orders with stock still to release.
     const finalizedOrderIds = new Set<string>();
     const availabilityTransitionVariantIds = new Set<string>();
     for (const [orderId, reconciliation] of reconciliationByOrder) {
         if (reconciliation.shouldReleaseInventory) {
-            const impact = await applyInventoryForStatusChangeWithImpact(
-                db,
-                orderId,
-                OrderStatus.CANCELLED,
-            );
-            for (const variantId of impact.availabilityTransitionVariantIds) {
-                availabilityTransitionVariantIds.add(variantId);
+            try {
+                const impact = await applyInventoryForStatusChangeWithImpact(db, orderId, OrderStatus.CANCELLED);
+                for (const variantId of impact.availabilityTransitionVariantIds) {
+                    availabilityTransitionVariantIds.add(variantId);
+                }
+            } catch {
+                // Payment and order state have committed. Keep the attempt terminal.
+                console.warn("[refund] Inventory recovery deferred", { orderId });
             }
         }
         finalizedOrderIds.add(orderId);
@@ -1161,7 +1185,7 @@ export async function finalizeAcceptedRefundAttemptIds(
 
     return {
         orderIds: [...finalizedOrderIds],
-        finalizedAttemptIds: uniqueAttemptIds,
+        finalizedAttemptIds: attempts.map((attempt) => attempt.id),
         refundNotifications,
         availabilityTransitionVariantIds: [...availabilityTransitionVariantIds],
     };
@@ -1398,7 +1422,7 @@ async function markRefundAttemptsReconcileRequired(
             nextProbeAt: sql`unixepoch()`,
             lastError: serializeRefundAttemptError(error),
             updatedAt: sql`unixepoch()`,
-        }).where(eq(refundAttempts.id, getRefundAttemptId(allocation)))
+        }).where(and(eq(refundAttempts.id, getRefundAttemptId(allocation)), ne(refundAttempts.status, "refunded")))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle D1 batch typing limitation
     ) as any);
 }
@@ -1938,7 +1962,6 @@ export async function processRefund(
         allocation.sourcePayment.paymentType === "deposit"
             && isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
     );
-    const totalDepositRefundAmount = depositAllocations.reduce((sum, a) => sum + a.amountMinor, 0);
     const hasManualCodAllocation = manualDepositPlan !== undefined
         && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
         && depositAllocations.length > 0;
@@ -1955,7 +1978,11 @@ export async function processRefund(
     // This prevents partial deposit refunds and double-counting across attempts.
     // Validate the amount first so partial refunds are rejected on amount
     // regardless of settlement type.
-    if (hasManualCodAllocation && manualDepositPlan && totalDepositRefundAmount !== manualDepositPlan.depositAmountMinor) {
+    if (hasManualCodAllocation && (
+        depositAllocations.length !== 1
+        || depositAllocations[0]!.amountMinor !== manualDepositPlan.depositAmountMinor
+        || depositAllocations.some(({ amountMinor, sourcePayment }) => amountMinor !== sourcePayment.amountMinor)
+    )) {
         throw new ValidationError(
             "Partial refunds of a manual COD deposit are not supported. The deposit allocation must equal the full deposit amount.",
         );

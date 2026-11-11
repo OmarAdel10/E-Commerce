@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
   PaymentRecordStatus,
   refundAttempts,
@@ -307,7 +307,7 @@ async function markAttemptDeferred(
     nextProbeAt: nowSeconds + nextProbeDelay,
     lastError: outcome.error?.slice(0, MAX_REFUND_RECONCILIATION_ERROR_LENGTH) ?? null,
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status)));
 }
 
 async function markAttemptFailed(
@@ -315,12 +315,16 @@ async function markAttemptFailed(
   attempt: RefundAttemptProbeRow,
   outcome: Extract<ProviderProbeOutcome, { outcome: "rejected" }>,
   nowSeconds: number,
-): Promise<void> {
-  await db.batch([
+): Promise<boolean> {
+  const currentAttempt = and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status));
+  const [, changed] = await db.batch([
     db.update(orderPayments).set({
       status: PaymentRecordStatus.FAILED,
       updatedAt: sql`unixepoch()`,
-    }).where(eq(orderPayments.id, attempt.refundPaymentId)),
+    }).where(and(
+      eq(orderPayments.id, attempt.refundPaymentId),
+      sql`EXISTS (SELECT 1 FROM ${refundAttempts} WHERE ${currentAttempt})`,
+    )),
     db.update(refundAttempts).set({
       status: "failed",
       providerStatus: outcome.providerStatus,
@@ -332,9 +336,9 @@ async function markAttemptFailed(
       lastError: outcome.error?.slice(0, MAX_REFUND_RECONCILIATION_ERROR_LENGTH) ?? null,
       failedAt: sql`unixepoch()`,
       updatedAt: sql`unixepoch()`,
-    }).where(eq(refundAttempts.id, attempt.id)),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle D1 batch typing limitation
-  ] as any);
+    }).where(currentAttempt).returning({ id: refundAttempts.id }),
+  ]);
+  return changed.length > 0;
 }
 
 async function markAttemptReconcileRequired(
@@ -352,7 +356,7 @@ async function markAttemptReconcileRequired(
     nextProbeAt: nowSeconds + REFUND_RECONCILIATION_RETRY_SECONDS,
     lastError: serializeError(error),
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(eq(refundAttempts.id, attempt.id), ne(refundAttempts.status, "refunded")));
 }
 
 async function markAcceptedBeforeFinalize(
@@ -362,13 +366,14 @@ async function markAcceptedBeforeFinalize(
   nowSeconds: number,
 ): Promise<void> {
   await db.update(refundAttempts).set({
+    status: "reconcile_required",
     providerStatus: outcome.providerStatus,
     providerRefundId: outcome.providerRefundId ?? attempt.providerRefundId ?? null,
     responsePayload: responsePayload(outcome.responsePayload),
     lastProbeAt: nowSeconds,
     lastError: null,
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status)));
 }
 
 async function probeProviderRefund(
@@ -917,12 +922,12 @@ export async function reconcileRefundAttemptById(
   const context = await assertRefundAttemptOrderCurrency(db, attempt);
 
   if (attempt.status === "pending") {
-    await markAttemptFailed(db, attempt, {
+    const failed = await markAttemptFailed(db, attempt, {
       outcome: "rejected",
       providerStatus: "not_dispatched",
       error: "Refund attempt expired before provider dispatch and was released for retry.",
     }, nowSeconds);
-    return { status: "failed", orderIds: [], refundNotifications: [] };
+    return { status: failed ? "failed" : "deferred", orderIds: [], refundNotifications: [] };
   }
 
   const outcome = attempt.status === "reconcile_required"
@@ -951,7 +956,8 @@ export async function reconcileRefundAttemptById(
   }
 
   if (outcome.outcome === "rejected") {
-    await markAttemptFailed(db, attempt, outcome, nowSeconds);
+    const failed = await markAttemptFailed(db, attempt, outcome, nowSeconds);
+    if (!failed) return { status: "deferred", orderIds: [], refundNotifications: [] };
     return {
       status: "failed",
       orderIds: [],

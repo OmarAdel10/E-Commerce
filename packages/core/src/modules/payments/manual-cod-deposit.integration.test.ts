@@ -5,6 +5,7 @@ import { assertManualCodDepositVerified } from "./manual-cod-deposit";
 import { applyOrderStatusChange } from "../orders/status/lifecycle";
 import { paymentPlans } from "@scalius/database/schema";
 import { eq } from "drizzle-orm";
+import { sha256Hex } from "@scalius/shared/hash";
 
 describe("manual COD deposit production ledger", () => {
   let fixture: SqliteTestDatabase;
@@ -46,6 +47,34 @@ describe("manual COD deposit production ledger", () => {
     expect(row("payment_plans").status).toBe("pending");
     expect(row("orders").paid_amount_minor).toBe(0);
     expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(0);
+  });
+
+  it("rejects a replay that changes whether the payment is a deposit", async () => {
+    await recordOrderPayment(fixture.db, input());
+    await expect(recordOrderPayment(fixture.db, { ...input(), paymentType: undefined })).rejects.toThrow(/different payment/);
+    expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(1);
+    expect(row("payment_plans").status).toBe("deposit_paid");
+  });
+
+  it.each(["legacy", "current"] as const)("replays a %s invoice payment ID without double-counting", async (format) => {
+    const requestKey = "invoice-retry-key";
+    const hash = format === "legacy"
+      ? (await sha256Hex(`deposit_order\n${requestKey}`)).slice(0, 32)
+      : await sha256Hex(`recorded\ndeposit_order\n${requestKey}`);
+    const paymentId = `recorded:deposit_order:${hash}`;
+    fixture.sqlite.exec(`
+      DELETE FROM payment_plans;
+      UPDATE orders SET payment_terms_days=30, payment_status='partial', paid_amount_minor=2000, balance_due_minor=8000;
+    `);
+    fixture.sqlite.prepare(`
+      INSERT INTO order_payments (id, order_id, amount_minor, currency, payment_method, payment_type, status, metadata)
+      VALUES (?, 'deposit_order', 2000, 'BDT', 'manual', 'balance', 'succeeded', '{"via":"bank_transfer"}')
+    `).run(paymentId);
+    const request = { ...input(requestKey), paymentType: undefined };
+    await expect(recordOrderPayment(fixture.db, request)).resolves.toMatchObject({
+      paymentId, replayed: true, paymentStatus: "partial", paidAmountMinor: 2000, balanceDueMinor: 8000,
+    });
+    expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(1);
   });
 
   it("two concurrent different keys cannot record the deposit twice", async () => {

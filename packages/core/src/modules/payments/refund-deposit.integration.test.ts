@@ -32,11 +32,18 @@ describe("manual deposit refund persisted ledger", () => {
     await finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret);
     expect(plan()).toBe("cancelled");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(0);
-    await finalizeAcceptedRefundAttemptIds(f.db, ["ad", "ad"], secret);
+    const version = f.sqlite.prepare("SELECT version FROM orders WHERE id='o'").get()!.version;
+    await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad", "ad"], secret)).resolves.toMatchObject({ finalizedAttemptIds: [] });
     expect(plan()).toBe("cancelled");
-    expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(0);
+    expect(f.sqlite.prepare("SELECT paid_amount_minor, version FROM orders WHERE id='o'").get()).toEqual({ paid_amount_minor: 0, version });
   });
-  it("rejects signed tampering and missing keys without committing any refund", async () => {
+  it("leaves an online plan alone when finalizing a deposit refund", async () => {
+    f.sqlite.exec("UPDATE payment_plans SET kind='online' WHERE id='p'");
+    await finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret);
+    expect(plan()).toBe("deposit_paid");
+    expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(1000);
+  });
+  it("rejects signed tampering without committing any refund", async () => {
     const payload = { manualDepositRefund: true };
     const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: secret }, JSON.stringify(payload));
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ manualDepositRefund: false, _hmac: hmac }));
@@ -73,5 +80,59 @@ describe("manual deposit refund persisted ledger", () => {
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ao'").run(JSON.stringify({ manualDepositRefund: true, sourcePaymentId: "deposit" }));
     await finalizeAcceptedRefundAttemptIds(f.db, ["ao"], secret);
     expect(plan()).toBe("deposit_paid");
+  });
+
+  it.each(["failed", "pending", "processing"])("rejects a %s deposit attempt without acceptance", async (status) => {
+    f.sqlite.prepare("UPDATE refund_attempts SET status=? WHERE id='ad'").run(status);
+    await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad", "ao"], secret)).rejects.toThrow(/not accepted/);
+    expect(plan()).toBe("deposit_paid");
+    expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("pending");
+    await expect(reconcileRefundAttemptById(f.db, "ao", { masterSecret: secret })).resolves.toMatchObject({ status: "finalized" });
+    expect(plan()).toBe("deposit_paid");
+  });
+
+  it("rejects a deposit source larger than the plan before creating refund attempts", async () => {
+    f.sqlite.exec(`
+      DELETE FROM refund_attempts;
+      DELETE FROM order_payments WHERE payment_type='refund';
+      UPDATE order_payments SET created_at=2, amount_minor=2500 WHERE id='deposit';
+      UPDATE order_payments SET created_at=1, amount_minor=500 WHERE id='other';
+    `);
+    await expect(processRefund(f.db, {
+      orderId: "o", amountMinor: 2000, caller: "staff", reason: "return", manualSettlementConfirmed: true,
+    }, secret)).rejects.toThrow(/deposit allocation/);
+    expect(f.sqlite.prepare("SELECT count(*) AS n FROM refund_attempts").get()!.n).toBe(0);
+    expect(plan()).toBe("deposit_paid");
+  });
+
+  it("rolls back plan cancellation and finalizes an accepted deposit once on recovery", async () => {
+    f.sqlite.exec(`
+      CREATE TRIGGER fail_plan_cancellation BEFORE UPDATE OF status ON payment_plans
+      WHEN NEW.status='cancelled'
+      BEGIN SELECT RAISE(ABORT, 'test plan cancellation failure'); END;
+    `);
+    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "deferred" });
+    expect(plan()).toBe("deposit_paid");
+    expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("pending");
+    expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders").get()!.paid_amount_minor).toBe(3000);
+
+    f.sqlite.exec("DROP TRIGGER fail_plan_cancellation");
+    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "finalized" });
+    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "deferred" });
+    expect(plan()).toBe("cancelled");
+    expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders").get()!.paid_amount_minor).toBe(1000);
+  });
+
+  it("a stale pending-attempt cleanup cannot overwrite a committed refund", async () => {
+    f.sqlite.exec("UPDATE refund_attempts SET status='pending' WHERE id='ad'");
+    const racing = createSqliteD1Database({ sqlite: f.sqlite, beforeBatch(sqlite) {
+      sqlite.exec(`
+        UPDATE refund_attempts SET status='refunded' WHERE id='ad';
+        UPDATE order_payments SET status='refunded' WHERE id='rd';
+      `);
+    } });
+    await expect(reconcileRefundAttemptById(racing.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "deferred" });
+    expect(f.sqlite.prepare("SELECT status FROM refund_attempts WHERE id='ad'").get()!.status).toBe("refunded");
+    expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("refunded");
   });
 });

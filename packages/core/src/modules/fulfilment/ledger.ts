@@ -773,6 +773,7 @@ export async function recordCourierBookingFulfilment(
         .filter((item) => lineType(item) === "ship" && item.fulfilledQuantity < item.quantity)
         .map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.fulfilledQuantity }));
     if (lines.length === 0) return { fulfillmentId: null, lines: [], recorded: false };
+    await assertManualCodDepositVerified(db, orderId);
     const fulfillmentId = createFulfilmentId();
     try {
         await safeBatch(db, [

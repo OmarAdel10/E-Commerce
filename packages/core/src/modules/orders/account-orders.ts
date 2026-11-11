@@ -3,7 +3,7 @@
 // totals), the order detail with its payments, refunds, shipments, support
 // requests and tracking timeline, and the buyer-facing status words.
 
-import { presentMerchantContactSnapshot } from "./payment-plan-presentation";
+import { presentBuyerPaymentPlan } from "./payment-plan-presentation";
 import {
     codTracking,
     customerAddresses,
@@ -1123,13 +1123,8 @@ export async function getCustomerOrderDetailForOrder(
     const paymentPlan = plan
         ? {
             totalAmount: amount(plan.totalAmountMinor),
-            depositAmount: amount(plan.depositAmountMinor),
-            balanceDue: amount(plan.balanceDueMinor),
+            ...presentBuyerPaymentPlan(plan, order.currencyDecimalPlaces, order.status)!,
             balanceDueDate: plan.balanceDueDate,
-            status: plan.status,
-            kind: plan.kind,
-            instructions: plan.kind === "manual" ? plan.instructions : null,
-            contactSnapshot: plan.kind === "manual" ? presentMerchantContactSnapshot(plan.contactSnapshot) : null,
             depositPaidAt: timestampToIso(plan.depositPaidAt),
             balancePaidAt: timestampToIso(plan.balancePaidAt),
             createdAt: timestampToIso(plan.createdAt),

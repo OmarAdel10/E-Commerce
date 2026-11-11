@@ -622,7 +622,7 @@ app.openapi(getOrderReceiptRoute, async (c) => {
   return ok(c, {
     order: {
       buyerUi,
-      paymentPlan: presentBuyerPaymentPlan(plan, order.currencyDecimalPlaces),
+      paymentPlan: presentBuyerPaymentPlan(plan, order.currencyDecimalPlaces, order.status),
       id: order.id,
       orderNumber: order.orderNumber ?? null,
       customerName: order.customerName,

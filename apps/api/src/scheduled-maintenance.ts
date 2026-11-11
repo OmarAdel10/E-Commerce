@@ -29,7 +29,7 @@ import {
 } from "@scalius/core/auth";
 import { readMasterSecret } from "@scalius/shared/runtime-secrets";
 import { reconcileDueRefundAttempts, reconcileExternalRefundWebhooks } from "@scalius/core/modules/payments";
-import { reconcileRefundedOrderInventory } from "@scalius/core/modules/orders";
+import { reconcileRefundedOrderInventory, refundedOrdersWithPendingInventory } from "@scalius/core/modules/orders";
 import { planLimits } from "@scalius/shared/plan-limits";
 import { getCredentialEncryptionKey } from "./utils/encryption-key";
 import { appPaymentProvidersLoader } from "./plugins/providers/payment";
@@ -733,19 +733,7 @@ export const BACKGROUND_DRAINS: ReadonlyArray<DueProbedDrain & { run(context: Sw
     // refunded but whose inventory was not restored (refund finalization
     // inventory release failed). Runs the reconciliation to restore stock.
     name: "refund_inventory_recovery_drain",
-    due: async (db) => {
-      const { sql, eq, inArray } = await import("drizzle-orm");
-      const { orders, OrderStatus, PaymentStatus } = await import("@scalius/database/schema");
-      return [
-        sql`EXISTS (
-          SELECT 1 FROM ${orders}
-          WHERE ${orders.status} = ${OrderStatus.CANCELLED}
-            AND ${orders.paymentStatus} = ${PaymentStatus.REFUNDED}
-            AND ${orders.inventoryAction} IN ('reserved', 'deducted')
-          LIMIT 1
-        )`,
-      ];
-    },
+    due: (db) => [refundedOrdersWithPendingInventory(db).limit(1)],
     async run({ db, timed }) {
       const result: Awaited<ReturnType<typeof reconcileRefundedOrderInventory>> = await timed(
         "refund_inventory_recovery",

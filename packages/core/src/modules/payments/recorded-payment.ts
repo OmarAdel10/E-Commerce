@@ -9,7 +9,7 @@
 // returns the first result and a different payment under the same key is
 // refused. The caller's timeline line (`timelineLine`) commits in the same
 // batch, so a payment has its line exactly once, whatever is retried or lost.
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
   orders,
@@ -108,13 +108,6 @@ function readMetadata(value: string | null): Partial<RecordedPaymentMetadata> {
 /** Orders a recorded payment can never land on. */
 const CLOSED_STATUSES = new Set<string>([OrderStatus.CANCELLED, OrderStatus.REFUNDED, OrderStatus.RETURNED]);
 
-/** Generate payment ID for idempotency. Uses only orderId + requestKey for consistent replay.
- * The planId is NOT included to ensure the same requestKey always maps to the same paymentId. */
-async function recordedPaymentId(orderId: string, requestKey: string): Promise<string> {
-  const hashInput = `recorded\n${orderId}\n${requestKey}`;
-  return `recorded:${orderId}:${await sha256Hex(hashInput)}`;
-}
-
 export async function recordOrderPayment(
   db: Database,
   input: RecordOrderPaymentInput,
@@ -136,31 +129,40 @@ export async function recordOrderPayment(
     recordedBy: input.recordedBy.slice(0, 160),
   };
 
-  // Generate paymentId first (without planId) for consistent idempotency key
-  const paymentId = await recordedPaymentId(input.orderId, requestKey);
+  const keyInput = `${input.orderId}\n${requestKey}`;
+  const [legacyHash, alternateHash] = await Promise.all([
+    sha256Hex(keyInput), sha256Hex(`recorded\n${keyInput}`),
+  ]);
+  const paymentId = `recorded:${input.orderId}:${legacyHash.slice(0, 32)}`;
+  const alternateId = `recorded:${input.orderId}:${alternateHash}`;
 
-  // Check for existing payment with this idempotency key BEFORE reading plan
-  // This ensures replay works even if plan status changes between calls
+  // Both ID formats may already exist in the ledger. A replay must also
+  // work after the plan status changes.
   const existing = await db.select({
+    id: orderPayments.id,
     amountMinor: orderPayments.amountMinor,
-    status: orderPayments.status,
+    paymentType: orderPayments.paymentType,
     metadata: orderPayments.metadata,
-  }).from(orderPayments).where(eq(orderPayments.id, paymentId)).get();
+  }).from(orderPayments).where(inArray(orderPayments.id, [paymentId, alternateId])).get();
   if (existing) {
     const recorded = readMetadata(existing.metadata);
-    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via) {
+    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via
+      || (existing.paymentType === "deposit") !== (input.paymentType === "deposit")) {
       throw new ConflictError("This retry key already recorded a different payment.");
     }
     // Replay: fetch current order state and return full result
     const currentOrder = await db.select({
       paidAmountMinor: orders.paidAmountMinor,
       balanceDueMinor: orders.balanceDueMinor,
+      paymentStatus: orders.paymentStatus,
+      deletedAt: orders.deletedAt,
     }).from(orders).where(eq(orders.id, input.orderId)).get();
+    if (!currentOrder || currentOrder.deletedAt) throw new NotFoundError("Order not found");
     return {
-      paymentId,
-      paymentStatus: existing.status,
-      paidAmountMinor: currentOrder?.paidAmountMinor ?? 0,
-      balanceDueMinor: currentOrder?.balanceDueMinor ?? 0,
+      paymentId: existing.id,
+      paymentStatus: currentOrder.paymentStatus,
+      paidAmountMinor: currentOrder.paidAmountMinor,
+      balanceDueMinor: currentOrder.balanceDueMinor,
       replayed: true,
     };
   }

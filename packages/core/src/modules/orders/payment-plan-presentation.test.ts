@@ -3,9 +3,14 @@ import { buyerPaymentPlanSchema, presentBuyerPaymentPlan, presentMerchantContact
 
 const contact = { phone: "+201234567890", email: "store@example.test", whatsappUrl: "https://wa.me/201234567890", socialLinks: [{ id: "web", label: "Store", url: "https://example.test", iconUrl: null }] };
 describe("buyer payment plan snapshot", () => {
-  it.each(["pending", "deposit_paid", "completed", "cancelled"])("preserves %s status and order-time payment details", (status) => {
+  it.each(["pending", "deposit_paid", "completed"])("preserves %s status and order-time payment details", (status) => {
     const result = presentBuyerPaymentPlan({ kind: "manual", status, depositAmountMinor: 1250, balanceDueMinor: 8750, instructions: "Transfer to account 123", contactSnapshot: JSON.stringify(contact) }, 2);
     expect(buyerPaymentPlanSchema.parse(result)).toEqual({ kind: "manual", status, depositAmount: 12.5, balanceDue: 87.5, instructions: "Transfer to account 123", contactSnapshot: contact });
+  });
+  it("does not expose payment instructions for a cancelled deposit", () => {
+    expect(presentBuyerPaymentPlan({ kind: "manual", status: "cancelled", depositAmountMinor: 1250, balanceDueMinor: 8750, instructions: "Transfer to account 123", contactSnapshot: JSON.stringify(contact) }, 2)).toMatchObject({
+      status: "cancelled", depositAmount: 12.5, instructions: null, contactSnapshot: null,
+    });
   });
   it("does not expose unexpected snapshot properties", () => {
     expect(presentMerchantContactSnapshot(JSON.stringify({ ...contact, customerEmail: "private@example.test", secret: "private" }))).toEqual(contact);

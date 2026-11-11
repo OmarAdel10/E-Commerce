@@ -7,7 +7,7 @@ import type { Database } from "@scalius/database/client";
 import { assertOrderContact, resolveCheckoutContact, type CheckoutContactFieldSettings } from "./contact-fields";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 import { defaultPriceIncrementMinor, type PricingCurrency } from "@scalius/shared/currency-policy";
-import { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
+import { isDepositPaymentRequired, manualCodPercentageDepositMinor } from "@scalius/shared/checkout-payment";
 import { fromMinor, toMinor } from "@scalius/shared/money";
 import {
     convertStoreCurrencyMinor,
@@ -1069,10 +1069,9 @@ export async function createStorefrontOrder(
         if (codDepositSettings.codDepositMode === "fixed") {
             depositMinor = toMinor(codDepositSettings.codDepositAmount, requestCurrency.decimalPlaces);
         } else {
-            const step = Math.max(1, requestCurrency.priceIncrementMinor);
-            const raw = Math.ceil(taxQuote.totalMinor * codDepositSettings.codDepositPercent / 100);
-            depositMinor = Math.ceil(raw / step) * step;
-            if (depositMinor >= taxQuote.totalMinor) depositMinor -= step;
+            depositMinor = manualCodPercentageDepositMinor(
+                taxQuote.totalMinor, codDepositSettings.codDepositPercent, requestCurrency.priceIncrementMinor,
+            );
         }
         // The deposit must be a positive amount after rounding; otherwise COD
         // is unavailable for this order (never silently accept a zero deposit).

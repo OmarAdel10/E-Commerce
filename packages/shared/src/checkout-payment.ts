@@ -1,5 +1,12 @@
 import { allowsCashOnDelivery, type FulfillmentType } from "./fulfilment";
 
+/** Round up to a pricing increment and leave a positive balance for COD. */
+export function manualCodPercentageDepositMinor(totalMinor: number, percent: number, incrementMinor: number): number {
+  const step = Math.max(1, incrementMinor);
+  const rounded = Math.ceil(totalMinor * percent / 100 / step) * step;
+  return rounded >= totalMinor ? rounded - step : rounded;
+}
+
 /**
  * Whether an order takes the store's deposit plan: the advance online now and
  * the rest in cash on delivery. The rest is cash, so the plan applies only

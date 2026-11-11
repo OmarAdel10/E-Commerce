@@ -184,7 +184,7 @@ function refundDb(overrides: {
   ledgerRows?: Array<Record<string, unknown>>;
   batchError?: Error;
 } = {}): any {
-  const attempt = { sourcePaymentId: "source_1", ...(overrides.attempt ?? {
+  const attempt = { sourcePaymentId: "source_1", status: "reconcile_required", ...(overrides.attempt ?? {
     id: "attempt_1",
     orderId: "order_1",
     refundPaymentId: "payment_1",

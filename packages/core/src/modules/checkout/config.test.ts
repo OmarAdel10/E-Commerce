@@ -12,7 +12,6 @@ import {
     selectDocumentsWithSellingCountries,
 } from "../settings";
 import { getOfferedCustomerIdentity } from "../customers";
-import { readPresenceMarketWithDocuments, readStoreCurrency } from "../markets";
 import { getCheckoutReadiness } from "./readiness";
 import { isReady } from "@scalius/shared/readiness";
 import { getPaymentGatewaySettingsSnapshot } from "../payments";
@@ -56,8 +55,8 @@ vi.mock("../customers", () => ({
 }));
 
 vi.mock("../markets", () => ({
+    backupPriceIncrementSql: vi.fn(),
     readPresenceMarketWithDocuments: vi.fn(),
-    readStoreCurrency: vi.fn(),
 }));
 
 vi.mock("./readiness", () => ({
@@ -203,6 +202,7 @@ describe("getCheckoutConfig — codDeposit output", () => {
         (vi.mocked(selectDocumentsWithSellingCountries)).mockResolvedValue({
             rows: [],
             sellingCountries: ["BD"],
+            backupPriceIncrementMinor: 1,
         });
         (vi.mocked(checkoutDocument.fromRows)).mockResolvedValue({ value: checkout } as any);
         (vi.mocked(currencyDocument.fromRows)).mockResolvedValue({ value: currency } as any);
@@ -233,6 +233,7 @@ describe("getCheckoutConfig — codDeposit output", () => {
 
         const db = mockDb([]) as any;
         const config = await getCheckoutConfig(db);
+        expect(config.currency.priceIncrementMinor).toBe(1);
         expect(config.codDeposit).toMatchObject({
             enabled: true,
             mode: "percentage",

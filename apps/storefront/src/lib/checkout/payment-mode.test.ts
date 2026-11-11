@@ -526,19 +526,19 @@ describe("manualCodDepositAmount", () => {
       ).toBe(200);
     });
 
-    it("percentage with whole-unit increment clamped below total: 99% of 1000 BDT = 999 minor = 999 major", () => {
-      // totalMinor = 1000, raw = ceil(1000 * 99/100) = 990
-      // step = 100, rounded = ceil(990/100) * 100 = 1000
-      // clamp = min(999, 1000) = 999
-      // 999 / 1 = 999 major
+    it("leaves a whole taka for COD when rounding reaches the total", () => {
       expect(
         manualCodDepositAmount(
           codDepositConfig({ mode: "percentage", percent: 99 }),
-          1000,
-          0,
+          10,
+          2,
           100,
         ),
-      ).toBe(999);
+      ).toBe(9);
+    });
+
+    it("returns no deposit when a one-taka order cannot leave a positive cash balance", () => {
+      expect(manualCodDepositAmount(codDepositConfig({ mode: "percentage", percent: 99 }), 1, 2, 100)).toBeNull();
     });
 
     it("returns null when codDeposit is disabled", () => {

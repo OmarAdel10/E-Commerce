@@ -38,13 +38,16 @@ export const buyerPaymentPlanSchema = z.object({
 export function presentBuyerPaymentPlan(plan: {
   kind: string; status: string; depositAmountMinor: number; balanceDueMinor: number;
   instructions: string | null; contactSnapshot: string | null;
-} | null | undefined, decimalPlaces: number) {
+} | null | undefined, decimalPlaces: number, orderStatus?: string) {
   if (!plan) return null;
+  const isClosed = orderStatus === "cancelled" || orderStatus === "refunded" || orderStatus === "returned";
+  const canShowInstructions = plan.kind === "manual" && plan.status !== "cancelled" && !isClosed;
   return {
-    kind: plan.kind, status: plan.status,
+    kind: plan.kind,
+    status: plan.kind === "manual" && plan.status === "pending" && isClosed ? "cancelled" : plan.status,
     depositAmount: fromMinor(plan.depositAmountMinor, decimalPlaces),
     balanceDue: fromMinor(plan.balanceDueMinor, decimalPlaces),
-    instructions: plan.kind === "manual" ? plan.instructions : null,
-    contactSnapshot: plan.kind === "manual" ? presentMerchantContactSnapshot(plan.contactSnapshot) : null,
+    instructions: canShowInstructions ? plan.instructions : null,
+    contactSnapshot: canShowInstructions ? presentMerchantContactSnapshot(plan.contactSnapshot) : null,
   };
 }

@@ -42,7 +42,7 @@ import {
   selectDocumentsWithSellingCountries,
 } from "../settings";
 import type { SettingsDocumentRow } from "../../settings-store";
-import { readPresenceMarketWithDocuments, type PresenceMarket } from "../markets";
+import { backupPriceIncrementSql, readPresenceMarketWithDocuments, type PresenceMarket } from "../markets";
 import { NotFoundError } from "../../errors";
 import { applyTranslation, readTranslationChains, translationScope } from "../translations";
 
@@ -129,14 +129,16 @@ export async function getCheckoutConfig(
     let rows: SettingsDocumentRow[];
     let sellingCountries: string[];
     let market: PresenceMarket | undefined;
+    let backupPriceIncrementMinor: number | null | undefined;
     if (presence === undefined) {
-        ({ rows, sellingCountries } = await selectDocumentsWithSellingCountries(db, documents));
+        ({ rows, sellingCountries, backupPriceIncrementMinor } = await selectDocumentsWithSellingCountries(db, documents, backupPriceIncrementSql()));
     } else {
         const read = await readPresenceMarketWithDocuments(db, presence, documents);
         // No active market holds the presence: a 404, and nothing else is read.
         if (!read.market) throw new NotFoundError("Market not found");
         rows = read.documentRows;
         sellingCountries = read.sellingCountries;
+        backupPriceIncrementMinor = read.backupPriceIncrementMinor;
         market = read.market;
     }
     const [checkout, currency, customerAuth, merchantCountries, marketing] = await Promise.all([
@@ -164,6 +166,7 @@ export async function getCheckoutConfig(
     const localCurrencyCode = foreignCurrency ?? currency.currencyCode;
     const localCurrencySymbol = foreignCurrency ? currencySymbol(foreignCurrency) : currency.currencySymbol;
     const currencyDecimalPlaces = getDecimalPlaces(localCurrencyCode);
+    const priceIncrementMinor = resolvePriceIncrementMinor(localCurrencyCode, foreignCurrency ? null : backupPriceIncrementMinor);
     const { checkoutMode, partialPaymentAmount } = checkout;
     const partialPaymentEnabled = checkout.partialPaymentEnabled && foreignCurrency === null;
     const [customerIdentity, checkoutReadiness] = await Promise.all([
@@ -188,7 +191,7 @@ export async function getCheckoutConfig(
                 code: localCurrencyCode,
                 symbol: localCurrencySymbol,
                 decimalPlaces: currencyDecimalPlaces,
-                priceIncrementMinor: resolvePriceIncrementMinor(localCurrencyCode, undefined),
+                priceIncrementMinor,
             },
             checkoutReadiness,
             unavailable: true,
@@ -284,7 +287,7 @@ export async function getCheckoutConfig(
             code: localCurrencyCode,
             symbol: localCurrencySymbol,
             decimalPlaces: currencyDecimalPlaces,
-            priceIncrementMinor: resolvePriceIncrementMinor(localCurrencyCode, undefined),
+            priceIncrementMinor,
         },
         checkoutReadiness,
         unavailable,

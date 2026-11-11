@@ -54,8 +54,17 @@ export async function reconcileInventoryForStatus(
     status: string,
 ): Promise<string[]> {
     const impact = await applyInventoryForStatusChangeWithImpact(db, orderId, status);
-    await db.update(orders).set({ inventoryAction: impact.inventoryAction }).where(eq(orders.id, orderId));
     return impact.availabilityTransitionVariantIds;
+}
+
+export function refundedOrdersWithPendingInventory(db: Database, nowSeconds = Math.floor(Date.now() / 1000)) {
+    const retryBefore = new Date((nowSeconds - 60 * 60) * 1000);
+    return db.select({ id: orders.id }).from(orders).where(and(
+        eq(orders.status, OrderStatus.CANCELLED),
+        eq(orders.paymentStatus, PaymentStatus.REFUNDED),
+        inArray(orders.inventoryAction, ["reserved", "deducted"]),
+        or(isNull(orders.lastInventoryFailureAt), lt(orders.lastInventoryFailureAt, retryBefore)),
+    ));
 }
 
 /**
@@ -85,29 +94,8 @@ export async function reconcileRefundedOrderInventory(
     hasMore: boolean;
 }> {
     const limit = options.limit ?? 25;
-    const pendingActions = ["reserved", "deducted"] as const;
-    // Orders that failed within the last 60 minutes are deprioritized to avoid
-    // repeatedly hammering orders that keep failing. They retried after the
-    // cooldown expires. Timestamps are stored as unix seconds (see UNIX_NOW).
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const sixtyMinutesAgo = new Date((nowSeconds - 60 * 60) * 1000);
-
-    // Find orders that need inventory reconciliation
-    const candidateOrders = await db
-        .select({
-            id: orders.id,
-            inventoryAction: orders.inventoryAction,
-        })
-        .from(orders)
-        .where(and(
-            eq(orders.status, OrderStatus.CANCELLED),
-            eq(orders.paymentStatus, PaymentStatus.REFUNDED),
-            inArray(orders.inventoryAction, pendingActions),
-            // Skip orders whose last failure was within the cooldown window.
-            or(isNull(orders.lastInventoryFailureAt), lt(orders.lastInventoryFailureAt, sixtyMinutesAgo)),
-        ))
-        .limit(limit)
-        .all();
+    const candidateOrders = await refundedOrdersWithPendingInventory(db, nowSeconds).limit(limit).all();
 
     const result = {
         scanned: candidateOrders.length,

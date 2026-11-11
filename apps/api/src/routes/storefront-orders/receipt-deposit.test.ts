@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { createGiftCardCheckoutFixture, line, DELIVERY } from "@scalius/core/testing/gift-card-checkout";
-import { recordOrderReceipt, getCustomerOrderDetail } from "@scalius/core/modules/orders";
+import { applyOrderStatusChange, recordOrderReceipt, getCustomerOrderDetail } from "@scalius/core/modules/orders";
 import { businessDocument, checkoutDocument } from "@scalius/core/modules/settings";
 import { receiptRoutes } from "./receipt";
 
@@ -32,6 +32,15 @@ describe("manual deposit receipt", () => {
       await expect(getCustomerOrderDetail(fixture.db, "wrong_customer", placed.orderId)).rejects.toThrow("Order not found");
       const detail = await getCustomerOrderDetail(fixture.db, owner, placed.orderId);
       expect(detail.paymentPlan).toMatchObject(body.data.order.paymentPlan!);
+
+      await applyOrderStatusChange(fixture.db, placed.orderId, "cancelled", undefined, { generic: true });
+      const cancelled = await app.request(`/receipt/${placed.orderId}`, { headers: { "X-Receipt-Token": token } }, {});
+      expect(cancelled.status).toBe(200);
+      expect(await cancelled.json()).toMatchObject({ data: { order: { paymentPlan: {
+        status: "cancelled", instructions: null, contactSnapshot: null,
+      } } } });
+      const closedDetail = await getCustomerOrderDetail(fixture.db, owner, placed.orderId);
+      expect(closedDetail.paymentPlan).toMatchObject({ status: "cancelled", instructions: null, contactSnapshot: null });
     } finally { fixture.close(); }
   });
 });
