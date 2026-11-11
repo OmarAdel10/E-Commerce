@@ -40,6 +40,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -53,6 +54,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -66,6 +68,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -79,6 +82,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -92,6 +96,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -105,6 +110,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -118,6 +124,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "USD",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -131,6 +138,7 @@ describe("isManualCodDepositRequired", () => {
           "BDT",
           "BDT",
           0,
+          100,
         ),
       ).toBe(true);
     });
@@ -144,6 +152,7 @@ describe("isManualCodDepositRequired", () => {
           "BDT",
           "BDT",
           0,
+          100,
         ),
       ).toBe(false);
     });
@@ -157,6 +166,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -170,6 +180,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(false);
     });
@@ -185,6 +196,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -198,6 +210,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -211,6 +224,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -224,6 +238,7 @@ describe("isManualCodDepositRequired", () => {
           "BDT",
           "BDT",
           0,
+          100,
         ),
       ).toBe(true);
     });
@@ -241,6 +256,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -258,6 +274,7 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
         ),
       ).toBe(true);
     });
@@ -273,6 +290,58 @@ describe("isManualCodDepositRequired", () => {
           "EGP",
           "EGP",
           2,
+          1,
+        ),
+      ).toBe(true);
+    });
+
+    it("percentage with whole-unit increment rounds up to next step: 15% of 1000 BDT = 150 → 200 minor", () => {
+      // totalMinor = 1000, raw = ceil(1000 * 15/100) = 150
+      // step = 100, rounded = ceil(150/100) * 100 = 200
+      // clamp = min(999, 200) = 200, 200 > 0 && 200 < 1000 → true
+      expect(
+        isManualCodDepositRequired(
+          codDepositConfig({ mode: "percentage", percent: 15 }),
+          1000,
+          lineTypesPhysical,
+          "BDT",
+          "BDT",
+          0,
+          100,
+        ),
+      ).toBe(true);
+    });
+
+    it("percentage with whole-unit increment clamped below total: 99% of 1000 BDT = 990 → 1000 → clamp 999", () => {
+      // totalMinor = 1000, raw = ceil(1000 * 99/100) = 990
+      // step = 100, rounded = ceil(990/100) * 100 = 1000
+      // clamp = min(999, 1000) = 999, 999 > 0 && 999 < 1000 → true
+      expect(
+        isManualCodDepositRequired(
+          codDepositConfig({ mode: "percentage", percent: 99 }),
+          1000,
+          lineTypesPhysical,
+          "BDT",
+          "BDT",
+          0,
+          100,
+        ),
+      ).toBe(true);
+    });
+
+    it("percentage with whole-unit increment: 20% of 1000 BDT = 200 (already multiple of 100)", () => {
+      // totalMinor = 1000, raw = ceil(1000 * 20/100) = 200
+      // step = 100, rounded = ceil(200/100) * 100 = 200
+      // 200 > 0 && 200 < 1000 → true
+      expect(
+        isManualCodDepositRequired(
+          codDepositConfig({ mode: "percentage", percent: 20 }),
+          1000,
+          lineTypesPhysical,
+          "BDT",
+          "BDT",
+          0,
+          100,
         ),
       ).toBe(true);
     });
@@ -287,11 +356,13 @@ describe("isManualCodDepositRequired", () => {
         "EGP",
         "EGP",
         2,
+        1,
       );
       const amount = manualCodDepositAmount(
         codDepositConfig({ mode: "fixed", amount: 250 }),
         1000,
         2,
+        1,
       );
       expect(required).toBe(true);
       expect(amount).toBe(250);
@@ -305,11 +376,13 @@ describe("isManualCodDepositRequired", () => {
         "EGP",
         "EGP",
         2,
+        1,
       );
       const amount = manualCodDepositAmount(
         codDepositConfig({ mode: "percentage", percent: 25 }),
         1000,
         2,
+        1,
       );
       expect(required).toBe(true);
       expect(amount).toBe(250);
@@ -320,6 +393,7 @@ describe("isManualCodDepositRequired", () => {
         codDepositConfig({ mode: "fixed", amount: 500 }),
         1000,
         0,
+        100,
       );
       expect(amount).toBe(500);
     });
@@ -337,6 +411,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "fixed", amount: 150 }),
           1000,
           2,
+          1,
         ),
       ).toBe(150);
     });
@@ -347,6 +422,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "fixed", amount: 500 }),
           1000,
           0,
+          100,
         ),
       ).toBe(500);
     });
@@ -357,6 +433,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ enabled: false }),
           1000,
           2,
+          1,
         ),
       ).toBe(null);
     });
@@ -367,6 +444,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "fixed", amount: 1000 }),
           1000,
           2,
+          1,
         ),
       ).toBe(null);
     });
@@ -377,6 +455,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "fixed", amount: 1500 }),
           1000,
           2,
+          1,
         ),
       ).toBe(null);
     });
@@ -390,6 +469,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "percentage", percent: 20 }),
           1000,
           2,
+          1,
         ),
       ).toBe(200);
     });
@@ -401,6 +481,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "percentage", percent: 33 }),
           10,
           2,
+          1,
         ),
       ).toBe(3.3);
     });
@@ -414,6 +495,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "percentage", percent: 99 }),
           100,
           2,
+          1,
         ),
       ).toBe(99);
     });
@@ -424,8 +506,39 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ mode: "percentage", percent: 20 }),
           1000,
           0,
+          100,
         ),
       ).toBe(200);
+    });
+
+    it("percentage with whole-unit increment rounds up: 15% of 1000 BDT = 200 minor = 2 BDT major", () => {
+      // totalMinor = 1000, raw = ceil(1000 * 15/100) = 150
+      // step = 100, rounded = ceil(150/100) * 100 = 200
+      // 200 / 10^0 = 200 major → but wait, decimalPlaces = 0 so 200 / 1 = 200
+      // Hmm, actually 200 minor units for BDT (0 decimal places) = 200 major units
+      expect(
+        manualCodDepositAmount(
+          codDepositConfig({ mode: "percentage", percent: 15 }),
+          1000,
+          0,
+          100,
+        ),
+      ).toBe(200);
+    });
+
+    it("percentage with whole-unit increment clamped below total: 99% of 1000 BDT = 999 minor = 999 major", () => {
+      // totalMinor = 1000, raw = ceil(1000 * 99/100) = 990
+      // step = 100, rounded = ceil(990/100) * 100 = 1000
+      // clamp = min(999, 1000) = 999
+      // 999 / 1 = 999 major
+      expect(
+        manualCodDepositAmount(
+          codDepositConfig({ mode: "percentage", percent: 99 }),
+          1000,
+          0,
+          100,
+        ),
+      ).toBe(999);
     });
 
     it("returns null when codDeposit is disabled", () => {
@@ -434,6 +547,7 @@ describe("manualCodDepositAmount", () => {
           codDepositConfig({ enabled: false }),
           1000,
           2,
+          1,
         ),
       ).toBe(null);
     });
