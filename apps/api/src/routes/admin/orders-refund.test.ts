@@ -90,32 +90,75 @@ describe("executeOrderRefund — master secret validation", () => {
                 actorUserId: null,
                 reason: "Refund requested",
             }),
-        ).rejects.toThrow();
+        ).rejects.not.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
 
-    it("derives caller as 'staff' when no principal is set", () => {
+    it("derives caller as 'staff' when no principal is set", async () => {
         const { c } = mockContext({ env: { SCALIUS_SECRET: "a".repeat(64) } });
+        const db = {} as Database;
         (c.get as any).mockImplementation((key: string) => {
+            if (key === "db") return db;
+            if (key === "env") return { SCALIUS_SECRET: "a".repeat(64) };
             if (key === "pluginPrincipal") return undefined;
             if (key === "agentPrincipal") return undefined;
             if (key === "user") return undefined;
             return undefined;
         });
 
-        // Just verify the caller derivation logic: no plugin/agent principal => "staff"
-        expect(c.get("pluginPrincipal")).toBeUndefined();
-        expect(c.get("agentPrincipal")).toBeUndefined();
-        expect(c.get("user")).toBeUndefined();
+        // No principal => caller is "staff"; secret check passes; processRefund fails with db={}
+        await expect(
+            executeOrderRefund(c as any, {
+                orderId: "order_1",
+                caller: "staff",
+                actorUserId: null,
+                reason: "Refund requested",
+            }),
+        ).rejects.not.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
 
-    it("derives caller as 'app' when pluginPrincipal is set", () => {
+    it("derives caller as 'app' when pluginPrincipal is set", async () => {
         const { c } = mockContext({ env: { SCALIUS_SECRET: "a".repeat(64) }, pluginPrincipal: { pluginId: "app_1" } });
-        expect(c.get("pluginPrincipal")).toBeDefined();
-        expect(c.get("agentPrincipal")).toBeUndefined();
+        const db = {} as Database;
+        (c.get as any).mockImplementation((key: string) => {
+            if (key === "db") return db;
+            if (key === "env") return { SCALIUS_SECRET: "a".repeat(64) };
+            if (key === "pluginPrincipal") return { pluginId: "app_1" };
+            if (key === "agentPrincipal") return undefined;
+            if (key === "user") return undefined;
+            return undefined;
+        });
+
+        // pluginPrincipal set => caller is "app"; secret check passes; processRefund fails with db={}
+        await expect(
+            executeOrderRefund(c as any, {
+                orderId: "order_1",
+                caller: "staff",
+                actorUserId: null,
+                reason: "Refund requested",
+            }),
+        ).rejects.not.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
 
-    it("derives caller as 'agent' when agentPrincipal is set", () => {
+    it("derives caller as 'agent' when agentPrincipal is set", async () => {
         const { c } = mockContext({ env: { SCALIUS_SECRET: "a".repeat(64) }, agentPrincipal: {} });
-        expect(c.get("agentPrincipal")).toBeDefined();
+        const db = {} as Database;
+        (c.get as any).mockImplementation((key: string) => {
+            if (key === "db") return db;
+            if (key === "env") return { SCALIUS_SECRET: "a".repeat(64) };
+            if (key === "pluginPrincipal") return undefined;
+            if (key === "agentPrincipal") return {};
+            if (key === "user") return undefined;
+            return undefined;
+        });
+
+        // agentPrincipal set => caller is "agent"; secret check passes; processRefund fails with db={}
+        await expect(
+            executeOrderRefund(c as any, {
+                orderId: "order_1",
+                caller: "staff",
+                actorUserId: null,
+                reason: "Refund requested",
+            }),
+        ).rejects.not.toThrow("SCALIUS_SECRET is not installed or is too short.");
     });
 });

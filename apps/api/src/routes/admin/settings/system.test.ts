@@ -68,7 +68,28 @@ describe("admin settings system", () => {
     expect(response.status).toBe(409);
   });
 
-  it("PUT /checkout-flow rejects codDepositPercent of 0 with 400", async () => {
+  it("PUT /checkout-flow rejects codDepositPercent below 0 with 400", async () => {
+    const app = appWithDb();
+    const getResp = await app.request("/checkout-flow", {}, env);
+    const getJson = (await getResp.json()) as { success: boolean; data: { revision: number } };
+    const revision = getJson.data.revision;
+
+    const response = await app.request("/checkout-flow", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestCheckoutEnabled: true,
+        checkoutMode: "all",
+        partialPaymentEnabled: false,
+        partialPaymentAmount: 0,
+        codDepositPercent: -1,
+        expectedRevision: revision,
+      }),
+    }, env);
+    expect(response.status).toBe(400);
+  });
+
+  it("PUT /checkout-flow accepts codDepositPercent of 0 (no deposit)", async () => {
     const app = appWithDb();
     const getResp = await app.request("/checkout-flow", {}, env);
     const getJson = (await getResp.json()) as { success: boolean; data: { revision: number } };
@@ -86,7 +107,7 @@ describe("admin settings system", () => {
         expectedRevision: revision,
       }),
     }, env);
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
   });
 
   it("PUT /checkout-flow accepts codDepositPercent of 1", async () => {
