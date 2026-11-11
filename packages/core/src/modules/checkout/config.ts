@@ -6,6 +6,7 @@ import {
     getDecimalPlaces,
     normalizeSupportedCurrencyCode,
 } from "@scalius/shared/currency";
+import { resolvePriceIncrementMinor } from "@scalius/shared/currency-policy";
 import type { CustomerIdentitySettings } from "@scalius/shared/customer-auth-policy";
 import { currencySymbol } from "@scalius/shared/money-format";
 import { isReady } from "@scalius/shared/readiness";
@@ -67,6 +68,7 @@ export interface CheckoutConfig {
         code: string;
         symbol: string;
         decimalPlaces: number;
+        priceIncrementMinor: number;
     };
     checkoutReadiness: CheckoutReadiness;
     unavailable: boolean;
@@ -186,6 +188,7 @@ export async function getCheckoutConfig(
                 code: localCurrencyCode,
                 symbol: localCurrencySymbol,
                 decimalPlaces: currencyDecimalPlaces,
+                priceIncrementMinor: resolvePriceIncrementMinor(localCurrencyCode, undefined),
             },
             checkoutReadiness,
             unavailable: true,
@@ -281,6 +284,7 @@ export async function getCheckoutConfig(
             code: localCurrencyCode,
             symbol: localCurrencySymbol,
             decimalPlaces: currencyDecimalPlaces,
+            priceIncrementMinor: resolvePriceIncrementMinor(localCurrencyCode, undefined),
         },
         checkoutReadiness,
         unavailable,

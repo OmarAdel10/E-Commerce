@@ -923,9 +923,10 @@ export function renderOrderSummaryDetails(
       config.currency?.code,
       quote.currencyCode,
       quote.decimalPlaces,
+      config.currency?.priceIncrementMinor ?? 1,
     )
   ) {
-    const deposit = manualCodDepositAmount(config, quote.totalAmount, quote.decimalPlaces);
+    const deposit = manualCodDepositAmount(config, quote.totalAmount, quote.decimalPlaces, config.currency?.priceIncrementMinor ?? 1);
     if (deposit !== null) {
       appendSummaryRow(
         details,
@@ -1027,6 +1028,7 @@ function eligibleCheckoutGateways(): CheckoutConfig["gateways"] {
       currentConfig.currency?.code,
       currentQuote.currencyCode,
       currentQuote.decimalPlaces,
+      currentConfig.currency?.priceIncrementMinor ?? 1,
     )
     && !hasGiftCardTender(currentQuote);
   const codExcluded = currentConfig.codDeposit?.enabled
@@ -1076,8 +1078,8 @@ function paymentActionLabel(methodId: string): string {
       checkoutConfig.currency?.code,
       authoritativeTaxQuote.currencyCode,
       authoritativeTaxQuote.decimalPlaces,
+      checkoutConfig.currency?.priceIncrementMinor ?? 1,
     );
-    if (isManualCodDeposit) return checkoutCopy.codDepositRequiredText;
     return checkoutCopy.placeOrderText;
   }
   if (methodId === GIFT_CARD_PAYMENT_METHOD || isDeferredMethod(methodId)) return checkoutCopy.placeOrderText;

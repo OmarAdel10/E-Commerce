@@ -52,6 +52,7 @@ export function isManualCodDepositRequired(
   storeCurrencyCode: string,
   orderCurrencyCode: string,
   decimalPlaces: number,
+  priceIncrementMinor: number,
 ): boolean {
   const cd = config.codDeposit;
   if (!cd?.enabled) return false;
@@ -60,8 +61,14 @@ export function isManualCodDepositRequired(
   const totalMinor = Math.round(totalAmount * 10 ** decimalPlaces);
   const depositMinor = cd.mode === "fixed"
     ? Math.round(Number(cd.amount) * 10 ** decimalPlaces)
-    : Math.min(totalMinor - 1, Math.ceil(totalMinor * Number(cd.percent) / 100));
+    : roundUpToIncrement(totalMinor * Number(cd.percent) / 100, Math.max(1, priceIncrementMinor), totalMinor);
   return Number.isFinite(depositMinor) && depositMinor > 0 && depositMinor < totalMinor;
+}
+
+/** Round a minor-unit amount up to the next increment step, clamped below total. */
+function roundUpToIncrement(raw: number, step: number, totalMinor: number): number {
+  const rounded = Math.ceil(raw / step) * step;
+  return Math.min(totalMinor - 1, rounded);
 }
 
 /**
@@ -73,13 +80,14 @@ export function manualCodDepositAmount(
   config: Pick<CheckoutConfig, "codDeposit">,
   totalAmount: number,
   decimalPlaces: number,
+  priceIncrementMinor: number,
 ): number | null {
   const cd = config.codDeposit;
   if (!cd?.enabled) return null;
   const totalMinor = Math.round(totalAmount * 10 ** decimalPlaces);
   const minor = cd.mode === "fixed"
     ? Math.round(Number(cd.amount) * 10 ** decimalPlaces)
-    : Math.min(totalMinor - 1, Math.ceil(totalMinor * Number(cd.percent) / 100));
+    : roundUpToIncrement(totalMinor * Number(cd.percent) / 100, Math.max(1, priceIncrementMinor), totalMinor);
   return Number.isFinite(minor) && minor > 0 && minor < totalMinor
     ? minor / 10 ** decimalPlaces
     : null;

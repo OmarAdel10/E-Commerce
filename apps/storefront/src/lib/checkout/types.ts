@@ -80,6 +80,7 @@ export interface CheckoutConfig {
     code: string;
     symbol: string;
     decimalPlaces: number;
+    priceIncrementMinor: number;
   };
   /** Settings → Checkout flow: manual COD deposit required before dispatch. */
   codDeposit?: {
