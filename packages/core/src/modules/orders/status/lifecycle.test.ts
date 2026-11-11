@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Database } from "@scalius/database/client";
+import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
 import { sql, eq, inArray } from "drizzle-orm";
 import { assertManualCodDepositVerified, readPaymentPlan } from "../../payments/manual-cod-deposit";
 import { applyOrderStatusChange, reconcileRefundedOrderInventory } from "../status/lifecycle";
@@ -391,38 +392,30 @@ describe("reconcileRefundedOrderInventory — refund inventory recovery drain", 
     expect(result.errors[0]).toContain("Database connection failed");
   });
 
-  it("skips orders that are not CANCELLED or not REFUNDED", async () => {
+  it("selects only cancelled refunded orders whose inventory still needs recovery", async () => {
     const { applyInventoryForStatusChangeWithImpact } = await import("../../inventory");
-    const mockedApplyInventory = applyInventoryForStatusChangeWithImpact as ReturnType<typeof vi.fn>;
-    mockedApplyInventory.mockResolvedValue({
-      inventoryAction: "restored",
-      availabilityTransitionVariantIds: [],
-    });
+    const inventory = vi.mocked(applyInventoryForStatusChangeWithImpact);
+    inventory.mockResolvedValue({ inventoryAction: "restored", availabilityTransitionVariantIds: [] });
+    const { db, sqlite } = createSqliteD1Database();
+    try {
+      sqlite.exec(`
+        INSERT INTO orders (id, customer_name, customer_phone, shipping_address, city, zone,
+            status, payment_method, payment_status, inventory_action, last_inventory_failure_at)
+        VALUES
+          ('eligible', 'Buyer', '01711111111', 'Road', 'Dhaka', 'North', 'cancelled', 'cod', 'refunded', 'deducted', NULL),
+          ('active', 'Buyer', '01711111111', 'Road', 'Dhaka', 'North', 'confirmed', 'cod', 'refunded', 'deducted', NULL),
+          ('unpaid', 'Buyer', '01711111111', 'Road', 'Dhaka', 'North', 'cancelled', 'cod', 'unpaid', 'reserved', NULL),
+          ('restored', 'Buyer', '01711111111', 'Road', 'Dhaka', 'North', 'cancelled', 'cod', 'refunded', 'restored', NULL),
+          ('cooldown', 'Buyer', '01711111111', 'Road', 'Dhaka', 'North', 'cancelled', 'cod', 'refunded', 'deducted', unixepoch());
+      `);
 
-    const whereMock = vi.fn().mockImplementation(() => ({
-      limit: vi.fn().mockImplementation(() => ({
-        all: vi.fn().mockResolvedValue([]),
-      })),
-    }));
-    const fromMock = vi.fn().mockReturnValue({ where: whereMock });
-    const selectMock = vi.fn().mockReturnValue({ from: fromMock });
-
-    const db = {
-      select: selectMock,
-      update: vi.fn(),
-      batch: vi.fn().mockResolvedValue([]),
-      exec: vi.fn(),
-      prepare: vi.fn(),
-      transaction: vi.fn(),
-    } as unknown as Database;
-
-    const result = await reconcileRefundedOrderInventory(db, { limit: 25 });
-
-    expect(result.scanned).toBe(0);
-    expect(result.reconciled).toBe(0);
-    expect(result.failed).toBe(0);
-    // Verify the query filters for CANCELLED status, REFUNDED payment, and pending inventoryAction
-    expect(whereMock).toHaveBeenCalled();
+      expect(await reconcileRefundedOrderInventory(db, { limit: 25 })).toMatchObject({
+        scanned: 1, reconciled: 1, failed: 0,
+      });
+      expect(inventory.mock.calls).toEqual([[db, "eligible", OrderStatus.CANCELLED]]);
+    } finally {
+      sqlite.close();
+    }
   });
 
   it("reconciles orders regardless of age — no 7-day cutoff blocks old orders", async () => {

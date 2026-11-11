@@ -55,6 +55,7 @@
     "perf:compare": "node scripts/storefront-compare.mjs",
     "gallery:storefront": "node apps/storefront/scripts/gallery-server.mjs",
     "quality:storefront": "node scripts/storefront-quality.mjs",
+    "test:browser:manual-cod-deposit": "node --test apps/storefront/scripts/manual-cod-deposit.browser.mjs",
     "quality:admin": "node scripts/admin-quality.mjs",
     "fidelity:check": "node scripts/storefront-fidelity/check.mjs",
     "check:dist-secrets": "node scripts/check-dist-secrets.mjs",

@@ -843,8 +843,10 @@ function PaymentOptionsFields() {
         />
         {values.codDepositEnabled && (
           <>
-            <SettingsField id="cod-deposit-mode" label={t("codDepositMode")}>
+            <div className="space-y-1">
+              <p id="cod-deposit-mode-label" className="text-body font-medium">{t("codDepositMode")}</p>
               <RadioGroup
+                aria-labelledby="cod-deposit-mode-label"
                 value={values.codDepositMode ?? "fixed"}
                 disabled={!canEdit}
                 onValueChange={(mode) => setValue("codDepositMode", mode as "fixed" | "percentage")}
@@ -864,7 +866,7 @@ function PaymentOptionsFields() {
                   </span>
                 </label>
               </RadioGroup>
-            </SettingsField>
+            </div>
             {(values.codDepositMode ?? "fixed") === "fixed" ? (
               <SettingsField id="cod-deposit-amount" label={t("codDepositAmount")} help={t("codDepositAmountHelp")}>
                 <MoneyInput

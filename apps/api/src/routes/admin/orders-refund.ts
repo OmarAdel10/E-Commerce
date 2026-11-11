@@ -466,6 +466,7 @@ app.openapi(reconcileRefundAttemptRoute, async (c) => {
         {
             encryptionKey: getCredentialEncryptionKey(c.env as Record<string, unknown>),
             masterSecret,
+            previousHmacKey: c.env.REFUND_PREVIOUS_HMAC_KEY,
             providers: () => requestPaymentProviders(c),
         },
     );

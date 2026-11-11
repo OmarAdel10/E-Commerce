@@ -497,14 +497,29 @@ export async function verifyRefundMetadataHmac(
     payload: string,
     hmac: string | undefined,
 ): Promise<boolean> {
-    if (!hmac || !/^[A-Za-z0-9_-]{43}$/.test(hmac)) return false;
-    const key = await getRefundHmacKey(env);
-    if (!key) return false;
+    return verifyRefundMetadataWithKey(await getRefundHmacKey(env), payload, hmac);
+}
+
+async function verifyRefundMetadataWithKey(key: string | null | undefined, payload: string, hmac: string | undefined): Promise<boolean> {
+    if (!key || !hmac || !/^[A-Za-z0-9_-]{43}$/.test(hmac)) return false;
     const encoder = new TextEncoder();
     const cryptoKey = await crypto.subtle.importKey("raw", encoder.encode(key),
         { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
     const signature = Uint8Array.from(atob(hmac.replace(/-/g, "+").replace(/_/g, "/") + "="), (c) => c.charCodeAt(0));
     return crypto.subtle.verify("HMAC", cryptoKey, signature, encoder.encode(payload));
+}
+
+export async function verifyRefundRecoveryMetadata(
+    masterSecret: string | string[],
+    payload: string,
+    hmac: string,
+    previousHmacKey?: string,
+): Promise<boolean> {
+    for (const secret of Array.isArray(masterSecret) ? masterSecret : [masterSecret]) {
+        if (await verifyRefundMetadataHmac({ SCALIUS_SECRET: secret }, payload, hmac)) return true;
+    }
+    if (!previousHmacKey || !/^[A-Za-z0-9_-]{43}$/.test(previousHmacKey)) return false;
+    return verifyRefundMetadataWithKey(previousHmacKey, payload, hmac);
 }
 
 function getRefundSourcePaymentId(refund: Pick<OrderPayment, "metadata">): string | undefined {
@@ -762,7 +777,7 @@ function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean,
 export interface FinalizeAcceptedRefundAttemptsResult {
     orderIds: string[];
     finalizedAttemptIds: string[];
-    refundNotifications: RefundNotificationFact[];
+    refundNotifications: RefundCompletionNotificationFact[];
     availabilityTransitionVariantIds: string[];
 }
 
@@ -840,6 +855,10 @@ export async function finalizeAcceptedRefundAttemptIds(
     attemptIds: string[],
     /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
     masterSecret: string | string[],
+    options: {
+        previousHmacKey?: string;
+        direct?: { notification: RefundCompletionNotificationFact; gateway: string; storeCreditLast4?: string };
+    } = {},
 ): Promise<FinalizeAcceptedRefundAttemptsResult> {
     const uniqueAttemptIds = [...new Set(attemptIds.filter(Boolean))];
     const noChanges: FinalizeAcceptedRefundAttemptsResult = {
@@ -888,24 +907,13 @@ export async function finalizeAcceptedRefundAttemptIds(
     // a refunded manual deposit plan eligible for fulfilment.
     // When SCALIUS_SECRET rotates, try prior secrets so pending signed refunds
     // remain verifiable across rotation without weakening signature validation.
-    const secrets = (masterSecret ? (Array.isArray(masterSecret) ? masterSecret : [masterSecret]) : []) as string[];
     for (const attempt of attempts) {
         const metadata = parseRefundMetadata(attempt.metadata);
         if (Object.hasOwn(metadata, "_hmac")) {
             const { _hmac, ...payload } = metadata;
-            if (typeof _hmac !== "string") {
-                throw new ValidationError("Refund metadata integrity verification failed.");
-            }
-            const payloadStr = JSON.stringify(payload);
-            let verified = false;
-            for (const secret of secrets) {
-                const env = { SCALIUS_SECRET: secret };
-                if (await verifyRefundMetadataHmac(env, payloadStr, _hmac)) {
-                    verified = true;
-                    break;
-                }
-            }
-            if (!verified) {
+            if (typeof _hmac !== "string" || !await verifyRefundRecoveryMetadata(
+                masterSecret, JSON.stringify(payload), _hmac, options.previousHmacKey,
+            )) {
                 throw new ValidationError("Refund metadata integrity verification failed.");
             }
         }
@@ -1045,6 +1053,7 @@ export async function finalizeAcceptedRefundAttemptIds(
             eq(refundAttempts.id, attempt.id),
             eq(refundAttempts.status, attempt.status),
             sql`${refundAttempts.providerStatus} IS NOT DISTINCT FROM ${attempt.providerStatus ?? null}`,
+            sql`${refundAttempts.metadata} IS NOT DISTINCT FROM ${attempt.metadata ?? null}`,
         );
         batchStatements.push(buildBatchGuard(
             db,
@@ -1137,6 +1146,51 @@ export async function finalizeAcceptedRefundAttemptIds(
     }).where(inJsonArray(refundAttempts.id, attempts.map((attempt) => attempt.id))),
     );
 
+    // Persist the delivery intent before the refund can become terminal.
+    const refundNotifications: RefundCompletionNotificationFact[] = [];
+    for (const orderId of reconciliationByOrder.keys()) {
+        const orderAttempts = attempts.filter((attempt) => attempt.orderId === orderId);
+        const reconciliation = reconciliationByOrder.get(orderId)!;
+        const { currency } = reconciliation;
+        const notificationAttemptIds = orderAttempts.map((attempt) => attempt.id);
+        const notificationRefundIds = orderAttempts
+            .map((attempt) => attempt.providerRefundId)
+            .filter((refundId): refundId is string => Boolean(refundId));
+        const direct = attempts.length === uniqueAttemptIds.length && options.direct?.notification.orderId === orderId
+            ? options.direct
+            : undefined;
+        const notification = direct?.notification ?? {
+            orderId,
+            notificationType: reconciliation.paymentState.isFullRefund ? "order_refunded" : "order_partially_refunded",
+            dedupeKey: buildReconciledRefundNotificationDedupeKey(
+                orderId,
+                notificationAttemptIds,
+                reconciliation.paymentState.isFullRefund,
+            ),
+            amount: fromMinor(
+                orderAttempts.reduce((sum, attempt) => sum + attempt.amountMinor, 0),
+                currency.decimalPlaces,
+            ),
+            refundId: notificationRefundIds.join(",") || undefined,
+        } satisfies RefundCompletionNotificationFact;
+        const outbox = buildNotificationOutboxInsert(db, {
+            subjectType: "order",
+            subjectId: orderId,
+            audience: "customer",
+            notificationType: notification.notificationType,
+            dedupeKey: notification.dedupeKey,
+            source: direct ? "orders-refund" : "orders-refund-reconciliation",
+            data: {
+                amount: notification.amount,
+                ...(notification.refundId ? { refundId: notification.refundId } : {}),
+                ...(direct ? { gateway: direct.gateway } : {}),
+                ...(direct?.storeCreditLast4 ? { settlement: "store_credit", storeCreditLast4: direct.storeCreditLast4 } : {}),
+            },
+        });
+        batchStatements.push(outbox.statement);
+        refundNotifications.push(notification);
+    }
+
     await safeBatch(db, batchStatements);
 
     // ---- Inventory release: separate from the atomic batch ----
@@ -1158,32 +1212,6 @@ export async function finalizeAcceptedRefundAttemptIds(
             }
         }
         finalizedOrderIds.add(orderId);
-    }
-
-    // Refund notifications (derived from attempts, no DB writes needed).
-    const refundNotifications: RefundNotificationFact[] = [];
-    for (const orderId of reconciliationByOrder.keys()) {
-        const orderAttempts = attempts.filter((attempt) => attempt.orderId === orderId);
-        const reconciliation = reconciliationByOrder.get(orderId)!;
-        const { currency } = reconciliation;
-        const notificationAttemptIds = orderAttempts.map((attempt) => attempt.id);
-        const notificationRefundIds = orderAttempts
-            .map((attempt) => attempt.providerRefundId)
-            .filter((refundId): refundId is string => Boolean(refundId));
-        refundNotifications.push({
-            orderId,
-            notificationType: reconciliation.paymentState.isFullRefund ? "order_refunded" : "order_partially_refunded",
-            dedupeKey: buildReconciledRefundNotificationDedupeKey(
-                orderId,
-                notificationAttemptIds,
-                reconciliation.paymentState.isFullRefund,
-            ),
-            amount: fromMinor(
-                orderAttempts.reduce((sum, attempt) => sum + attempt.amountMinor, 0),
-                currency.decimalPlaces,
-            ),
-            refundId: notificationRefundIds.join(",") || undefined,
-        });
     }
 
     return {
@@ -1571,6 +1599,7 @@ function refundLedgerReason(reason: string): string | null {
 
 interface PreparedStoreCredit {
     giftCardId: string;
+    last4: string;
     /** The card, its `issue` transaction and its `gift_card_issued` outbox row. */
     statements: unknown[];
     notificationOutboxId: string;
@@ -1630,6 +1659,7 @@ async function prepareStoreCredit(
     });
     return {
         giftCardId: built.giftCardId,
+        last4: built.last4,
         statements: [...built.statements, notification.statement],
         notificationOutboxId: notification.outboxId,
     };
@@ -2255,21 +2285,7 @@ export async function processRefund(
         throw error;
     }
 
-    let availabilityTransitionVariantIds: string[];
-    try {
-        const finalizedResult = await finalizeAcceptedRefundAttemptIds(
-            db,
-            completedAllocations.map((allocation) => getRefundAttemptId(allocation)),
-            masterSecret,
-        );
-        availabilityTransitionVariantIds =
-            finalizedResult.availabilityTransitionVariantIds;
-    } catch (finalizeError: unknown) {
-        await markRefundAttemptsReconcileRequired(db, completedAllocations, finalizeError);
-        throw finalizeError;
-    }
-
-    const refundNotification = buildDirectRefundNotificationFact({
+    const directNotification = buildDirectRefundNotificationFact({
         orderId: params.orderId,
         refundGroupId,
         amountMinor: refundAmount,
@@ -2277,10 +2293,21 @@ export async function processRefund(
         refundId: getCompletedRefundIds(completedAllocations),
         currency,
     });
-    const storeCreditCard = storeCredit
-        ? await db.select({ last4: giftCards.codeLast4 }).from(giftCards).where(eq(giftCards.id, storeCredit.giftCardId)).get()
-        : undefined;
 
+    let finalizedResult: FinalizeAcceptedRefundAttemptsResult;
+    try {
+        finalizedResult = await finalizeAcceptedRefundAttemptIds(
+            db,
+            completedAllocations.map((allocation) => getRefundAttemptId(allocation)),
+            masterSecret,
+            { direct: { notification: directNotification, gateway: resultGateway, storeCreditLast4: storeCredit?.last4 } },
+        );
+    } catch (finalizeError: unknown) {
+        await markRefundAttemptsReconcileRequired(db, completedAllocations, finalizeError);
+        throw finalizeError;
+    }
+
+    const refundNotification = finalizedResult.refundNotifications[0];
     return {
         success: true,
         gateway: resultGateway,
@@ -2290,21 +2317,21 @@ export async function processRefund(
         isFullRefund,
         manualSettlementRecorded: hasManualAllocation,
         settlement,
-        ...(storeCredit && storeCreditCard ? {
+        ...(storeCredit ? {
             storeCredit: {
                 giftCardId: storeCredit.giftCardId,
-                last4: storeCreditCard.last4,
+                last4: storeCredit.last4,
                 amount: fromMinor(refundAmount, currency.decimalPlaces),
                 amountMinor: refundAmount,
                 notificationOutboxId: storeCredit.notificationOutboxId,
             },
         } : {}),
-        availabilityTransitionVariantIds,
-        refundNotification: {
+        availabilityTransitionVariantIds: finalizedResult.availabilityTransitionVariantIds,
+        ...(refundNotification ? { refundNotification: {
             notificationType: refundNotification.notificationType,
             dedupeKey: refundNotification.dedupeKey,
             amount: refundNotification.amount,
             refundId: refundNotification.refundId,
-        },
+        } } : {}),
     };
 }

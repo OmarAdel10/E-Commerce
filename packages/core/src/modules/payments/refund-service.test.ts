@@ -158,7 +158,7 @@ vi.mock("../inventory", () => ({
 }));
 
 vi.mock("../notifications", () => ({
-  buildNotificationOutboxInsert: vi.fn().mockResolvedValue(null),
+  buildNotificationOutboxInsert: vi.fn(() => ({ statement: { table: "notification_outbox" } })),
   buildReconciledRefundNotificationDedupeKey: vi.fn().mockReturnValue("dedupe_key"),
 }));
 
@@ -411,17 +411,20 @@ function processRefundDb(overrides: {
 }
 
 describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellation", () => {
-  it("ignores a forged legacy marker on a non-deposit allocation", async () => {
-    const db = refundDb({
-      plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
-      ledgerRows: [
-        { id: "source_1", paymentType: "full", paymentMethod: "cod", status: PaymentRecordStatus.SUCCEEDED, amountMinor: 2000, currency: "EGP" },
-        { id: "payment_1", paymentType: "refund", paymentMethod: "cod", status: PaymentRecordStatus.PENDING, amountMinor: 2000, currency: "EGP" },
-      ],
-    });
-    await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
-    expect(db.__setCalls.some(([table]: [unknown]) => table === paymentPlans)).toBe(false);
-  });
+  it.each(['{"manualDepositRefund":true}', '{"manualDepositRefund":false}', '{}'])(
+    "does not update a plan for a non-deposit allocation with metadata %s", async (metadata) => {
+      const db = refundDb({
+        plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
+        attempt: { id: "attempt_1", orderId: "order_1", refundPaymentId: "payment_1", providerRefundId: null, amountMinor: 2000, currency: "EGP", metadata },
+        ledgerRows: [
+          { id: "source_1", paymentType: "full", paymentMethod: "cod", status: PaymentRecordStatus.SUCCEEDED, amountMinor: 2000, currency: "EGP" },
+          { id: "payment_1", paymentType: "refund", paymentMethod: "cod", status: PaymentRecordStatus.PENDING, amountMinor: 2000, currency: "EGP" },
+        ],
+      });
+      await finalizeAcceptedRefundAttemptIds(db, ["attempt_1"], TEST_MASTER_SECRET);
+      expect(db.__setCalls.some(([table]: [unknown]) => table === paymentPlans)).toBe(false);
+    },
+  );
 
   it("does not finalize a signed deposit refund without its verification secret", async () => {
     const secret = "test-master-secret-at-least-32-chars-long";

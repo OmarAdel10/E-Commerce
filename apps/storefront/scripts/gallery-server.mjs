@@ -134,7 +134,7 @@ function sendJson(response, status, body) {
  * Starts the gallery server. Resolves to `{ url, close }`. Refuses to run
  * with NODE_ENV=production: the gallery is never part of a deployment.
  */
-export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host = "127.0.0.1", quiet = false } = {}) {
+export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host = "127.0.0.1", quiet = false, fixtureApi } = {}) {
   if (process.env.NODE_ENV === "production") {
     throw new Error("The storefront gallery is dev and test only; it does not run with NODE_ENV=production.");
   }
@@ -162,6 +162,9 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
   astroConfig.vite = {
     ...astroConfig.vite,
     define: { ...astroConfig.vite?.define, __SCALIUS_DEV_API_ORIGIN__: JSON.stringify(`${origin}${GALLERY_PREFIX}/api/${REFERER_ENTRY}`) },
+    // In Node, load the installed icons directly instead of transforming each
+    // of the thousands of modules re-exported by lucide-react on a cold render.
+    ssr: { ...astroConfig.vite?.ssr, external: [...(astroConfig.vite?.ssr?.external ?? []), "lucide-react"] },
   };
   const configure = getViteConfig(
     {
@@ -186,6 +189,11 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
   container.addServerRenderer({ name: "@astrojs/react", renderer: reactRenderer });
   container.addClientRenderer({ name: "@astrojs/react", entrypoint: "@astrojs/react/client.js" });
   const gallery = await vite.ssrLoadModule("/src/gallery/server.ts");
+  const answerFixtureApi = async (entry, request) => {
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/^\/__gallery\/api\/[^/]+/, "");
+    return await fixtureApi?.(path, request) ?? gallery.answerFixtureApi(entry, request);
+  };
   const runtimeModule = await vite.ssrLoadModule("/src/lib/api/runtime.ts");
   const { serveExtensionFile } = await vite.ssrLoadModule("/src/lib/extensions/files.ts");
   const routes = storefrontRoutes();
@@ -207,12 +215,12 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
     const rendering = currentEntry.getStore();
     if (request.url.startsWith(apiPrefix)) {
       const entry = apiEntry(request.url, null) ?? rendering;
-      return entry ? gallery.answerFixtureApi(entry, request) : new Response("{}", { status: 404 });
+      return entry ? answerFixtureApi(entry, request) : new Response("{}", { status: 404 });
     }
     // The layout names the origin as the API (Platform settings take an origin
     // only): a render's own read of `<origin>/api/v1/...` is its entry's fixture.
     if (request.url.startsWith(apiRoot) && rendering) {
-      return gallery.answerFixtureApi(rendering, new Request(`${apiPrefix}${encodeURIComponent(rendering.id)}${request.url.slice(origin.length)}`, request));
+      return answerFixtureApi(rendering, new Request(`${apiPrefix}${encodeURIComponent(rendering.id)}${request.url.slice(origin.length)}`, request));
     }
     if (rendering) return new Response("{}", { status: 404 });
     return realFetch(input, init);
@@ -256,7 +264,7 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
         const entry = apiEntry(url.href, request.headers.referer);
         if (!entry) return sendJson(response, 404, { error: "unknown entry" });
         const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
-        const answered = await gallery.answerFixtureApi(entry, new Request(cleanGalleryUrl(url).href, { method: request.method, body, headers: { "content-type": String(request.headers["content-type"] ?? "") } }));
+        const answered = await answerFixtureApi(entry, new Request(cleanGalleryUrl(url).href, { method: request.method, body, headers: { "content-type": String(request.headers["content-type"] ?? "") } }));
         response.writeHead(answered.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         return response.end(Buffer.from(await answered.arrayBuffer()));
       }
@@ -266,7 +274,7 @@ export async function startStorefrontGallery({ port = DEFAULT_GALLERY_PORT, host
         if (!entry) return sendJson(response, 404, { error: "unknown entry" });
         const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
         const target = `${apiPrefix}${encodeURIComponent(entry.id)}${url.pathname}${cleanGalleryUrl(url).search}`;
-        const answered = await gallery.answerFixtureApi(entry, new Request(target, { method: request.method, body, headers: { "content-type": String(request.headers["content-type"] ?? "") } }));
+        const answered = await answerFixtureApi(entry, new Request(target, { method: request.method, body, headers: { "content-type": String(request.headers["content-type"] ?? "") } }));
         response.writeHead(answered.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         return response.end(Buffer.from(await answered.arrayBuffer()));
       }

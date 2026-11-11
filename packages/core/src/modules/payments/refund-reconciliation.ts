@@ -25,7 +25,7 @@ import {
 } from "./gateways/registry";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import { canOperateExistingPayments, type GatewayProviderRefund, type GatewayRefundProbe } from "./gateways/port";
-import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus, verifyRefundMetadataHmac } from "./refund-service";
+import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus, verifyRefundRecoveryMetadata } from "./refund-service";
 import type { RefundNotificationFact } from "./refund-service";
 import { ACTIVE_REFUND_ATTEMPT_STATUSES } from "../order-kernel";
 
@@ -108,6 +108,8 @@ export interface RefundReconciliationOptions {
   encryptionKey?: string;
   /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
   masterSecret: string | string[];
+  /** Previous purpose-derived key, used only to verify attempts during rotation. */
+  previousHmacKey?: string;
   limit?: number;
   nowSeconds?: number;
   /** The gateways to ask (built-in and app providers); built-in ones alone by default. */
@@ -387,7 +389,7 @@ async function markAcceptedBeforeFinalize(
 /** Before manual acceptance was atomic with the claim, confirmation could remain on a pending attempt. */
 async function verifyLegacyManualConfirmation(
   attempt: RefundAttemptProbeRow,
-  masterSecret: RefundReconciliationOptions["masterSecret"],
+  { masterSecret, previousHmacKey }: RefundReconciliationOptions,
 ): Promise<boolean> {
   const { _hmac, ...payload } = parseJsonObject(attempt.metadata);
   if (typeof _hmac !== "string"
@@ -400,11 +402,7 @@ async function verifyLegacyManualConfirmation(
     || payload.allocationCount !== attempt.allocationCount) {
     return false;
   }
-  const serialized = JSON.stringify(payload);
-  for (const secret of Array.isArray(masterSecret) ? masterSecret : [masterSecret]) {
-    if (await verifyRefundMetadataHmac({ SCALIUS_SECRET: secret }, serialized, _hmac)) return true;
-  }
-  return false;
+  return verifyRefundRecoveryMetadata(masterSecret, JSON.stringify(payload), _hmac, previousHmacKey);
 }
 
 async function probeProviderRefund(
@@ -964,7 +962,7 @@ export async function reconcileRefundAttemptById(
       }, nowSeconds);
       return { status: failed ? "failed" : "deferred", orderIds: [], refundNotifications: [] };
     }
-    if (!await verifyLegacyManualConfirmation(attempt, options.masterSecret)) {
+    if (!await verifyLegacyManualConfirmation(attempt, options)) {
       // Without trustworthy confirmation, preserve the claim on refundable
       // funds until staff verify what happened outside the platform.
       await db.update(refundAttempts).set({
@@ -994,7 +992,9 @@ export async function reconcileRefundAttemptById(
       return { status: "deferred", orderIds: [], refundNotifications: [] };
     }
     try {
-      const result = await finalizeAcceptedRefundAttemptIds(db, [attempt.id], options.masterSecret);
+      const result = await finalizeAcceptedRefundAttemptIds(db, [attempt.id], options.masterSecret, {
+        previousHmacKey: options.previousHmacKey,
+      });
       return {
         status: "finalized",
         orderIds: result.orderIds,

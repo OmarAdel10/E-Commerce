@@ -299,7 +299,7 @@ export async function buildStoreCreditGiftCardStatements(
         expiresAt: number | null;
         actor: { type: "system" | "admin"; id: string | null };
     },
-): Promise<{ giftCardId: string; statements: Statement[] }> {
+): Promise<{ giftCardId: string; last4: string; statements: Statement[] }> {
     const giftCardId = await giftCardIdFromRequestKey("refund", input.refundAttemptId);
     const built = await buildGiftCardIssueStatements(db, keys, {
         id: giftCardId,
@@ -317,7 +317,7 @@ export async function buildStoreCreditGiftCardStatements(
         idempotencyKey: `issue:refund:${input.refundAttemptId}`,
         actor: input.actor,
     });
-    return { giftCardId, statements: built.statements };
+    return { giftCardId, last4: built.last4, statements: built.statements };
 }
 
 /** The store-credit card id a refund attempt issues (deterministic). */

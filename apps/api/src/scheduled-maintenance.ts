@@ -410,6 +410,7 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
         reconcileDueRefundAttempts(db, {
           encryptionKey: getCredentialEncryptionKey(env as unknown as Record<string, unknown>),
           masterSecret,
+          previousHmacKey: env.REFUND_PREVIOUS_HMAC_KEY,
           limit: scaled(REFUND_ATTEMPT_RECONCILIATION_LIMIT),
           providers: appPaymentProvidersLoader(env, db),
         }),

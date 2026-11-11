@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSqliteD1Database, type SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
 import { ProviderError } from "@scalius/shared/plugins/providers/kinds";
-import { finalizeAcceptedRefundAttemptIds, computeRefundMetadataHmac, PartialRefundProcessedError, processRefund } from "./refund-service";
+import { finalizeAcceptedRefundAttemptIds, computeRefundMetadataHmac, getRefundHmacKey, PartialRefundProcessedError, processRefund } from "./refund-service";
 
 import { createPaymentProviders } from "./gateways/registry";
 import { stripeGateway } from "./gateways/stripe";
@@ -52,6 +52,19 @@ describe("manual deposit refund persisted ledger", () => {
     f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ manualDepositRefund: false, _hmac: hmac }));
     await expect(finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret)).rejects.toThrow(/integrity/);
     expect(f.sqlite.prepare("SELECT status FROM refund_attempts WHERE id='ad'").get()!.status).toBe("reconcile_required");
+  });
+  it("does not finalize or queue a notification if refund metadata changes after verification", async () => {
+    const payload = { manualDepositRefund: true };
+    const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: secret }, JSON.stringify(payload));
+    f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(JSON.stringify({ ...payload, _hmac: hmac }));
+    const racing = createSqliteD1Database({ sqlite: f.sqlite, beforeBatch(sqlite) {
+      sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run("{}");
+    } });
+
+    await expect(finalizeAcceptedRefundAttemptIds(racing.db, ["ad"], secret)).rejects.toThrow(/REFUND_FINALIZE_ATTEMPT_CONFLICT/);
+    expect(plan()).toBe("deposit_paid");
+    expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("pending");
+    expect(f.sqlite.prepare("SELECT id FROM notification_outbox WHERE order_id='o'").all()).toEqual([]);
   });
   it("rejects partial store-credit deposit allocation through the production refund entry", async () => {
     f.sqlite.exec("DELETE FROM refund_attempts; DELETE FROM order_payments WHERE payment_type='refund'; UPDATE order_payments SET created_at=1 WHERE id='other'; UPDATE order_payments SET created_at=2 WHERE id='deposit'");
@@ -136,7 +149,8 @@ describe("manual deposit refund persisted ledger", () => {
     const current = "current-refund-key-with-at-least-thirty-two-characters";
     await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: current })).resolves.toMatchObject({ status: "deferred" });
     expect(plan()).toBe("deposit_paid");
-    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: [current, secret] }))
+    const previousHmacKey = await getRefundHmacKey({ SCALIUS_SECRET: secret });
+    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: current, previousHmacKey: previousHmacKey! }))
       .resolves.toMatchObject({ status: "finalized" });
     expect(plan()).toBe("cancelled");
   });
@@ -178,22 +192,32 @@ describe("manual deposit refund persisted ledger", () => {
     expect(plan()).toBe("deposit_paid");
   });
 
-  it("rolls back plan cancellation and finalizes an accepted deposit once on recovery", async () => {
+  it.each([
+    ["plan cancellation", "BEFORE UPDATE OF status ON payment_plans WHEN NEW.status='cancelled'"],
+    ["notification enqueue", "BEFORE INSERT ON notification_outbox WHEN NEW.order_id='o'"],
+  ])("rolls back finalization when %s fails and recovers exactly once", async (_stage, fault) => {
     f.sqlite.exec(`
-      CREATE TRIGGER fail_plan_cancellation BEFORE UPDATE OF status ON payment_plans
-      WHEN NEW.status='cancelled'
-      BEGIN SELECT RAISE(ABORT, 'test plan cancellation failure'); END;
+      CREATE TRIGGER fail_refund_finalization ${fault}
+      BEGIN SELECT RAISE(ABORT, 'test refund finalization failure'); END;
     `);
     await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "deferred" });
     expect(plan()).toBe("deposit_paid");
     expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("pending");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders").get()!.paid_amount_minor).toBe(3000);
+    const outbox = () => f.sqlite.prepare("SELECT dedupe_key, notification_type, status FROM notification_outbox WHERE order_id='o'").all();
+    expect(outbox()).toEqual([]);
 
-    f.sqlite.exec("DROP TRIGGER fail_plan_cancellation");
-    await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "finalized" });
+    f.sqlite.exec("DROP TRIGGER fail_refund_finalization");
+    const recovered = await reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret });
+    expect(recovered.status).toBe("finalized");
     await expect(reconcileRefundAttemptById(f.db, "ad", { masterSecret: secret })).resolves.toMatchObject({ status: "deferred" });
     expect(plan()).toBe("cancelled");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders").get()!.paid_amount_minor).toBe(1000);
+    expect(outbox()).toEqual([{
+      dedupe_key: recovered.refundNotifications[0]?.dedupeKey,
+      notification_type: "order_partially_refunded",
+      status: "pending",
+    }]);
   });
 
   it("a stale pending-attempt cleanup cannot overwrite a committed refund", async () => {

@@ -1855,8 +1855,12 @@ export async function initCheckoutPage(): Promise<void> {
   renderSummary();
   await renderGateways();
   if (currentInitVersion !== initVersion) return;
-  // The cart page's total moved on the way here: the buyer pays only after seeing the new one.
-  if (reviewed && adopted && reviewed.totalMinor !== adopted.totalMinor) {
+  // The amount due at each step can change even when the order total stays the same.
+  if (reviewed && adopted && (
+    reviewed.totalMinor !== adopted.totalMinor
+    || reviewed.manualCodDeposit?.depositMinor !== adopted.manualCodDeposit?.depositMinor
+    || reviewed.manualCodDeposit?.balanceMinor !== adopted.manualCodDeposit?.balanceMinor
+  )) {
     showError(checkoutCopy.totalChangedReviewText);
   }
   applyQueuedGiftCard(true);

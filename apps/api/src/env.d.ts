@@ -197,6 +197,7 @@ interface Env {
 
   // Installed secrets (`wrangler secret put`). Exactly two per deployment.
   SCALIUS_SECRET?: string;
+  REFUND_PREVIOUS_HMAC_KEY?: string;
   CREDENTIAL_ENCRYPTION_KEY?: string;
 
   // Optional relational provider selection (only for non-D1 deployments).

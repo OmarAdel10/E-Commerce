@@ -3,6 +3,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { createGiftCardCheckoutFixture, DELIVERY, line, type GiftCardCheckoutFixture } from "@scalius/core/testing/gift-card-checkout";
 import { processRefund, recordOrderPayment } from "@scalius/core/modules/payments";
 import { createSqliteD1Binding } from "@scalius/database/testing/sqlite-d1";
+import { deriveRuntimeSecret, RUNTIME_SECRET_PURPOSES } from "@scalius/shared/runtime-secrets";
 import { MAINTENANCE_SWEEPS } from "../../scheduled-maintenance";
 import { adminOrdersRefundRoutes } from "./orders-refund";
 
@@ -32,6 +33,13 @@ describe("admin refund and scheduled recovery", () => {
 
     function env(secret: string | undefined = masterSecret): Env {
         return { DB: createSqliteD1Binding(fixture.sqlite), SCALIUS_SECRET: secret } as Env;
+    }
+
+    async function rotatedEnv(): Promise<Env> {
+        return {
+            ...env("rotated-refund-route-fixture-secret"),
+            REFUND_PREVIOUS_HMAC_KEY: await deriveRuntimeSecret(masterSecret, RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC),
+        };
     }
 
     function app() {
@@ -84,6 +92,8 @@ describe("admin refund and scheduled recovery", () => {
         expect(JSON.parse(attempt.metadata)).toMatchObject({ _hmac: expect.stringMatching(/^[\w-]{43}$/) });
         expect((await submitRefund(routes)).status).toBe(200);
         expectRefunded();
+        expect(fixture.all("SELECT notification_type FROM notification_outbox WHERE order_id=? AND notification_type='order_refunded'", orderId))
+            .toEqual([{ notification_type: "order_refunded" }]);
     });
 
     it.each(["short", " ".repeat(40)])("rejects invalid runtime secret %j before writing attempts", async (secret) => {
@@ -105,7 +115,9 @@ describe("admin refund and scheduled recovery", () => {
         expect((await request("unrelated-order")).status).toBe(404);
         expect((await request(orderId, " ".repeat(40))).status).toBe(500);
         expect(fixture.one("SELECT status FROM payment_plans WHERE order_id=?", orderId).status).toBe("deposit_paid");
-        const response = await request(orderId);
+        const response = await routes.request(
+            `/${orderId}/refund-attempts/${attemptId}/reconcile`, { method: "POST" }, await rotatedEnv(),
+        );
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ data: { attemptId, status: "finalized", orderIds: [orderId] } });
         expectRefunded();
@@ -116,7 +128,7 @@ describe("admin refund and scheduled recovery", () => {
         const sweep = MAINTENANCE_SWEEPS.find((entry) => entry.name === "refund_attempt_reconciliation")!;
         await sweep.run({
             db: fixture.db,
-            env: env(),
+            env: await rotatedEnv(),
             executionCtx: { waitUntil: () => undefined } as unknown as ExecutionContext,
             runContext: { runId: "test", startedAt: 0, cron: "test", scheduledTime: "test", scheduledAt: 0 },
             timed: (_label, run) => run(),
