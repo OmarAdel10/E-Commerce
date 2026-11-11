@@ -47365,6 +47365,32 @@
                               "balanceDue": {
                                 "type": "number"
                               },
+                              "paymentPlan": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "manual"
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "pending"
+                                    ]
+                                  },
+                                  "balanceDue": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "status",
+                                  "balanceDue"
+                                ]
+                              },
                               "shippingCharge": {
                                 "type": "number"
                               },
@@ -47615,6 +47641,7 @@
                               "totalAmount",
                               "paidAmount",
                               "balanceDue",
+                              "paymentPlan",
                               "shippingCharge",
                               "shippingMethodId",
                               "shippingMethodName",

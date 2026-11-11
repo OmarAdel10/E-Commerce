@@ -12352,6 +12352,11 @@ export type GetApiV1CustomerAuthOrdersResponses = {
                 totalAmount: number;
                 paidAmount: number;
                 balanceDue: number;
+                paymentPlan: {
+                    kind: 'manual';
+                    status: 'pending';
+                    balanceDue: number;
+                } | null;
                 shippingCharge: number;
                 shippingMethodId: string | null;
                 shippingMethodName: string | null;

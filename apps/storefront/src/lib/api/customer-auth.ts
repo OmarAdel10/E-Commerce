@@ -455,6 +455,8 @@ export interface CustomerOrder {
   totalAmount: number;
   paidAmount: number;
   balanceDue: number;
+  /** Pending deposit facts for the account card, without payment instructions. */
+  paymentPlan?: { kind: "manual"; status: "pending"; balanceDue: number } | null;
   shippingCharge: number;
   shippingMethodId: string | null;
   shippingMethodName: string | null;

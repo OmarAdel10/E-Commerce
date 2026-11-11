@@ -1122,9 +1122,22 @@ export async function createStorefrontOrder(
             businessDocument.read(storefrontDb),
             customerAuthDocument.read(storefrontDb),
         ]);
-        let whatsappUrl = business?.socialLinks?.find((link) =>
-            link.label.trim().toLowerCase() === "whatsapp" && isValidUrlScheme(link.url))?.url ?? null;
-        if (!whatsappUrl && customerAuth?.whatsapp === "same_as_phone" && business?.phone) {
+        let whatsappUrl: string | null = null;
+        let hasWhatsappProfile = false;
+        const socialLinks = (business?.socialLinks ?? []).filter((link) => {
+            const url = isValidUrlScheme(link.url) ? URL.parse(link.url) : null;
+            const isShortLink = url?.hostname === "wa.me";
+            const isWhatsappHost = isShortLink || /(^|\.)whatsapp\.com$/.test(url?.hostname ?? "");
+            if (!isWhatsappHost && !link.label.toLowerCase().includes("whatsapp")) return true;
+
+            hasWhatsappProfile = true;
+            const opensChat = isShortLink
+                ? /^\/(?:[1-9]\d{5,14}\/?$|message\/[^/]+)/.test(url.pathname)
+                : isWhatsappHost && /^[1-9]\d{5,14}$/.test(url?.searchParams.get("phone") ?? "");
+            if (opensChat) whatsappUrl ??= link.url;
+            return false;
+        });
+        if (!whatsappUrl && (hasWhatsappProfile || customerAuth?.whatsapp === "same_as_phone") && business?.phone) {
             const digits = toLatinDigits(normalizeBdMobile(business.phone) ?? business.phone).replace(/\D/g, "");
             if (/^[1-9]\d{5,14}$/.test(digits)) whatsappUrl = `https://wa.me/${digits}`;
         }
@@ -1132,7 +1145,7 @@ export async function createStorefrontOrder(
             phone: business?.phone ?? null,
             email: business?.email ?? null,
             whatsappUrl,
-            socialLinks: (business?.socialLinks ?? []).map((s) => ({
+            socialLinks: socialLinks.map((s) => ({
                 id: s.id,
                 label: s.label,
                 url: s.url,
