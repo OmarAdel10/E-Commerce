@@ -47,6 +47,7 @@ import { buildOrderStatusNotificationDedupeKey, type OrderNotificationType } fro
 import { rollbackOrderStatusIfInventoryUnchanged } from "./claim";
 import { assertGenericAdminOrderStatusTransition } from "./policy";
 import { assertOrderNotOnHold } from "../holds";
+import { nothingHandedOverCondition } from "../../../utils/order-handover";
 
 export async function reconcileInventoryForStatus(
     db: Database,
@@ -63,6 +64,7 @@ export function refundedOrdersWithPendingInventory(db: Database, nowSeconds = Ma
         eq(orders.status, OrderStatus.CANCELLED),
         eq(orders.paymentStatus, PaymentStatus.REFUNDED),
         inArray(orders.inventoryAction, ["reserved", "deducted"]),
+        nothingHandedOverCondition(orders.id),
         or(isNull(orders.lastInventoryFailureAt), lt(orders.lastInventoryFailureAt, retryBefore)),
     ));
 }
@@ -609,7 +611,7 @@ export async function applyOrderStatusChange(
                 giftCardTenders
                     ? giftCardOnlyCancellationPaymentCondition(orderId, existingOrder.paidAmountMinor)
                     : noUnsafeCancellationPaymentCondition(orderId),
-                nothingSentCondition(orderId),
+                nothingHandedOverCondition(orderId),
             ]
             : []),
     )).returning({ id: orders.id });
@@ -706,14 +708,6 @@ async function assertNothingHandedOver(db: Database, orderId: string): Promise<v
     if (delivered > 0) {
         throw new ValidationError(`${delivered === 1 ? "1 item was" : `${delivered} items were`} already delivered to the buyer.`);
     }
-}
-
-function nothingSentCondition(orderId: string) {
-    return sql`NOT EXISTS (
-        SELECT 1 FROM ${orderItems}
-        WHERE ${orderItems.orderId} = ${orderId}
-          AND ${orderItems.fulfilledQuantity} > 0
-    )`;
 }
 
 /**

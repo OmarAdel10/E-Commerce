@@ -187,6 +187,14 @@ At entry, each Worker derives every per-purpose secret (session, JWT, service to
 Without `SCALIUS_SECRET`, the API answers every request with `503 runtime_secret_missing`, except `/api/v1/health`, `/api/v1/readyz`, and `/api/v1/meta`.
 
 - Rotating `SCALIUS_SECRET` rotates every derived secret. Admins sign out, service tokens stop verifying, and agent credentials need reissue. Data encrypted with `CREDENTIAL_ENCRYPTION_KEY` survives.
+- Refund recovery verifies metadata with the key that signed the attempt. Before rotating `SCALIUS_SECRET`, pause new refunds and let scheduled recovery finish while the current secret is installed. Confirm this query returns zero rows, then rotate the secret on both Workers and resume refunds. Investigate any attempts it lists before rotating.
+
+  ```sql
+  SELECT id, status
+  FROM refund_attempts
+  WHERE status IN ('pending', 'processing', 'provider_unknown', 'reconcile_required');
+  ```
+
 - Rotating `CREDENTIAL_ENCRYPTION_KEY` makes everything encrypted with it unreadable. Re-enter every provider credential in the dashboard. Staff password hashes are keyed with this key too, so staff cannot sign in with their passwords afterwards: send each one a password reset.
 
 ### Platform settings

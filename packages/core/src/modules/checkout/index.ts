@@ -28,3 +28,4 @@ export * from "./payment-terms";
 export * from "./store-copy";
 
 export * from "./attributes";
+export { resolveManualCodDeposit } from "./manual-cod-deposit";

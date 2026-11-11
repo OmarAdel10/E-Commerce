@@ -45,6 +45,18 @@ export interface CheckoutFlowPreviewOptions {
     codDepositPercent?: number;
 }
 
+/** Send the amount for the selected mode. Omitted amounts keep their saved values. */
+export function checkoutDepositAmountsForSave({
+    codDepositEnabled,
+    codDepositMode,
+    codDepositAmount,
+    codDepositPercent,
+}: Pick<CheckoutFlowPreviewOptions, "codDepositEnabled" | "codDepositMode" | "codDepositAmount" | "codDepositPercent">) {
+    if (!codDepositEnabled) return {};
+    if (codDepositMode === "percentage") return { codDepositPercent };
+    return { codDepositAmount };
+}
+
 /** The first offered method's limit the advance falls outside, or null. */
 export function violatedAdvanceLimit(amount: unknown, limits: readonly AdvanceAmountLimit[] = []): AdvanceAmountLimit | null {
     const numericAmount = Number(amount);
@@ -75,39 +87,25 @@ export function getCheckoutFlowPreviewIssues(options: CheckoutFlowPreviewOptions
     if (options.checkoutMode === "guest_cod_only" && !options.codEnabled) issues.push("codOff");
     if (options.checkoutMode === "gateways_only" && options.activeOnlineMethodCount === 0) issues.push("noOnline");
 
-    if (!options.partialPaymentEnabled) {
-        // Manual COD deposit validation is independent of the online advance.
-        if (options.codDepositEnabled) {
-            if (!options.codEnabled) issues.push("codDepositNeedsCod");
-            if (options.checkoutMode === "gateways_only") issues.push("codDepositNotInGatewaysOnly");
-            if (options.codDepositMode === "fixed") {
-                const amount = options.codDepositAmount ?? 0;
-                if (!Number.isFinite(amount) || amount <= 0) issues.push("codDepositAmountInvalid");
-            } else {
-                const percent = options.codDepositPercent ?? 0;
-                if (!Number.isInteger(percent) || percent < 1 || percent > 99) issues.push("codDepositPercentInvalid");
-            }
-        }
-        return issues;
+    if (options.partialPaymentEnabled) {
+        const amountIssue = getCheckoutAdvancePaymentAmountIssue(options.partialPaymentAmount, {
+            advanceLimits: options.advanceLimits,
+            wholeTaka: options.wholeTaka,
+        });
+        if (amountIssue) issues.push(amountIssue);
+        if (options.checkoutMode === "guest_cod_only") issues.push("codWithAdvance");
+        if (options.activeOnlineMethodCount === 0) issues.push("advanceNeedsOnline");
     }
-
-    const amountIssue = getCheckoutAdvancePaymentAmountIssue(options.partialPaymentAmount, {
-        advanceLimits: options.advanceLimits,
-        wholeTaka: options.wholeTaka,
-    });
-    if (amountIssue) issues.push(amountIssue);
-    if (options.checkoutMode === "guest_cod_only") issues.push("codWithAdvance");
-    if (options.activeOnlineMethodCount === 0) issues.push("advanceNeedsOnline");
 
     if (options.codDepositEnabled) {
         if (!options.codEnabled) issues.push("codDepositNeedsCod");
         if (options.checkoutMode === "gateways_only") issues.push("codDepositNotInGatewaysOnly");
-        if (options.codDepositMode === "fixed") {
-            const amount = options.codDepositAmount ?? 0;
-            if (!Number.isFinite(amount) || amount <= 0) issues.push("codDepositAmountInvalid");
-        } else {
+        if (options.codDepositMode === "percentage") {
             const percent = options.codDepositPercent ?? 0;
             if (!Number.isInteger(percent) || percent < 1 || percent > 99) issues.push("codDepositPercentInvalid");
+        } else {
+            const amount = options.codDepositAmount ?? 0;
+            if (!Number.isFinite(amount) || amount <= 0) issues.push("codDepositAmountInvalid");
         }
     }
 

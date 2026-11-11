@@ -39658,6 +39658,26 @@
                           "type": "number",
                           "minimum": 0
                         },
+                        "manualCodDeposit": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "depositMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "balanceMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            }
+                          },
+                          "required": [
+                            "depositMinor",
+                            "balanceMinor"
+                          ]
+                        },
                         "items": {
                           "type": "array",
                           "items": {
@@ -39821,6 +39841,7 @@
                         "taxAmount",
                         "totalMinor",
                         "totalAmount",
+                        "manualCodDeposit",
                         "items",
                         "appDiscounts",
                         "shippingRates",
@@ -42141,7 +42162,92 @@
                     },
                     "data": {
                       "type": "object",
-                      "properties": {},
+                      "properties": {
+                        "paymentPlan": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "kind": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "depositAmount": {
+                              "type": "number"
+                            },
+                            "balanceDue": {
+                              "type": "number"
+                            },
+                            "instructions": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "contactSnapshot": {
+                              "type": "object",
+                              "nullable": true,
+                              "properties": {
+                                "phone": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "email": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "whatsappUrl": {
+                                  "type": "string",
+                                  "nullable": true
+                                },
+                                "socialLinks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "iconUrl": {
+                                        "type": "string",
+                                        "nullable": true
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "label",
+                                      "url",
+                                      "iconUrl"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "phone",
+                                "email",
+                                "whatsappUrl",
+                                "socialLinks"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "status",
+                            "depositAmount",
+                            "balanceDue",
+                            "instructions",
+                            "contactSnapshot"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "paymentPlan"
+                      ],
                       "additionalProperties": {}
                     }
                   },
@@ -45292,12 +45398,18 @@
                               "type": "integer",
                               "minimum": 0,
                               "maximum": 3
+                            },
+                            "priceIncrementMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
                             }
                           },
                           "required": [
                             "code",
                             "symbol",
-                            "decimalPlaces"
+                            "decimalPlaces",
+                            "priceIncrementMinor"
                           ]
                         },
                         "checkoutReadiness": {
@@ -90088,6 +90200,27 @@
                         "totalAmount": {
                           "type": "number"
                         },
+                        "manualCodDeposit": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "depositMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "balanceMinor": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            }
+                          },
+                          "required": [
+                            "depositMinor",
+                            "balanceMinor"
+                          ],
+                          "description": "The reviewed manual deposit and cash-on-delivery balance, in the quote currency's minor units."
+                        },
                         "amountDueMinor": {
                           "type": "integer"
                         },
@@ -90782,6 +90915,7 @@
                         "taxAmount",
                         "totalMinor",
                         "totalAmount",
+                        "manualCodDeposit",
                         "amountDueMinor",
                         "amountDue",
                         "giftCardTenders",
@@ -205962,6 +206096,9 @@
                               "refundedAmount": {
                                 "type": "number"
                               },
+                              "hasUnverifiedManualDeposit": {
+                                "type": "boolean"
+                              },
                               "requiresShipping": {
                                 "type": "boolean",
                                 "description": "Some line ships, so the order has a delivery address."
@@ -206021,6 +206158,7 @@
                               "cod",
                               "refundDue",
                               "refundedAmount",
+                              "hasUnverifiedManualDeposit",
                               "requiresShipping",
                               "shippingMethodKind",
                               "pickupReadyAt"
@@ -207655,6 +207793,9 @@
                               "refundedAmount": {
                                 "type": "number"
                               },
+                              "hasUnverifiedManualDeposit": {
+                                "type": "boolean"
+                              },
                               "requiresShipping": {
                                 "type": "boolean",
                                 "description": "Some line ships, so the order has a delivery address."
@@ -207714,6 +207855,7 @@
                               "cod",
                               "refundDue",
                               "refundedAmount",
+                              "hasUnverifiedManualDeposit",
                               "requiresShipping",
                               "shippingMethodKind",
                               "pickupReadyAt"
@@ -211940,6 +212082,63 @@
                           "type": "number",
                           "nullable": true
                         },
+                        "paymentPlan": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "kind": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "totalAmount": {
+                              "type": "number"
+                            },
+                            "depositAmount": {
+                              "type": "number"
+                            },
+                            "balanceDue": {
+                              "type": "number"
+                            },
+                            "balanceDueDate": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "depositPaidAt": {
+                              "type": "string",
+                              "nullable": true,
+                              "format": "date-time"
+                            },
+                            "balancePaidAt": {
+                              "type": "string",
+                              "nullable": true,
+                              "format": "date-time"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "nullable": true,
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "nullable": true,
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "status",
+                            "totalAmount",
+                            "depositAmount",
+                            "balanceDue",
+                            "balanceDueDate",
+                            "depositPaidAt",
+                            "balancePaidAt",
+                            "createdAt",
+                            "updatedAt"
+                          ]
+                        },
                         "version": {
                           "type": "integer",
                           "minimum": 1
@@ -212614,6 +212813,9 @@
                         "refundedAmount": {
                           "type": "number"
                         },
+                        "hasUnverifiedManualDeposit": {
+                          "type": "boolean"
+                        },
                         "requiresShipping": {
                           "type": "boolean",
                           "description": "Some line ships, so the order has a delivery address."
@@ -213072,6 +213274,7 @@
                         "billingValidationSkipped",
                         "paidAmount",
                         "balanceDue",
+                        "paymentPlan",
                         "version",
                         "createdAt",
                         "updatedAt",
@@ -213093,6 +213296,7 @@
                         "cod",
                         "refundDue",
                         "refundedAmount",
+                        "hasUnverifiedManualDeposit",
                         "requiresShipping",
                         "shippingMethodKind",
                         "pickupReadyAt",
@@ -214182,6 +214386,9 @@
                               "type": "string",
                               "nullable": true
                             },
+                            "kind": {
+                              "type": "string"
+                            },
                             "status": {
                               "type": "string"
                             },
@@ -214216,6 +214423,7 @@
                             "depositPaidAt",
                             "balancePaidAt",
                             "balanceDueDate",
+                            "kind",
                             "status",
                             "createdAt",
                             "updatedAt"

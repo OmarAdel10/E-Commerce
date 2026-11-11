@@ -81,7 +81,7 @@ export type AccountOrderDetail = CustomerOrderDetail;
  * read defensively until every client carries it).
  */
 function paymentFacts(detail: AccountOrderDetail) {
-  return { ...detail.order, giftCardTenders: (detail as { giftCardTenders?: unknown }).giftCardTenders };
+  return { ...detail.order, paymentPlan: detail.paymentPlan, giftCardTenders: (detail as { giftCardTenders?: unknown }).giftCardTenders };
 }
 
 interface StripeCardElement {
@@ -795,14 +795,14 @@ function renderPayment(detail: AccountOrderDetail): void {
         <div class="mt-3 rounded-lg border border-border bg-muted/50 p-3">
           <p class="font-medium text-foreground" data-manual-cod-deposit-status>${escapeHtml(
             detail.paymentPlan.status === "pending"
-              ? copy.codDepositRequiredText ?? "Deposit required before dispatch"
+              ? copy.codDepositRequiredText
               : detail.paymentPlan.status === "deposit_paid"
                 ? copy.codDepositReceivedText
                 : detail.paymentPlan.status === "completed"
                   ? copy.codDepositCompletedText
                 : copy.codDepositCancelledText
           )}</p>
-          ${detail.paymentPlan.instructions ? `<p class="mt-1 text-sm text-muted-foreground whitespace-pre-line break-words" data-manual-cod-deposit-instructions>${escapeHtml(detail.paymentPlan.instructions)}</p>` : ""}
+          ${detail.paymentPlan.status === "pending" && detail.paymentPlan.instructions ? `<p class="mt-1 text-sm text-muted-foreground whitespace-pre-line break-words" data-manual-cod-deposit-instructions>${escapeHtml(detail.paymentPlan.instructions)}</p>` : ""}
           ${detail.paymentPlan.contactSnapshot ? renderManualCodDepositContact(detail.paymentPlan.contactSnapshot, accountCopy()) : ""}
         </div>
       ` : "",

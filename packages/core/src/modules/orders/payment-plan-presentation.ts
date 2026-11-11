@@ -4,14 +4,18 @@ import { fromMinor } from "@scalius/shared/money";
 const webUrl = z.string().refine((value) => {
   try { return ["https:", "http:"].includes(new URL(value).protocol); } catch { return false; }
 });
+const parsedSocialLinkSchema = z.object({
+  id: z.string(), label: z.string(), url: webUrl,
+  iconUrl: webUrl.nullable().catch(null),
+});
 const parsedMerchantContactSnapshotSchema = z.object({
   phone: z.string().nullable(),
   email: z.string().nullable(),
   whatsappUrl: webUrl.nullable().catch(null),
-  socialLinks: z.array(z.object({
-    id: z.string(), label: z.string(), url: webUrl,
-    iconUrl: webUrl.nullable().catch(null),
-  })).catch([]),
+  socialLinks: z.array(z.unknown()).catch([]).transform((links) => links.flatMap((link) => {
+    const parsed = parsedSocialLinkSchema.safeParse(link);
+    return parsed.success ? [parsed.data] : [];
+  })),
 });
 
 export const merchantContactSnapshotSchema = z.object({
@@ -41,13 +45,13 @@ export function presentBuyerPaymentPlan(plan: {
 } | null | undefined, decimalPlaces: number, orderStatus?: string) {
   if (!plan) return null;
   const isClosed = orderStatus === "cancelled" || orderStatus === "refunded" || orderStatus === "returned";
-  const canShowInstructions = plan.kind === "manual" && plan.status !== "cancelled" && !isClosed;
+  const canShowContact = plan.kind === "manual" && plan.status !== "cancelled" && !isClosed;
   return {
     kind: plan.kind,
     status: plan.kind === "manual" && plan.status === "pending" && isClosed ? "cancelled" : plan.status,
     depositAmount: fromMinor(plan.depositAmountMinor, decimalPlaces),
     balanceDue: fromMinor(plan.balanceDueMinor, decimalPlaces),
-    instructions: canShowInstructions ? plan.instructions : null,
-    contactSnapshot: canShowInstructions ? presentMerchantContactSnapshot(plan.contactSnapshot) : null,
+    instructions: canShowContact && plan.status === "pending" ? plan.instructions : null,
+    contactSnapshot: canShowContact ? presentMerchantContactSnapshot(plan.contactSnapshot) : null,
   };
 }

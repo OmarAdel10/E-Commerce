@@ -9997,6 +9997,10 @@ export type PostApiV1StorefrontAgentContextsByContextIdCheckoutQuoteResponses = 
             taxAmount: number;
             totalMinor: number;
             totalAmount: number;
+            manualCodDeposit: {
+                depositMinor: number;
+                balanceMinor: number;
+            } | null;
             items: Array<{
                 productId: string;
                 variantId: string;
@@ -10749,6 +10753,24 @@ export type GetApiV1StorefrontAgentContextsByContextIdOrdersByOrderIdReceiptResp
     200: {
         success: true;
         data: {
+            paymentPlan: {
+                kind: string;
+                status: string;
+                depositAmount: number;
+                balanceDue: number;
+                instructions: string | null;
+                contactSnapshot: {
+                    phone: string | null;
+                    email: string | null;
+                    whatsappUrl: string | null;
+                    socialLinks: Array<{
+                        id: string;
+                        label: string;
+                        url: string;
+                        iconUrl: string | null;
+                    }>;
+                } | null;
+            } | null;
             [key: string]: unknown;
         };
     };
@@ -11715,6 +11737,7 @@ export type GetApiV1CheckoutConfigResponses = {
                 code: string;
                 symbol: string;
                 decimalPlaces: number;
+                priceIncrementMinor: number;
             };
             checkoutReadiness: {
                 status: 'ready' | 'incomplete' | 'error';
@@ -23127,6 +23150,13 @@ export type PostApiV1OrdersTaxQuoteResponses = {
             taxAmount: number;
             totalMinor: number;
             totalAmount: number;
+            /**
+             * The reviewed manual deposit and cash-on-delivery balance, in the quote currency's minor units.
+             */
+            manualCodDeposit: {
+                depositMinor: number;
+                balanceMinor: number;
+            } | null;
             amountDueMinor: number;
             amountDue: number;
             /**
@@ -58207,6 +58237,7 @@ export type GetApiV1AdminOrdersResponses = {
                  */
                 refundDue: number;
                 refundedAmount: number;
+                hasUnverifiedManualDeposit: boolean;
                 /**
                  * Some line ships, so the order has a delivery address.
                  */
@@ -58672,6 +58703,7 @@ export type GetApiV1AdminOrdersPaymentRecoveryResponses = {
                  */
                 refundDue: number;
                 refundedAmount: number;
+                hasUnverifiedManualDeposit: boolean;
                 /**
                  * Some line ships, so the order has a delivery address.
                  */
@@ -59872,6 +59904,18 @@ export type GetApiV1AdminOrdersByIdResponses = {
             billingValidationSkipped: boolean;
             paidAmount: number | null;
             balanceDue: number | null;
+            paymentPlan: {
+                kind: string;
+                status: string;
+                totalAmount: number;
+                depositAmount: number;
+                balanceDue: number;
+                balanceDueDate: string | null;
+                depositPaidAt: string | null;
+                balancePaidAt: string | null;
+                createdAt: string | null;
+                updatedAt: string | null;
+            } | null;
             version: number;
             createdAt: string | number;
             updatedAt: string | number;
@@ -60033,6 +60077,7 @@ export type GetApiV1AdminOrdersByIdResponses = {
              */
             refundDue: number;
             refundedAmount: number;
+            hasUnverifiedManualDeposit: boolean;
             /**
              * Some line ships, so the order has a delivery address.
              */
@@ -60409,6 +60454,7 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 depositPaidAt: string | number | unknown;
                 balancePaidAt: string | number | unknown;
                 balanceDueDate: string | null;
+                kind: string;
                 status: string;
                 createdAt: string | number;
                 updatedAt: string | number;

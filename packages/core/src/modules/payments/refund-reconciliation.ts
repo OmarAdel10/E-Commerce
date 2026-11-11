@@ -25,7 +25,7 @@ import {
 } from "./gateways/registry";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import { canOperateExistingPayments, type GatewayProviderRefund, type GatewayRefundProbe } from "./gateways/port";
-import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus } from "./refund-service";
+import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus, verifyRefundMetadataHmac } from "./refund-service";
 import type { RefundNotificationFact } from "./refund-service";
 import { ACTIVE_REFUND_ATTEMPT_STATUSES } from "../order-kernel";
 
@@ -67,6 +67,9 @@ type RefundAttemptProbeRow = Pick<
   | "providerRefundId"
   | "providerIdempotencyKey"
   | "refundReference"
+  | "metadata"
+  | "allocationIndex"
+  | "allocationCount"
 > & { providerStatus?: string | null };
 
 interface RefundProviderReconciliationContext {
@@ -364,8 +367,8 @@ async function markAcceptedBeforeFinalize(
   attempt: RefundAttemptProbeRow,
   outcome: Extract<ProviderProbeOutcome, { outcome: "accepted" }>,
   nowSeconds: number,
-): Promise<void> {
-  await db.update(refundAttempts).set({
+): Promise<boolean> {
+  const rows = await db.update(refundAttempts).set({
     status: "reconcile_required",
     providerStatus: outcome.providerStatus,
     providerRefundId: outcome.providerRefundId ?? attempt.providerRefundId ?? null,
@@ -373,7 +376,35 @@ async function markAcceptedBeforeFinalize(
     lastProbeAt: nowSeconds,
     lastError: null,
     updatedAt: sql`unixepoch()`,
-  }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status)));
+  }).where(and(
+    eq(refundAttempts.id, attempt.id),
+    eq(refundAttempts.status, attempt.status),
+    attempt.status === "pending" ? eq(refundAttempts.metadata, attempt.metadata!) : undefined,
+  )).returning({ id: refundAttempts.id });
+  return rows.length > 0;
+}
+
+/** Before manual acceptance was atomic with the claim, confirmation could remain on a pending attempt. */
+async function verifyLegacyManualConfirmation(
+  attempt: RefundAttemptProbeRow,
+  masterSecret: RefundReconciliationOptions["masterSecret"],
+): Promise<boolean> {
+  const { _hmac, ...payload } = parseJsonObject(attempt.metadata);
+  if (typeof _hmac !== "string"
+    || payload.settlementMode !== "manual_external"
+    || payload.manualSettlementConfirmed !== true
+    || payload.gateway !== attempt.gateway
+    || payload.refundGroupId !== attempt.refundGroupId
+    || payload.sourcePaymentId !== attempt.sourcePaymentId
+    || payload.allocationIndex !== attempt.allocationIndex
+    || payload.allocationCount !== attempt.allocationCount) {
+    return false;
+  }
+  const serialized = JSON.stringify(payload);
+  for (const secret of Array.isArray(masterSecret) ? masterSecret : [masterSecret]) {
+    if (await verifyRefundMetadataHmac({ SCALIUS_SECRET: secret }, serialized, _hmac)) return true;
+  }
+  return false;
 }
 
 async function probeProviderRefund(
@@ -909,6 +940,9 @@ export async function reconcileRefundAttemptById(
       providerRefundId: refundAttempts.providerRefundId,
       providerIdempotencyKey: refundAttempts.providerIdempotencyKey,
       refundReference: refundAttempts.refundReference,
+      metadata: refundAttempts.metadata,
+      allocationIndex: refundAttempts.allocationIndex,
+      allocationCount: refundAttempts.allocationCount,
       providerStatus: refundAttempts.providerStatus,
     })
     .from(refundAttempts)
@@ -922,15 +956,30 @@ export async function reconcileRefundAttemptById(
   const context = await assertRefundAttemptOrderCurrency(db, attempt);
 
   if (attempt.status === "pending") {
-    const failed = await markAttemptFailed(db, attempt, {
-      outcome: "rejected",
-      providerStatus: "not_dispatched",
-      error: "Refund attempt expired before provider dispatch and was released for retry.",
-    }, nowSeconds);
-    return { status: failed ? "failed" : "deferred", orderIds: [], refundNotifications: [] };
+    if (!isManualSettlementMethod(attempt.gateway)) {
+      const failed = await markAttemptFailed(db, attempt, {
+        outcome: "rejected",
+        providerStatus: "not_dispatched",
+        error: "Refund attempt expired before provider dispatch and was released for retry.",
+      }, nowSeconds);
+      return { status: failed ? "failed" : "deferred", orderIds: [], refundNotifications: [] };
+    }
+    if (!await verifyLegacyManualConfirmation(attempt, options.masterSecret)) {
+      // Without trustworthy confirmation, preserve the claim on refundable
+      // funds until staff verify what happened outside the platform.
+      await db.update(refundAttempts).set({
+        claimId: null,
+        claimExpiresAt: null,
+        lastProbeAt: nowSeconds,
+        nextProbeAt: nowSeconds + REFUND_RECONCILIATION_MANUAL_REVIEW_SECONDS,
+        lastError: "Legacy manual refund confirmation could not be verified. Review the external repayment before retrying.",
+        updatedAt: sql`unixepoch()`,
+      }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, "pending")));
+      return { status: "deferred", orderIds: [], refundNotifications: [] };
+    }
   }
 
-  const outcome = attempt.status === "reconcile_required"
+  const outcome = attempt.status === "reconcile_required" || attempt.status === "pending"
     ? {
         outcome: "accepted",
         providerRefundId: attempt.providerRefundId,
@@ -941,7 +990,9 @@ export async function reconcileRefundAttemptById(
     : await probeProviderRefund(db, attempt, context, options.encryptionKey, await paymentProvidersFor(options.providers, attempt.gateway));
 
   if (outcome.outcome === "accepted") {
-    await markAcceptedBeforeFinalize(db, attempt, outcome, nowSeconds);
+    if (!await markAcceptedBeforeFinalize(db, attempt, outcome, nowSeconds)) {
+      return { status: "deferred", orderIds: [], refundNotifications: [] };
+    }
     try {
       const result = await finalizeAcceptedRefundAttemptIds(db, [attempt.id], options.masterSecret);
       return {

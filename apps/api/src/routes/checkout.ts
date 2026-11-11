@@ -71,6 +71,7 @@ const checkoutConfigSchema = z.object({
     code: z.string(),
     symbol: z.string(),
     decimalPlaces: z.number().int().min(0).max(3),
+    priceIncrementMinor: z.number().int().positive(),
   }),
   checkoutReadiness: readinessSchema.extend({
     hasActiveShippingMethod: z.boolean(),

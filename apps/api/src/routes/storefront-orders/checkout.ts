@@ -1,4 +1,4 @@
-import { checkoutAttributesSchema, readCheckoutAttributes } from "@scalius/shared/plugins";
+import { checkoutAttributesSchema } from "@scalius/shared/plugins";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "@scalius/shared/order-limits";
 // Checkout: the idempotent storefront order commit.
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
@@ -650,7 +650,27 @@ app.openapi(createOrderRoute, async (c) => {
       }),
       checkoutAuthority.taxAuthority,
       { masterSecret: readMasterSecret(c.env) },
-      { apps, channel: "online_store", paymentProviders, appProviders: requestAppProviders(c) },
+      {
+        apps,
+        channel: "online_store",
+        paymentProviders,
+        appProviders: requestAppProviders(c),
+        async verifyReviewedQuote(review) {
+          const fingerprintFor = (manualCodDeposit: typeof review.manualCodDeposit) => buildStorefrontCheckoutQuoteFingerprint(
+            review.taxQuote, review.shippingMethod, review.linePropertiesHashes, review.attributes, manualCodDeposit,
+          );
+          const fingerprint = await fingerprintFor(review.manualCodDeposit);
+          // A quote may have hidden COD when the buyer chose another method.
+          // A COD order itself must match the fingerprint with its deposit.
+          const matchesAnotherMethod = data.paymentMethod !== PaymentMethod.COD
+            && review.manualCodDeposit !== null
+            && data.expectedQuoteFingerprint !== fingerprint;
+          assertStorefrontCheckoutQuoteFingerprint(
+            data.expectedQuoteFingerprint,
+            matchesAnotherMethod ? await fingerprintFor(null) : fingerprint,
+          );
+        },
+      },
     );
 
     // The consent snapshot and match signals the server tracking senders use
@@ -684,15 +704,6 @@ app.openapi(createOrderRoute, async (c) => {
       },
     });
 
-    assertStorefrontCheckoutQuoteFingerprint(
-      data.expectedQuoteFingerprint,
-      await buildStorefrontCheckoutQuoteFingerprint(
-        result.taxQuote,
-        result.shippingMethod,
-        result.linePropertiesHashes,
-        readCheckoutAttributes(result.commitPayload.orderData.attributes),
-      ),
-    );
     // An app may have hidden the chosen method for this cart; readiness and
     // the merchant's payment policy were already checked above. An invoice
     // the merchant lets apps decide must have been allowed by one.
@@ -714,9 +725,11 @@ app.openapi(createOrderRoute, async (c) => {
       paymentProviders,
       result.paymentMethod,
       checkoutSettings,
-      result.giftCardTender.amountDueMinor,
+      result.commitPayload.codDeposit
+        ? result.taxQuote.totalMinor - result.commitPayload.codDeposit.amountMinor
+        : result.giftCardTender.amountDueMinor,
       result.taxQuote.currencyCode,
-      result.depositPlan,
+      result.depositPlan && !result.commitPayload.codDeposit,
     );
     diagnostics?.mark("prepare");
 

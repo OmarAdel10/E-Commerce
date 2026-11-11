@@ -12,6 +12,8 @@ import { paymentPlans, PaymentPlanStatus } from "@scalius/database/schema";
 import type { Database } from "@scalius/database/client";
 import { ValidationError } from "@scalius/core/errors";
 
+export class ManualCodDepositBlockedError extends ValidationError {}
+
 /** Read the payment plan for an order, if any. */
 export async function readPaymentPlan(
     db: Database,
@@ -43,10 +45,10 @@ export async function assertManualCodDepositVerified(
     if (!plan) return;
     if (plan.kind !== "manual") return;
     if (plan.status === PaymentPlanStatus.PENDING) {
-        throw new ValidationError("The deposit must be recorded before this order can move on.");
+        throw new ManualCodDepositBlockedError("The deposit must be recorded before this order can move on.");
     }
     if (plan.status === PaymentPlanStatus.CANCELLED) {
-        throw new ValidationError("This order's deposit was refunded. Fulfilment is blocked.");
+        throw new ManualCodDepositBlockedError("This order's deposit was refunded. Fulfilment is blocked.");
     }
     // deposit_paid or completed — deposit verified, fulfilment may proceed.
 }

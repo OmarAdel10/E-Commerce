@@ -136,40 +136,10 @@ export async function recordOrderPayment(
   const paymentId = `recorded:${input.orderId}:${legacyHash.slice(0, 32)}`;
   const alternateId = `recorded:${input.orderId}:${alternateHash}`;
 
-  // Both ID formats may already exist in the ledger. A replay must also
-  // work after the plan status changes.
-  const existing = await db.select({
-    id: orderPayments.id,
-    amountMinor: orderPayments.amountMinor,
-    paymentType: orderPayments.paymentType,
-    metadata: orderPayments.metadata,
-  }).from(orderPayments).where(inArray(orderPayments.id, [paymentId, alternateId])).get();
-  if (existing) {
-    const recorded = readMetadata(existing.metadata);
-    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via
-      || (existing.paymentType === "deposit") !== (input.paymentType === "deposit")) {
-      throw new ConflictError("This retry key already recorded a different payment.");
-    }
-    // Replay: fetch current order state and return full result
-    const currentOrder = await db.select({
-      paidAmountMinor: orders.paidAmountMinor,
-      balanceDueMinor: orders.balanceDueMinor,
-      paymentStatus: orders.paymentStatus,
-      deletedAt: orders.deletedAt,
-    }).from(orders).where(eq(orders.id, input.orderId)).get();
-    if (!currentOrder || currentOrder.deletedAt) throw new NotFoundError("Order not found");
-    return {
-      paymentId: existing.id,
-      paymentStatus: currentOrder.paymentStatus,
-      paidAmountMinor: currentOrder.paidAmountMinor,
-      balanceDueMinor: currentOrder.balanceDueMinor,
-      replayed: true,
-    };
-  }
-
-  // Read order and payment plan for validation (only for new payments)
-  const [order, plan] = await Promise.all([
-    db.select({
+  // Read the replay and plan in the same snapshot. A concurrent same-key
+  // request can commit both the ledger row and the plan transition at once.
+  const snapshot = await db.select({
+    order: {
       id: orders.id,
       status: orders.status,
       totalAmountMinor: orders.totalAmountMinor,
@@ -181,16 +151,43 @@ export async function recordOrderPayment(
       deletedAt: orders.deletedAt,
       currencyCode: orders.currencyCode,
       currencyDecimalPlaces: orders.currencyDecimalPlaces,
-    }).from(orders).where(eq(orders.id, input.orderId)).get(),
-    db.select({
+    },
+    plan: {
       id: paymentPlans.id,
       status: paymentPlans.status,
       kind: paymentPlans.kind,
       depositAmountMinor: paymentPlans.depositAmountMinor,
       balanceDueMinor: paymentPlans.balanceDueMinor,
-    }).from(paymentPlans).where(eq(paymentPlans.orderId, input.orderId)).get(),
-  ]);
-  if (!order || order.deletedAt) throw new NotFoundError("Order not found");
+    },
+    existing: {
+      id: orderPayments.id,
+      amountMinor: orderPayments.amountMinor,
+      paymentType: orderPayments.paymentType,
+      metadata: orderPayments.metadata,
+    },
+  }).from(orders)
+    .leftJoin(paymentPlans, eq(paymentPlans.orderId, orders.id))
+    .leftJoin(orderPayments, and(eq(orderPayments.orderId, orders.id), inArray(orderPayments.id, [paymentId, alternateId])))
+    .where(eq(orders.id, input.orderId))
+    .orderBy(sql`CASE WHEN ${orderPayments.id} = ${paymentId} THEN 0 ELSE 1 END`)
+    .limit(1)
+    .get();
+  if (!snapshot || snapshot.order.deletedAt) throw new NotFoundError("Order not found");
+  const { order, plan, existing } = snapshot;
+  if (existing) {
+    const recorded = readMetadata(existing.metadata);
+    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via
+      || (existing.paymentType === "deposit") !== (input.paymentType === "deposit")) {
+      throw new ConflictError("This retry key already recorded a different payment.");
+    }
+    return {
+      paymentId: existing.id,
+      paymentStatus: order.paymentStatus,
+      paidAmountMinor: order.paidAmountMinor,
+      balanceDueMinor: order.balanceDueMinor,
+      replayed: true,
+    };
+  }
 
   // Determine if this is a manual COD deposit
   let isDeposit = false;
@@ -334,7 +331,7 @@ export async function recordOrderPayment(
     if (isBatchGuardError(error, RECORDED_PAYMENT_BATCH_GUARD)) {
       // A retry that lost the race to itself replays; anything else changed the order.
       const replay = await db.select({ amountMinor: orderPayments.amountMinor })
-        .from(orderPayments).where(eq(orderPayments.id, paymentId)).get();
+        .from(orderPayments).where(inArray(orderPayments.id, [paymentId, alternateId])).get();
       if (replay) return recordOrderPayment(db, input);
       throw new ConflictError("The order's payment changed while this payment was being recorded. Reload and try again.");
     }

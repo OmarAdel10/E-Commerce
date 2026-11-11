@@ -41,6 +41,14 @@ describe("storefront checkout config", () => {
     expect(json.data).toHaveProperty("gateways");
     expect(json.data).toHaveProperty("checkoutMode");
     expect(json.data).toHaveProperty("currency");
+    expect(json.data.currency).toHaveProperty("priceIncrementMinor", 100);
     expect(json.data).toHaveProperty("market");
+  });
+
+  it("returns the configured pricing increment from the live backup market", async () => {
+    fixture.sqlite.exec("UPDATE markets SET price_increment_minor = 1 WHERE is_backup = 1");
+    const response = await appWithDb().request("/api/v1/checkout/config", {}, env);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { currency: { priceIncrementMinor: 1 } } });
   });
 });

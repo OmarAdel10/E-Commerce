@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { createGiftCardCheckoutFixture, DELIVERY, line } from "@scalius/core/testing/gift-card-checkout";
 import { publicRefundResult } from "./orders-refund";
 import { recordOrderPayment } from "@scalius/core/modules/payments";
 import { adminResourceRoutes, recordPaymentBody } from "./resources";
@@ -22,6 +23,7 @@ function mockDb(): Database {
 }
 
 function appWithContext(overrides: {
+    db?: Database;
     pluginPrincipal?: { pluginId: string; pluginName: string } | undefined;
     agentPrincipal?: { id: string } | undefined;
     user?: { id: string } | undefined;
@@ -36,7 +38,7 @@ function appWithContext(overrides: {
         };
     }>();
     app.use("*", async (c, next) => {
-        c.set("db", mockDb());
+        c.set("db", overrides.db ?? mockDb());
         c.set("pluginPrincipal", overrides.pluginPrincipal ?? undefined);
         c.set("agentPrincipal", overrides.agentPrincipal ?? undefined);
         c.set("user", overrides.user ?? undefined);
@@ -173,12 +175,6 @@ describe("recordOrderPayment — input validation with paymentType", () => {
         paymentType: "deposit",
     };
 
-    it("accepts valid input with paymentType 'deposit' and passes input validation", async () => {
-        const db = mockDb();
-        // Input validation passes; DB operations will fail with empty mock, but that's after validation
-        await expect(recordOrderPayment(db, baseInput)).rejects.toThrow();
-    });
-
     it("rejects invalid via", async () => {
         const db = mockDb();
         await expect(
@@ -218,6 +214,9 @@ describe("POST /orders/{id}/payments — manual COD deposit staff guard", () => 
             body: JSON.stringify(baseBody),
         }, env);
         expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+            error: { message: "A manual COD deposit must be recorded by staff, not an app or agent." },
+        });
     });
 
     it("rejects an agent principal recording a deposit with 400", async () => {
@@ -228,15 +227,42 @@ describe("POST /orders/{id}/payments — manual COD deposit staff guard", () => 
             body: JSON.stringify(baseBody),
         }, env);
         expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+            error: { message: "A manual COD deposit must be recorded by staff, not an app or agent." },
+        });
     });
 
-    it("allows staff to record a deposit (guard passes, not 400)", async () => {
-        const app = appWithContext({ user: { id: "staff_1" } });
-        const response = await app.request("/orders/order_1/payments", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "idempotency-key": "key-staff-1" },
-            body: JSON.stringify(baseBody),
-        }, env);
-        expect(response.status).not.toBe(400);
+    it("records the staff deposit and replays it once even after the order revision advances", async () => {
+        const fixture = createGiftCardCheckoutFixture();
+        try {
+            const { orderId } = await fixture.checkout({
+                ...DELIVERY,
+                shippingCountryCode: "BD",
+                items: [line("p_mug", "v_mug", 1, 300)],
+            }, { codDeposit: { amount: 100, instructions: "Transfer to the store" } });
+            const app = appWithContext({ db: fixture.db, user: { id: "staff_1" } });
+            const record = (amountMinor: number, requestKey: string) => app.request(`/orders/${orderId}/payments`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "idempotency-key": requestKey },
+                body: JSON.stringify({ ...baseBody, amountMinor, expectedRevision: 1 }),
+            }, env);
+            const wrongAmount = await record(9900, "key-staff-wrong-amount");
+            expect(wrongAmount.status).toBe(400);
+            expect(fixture.all("SELECT id FROM order_payments WHERE order_id = ?", orderId)).toEqual([]);
+
+            const first = await record(10000, "key-staff-exact-amount");
+            const firstBody = await first.json() as { data: { payment: { id: string } } };
+            expect(first.status, JSON.stringify(firstBody)).toBe(201);
+            expect(firstBody.data.payment).toMatchObject({ amountMinor: 10000, type: "deposit" });
+
+            const replay = await record(10000, "key-staff-exact-amount");
+            expect(replay.status).toBe(201);
+            expect(await replay.json()).toMatchObject({ data: { payment: { id: firstBody.data.payment.id } } });
+            expect(fixture.all("SELECT amount_minor, payment_type FROM order_payments WHERE order_id = ?", orderId))
+                .toEqual([{ amount_minor: 10000, payment_type: "deposit" }]);
+            expect(fixture.one("SELECT status FROM payment_plans WHERE order_id = ?", orderId)).toEqual({ status: "deposit_paid" });
+        } finally {
+            fixture.close();
+        }
     });
 });

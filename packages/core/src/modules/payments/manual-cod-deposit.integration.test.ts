@@ -87,6 +87,28 @@ describe("manual COD deposit production ledger", () => {
     expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(1);
   });
 
+  it("replays a deposit committed by a competing request before the plan read", async () => {
+    const hash = (await sha256Hex("deposit_order\ndeposit-request-1")).slice(0, 32);
+    const paymentId = `recorded:deposit_order:${hash}`;
+    let committed = false;
+    const racing = createSqliteD1Database({ sqlite: fixture.sqlite, onQuery(query) {
+      if (committed || !query.startsWith("select") || !query.includes('"payment_plans"')) return;
+      committed = true;
+      fixture.sqlite.prepare(`
+        INSERT INTO order_payments (id, order_id, amount_minor, currency, payment_method, payment_type, status, metadata)
+        VALUES (?, 'deposit_order', 2000, 'BDT', 'manual', 'deposit', 'succeeded', '{"via":"bank_transfer"}')
+      `).run(paymentId);
+      fixture.sqlite.exec(`
+        UPDATE payment_plans SET status='deposit_paid';
+        UPDATE orders SET payment_status='partial', paid_amount_minor=2000, balance_due_minor=8000, version=2;
+      `);
+    } });
+    await expect(recordOrderPayment(racing.db, input())).resolves.toMatchObject({
+      paymentId, replayed: true, paidAmountMinor: 2000, balanceDueMinor: 8000,
+    });
+    expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(1);
+  });
+
   it("rolls back the ledger if the plan is cancelled after it was read", async () => {
     let cancelBeforeBatch = true;
     const racing = createSqliteD1Database({ sqlite: fixture.sqlite, beforeBatch(sqlite) {

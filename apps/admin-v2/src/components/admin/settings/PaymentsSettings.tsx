@@ -50,6 +50,7 @@ import { settingsMessages } from "~/i18n/settings";
 import { paymentsMessages } from "~/i18n/settings-payments";
 import { saveBarMessages } from "~/i18n/save-bar";
 import {
+  checkoutDepositAmountsForSave,
   getCheckoutFlowPreviewIssues,
   violatedAdvanceLimit,
   type AdvanceAmountLimit,
@@ -121,8 +122,7 @@ export function useCheckoutFlowForm(isValid: (draft: CheckoutFlow) => boolean, l
           autoFulfilMode: draft.autoFulfilMode,
           codDepositEnabled: draft.codDepositEnabled,
           codDepositMode: draft.codDepositMode,
-          ...(Number.isFinite(draft.codDepositAmount) ? { codDepositAmount: draft.codDepositAmount } : {}),
-          ...(Number.isFinite(draft.codDepositPercent) ? { codDepositPercent: draft.codDepositPercent } : {}),
+          ...checkoutDepositAmountsForSave(draft),
           codDepositInstructions: draft.codDepositInstructions,
           expectedRevision,
         },
@@ -865,7 +865,7 @@ function PaymentOptionsFields() {
                 </label>
               </RadioGroup>
             </SettingsField>
-            {values.codDepositMode === "fixed" ? (
+            {(values.codDepositMode ?? "fixed") === "fixed" ? (
               <SettingsField id="cod-deposit-amount" label={t("codDepositAmount")} help={t("codDepositAmountHelp")}>
                 <MoneyInput
                   id="cod-deposit-amount"

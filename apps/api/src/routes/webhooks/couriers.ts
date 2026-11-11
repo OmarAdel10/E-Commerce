@@ -19,6 +19,7 @@ import type { Database } from "@scalius/database/client";
 import { deliveryProviders, deliveryShipments } from "@scalius/database/schema";
 import { courierFor, updateOrderStatusFromShipment } from "@scalius/core/modules/delivery";
 import { syncCourierFulfilmentFromShipment } from "@scalius/core/modules/fulfilment";
+import { ManualCodDepositBlockedError } from "@scalius/core/modules/payments";
 import {
   isQualifiedProviderId,
   providerErrorOf,
@@ -32,6 +33,7 @@ import { sendOrderStatusChangeNotification } from "../../utils/order-notificatio
 import {
   claimProviderEvent,
   markWebhookEventFailed,
+  markWebhookEventManualReconciliation,
   markWebhookEventProcessed,
 } from "../../utils/webhook-idempotency";
 import { notificationSender } from "../../background/notification-sender";
@@ -243,6 +245,17 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
     });
     return accepted(c, reply, { received: true, status: tracking.status });
   } catch (error) {
+    if (error instanceof ManualCodDepositBlockedError) {
+      // Keep the courier's reported status and leave the order and its ledger
+      // alone. Redelivery cannot resolve a pending or refunded deposit.
+      await markWebhookEventManualReconciliation(db, eventId, {
+        shipmentId: shipment.id,
+        externalId,
+        status: tracking.status,
+        reason: "manual_cod_deposit_blocks_order_sync",
+      });
+      return accepted(c, reply, { received: true, status: tracking.status, reconciliationRequired: true });
+    }
     console.error(`[courier-webhook] ${courier.id} processing failed`, { errorName: error instanceof Error ? error.name : typeof error });
     await markWebhookEventFailed(db, eventId, { error: "courier_webhook_processing_failed" });
     return c.json({ error: "Internal processing error" }, 500);

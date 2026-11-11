@@ -2,7 +2,7 @@ import { isOrderArchiveStatusEligible } from "@scalius/core/modules/orders/brows
 
 /** confirm: bulk Confirm · send: own courier "Mark as sent" · ship: book a courier · archive. */
 export type OrderBulkAction = "confirm" | "send" | "ship" | "archive";
-export type OrderBlockReason = "refund" | "shipment" | "paymentSetup" | "paymentRecovery";
+export type OrderBlockReason = "refund" | "shipment" | "paymentSetup" | "paymentRecovery" | "manualDeposit";
 
 /** A list row or the order page's order: the work-in-progress facts may be missing. */
 interface PlannableOrder {
@@ -10,6 +10,7 @@ interface PlannableOrder {
   activeRefundOperation?: { active: boolean } | null;
   paymentRecovery?: { state: string; activeProcessing?: boolean } | null;
   shipmentRecovery?: { activeLock?: boolean } | null;
+  hasUnverifiedManualDeposit?: boolean;
 }
 
 const IS_BLOCKED: Record<OrderBlockReason, (order: PlannableOrder) => boolean> = {
@@ -17,12 +18,13 @@ const IS_BLOCKED: Record<OrderBlockReason, (order: PlannableOrder) => boolean> =
   shipment: (order) => order.shipmentRecovery?.activeLock === true,
   paymentSetup: (order) => order.paymentRecovery?.activeProcessing === true,
   paymentRecovery: (order) => order.paymentRecovery != null && order.paymentRecovery.state !== "none",
+  manualDeposit: (order) => order.hasUnverifiedManualDeposit === true,
 };
 
-const SENDING_BLOCKS: readonly OrderBlockReason[] = ["paymentSetup", "paymentRecovery", "refund", "shipment"];
+const SENDING_BLOCKS: readonly OrderBlockReason[] = ["paymentSetup", "paymentRecovery", "refund", "shipment", "manualDeposit"];
 
 const RULES: Record<OrderBulkAction, { status: (status: string) => boolean; blocks: readonly OrderBlockReason[] }> = {
-  confirm: { status: (status) => status === "pending" || status === "processing", blocks: [] },
+  confirm: { status: (status) => status === "pending" || status === "processing", blocks: ["manualDeposit"] },
   send: { status: (status) => status === "confirmed", blocks: SENDING_BLOCKS },
   ship: { status: (status) => status === "confirmed", blocks: SENDING_BLOCKS },
   archive: { status: isOrderArchiveStatusEligible, blocks: ["refund", "shipment", "paymentSetup"] },

@@ -26,6 +26,7 @@ import {
 } from "@scalius/core/modules/agent-storefront";
 import { ForbiddenError, ValidationError } from "@scalius/core/errors";
 import { getOrderSupportRequestStatusLabel } from "@scalius/core/modules/orders";
+import { buyerPaymentPlanSchema } from "@scalius/core/modules/orders/browser";
 import { runStorefrontOrderPostCommitSideEffects, type CheckoutAppFunctions } from "@scalius/core/modules/checkout";
 import { listActiveCheckoutRegistrations } from "@scalius/core/modules/plugins";
 import { paymentProvidersFromRegistrations } from "../plugins/providers/payment";
@@ -190,6 +191,10 @@ const checkoutQuoteSchema = z.object({
   taxAmount: z.number().nonnegative(),
   totalMinor: z.number().int().nonnegative(),
   totalAmount: z.number().nonnegative(),
+  manualCodDeposit: z.object({
+    depositMinor: z.number().int().positive(),
+    balanceMinor: z.number().int().positive(),
+  }).nullable(),
   items: z.array(z.object({
     productId: z.string(),
     variantId: z.string(),
@@ -1023,7 +1028,9 @@ const getReceiptRoute = createRoute({
   summary: "Get a safe context-authorized order receipt",
   request: { params: orderPathSchema },
   responses: {
-    200: { description: "Order receipt", content: { "application/json": { schema: successEnvelope(z.object({}).passthrough()) } } },
+    200: { description: "Order receipt", content: { "application/json": {
+      schema: successEnvelope(z.object({ paymentPlan: buyerPaymentPlanSchema.nullable() }).passthrough()),
+    } } },
     ...readErrors,
   },
 });

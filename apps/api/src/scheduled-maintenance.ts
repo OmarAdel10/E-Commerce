@@ -456,8 +456,8 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
       }
 
       // Refund reconciliation requires SCALIUS_SECRET — skip if not installed.
-      const masterSecret = (env as unknown as Record<string, unknown>).SCALIUS_SECRET as string | undefined;
-      if (!masterSecret || masterSecret.length < 32) {
+      const masterSecret = readMasterSecret(env);
+      if (!masterSecret) {
         console.log("[scheduled] External refund reconciliation skipped: SCALIUS_SECRET not installed.");
         return;
       }

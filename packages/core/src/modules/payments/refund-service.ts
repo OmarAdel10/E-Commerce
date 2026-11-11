@@ -4,6 +4,7 @@
 // then dispatches each allocation through its gateway adapter (gateways/port.ts).
 
 import { inJsonArray } from "../../utils/in-json-array";
+import { nothingHandedOverCondition } from "../../utils/order-handover";
 import { orderPricePolicy, readGiftCardSettings, toStoreMinor } from "../settings";
 import { readStoreCurrency } from "../markets";
 import { eq, ne, sql, desc, and } from "drizzle-orm";
@@ -741,7 +742,7 @@ function stableStringify(value: unknown): string {
 }
 
 /** A partial refund is a payment fact only; the order keeps its lifecycle status. */
-function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean): string | undefined {
+function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean, hasHandover: boolean): string | undefined {
     if (!isFullRefund) return undefined;
 
     if (canTransitionTo("order", currentStatus, OrderStatus.REFUNDED)) {
@@ -749,7 +750,7 @@ function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean)
     }
 
     if (
-        PRE_FULFILLMENT_REFUND_STATUSES.has(currentStatus) &&
+        !hasHandover && PRE_FULFILLMENT_REFUND_STATUSES.has(currentStatus) &&
         canTransitionTo("order", currentStatus, OrderStatus.CANCELLED)
     ) {
         return OrderStatus.CANCELLED;
@@ -944,6 +945,7 @@ export async function finalizeAcceptedRefundAttemptIds(
                 version: orders.version,
                 currencyCode: orders.currencyCode,
                 currencyDecimalPlaces: orders.currencyDecimalPlaces,
+                hasHandover: sql<number>`CASE WHEN ${nothingHandedOverCondition(orderId)} THEN 0 ELSE 1 END`,
             })
             .from(orders)
             .where(eq(orders.id, orderId))
@@ -1017,9 +1019,10 @@ export async function finalizeAcceptedRefundAttemptIds(
             payments: paymentRows,
             paymentTermsDays: order.paymentTermsDays,
         });
-        const nextOrderStatus = getOrderStatusAfterRefund(order.status, paymentState.isFullRefund);
+        const hasHandover = order.hasHandover === 1;
+        const nextOrderStatus = getOrderStatusAfterRefund(order.status, paymentState.isFullRefund, hasHandover);
         const shouldReleaseInventory =
-            paymentState.isFullRefund &&
+            paymentState.isFullRefund && !hasHandover &&
             (nextOrderStatus === OrderStatus.CANCELLED || order.status === OrderStatus.CANCELLED);
 
         reconciliationByOrder.set(orderId, {
@@ -1249,7 +1252,7 @@ function buildRefundMetadata(params: {
     });
 }
 
-/** Builds refund attempt metadata with optional HMAC integrity protection. */
+/** Signs the metadata for a new refund attempt. */
 export async function buildRefundAttemptMetadata(params: {
     request: RefundRequest;
     allocation: RefundAllocation;
@@ -1282,83 +1285,9 @@ export async function buildRefundAttemptMetadata(params: {
         allocationIndex: params.allocation.index,
         allocationCount: params.allocationCount,
     };
-    // Add HMAC if master secret is provided
-    if (params.masterSecret) {
-        const master = readMasterSecret({ SCALIUS_SECRET: params.masterSecret });
-        if (!master) return JSON.stringify(payload);
-        const key = await deriveRuntimeSecret(master, RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC);
-        const encoder = new TextEncoder();
-        const cryptoKey = await crypto.subtle.importKey(
-            "raw",
-            encoder.encode(key),
-            { name: "HMAC", hash: "SHA-256" },
-            false,
-            ["sign"],
-        );
-        const payloadStr = JSON.stringify(payload);
-        const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(payloadStr));
-        const hmac = btoa(String.fromCharCode(...new Uint8Array(signature)))
-            .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-        return JSON.stringify({ ...payload, _hmac: hmac });
-    }
-    return JSON.stringify(payload);
-}
-
-async function buildRefundAttemptInsert(params: {
-    request: RefundRequest;
-    allocation: RefundAllocation;
-    groupId: string;
-    claimVersion: number;
-    allocationCount: number;
-    requestHash: string;
-    currency: string;
-    manualDepositRefund?: boolean;
-    masterSecret: string;
-}) {
-    const mode = allocationSettlementMode(params.allocation);
-    // An internal settlement commits in this very batch: the attempt starts
-    // accepted, so a crash before finalization is finalized by recovery
-    // instead of being released as "never dispatched" and refunded twice.
-    const internal = isInternalSettlement(mode)
-        ? {
-            status: "processing",
-            attempts: 1,
-            providerStatus: INTERNAL_REFUND_PROVIDER_STATUSES[mode],
-            responsePayload: JSON.stringify({ settlementMode: mode, giftCardId: params.allocation.giftCardId ?? null }),
-        }
-        : { status: "pending" };
-    return {
-        id: getRefundAttemptId(params.allocation),
-        attemptKey: getRefundAttemptKeyForRequest(params.request, params.allocation),
-        refundGroupId: params.groupId,
-        orderId: params.request.orderId,
-        sourcePaymentId: params.allocation.sourcePayment.id,
-        refundPaymentId: params.allocation.id,
-        gateway: params.allocation.sourcePayment.paymentMethod,
-        amountMinor: params.allocation.amountMinor,
-        currency: params.currency,
-        reason: params.request.reason,
-        requestHash: params.requestHash,
-        providerIdempotencyKey: params.allocation.idempotencyKey,
-        refundReference: params.allocation.refundReference,
-        allocationIndex: params.allocation.index,
-        allocationCount: params.allocationCount,
-        sourceTransactionId: getRefundAttemptSourceTransactionId(params.allocation),
-        ...internal,
-        claimId: params.groupId,
-        claimExpiresAt: sql`unixepoch() + ${REFUND_ATTEMPT_LEASE_SECONDS}`,
-        metadata: await buildRefundAttemptMetadata({
-            request: params.request,
-            allocation: params.allocation,
-            groupId: params.groupId,
-            claimVersion: params.claimVersion,
-            allocationCount: params.allocationCount,
-            manualDepositRefund: params.manualDepositRefund,
-            masterSecret: params.masterSecret,
-        }),
-        createdAt: sql`unixepoch()`,
-        updatedAt: sql`unixepoch()`,
-    };
+    const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: params.masterSecret }, JSON.stringify(payload));
+    if (!hmac) throw new ServiceUnavailableError("Refund metadata signing key is unavailable.");
+    return JSON.stringify({ ...payload, _hmac: hmac });
 }
 
 /** The attempt's unique key; also the idempotency key of a gift-card refund credit. */
@@ -1393,14 +1322,11 @@ async function markRefundAttemptAccepted(
     db: Database,
     allocation: CompletedRefundAllocation,
 ): Promise<void> {
-    const isManualSettlement = allocationSettlementMode(allocation) === "manual_external";
     await db.update(refundAttempts).set({
         status: "processing",
         providerRefundId: allocation.refundId ?? null,
         providerStatus: acceptedProviderStatus(allocation),
-        responsePayload: isManualSettlement
-            ? JSON.stringify({ settlementMode: "manual_external" })
-            : JSON.stringify({ refundId: allocation.refundId ?? null }),
+        responsePayload: JSON.stringify({ refundId: allocation.refundId ?? null }),
         updatedAt: sql`unixepoch()`,
     }).where(eq(refundAttempts.id, getRefundAttemptId(allocation)));
 }
@@ -1522,9 +1448,8 @@ async function markRefundAllocationsProviderUnknown(
 
 /**
  * Dispatch one refund allocation through its gateway adapter and return the
- * provider refund id. COD has no provider: the caller has already confirmed
- * the external repayment. Failures before the provider call (configuration,
- * missing references) are terminal; once the call starts, any error is an
+ * provider refund id. Failures before the provider call (configuration,
+ * missing references) are terminal. Once the call starts, any error is an
  * unknown outcome that reconciliation must resolve.
  */
 async function dispatchRefund(
@@ -1537,7 +1462,6 @@ async function dispatchRefund(
     encryptionKey: string | undefined,
     providers: PaymentProvidersSource | undefined,
 ): Promise<string | undefined> {
-    if (isManualSettlementMethod(payment.paymentMethod)) return undefined;
     const gateways = await paymentProvidersFor(providers, payment.paymentMethod);
     const gateway = gateways.get(payment.paymentMethod);
     if (!gateway?.refund) throw new ValidationError(`Unsupported refund gateway: ${payment.paymentMethod}`);
@@ -1790,6 +1714,7 @@ export async function processRefund(
             paymentTermsDays: orders.paymentTermsDays,
             status: orders.status,
             inventoryAction: orders.inventoryAction,
+            hasHandover: sql<number>`CASE WHEN ${nothingHandedOverCondition(params.orderId)} THEN 0 ELSE 1 END`,
             version: orders.version,
             shipmentClaimId: orders.shipmentClaimId,
             shipmentClaimExpiresAt: orders.shipmentClaimExpiresAt,
@@ -1850,6 +1775,7 @@ export async function processRefund(
     if (
         order.paymentStatus === PaymentStatus.REFUNDED &&
         order.status === OrderStatus.CANCELLED &&
+        order.hasHandover !== 1 &&
         order.inventoryAction !== "deducted"
     ) {
         const impact = await applyInventoryForStatusChangeWithImpact(
@@ -1965,6 +1891,9 @@ export async function processRefund(
     const hasManualCodAllocation = manualDepositPlan !== undefined
         && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
         && depositAllocations.length > 0;
+    if (hasManualCodAllocation && (params.caller ?? "staff") !== "staff") {
+        throw new ValidationError("Manual COD deposit refunds can only be recorded by staff in the dashboard.");
+    }
     // Any allocation repaid by hand (COD, recorded payment) requires confirmation.
     // Store credit settles as a gift card with no cash changing hands, so it
     // does not require manual settlement confirmation.
@@ -2084,7 +2013,10 @@ export async function processRefund(
             })),
             ...allocations.flatMap((allocation) => {
                 const mode = allocationSettlementMode(allocation);
-                const internal = isInternalSettlement(mode);
+                // Staff already repaid manual allocations. Card credits also
+                // settle in this transaction. Record both as accepted so a
+                // lost claim response cannot make recovery release their capacity.
+                const settledAtClaim = mode !== "provider";
                 const attemptId = getRefundAttemptId(allocation);
                 const attemptKey = getRefundAttemptKeyForRequest(params, allocation);
                 return [
@@ -2097,15 +2029,14 @@ export async function processRefund(
                         ...presentedSettlement(allocation.amountMinor, currency.code),
                         paymentMethod: allocation.sourcePayment.paymentMethod,
                         paymentType: "refund",
-                        // An internal settlement is done once this batch commits.
-                        status: internal ? PaymentRecordStatus.REFUNDED : PaymentRecordStatus.PENDING,
+                        status: settledAtClaim ? PaymentRecordStatus.REFUNDED : PaymentRecordStatus.PENDING,
                         metadata: buildRefundMetadata({
                             request: params,
                             allocation,
                             groupId: refundGroupId,
                             claimVersion,
                             allocationCount: allocations.length,
-                            status: internal ? "refunded" : "pending",
+                            status: settledAtClaim ? "refunded" : "pending",
                         }),
                         createdAt: sql`unixepoch()`,
                         updatedAt: sql`unixepoch()`,
@@ -2127,12 +2058,15 @@ export async function processRefund(
                         allocationIndex: allocation.index,
                         allocationCount: allocations.length,
                         sourceTransactionId: getRefundAttemptSourceTransactionId(allocation),
-                        ...(internal
+                        ...(settledAtClaim
                             ? {
                                 status: "processing" as const,
                                 attempts: 1,
-                                providerStatus: INTERNAL_REFUND_PROVIDER_STATUSES[mode],
-                                responsePayload: JSON.stringify({ settlementMode: mode, giftCardId: allocation.giftCardId ?? null }),
+                                providerStatus: acceptedProviderStatus(allocation),
+                                responsePayload: JSON.stringify({
+                                    settlementMode: mode,
+                                    ...(isInternalSettlement(mode) ? { giftCardId: allocation.giftCardId ?? null } : {}),
+                                }),
                             }
                             : { status: "pending" as const }),
                         claimId: refundGroupId,
@@ -2184,15 +2118,14 @@ export async function processRefund(
     // Once a provider call starts, timeout/network/provider exceptions are
     // ambiguous: leave uncompleted rows pending so duplicate retries are blocked
     // until reconciliation proves whether the gateway accepted the refund.
-    // Internal settlements (gift card, store credit) committed with the claim:
-    // they count as done before any provider is called, so a provider failure
-    // below still finalizes them instead of marking settled money as failed.
+    // Manual repayments and card credits are already settled. A provider
+    // failure still finalizes those allocations.
     const completedAllocations: CompletedRefundAllocation[] = allocations
-        .filter((allocation) => isInternalSettlement(allocationSettlementMode(allocation)))
+        .filter((allocation) => allocationSettlementMode(allocation) !== "provider")
         .map((allocation) => ({ ...allocation }));
     try {
         for (const allocation of allocations) {
-            if (isInternalSettlement(allocationSettlementMode(allocation))) continue;
+            if (allocationSettlementMode(allocation) !== "provider") continue;
             await markRefundAttemptProcessing(db, allocation, refundGroupId);
             const refundId = await dispatchRefund(
                 db,

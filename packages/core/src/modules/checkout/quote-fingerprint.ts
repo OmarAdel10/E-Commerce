@@ -1,6 +1,7 @@
 import { AppError } from "@scalius/core/errors";
 import type { TaxQuote } from "@scalius/core/modules/tax/browser";
 import type { StorefrontOrderShippingMethodSnapshot } from "../orders/browser";
+import type { ManualCodDepositTerms } from "@scalius/shared/checkout-payment";
 
 function encodeBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -23,6 +24,7 @@ export async function buildStorefrontCheckoutQuoteFingerprint(
    */
   linePropertiesHashes: readonly string[] = [],
   attributes: Record<string, string> = {},
+  manualCodDeposit?: ManualCodDepositTerms | null,
 ): Promise<string> {
   const identity = {
     ...(Object.keys(attributes).length ? { attributes: Object.entries(attributes).sort(([a], [b]) => a.localeCompare(b)) } : {}),
@@ -36,6 +38,11 @@ export async function buildStorefrontCheckoutQuoteFingerprint(
     discountMinor: quote.discountMinor,
     taxMinor: quote.taxMinor,
     totalMinor: quote.totalMinor,
+    ...(manualCodDeposit ? {
+      manualCodDeposit: [
+        manualCodDeposit.depositMinor, manualCodDeposit.balanceMinor, manualCodDeposit.percent, manualCodDeposit.instructions,
+      ],
+    } : {}),
     shippingMethod: shippingMethod
       ? [
         shippingMethod.id,

@@ -1,17 +1,64 @@
-import { describe, expect, it, vi, beforeAll } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { Window } from "happy-dom";
 import type { ContactSnapshot } from "@/lib/api/customer-auth";
 import { accountCopy } from "@/lib/account-copy";
+import { renderManualCodDepositContact, renderOrderDetail, type AccountOrderDetail } from "./account-order-detail";
+import { getOrderPaymentPresentation } from "./order-success-state";
+import { ENGLISH_CHECKOUT_LANGUAGE_DATA } from "@scalius/shared/checkout-language";
 
-// Stub window before dynamically importing account-order-detail (which references
-// `window` at module scope). renderManualCodDepositContact itself never touches
-// window, but the module's top-level code does.
-vi.stubGlobal("window", {});
+// The module captures its Stripe window at import.
+vi.hoisted(() => {
+  vi.stubGlobal("window", {});
+});
 
-let renderManualCodDepositContact: (snapshot: ContactSnapshot, copy: ReturnType<typeof accountCopy>) => string;
-
-beforeAll(async () => {
-  const mod = await import("./account-order-detail");
-  renderManualCodDepositContact = mod.renderManualCodDepositContact;
+describe("account order payment section", () => {
+  it.each([
+    ["manual", "pending", "Deposit required before we prepare your order", true],
+    ["manual", "deposit_paid", "Deposit received — your order is being prepared", false],
+    ["manual", "completed", "Deposit and balance paid", false],
+    ["manual", "cancelled", "Deposit cancelled", false],
+    ["online", "pending", null, false],
+  ] as const)("renders %s %s using the order-time plan", (kind, status, label, showInstructions) => {
+    const window = new Window({ url: "https://store.example.test/account/orders/order-1" });
+    window.document.documentElement.lang = "en";
+    window.document.body.innerHTML = '<div id="orderPayment"></div>';
+    vi.stubGlobal("document", window.document);
+    vi.stubGlobal("window", window);
+    vi.stubGlobal("Element", window.Element);
+    vi.stubGlobal("HTMLElement", window.HTMLElement);
+    try {
+      const detail = {
+        order: {
+          id: "order-1", status: status === "cancelled" ? "cancelled" : "pending",
+          requiresShipping: true,
+          currencyCode: "BDT", currencyDecimalPlaces: 2, paymentMethod: "cod", paymentStatus: "unpaid",
+          paidAmount: 0, totalAmount: 300, balanceDue: 300,
+        },
+        paymentPlan: {
+          kind, status, depositAmount: 100, balanceDue: 200,
+          instructions: "Pay the saved merchant account",
+          contactSnapshot: showInstructions ? {
+            phone: null, email: null, whatsappUrl: "javascript:alert(1)", socialLinks: [],
+          } : null,
+        },
+        shipments: [], timeline: [], discounts: [], refundAttempts: [], supportRequests: [], supportRequestActions: [],
+      } as unknown as AccountOrderDetail;
+      renderOrderDetail(detail, null);
+      const section = window.document.querySelector("#orderPayment")!;
+      expect(section.querySelector("[data-manual-cod-deposit-status]")?.textContent ?? null).toBe(label);
+      expect(Boolean(section.querySelector("[data-manual-cod-deposit-instructions]"))).toBe(showInstructions);
+      expect(section.querySelector('a[href^="javascript:"]')).toBeNull();
+      if (showInstructions) {
+        expect(section.textContent).toMatch(/200.*due on delivery/i);
+        expect(section.textContent).not.toMatch(/300.*due on delivery/i);
+        expect(getOrderPaymentPresentation({ ...detail.order, paymentPlan: detail.paymentPlan }, ENGLISH_CHECKOUT_LANGUAGE_DATA))
+          .toMatchObject({ balanceDue: 200, statusLabel: label });
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      void window.happyDOM.close();
+    }
+  });
 });
 
 describe("renderManualCodDepositContact — manual COD deposit contact rendering", () => {

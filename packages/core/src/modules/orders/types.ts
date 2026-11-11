@@ -272,6 +272,7 @@ export interface OrderListItem {
     shippingMethodKind: DeliveryMethodKind | null;
     /** Staff marked a pickup order ready to collect. */
     pickupReadyAt: Date | null;
+    hasUnverifiedManualDeposit: boolean;
 }
 
 export interface OrderDetails extends OrderListItem, OrderBillingAddressFields {
@@ -396,6 +397,7 @@ export interface OrderDetails extends OrderListItem, OrderBillingAddressFields {
         depositAmount: number;
         balanceDue: number;
         balanceDueDate: string | null;
+        kind: string;
         status: string;
         depositPaidAt: string | null;
         balancePaidAt: string | null;

@@ -455,8 +455,8 @@ const reconcileRefundAttemptRoute = createRoute({
 app.openapi(reconcileRefundAttemptRoute, async (c) => {
     const { id: orderId, attemptId } = c.req.valid("param");
     const db = c.get("db");
-    const masterSecret = (c.env as Record<string, unknown>).SCALIUS_SECRET as string | undefined;
-    if (!masterSecret || masterSecret.length < 32) {
+    const masterSecret = readMasterSecret(c.env);
+    if (!masterSecret) {
         throw new Error("SCALIUS_SECRET is not installed or is too short.");
     }
     const result = await reconcileRefundAttemptForOrder(

@@ -177,6 +177,7 @@ const paymentPlanSchema = z.object({
     depositPaidAt: z.union([z.string(), z.number()]).nullable(),
     balancePaidAt: z.union([z.string(), z.number()]).nullable(),
     balanceDueDate: z.string().nullable(),
+    kind: z.string(),
     status: z.string(),
     createdAt: z.union([z.string(), z.number()]),
     updatedAt: z.union([z.string(), z.number()]),

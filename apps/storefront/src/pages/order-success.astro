@@ -31,7 +31,6 @@ import {
   isDigitalLinePreparing,
   getOrderSuccessStateKind,
   getOrderSuccessViewState,
-  getOrderSuccessVisibleBalanceDue,
   isOrderStatusView,
   shouldClearCheckoutCartForOrder,
 } from "@/lib/order-success-state";
@@ -230,9 +229,9 @@ const orderSuccessView = order
 const orderLineGroups = order ? groupOrderLines(orderItemsFromApi, order, copy) : [];
 const showOrderLineGroupHeadings = showsOrderLineGroupHeadings(orderLineGroups);
 const deliveryBlock = order ? resolveOrderDeliveryBlock(order, copy) : null;
-const visibleBalanceDue = order ? getOrderSuccessVisibleBalanceDue(order) : 0;
 // Gift cards that paid part of the order, and the words for what is left.
 const receiptPayment = order ? getOrderPaymentPresentation(order, copy) : null;
+const visibleBalanceDue = receiptPayment?.balanceDue ?? 0;
 const receiptGiftCardTenders = receiptPayment?.giftCardTenders ?? [];
 const savedMoneySummary = order ? resolveSavedOrderMoneySummary(order) : null;
 const configuredCurrencyCode = checkoutConfig.currency?.code
@@ -650,7 +649,7 @@ const orderRecommendations = order && showsSuccessHero && !statusView
               <p class="mt-1 text-sm text-muted-foreground" data-manual-cod-deposit-amount>
                 {copy.codDepositAmountText} {formatReceiptAmount(order.paymentPlan.depositAmount)}
               </p>
-              {order.paymentPlan.instructions && (
+              {order.paymentPlan.status === "pending" && order.paymentPlan.instructions && (
                 <p class="mt-1 text-sm text-muted-foreground whitespace-pre-line break-words" data-manual-cod-deposit-instructions>
                   {order.paymentPlan.instructions}
                 </p>

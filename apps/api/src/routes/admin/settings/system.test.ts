@@ -130,4 +130,38 @@ describe("admin settings system", () => {
     }, env);
     expect(response.status).toBe(200);
   });
+
+  it("saves fixed and percentage modes using the current revision and preserves the omitted amount", async () => {
+    const app = appWithDb();
+    async function read() {
+      const response = await app.request("/checkout-flow", {}, env);
+      expect(response.status).toBe(200);
+      const body = await response.json() as { data: { revision: number; codDepositMode: string; codDepositAmount: number; codDepositPercent: number } };
+      return body.data;
+    }
+    const save = (expectedRevision: number, mode: "fixed" | "percentage", amount: number) => app.request("/checkout-flow", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestCheckoutEnabled: true,
+        checkoutMode: "all",
+        partialPaymentEnabled: false,
+        partialPaymentAmount: 0,
+        codDepositEnabled: true,
+        codDepositMode: mode,
+        ...(mode === "fixed" ? { codDepositAmount: amount } : { codDepositPercent: amount }),
+        expectedRevision,
+      }),
+    }, env);
+
+    const { revision } = await read();
+    expect((await save(revision, "fixed", 75)).status).toBe(200);
+    const fixed = await read();
+    expect(fixed).toMatchObject({ codDepositMode: "fixed", codDepositAmount: 75 });
+    expect((await save(revision, "percentage", 15)).status).toBe(409);
+    expect(await read()).toEqual(fixed);
+
+    expect((await save(fixed.revision, "percentage", 15)).status).toBe(200);
+    expect(await read()).toMatchObject({ codDepositMode: "percentage", codDepositPercent: 15, codDepositAmount: 75 });
+  });
 });
