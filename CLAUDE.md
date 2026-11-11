@@ -92,7 +92,7 @@ pnpm generate:sdk        # commit any change in packages/api-client
 pnpm lint
 pnpm typecheck
 pnpm build
-pnpm test:affected --base development        # test only changed units
+pnpm test:affected --base origin/development        # test only changed units
 pnpm run deploy:api -- --dry-run
 pnpm check:dist-secrets
 pnpm check:build-canaries
