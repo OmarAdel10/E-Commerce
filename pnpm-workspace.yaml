@@ -58,7 +58,11 @@ overrides:
   js-yaml: "4.3.2"
   brace-expansion: "5.0.12"
   "nanoid@<3.3.17": "3.3.17"
-  hono: "4.13.13"
+  # Hono 4.13.16 and the node server 2.1.6 close the November 2026 advisories
+  # (mount and RegExpRouter middleware bypass, csrf text/ping, validator form
+  # validation, and the node server's upgrade and path handling).
+  hono: "4.13.16"
+  "@hono/node-server": "2.1.6"
   # The dashboard's Radix primitives stay on one release line; a newer dialog
   # under cmdk alone duplicates the shared primitives in every route bundle.
   "cmdk>@radix-ui/react-dialog": "1.1.23"
