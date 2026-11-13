@@ -20,6 +20,7 @@ import { deliveryProviders, deliveryShipments } from "@scalius/database/schema";
 import { courierFor, updateOrderStatusFromShipment } from "@scalius/core/modules/delivery";
 import { syncCourierFulfilmentFromShipment } from "@scalius/core/modules/fulfilment";
 import { ManualCodDepositBlockedError } from "@scalius/core/modules/payments";
+import { recordManualCodDepositReconciliationRequired } from "@scalius/core/modules/orders";
 import {
   isQualifiedProviderId,
   providerErrorOf,
@@ -253,6 +254,14 @@ async function handleCourierWebhook(c: Context<{ Bindings: Env }>, courierId: st
         externalId,
         status: tracking.status,
         reason: "manual_cod_deposit_blocks_order_sync",
+      });
+      // The parcel and the order now disagree; staff see it on the order
+      // timeline and reconcile the deposit and the parcel by hand.
+      await recordManualCodDepositReconciliationRequired(db, {
+        orderId: shipment.orderId,
+        shipmentId: shipment.id,
+        shipmentStatus: tracking.status,
+        error,
       });
       return accepted(c, reply, { received: true, status: tracking.status, reconciliationRequired: true });
     }

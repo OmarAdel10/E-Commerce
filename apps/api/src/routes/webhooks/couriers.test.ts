@@ -66,6 +66,17 @@ describe("courier webhook for a refunded manual deposit", () => {
             expect(fixture.one("SELECT status FROM orders WHERE id=?", orderId).status).toBe("shipped");
             expect(fixture.all("SELECT id FROM order_fulfillments WHERE order_id=?", orderId)).toEqual([]);
             expect(fixture.all("SELECT status FROM webhook_events WHERE order_id=?", orderId)).toEqual([{ status: "manual_reconciliation" }]);
+            // Staff see the mismatch on the order timeline, once per shipment status.
+            const events = fixture.all(
+                "SELECT kind, data FROM order_events WHERE order_id=? AND kind='deposit_reconciliation_required'",
+                orderId,
+            );
+            expect(events).toHaveLength(1);
+            expect(JSON.parse(String(events[0]!.data))).toMatchObject({
+                reason: "manual_cod_deposit_not_verified",
+                shipmentId: "parcel-1",
+                shipmentStatus: "delivered",
+            });
         } finally {
             fixture.close();
         }

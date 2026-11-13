@@ -199286,6 +199286,13 @@
                         },
                         "orderStatusUpdate": {
                           "type": "boolean"
+                        },
+                        "reconciliationRequired": {
+                          "type": "boolean"
+                        },
+                        "reconciliationReason": {
+                          "type": "string",
+                          "nullable": true
                         }
                       },
                       "required": [
@@ -199308,7 +199315,9 @@
                         "updatedAt",
                         "providerName",
                         "statusChanged",
-                        "orderStatusUpdate"
+                        "orderStatusUpdate",
+                        "reconciliationRequired",
+                        "reconciliationReason"
                       ],
                       "additionalProperties": {}
                     }
@@ -210645,7 +210654,8 @@
                                   "invoice_issued",
                                   "fulfillment_location_changed",
                                   "prices_set",
-                                  "app_event"
+                                  "app_event",
+                                  "deposit_reconciliation_required"
                                 ]
                               },
                               "body": {
@@ -210849,7 +210859,8 @@
                             "invoice_issued",
                             "fulfillment_location_changed",
                             "prices_set",
-                            "app_event"
+                            "app_event",
+                            "deposit_reconciliation_required"
                           ]
                         },
                         "body": {

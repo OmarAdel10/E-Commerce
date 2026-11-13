@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSqliteD1Database, type SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
+import { ManualCodDepositBlockedError } from "../payments";
 import { updateOrderStatusFromShipment } from "./tracking";
 
 function seedOrder(f: SqliteTestDatabase, overrides: {
@@ -63,5 +64,63 @@ describe("tracking — manual COD deposit guard on all fulfilment-eligible statu
     seedOrder(f, { status: "confirmed", paymentMethod: "stripe", shipmentStatus: "delivered", planKind: null });
     const result = await updateOrderStatusFromShipment(f.db, "s1", "delivered");
     expect(result).toBeDefined();
+  });
+});
+
+describe("tracking — a blocked manual COD deposit is a permanent refusal, not a retryable failure", () => {
+  let f: SqliteTestDatabase;
+
+  beforeEach(() => {
+    f = createSqliteD1Database();
+  });
+
+  afterEach(() => f.sqlite.close());
+
+  it("raises the typed block error for a pending deposit instead of a generic failure", async () => {
+    seedOrder(f, { status: "confirmed", paymentMethod: "cod", shipmentStatus: "delivered" });
+    await expect(updateOrderStatusFromShipment(f.db, "s1", "delivered")).rejects.toBeInstanceOf(
+      ManualCodDepositBlockedError,
+    );
+  });
+
+  it("keeps the courier's shipment status and leaves the order where it was", async () => {
+    seedOrder(f, { status: "shipped", paymentMethod: "cod", shipmentStatus: "delivered", planStatus: "cancelled" });
+    await expect(updateOrderStatusFromShipment(f.db, "s1", "delivered")).rejects.toBeInstanceOf(
+      ManualCodDepositBlockedError,
+    );
+    const shipment = f.sqlite.prepare("SELECT status, raw_status FROM delivery_shipments WHERE id='s1'").get()!;
+    expect(shipment.status).toBe("delivered");
+    const order = f.sqlite.prepare("SELECT status, version FROM orders WHERE id='o1'").get()!;
+    expect(order.status).toBe("shipped");
+    expect(order.version).toBe(1);
+  });
+
+  it("does not move reserved stock when the deposit blocks an unchanged order status", async () => {
+    seedOrder(f, { status: "shipped", paymentMethod: "cod", shipmentStatus: "in_transit", planStatus: "cancelled" });
+    f.sqlite.exec("UPDATE orders SET inventory_action='reserved' WHERE id='o1'");
+    await expect(updateOrderStatusFromShipment(f.db, "s1", "in_transit")).rejects.toBeInstanceOf(
+      ManualCodDepositBlockedError,
+    );
+    const order = f.sqlite.prepare("SELECT inventory_action FROM orders WHERE id='o1'").get()!;
+    expect(order.inventory_action).toBe("reserved");
+  });
+
+  it("still lets a transient failure retry: the guard never swallows other errors", async () => {
+    seedOrder(f, { status: "confirmed", paymentMethod: "cod", shipmentStatus: "delivered", planStatus: "deposit_paid" });
+    // Only the write fails: a transient error must still surface as itself, so
+    // the caller keeps it retryable instead of treating it as a business rule.
+    const broken = new Proxy(f.db, {
+      get(target, property, receiver) {
+        if (property === "update") {
+          return () => {
+            throw new Error("temporary database failure");
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    }) as typeof f.db;
+    await expect(updateOrderStatusFromShipment(broken, "s1", "delivered")).rejects.toThrow(
+      /temporary database failure/,
+    );
   });
 });
