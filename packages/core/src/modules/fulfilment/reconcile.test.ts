@@ -5,6 +5,8 @@ import { ShipmentStatus, OrderStatus, PaymentMethod } from "@scalius/database/sc
 import { PROVIDER_OUTCOME_UNKNOWN } from "../delivery";
 import { ValidationError, ConflictError } from "@scalius/core/errors";
 import { assertManualCodDepositVerified } from "../payments";
+import { reconcileInventoryForStatus } from "../orders";
+import { recordCourierBookingFulfilment } from "./ledger";
 import {
     reconcileOrderShipment,
     resolveUnknownOrderShipment,
@@ -297,5 +299,57 @@ describe("reconcile module — manual COD deposit verification", () => {
 
         expect(result.status).toBe("repaired");
         expect(vi.mocked(assertManualCodDepositVerified)).not.toHaveBeenCalled();
+    });
+
+    it("checks the deposit before the handover and the stock move when the order status does not change", async () => {
+        vi.mocked(assertManualCodDepositVerified).mockRejectedValueOnce(
+            new ValidationError("This order's deposit was refunded. Fulfilment is blocked."),
+        );
+
+        const { db } = mockDb({
+            shipment: {
+                ...baseShipment,
+                rawStatus: "in_transit",
+                metadata: JSON.stringify({
+                    orderStatusSync: { shipmentStatus: "in_transit", orderStatus: "shipped" },
+                }),
+            },
+            order: {
+                ...baseOrder,
+                status: OrderStatus.SHIPPED,
+                paymentMethod: PaymentMethod.COD,
+            },
+        });
+
+        await expect(reconcileOrderShipment(db, orderId, shipmentId)).rejects.toThrow(
+            "This order's deposit was refunded. Fulfilment is blocked.",
+        );
+        expect(vi.mocked(recordCourierBookingFulfilment)).not.toHaveBeenCalled();
+        expect(vi.mocked(reconcileInventoryForStatus)).not.toHaveBeenCalled();
+    });
+
+    it("checks the deposit before the finalization handover of an already shipped order", async () => {
+        vi.mocked(assertManualCodDepositVerified).mockRejectedValueOnce(
+            new ValidationError("This order's deposit was refunded. Fulfilment is blocked."),
+        );
+
+        const { db } = mockDb({
+            shipment: {
+                ...baseShipment,
+                rawStatus: "in_transit",
+                metadata: JSON.stringify({}),
+            },
+            order: {
+                ...baseOrder,
+                status: OrderStatus.SHIPPED,
+                paymentMethod: PaymentMethod.COD,
+            },
+        });
+
+        await expect(reconcileOrderShipment(db, orderId, shipmentId)).rejects.toThrow(
+            "This order's deposit was refunded. Fulfilment is blocked.",
+        );
+        expect(vi.mocked(recordCourierBookingFulfilment)).not.toHaveBeenCalled();
+        expect(vi.mocked(reconcileInventoryForStatus)).not.toHaveBeenCalled();
     });
 });

@@ -160,6 +160,13 @@ export async function bulkShipOrders(
             });
             await assertNoActivePaymentSessionAttempt(db, orderId);
             if (order.status === OrderStatus.SHIPPED) {
+                // The handover record and the inventory reconciliation below run
+                // on an order that is already shipped. A manual COD deposit
+                // order cannot gain a new handover record or move reserved
+                // stock until staff verify the deposit.
+                if (order.paymentMethod === PaymentMethod.COD) {
+                    await assertManualCodDepositVerified(db, orderId);
+                }
                 await recordCourierBookingFulfilment(db, orderId, order.shipmentClaimId ?? null);
                 const availabilityTransitionVariantIds = await reconcileInventoryForStatus(
                     db,

@@ -49,6 +49,40 @@ function cleanShipmentRecoveryMetadata(metadata: Record<string, unknown>): strin
     return Object.keys(next).length > 0 ? JSON.stringify(next) : null;
 }
 
+/**
+ * The order statuses a recovery path may hand units over or move stock for.
+ * `confirmed` keeps the stock reserved, `shipped` and `delivered` deduct it.
+ */
+const RECOVERY_FULFILMENT_STATUSES = new Set<string>([
+    OrderStatus.CONFIRMED,
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+]);
+
+/**
+ * A manual COD deposit order cannot hand units over or move reserved stock
+ * until staff verify the deposit.
+ *
+ * Every recovery path checks the deposit BEFORE it records a handover record
+ * or reconciles inventory, whether or not the order status changes: an
+ * already-shipped order whose deposit was refunded must not gain a new
+ * handover record or a stock movement from a recovery run. The handover write
+ * in `recordCourierBookingFulfilment` guards its own batch as well, so a
+ * refund that lands between this check and the write is still refused.
+ */
+async function assertRecoveryDepositVerified(
+    db: Database,
+    orderId: string,
+    targetOrderStatus: string,
+    paymentMethod: string | null,
+): Promise<void> {
+    if (!RECOVERY_FULFILMENT_STATUSES.has(targetOrderStatus)) return;
+    // A manual deposit plan only ever belongs to a cash-on-delivery order, so
+    // other orders skip the plan read entirely.
+    if (paymentMethod !== PaymentMethod.COD) return;
+    await assertManualCodDepositVerified(db, orderId);
+}
+
 function safeFinalizedShipmentStatus(
     shipment: { rawStatus?: string | null },
     metadata: Record<string, unknown>,
@@ -490,14 +524,12 @@ export async function reconcileOrderShipment(
     if (shipmentStatusForSync) {
         const targetOrderStatus = stringField(orderStatusSync, "orderStatus") ?? order.status;
         let orderStatusChanged = false;
+        // The handover record and the inventory reconciliation below run even
+        // when the order status does not change, so the deposit is checked
+        // before all of them — not only before the status write.
+        await assertRecoveryDepositVerified(db, orderId, targetOrderStatus, order.paymentMethod);
         if (targetOrderStatus !== order.status) {
             validateTransition("order", order.status, targetOrderStatus);
-            // A manual COD deposit order cannot move to a fulfilment-eligible state
-            // until staff verify the deposit.
-            if ((targetOrderStatus === "shipped" || targetOrderStatus === "delivered" || targetOrderStatus === "confirmed")
-                && order.paymentMethod === PaymentMethod.COD) {
-                await assertManualCodDepositVerified(db, orderId);
-            }
             const statusResult = await db
                 .update(orders)
                 .set({
@@ -577,14 +609,13 @@ export async function reconcileOrderShipment(
             : OrderStatus.SHIPPED;
     let orderStatusChanged = false;
 
+    // The handover record and the inventory reconciliation below run even when
+    // the order is already shipped, so the deposit is checked before all of
+    // them — not only before the finalization write.
+    await assertRecoveryDepositVerified(db, orderId, finalOrderStatus, order.paymentMethod);
+
     if (order.status !== finalOrderStatus) {
         validateTransition("order", order.status, finalOrderStatus);
-        // A manual COD deposit order cannot move to a fulfilment-eligible state
-        // until staff verify the deposit. Check before the ordinary finalization write.
-        if ((finalOrderStatus === OrderStatus.SHIPPED || finalOrderStatus === OrderStatus.DELIVERED)
-            && order.paymentMethod === PaymentMethod.COD) {
-            await assertManualCodDepositVerified(db, orderId);
-        }
         const statusResult = await db
             .update(orders)
             .set({
