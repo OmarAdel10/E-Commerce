@@ -617,11 +617,19 @@ type RefundLedgerRow = Pick<OrderPayment, "id" | "amountMinor" | "metadata" | "p
 function orderedRefundSources<T extends Pick<OrderPayment, "id" | "amountMinor" | "paymentMethod">>(
     capturedPayments: readonly T[],
     refundRows: ReadonlyArray<Pick<OrderPayment, "amountMinor" | "metadata">>,
+    /**
+     * Captures a refund draws from first, ahead of the ledger order. Used for
+     * a manual COD deposit: the plan's deposit is the buyer's advance payment
+     * and the plan's cancellation follows it, so a refund that covers the
+     * deposit always repays the deposit itself.
+     */
+    priorityPaymentIds: ReadonlySet<string> = new Set(),
 ): Array<{ payment: T; settlement: RefundSourceSettlement; refundableMinor: number }> {
     const refundedBySource = computeRefundedBySourcePayment(capturedPayments, refundRows);
     return [...capturedPayments]
         .sort((left, right) =>
-            Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD))
+            Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD)
+            || Number(priorityPaymentIds.has(right.id)) - Number(priorityPaymentIds.has(left.id)))
         .map((payment) => ({
             payment,
             settlement: sourceSettlement(payment.paymentMethod),
@@ -666,9 +674,10 @@ function buildRefundAllocations(params: {
     capturedPayments: CapturedPayment[];
     refundRows: Array<Pick<OrderPayment, "amountMinor" | "metadata">>;
     currency: OrderCurrencySnapshot;
+    priorityPaymentIds?: ReadonlySet<string>;
 }): RefundAllocation[] {
     const { shares, unallocatedMinor } = allocateRefundAcrossSources(
-        orderedRefundSources(params.capturedPayments, params.refundRows),
+        orderedRefundSources(params.capturedPayments, params.refundRows, params.priorityPaymentIds),
         params.refundAmountMinor,
     );
 
@@ -1739,6 +1748,7 @@ export async function processRefund(
         .select({
             id: orders.id,
             paidAmountMinor: orders.paidAmountMinor,
+            balanceDueMinor: orders.balanceDueMinor,
             paymentStatus: orders.paymentStatus,
             paymentMethod: orders.paymentMethod,
             paymentTermsDays: orders.paymentTermsDays,
@@ -1880,23 +1890,6 @@ export async function processRefund(
 
     const claimVersion = order.version + 1;
     const refundGroupId = getRefundClaimBaseId(params.orderId, order.version);
-    const allocations = buildRefundAllocations({
-        orderId: params.orderId,
-        claimVersion,
-        refundAmountMinor: refundAmount,
-        capturedPayments,
-        refundRows: priorRefundRows,
-        currency,
-    });
-    if (settlement === "store_credit" && (params.caller ?? "staff") !== "staff"
-        && allocations.some((allocation) => isManualSettlementMethod(allocation.sourcePayment.paymentMethod))) {
-        // Store credit over money no provider captured would mint a live
-        // gift card from a claim (an app's own "bank transfer").
-        throw new ValidationError(
-            "Store credit for a cash-on-delivery or recorded payment can only be issued by staff in the dashboard. Refund it to the original payment instead.",
-            { reason: STORE_CREDIT_NEEDS_STAFF_REASON },
-        );
-    }
     // A manual COD deposit plan must exist and be DEPOSIT_PAID for this to be
     // a deposit refund. Reading the plan here (before the claim batch) also
     // lets us validate against plan.depositAmountMinor instead of
@@ -1914,15 +1907,58 @@ export async function processRefund(
             eq(paymentPlans.kind, "manual"),
         ))
         .get();
+    const manualPlanIsPaid = manualDepositPlan !== undefined
+        && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID
+            || manualDepositPlan.status === PaymentPlanStatus.COMPLETED);
+    // The plan's deposit is repaid before the cash collected at delivery. The
+    // cash balance is the newest capture once it is collected, so without this
+    // a deposit-sized refund would draw from the collected cash and leave the
+    // plan marked as paid even though the merchant refunded the deposit.
+    const depositCapture = manualPlanIsPaid && manualDepositPlan
+        ? capturedPayments.find((payment) =>
+            payment.paymentType === "deposit"
+            && isManualSettlementMethod(payment.paymentMethod)
+            && payment.amountMinor === manualDepositPlan.depositAmountMinor)
+        : undefined;
+    const priorityPaymentIds = depositCapture && manualDepositPlan
+        && refundAmount >= manualDepositPlan.depositAmountMinor
+        ? new Set([depositCapture.id])
+        : undefined;
+    const allocations = buildRefundAllocations({
+        orderId: params.orderId,
+        claimVersion,
+        refundAmountMinor: refundAmount,
+        capturedPayments,
+        refundRows: priorRefundRows,
+        currency,
+        priorityPaymentIds,
+    });
+    if (settlement === "store_credit" && (params.caller ?? "staff") !== "staff"
+        && allocations.some((allocation) => isManualSettlementMethod(allocation.sourcePayment.paymentMethod))) {
+        // Store credit over money no provider captured would mint a live
+        // gift card from a claim (an app's own "bank transfer").
+        throw new ValidationError(
+            "Store credit for a cash-on-delivery or recorded payment can only be issued by staff in the dashboard. Refund it to the original payment instead.",
+            { reason: STORE_CREDIT_NEEDS_STAFF_REASON },
+        );
+    }
     const depositAllocations = allocations.filter((allocation) =>
         allocation.sourcePayment.paymentType === "deposit"
             && isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
     );
-    const hasManualCodAllocation = manualDepositPlan !== undefined
-        && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID || manualDepositPlan.status === PaymentPlanStatus.COMPLETED)
-        && depositAllocations.length > 0;
+    const hasManualCodAllocation = manualPlanIsPaid && depositAllocations.length > 0;
     if (hasManualCodAllocation && (params.caller ?? "staff") !== "staff") {
         throw new ValidationError("Manual COD deposit refunds can only be recorded by staff in the dashboard.");
+    }
+    if (hasManualCodAllocation && order.hasHandover === 1 && order.balanceDueMinor > 0) {
+        // The goods are already handed over and the cash balance is still owed.
+        // Refunding the deposit cancels the plan, and a cancelled plan blocks
+        // the collection of the balance, so the merchant would be left with
+        // neither the deposit nor the cash. The balance is collected first, or
+        // the order is cancelled before it is handed over.
+        throw new ValidationError(
+            "This order was already handed over and still owes its cash balance, so the manual COD deposit cannot be refunded yet. Collect the cash balance first, or cancel the order before handing it over.",
+        );
     }
     // Any allocation repaid by hand (COD, recorded payment) requires confirmation.
     // Store credit settles as a gift card with no cash changing hands, so it

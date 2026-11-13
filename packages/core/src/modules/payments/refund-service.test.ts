@@ -241,6 +241,10 @@ function refundDb(overrides: {
           where: vi.fn().mockImplementation(() => {
             const result: any = {
               returning: vi.fn().mockResolvedValue([{ id: "order_1" }]),
+              // The table and the values ride along so a test can ask what a
+              // batch actually writes, not just how many statements it holds.
+              __table: table,
+              __values: values,
             };
             result.then = vi.fn().mockImplementation((resolve: (value: unknown[]) => void) =>
               resolve([{ id: "order_1" }]),
@@ -259,19 +263,6 @@ function refundDb(overrides: {
           const sql = (stmt as { toSQL?: () => { sql: string } }).toSQL?.().sql ?? "";
           const isWrite = /^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql);
           if (isWrite) {
-            // Extract table name from SQL for __setCalls compatibility.
-            const tableMatch = sql.match(/UPDATE (\w+) /i);
-            const tableName = tableMatch?.[1];
-            const tableMap: Record<string, unknown> = {
-              order_payments: orderPayments,
-              orders,
-              payment_plans: paymentPlans,
-              refund_attempts: refundAttempts,
-            };
-            const table = tableMap[tableName ?? ""] ?? null;
-            if (table) {
-              setCalls.push([table, {}]);
-            }
             results.push([{ changes: 1 }]);
           } else {
             // Guard SELECT — return success (batchGuard = 1).
@@ -286,6 +277,19 @@ function refundDb(overrides: {
     __setCalls: setCalls,
     __batchCalls: batchCalls,
   } as any;
+}
+
+/** The tables a batch writes, as the batch's own statements name them. */
+function batchWriteTables(batch: unknown[]): unknown[] {
+  return batch
+    .map((statement: any) => statement?.__table)
+    .filter((table): table is unknown => Boolean(table));
+}
+
+/** The one statement in a batch that writes a table, with the values it sets. */
+function batchWriteFor(batch: unknown[], table: unknown): Record<string, unknown> | undefined {
+  const statement = (batch as any[]).find((entry) => entry?.__table === table);
+  return statement?.__values;
 }
 
 /** Mock DB for processRefund tests — matches processRefund's query order:
@@ -352,6 +356,8 @@ function processRefundDb(overrides: {
         setCalls.push([table, values]);
         return {
           returning: vi.fn().mockResolvedValue([{ id: "new_id" }]),
+          __table: table,
+          __values: values,
           then: vi.fn().mockImplementation((resolve: (value: unknown[]) => void) =>
             resolve([{ id: "new_id" }]),
           ),
@@ -365,6 +371,8 @@ function processRefundDb(overrides: {
           where: vi.fn().mockImplementation(() => {
             const result: any = {
               returning: vi.fn().mockResolvedValue([{ id: "order_1" }]),
+              __table: table,
+              __values: values,
             };
             result.then = vi.fn().mockImplementation((resolve: (value: unknown[]) => void) =>
               resolve([{ id: "order_1" }]),
@@ -383,18 +391,6 @@ function processRefundDb(overrides: {
           const sql = (stmt as { toSQL?: () => { sql: string } }).toSQL?.().sql ?? "";
           const isWrite = /^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql);
           if (isWrite) {
-            const tableMatch = sql.match(/UPDATE (\w+) /i);
-            const tableName = tableMatch?.[1];
-            const tableMap: Record<string, unknown> = {
-              order_payments: orderPayments,
-              orders,
-              payment_plans: paymentPlans,
-              refund_attempts: refundAttempts,
-            };
-            const table = tableMap[tableName ?? ""] ?? null;
-            if (table) {
-              setCalls.push([table, {}]);
-            }
             results.push([{ changes: 1 }]);
           } else {
             results.push([{ batchGuard: 1 }]);
@@ -407,6 +403,145 @@ function processRefundDb(overrides: {
     }),
     __setCalls: setCalls,
     __batchCalls: batchCalls,
+  } as any;
+}
+
+/**
+ * A mock DB that lets `processRefund` run the whole path: the claim batch
+ * writes the refund row, the ledger row and the refund attempt, and the
+ * finalization batch reads exactly those rows back. Selects are dispatched by
+ * table, so the attempt the claim wrote is the attempt finalization sees and
+ * the ledger finalization reads already carries the refund row.
+ */
+function settledProcessRefundDb(overrides: {
+  order?: Record<string, unknown>;
+  plan?: Record<string, unknown> | null;
+  ledgerRows?: Array<Record<string, unknown>>;
+} = {}): any {
+  const order = {
+    id: "order_1",
+    totalAmountMinor: 10000,
+    paidAmountMinor: 2000,
+    paymentStatus: PaymentStatus.PARTIAL,
+    paymentMethod: "cod",
+    paymentTermsDays: null,
+    status: OrderStatus.CONFIRMED,
+    inventoryAction: "none",
+    hasHandover: 0,
+    version: 1,
+    shipmentClaimId: null,
+    shipmentClaimExpiresAt: null,
+    currencyCode: "EGP",
+    currencyDecimalPlaces: 2,
+    discountAmountMinor: 0,
+    customerName: null,
+    customerEmail: null,
+    customerPhone: null,
+    accountOwnerCustomerId: null,
+    ...(overrides.order ?? {}),
+  };
+  const plan = overrides.plan === undefined
+    ? { id: "plan_1", kind: "manual", status: PaymentPlanStatus.DEPOSIT_PAID, depositAmountMinor: 2000 }
+    : overrides.plan;
+  const ledgerRows = overrides.ledgerRows ?? [
+    { id: "payment_1", paymentType: "deposit", status: PaymentRecordStatus.SUCCEEDED, amountMinor: 2000, currency: "EGP", paymentMethod: "cod" },
+  ];
+
+  const setCalls: Array<[unknown, Record<string, unknown>]> = [];
+  const batchCalls: unknown[][] = [];
+  const claimedAttempts: Array<Record<string, unknown>> = [];
+  const claimedRefundPayments: Array<Record<string, unknown>> = [];
+
+  function makeQuery(arrayResult: unknown[], singleResult: unknown): any {
+    const result: any = {
+      get: vi.fn().mockResolvedValue(singleResult),
+      all: vi.fn().mockResolvedValue(arrayResult),
+    };
+    result.then = vi.fn().mockImplementation((resolve: (value: unknown[]) => void) => resolve(arrayResult));
+    result.orderBy = vi.fn().mockReturnValue(result);
+    return result;
+  }
+
+  function tableKey(table: unknown): string {
+    if (table === orders) return "orders";
+    if (table === orderPayments) return "order_payments";
+    if (table === paymentPlans) return "payment_plans";
+    if (table === refundAttempts) return "refund_attempts";
+    return "other";
+  }
+
+  return {
+    select: vi.fn().mockImplementation(() => ({
+      from: vi.fn().mockImplementation((table: unknown) => ({
+        where: vi.fn().mockImplementation(() => {
+          switch (tableKey(table)) {
+            case "orders":
+              return makeQuery([order], order);
+            case "order_payments": {
+              const rows = [...ledgerRows, ...claimedRefundPayments];
+              return makeQuery(rows, rows[0]);
+            }
+            case "payment_plans":
+              return makeQuery(plan ? [plan] : [], plan ?? null);
+            case "refund_attempts":
+              return makeQuery(claimedAttempts, claimedAttempts[0] ?? null);
+            default:
+              return makeQuery([], null);
+          }
+        }),
+      })),
+    })),
+    insert: vi.fn().mockImplementation((table) => ({
+      values: vi.fn().mockImplementation((values) => {
+        setCalls.push([table, values]);
+        if (table === refundAttempts) claimedAttempts.push({ ...values });
+        if (table === orderPayments) claimedRefundPayments.push({ ...values });
+        return {
+          returning: vi.fn().mockResolvedValue([{ id: "new_id" }]),
+          __table: table,
+          __values: values,
+          then: vi.fn().mockImplementation((resolve: (value: unknown[]) => void) =>
+            resolve([{ id: "new_id" }]),
+          ),
+        };
+      }),
+    })),
+    update: vi.fn().mockImplementation((table) => ({
+      set: vi.fn().mockImplementation((values) => {
+        setCalls.push([table, values]);
+        return {
+          where: vi.fn().mockImplementation(() => {
+            const result: any = {
+              returning: vi.fn().mockResolvedValue([{ id: "order_1" }]),
+              __table: table,
+              __values: values,
+            };
+            result.then = vi.fn().mockImplementation((resolve: (value: unknown[]) => void) =>
+              resolve([{ id: "order_1" }]),
+            );
+            return result;
+          }),
+        };
+      }),
+    })),
+    batch: vi.fn().mockImplementation(async (statements: unknown[]) => {
+      batchCalls.push(statements);
+      const results: unknown[] = [];
+      for (const stmt of statements) {
+        try {
+          const sql = (stmt as { toSQL?: () => { sql: string } }).toSQL?.().sql ?? "";
+          const isWrite = /^\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql);
+          results.push(isWrite ? [{ changes: 1 }] : [{ batchGuard: 1 }]);
+        } catch {
+          results.push([{ changes: 1 }]);
+        }
+      }
+      return results as unknown[];
+    }),
+    __setCalls: setCalls,
+    __batchCalls: batchCalls,
+    __claimedAttempts: claimedAttempts,
+    __claimedRefundPayments: claimedRefundPayments,
   } as any;
 }
 
@@ -498,7 +633,7 @@ describe("finalizeAcceptedRefundAttemptIds — manual COD deposit plan cancellat
 });
 
 describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
-  it("writes all tables in a single db.batch() call", async () => {
+  it("writes the ledger, the order, the plan and the attempt in one db.batch() call", async () => {
     const db = refundDb({
       plan: { id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
     });
@@ -507,13 +642,19 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
-    const statements = batchCalls[0];
-    expect(statements.length).toBeGreaterThanOrEqual(5);
-
-    // All writes go through db.batch() — no individual committed updates outside it.
-    // (db.update() is still called to build statement objects, but they are only
-    // executed via db.batch().)
-    expect(batchCalls[0].length).toBeGreaterThanOrEqual(5);
+    // Every write is in the one batch: the refunded ledger row, the order's
+    // payment state, the cancelled plan and the terminal attempt.
+    expect(batchWriteTables(batchCalls[0])).toEqual(expect.arrayContaining([
+      orderPayments,
+      orders,
+      paymentPlans,
+      refundAttempts,
+    ]));
+    // The ledger row goes to REFUNDED in the same transaction as the attempt.
+    expect(batchWriteFor(batchCalls[0], orderPayments)?.status).toBe(PaymentRecordStatus.REFUNDED);
+    // The attempt ends as refunded, with its claim released.
+    expect(batchWriteFor(batchCalls[0], refundAttempts)?.status).toBe("refunded");
+    expect(batchWriteFor(batchCalls[0], refundAttempts)?.claimId).toBeNull();
   });
 
   it("cancels plan in the same batch when manualDepositRefund is true", async () => {
@@ -526,8 +667,10 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
-    // batch contains order_payments, orders, payment_plans, refund_attempts writes + guards.
-    expect(batchCalls[0].length).toBeGreaterThanOrEqual(6);
+    // The plan is cancelled inside the batch, not after it.
+    const planWrite = batchWriteFor(batchCalls[0], paymentPlans);
+    expect(planWrite?.status).toBe(PaymentPlanStatus.CANCELLED);
+    expect(planWrite?.cancelledAt).toBeDefined();
   });
 
   it("recovers a genuine deposit refund even when legacy metadata omits the claim", async () => {
@@ -540,8 +683,10 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
-    // batch contains order_payments, orders, refund_attempts writes + guards (no payment_plans).
-    expect(batchCalls[0].length).toBeGreaterThanOrEqual(5);
+    // The claim is recovered from the durable source relationship, not the
+    // metadata flag: the attempt's source payment is the manual COD deposit,
+    // so the plan is cancelled even though the flag says false.
+    expect(batchWriteFor(batchCalls[0], paymentPlans)?.status).toBe(PaymentPlanStatus.CANCELLED);
   });
 
   it("recovers a genuine deposit refund without metadata", async () => {
@@ -554,7 +699,9 @@ describe("finalizeAcceptedRefundAttemptIds — atomicity (Fix A)", () => {
 
     const batchCalls = (db as any).__batchCalls;
     expect(batchCalls.length).toBe(1);
-    expect(batchCalls[0].length).toBeGreaterThanOrEqual(5);
+    // Same durable proof: a legacy attempt with no metadata at all still
+    // cancels the plan, because its source payment is the deposit.
+    expect(batchWriteFor(batchCalls[0], paymentPlans)?.status).toBe(PaymentPlanStatus.CANCELLED);
   });
 });
 
@@ -611,13 +758,14 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
   it("validates refund against plan.depositAmountMinor not order.paidAmountMinor", async () => {
     // Setup: manual COD deposit plan with depositAmountMinor = 2000
     // order.paidAmountMinor = 10000 (includes COD balance collected after deposit)
-    // Refund amount = 2000 (exactly the deposit) should PASS even though 2000 < 10000
-    const db = processRefundDb({
+    // Refund amount = 2000 (exactly the deposit) must pass and refund the deposit.
+    const db = settledProcessRefundDb({
       plan: { id: "plan_1", depositAmountMinor: 2000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: {
         id: "order_1",
         totalAmountMinor: 10000,
         paidAmountMinor: 10000,  // COD balance collected after deposit
+        paymentStatus: PaymentStatus.PAID,
         status: OrderStatus.CONFIRMED,
         version: 1,
         currencyCode: "EGP",
@@ -630,9 +778,6 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       ],
     });
 
-    // Mock the claim batch to succeed (manual settlement returns undefined from dispatchRefund)
-    (db.batch as any).mockResolvedValueOnce([[{ changes: 1 }]]); // claim batch
-
     const params = {
       orderId: "order_1",
       amountMinor: 2000, // exactly the deposit amount
@@ -642,22 +787,38 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    // Should not throw the deposit validation error - it may fail later at finalize
-    // but the key validation (depositAmountMinor check) passes
-    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
-      "Partial refunds of a manual COD deposit are not supported"
-    );
+    const result = await processRefund(db as any, params, TEST_MASTER_SECRET);
+
+    expect(result).toMatchObject({
+      success: true,
+      settlement: "original",
+      manualSettlementRecorded: true,
+      amount: 20,
+      isFullRefund: false,
+    });
+    // The whole deposit went back, so the deposit plan is cancelled.
+    const planWrite = db.__setCalls.find(([table]: [unknown]) => table === paymentPlans);
+    expect(planWrite?.[1].status).toBe(PaymentPlanStatus.CANCELLED);
+    // The refund names the deposit as its source, and only that.
+    expect(db.__claimedAttempts).toHaveLength(1);
+    expect(db.__claimedAttempts[0]).toMatchObject({
+      sourcePaymentId: "payment_1",
+      amountMinor: 2000,
+      status: "processing",
+      providerStatus: "manual_confirmed",
+    });
   });
 
   it("accepts full deposit refund even when COD balance was collected", async () => {
     // When order.paidAmountMinor > plan.depositAmountMinor (COD balance collected after deposit),
-    // refundAmount === plan.depositAmountMinor must still pass
-    const db = processRefundDb({
+    // refundAmount === plan.depositAmountMinor must still refund the deposit.
+    const db = settledProcessRefundDb({
       plan: { id: "plan_1", depositAmountMinor: 3000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: {
         id: "order_1",
         totalAmountMinor: 10000,
         paidAmountMinor: 10000,  // COD balance collected (total = deposit + balance)
+        paymentStatus: PaymentStatus.PAID,
         status: OrderStatus.CONFIRMED,
         version: 1,
         currencyCode: "EGP",
@@ -670,8 +831,6 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       ],
     });
 
-    (db.batch as any).mockResolvedValueOnce([[{ changes: 1 }]]); // claim batch
-
     const params = {
       orderId: "order_1",
       amountMinor: 3000, // exactly the deposit amount
@@ -681,10 +840,19 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    // Should not throw the deposit validation error
-    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
-      "Partial refunds of a manual COD deposit are not supported"
-    );
+    const result = await processRefund(db as any, params, TEST_MASTER_SECRET);
+
+    expect(result).toMatchObject({
+      success: true,
+      manualSettlementRecorded: true,
+      amount: 30,
+    });
+    const planWrite = db.__setCalls.find(([table]: [unknown]) => table === paymentPlans);
+    expect(planWrite?.[1].status).toBe(PaymentPlanStatus.CANCELLED);
+    expect(db.__claimedAttempts[0]).toMatchObject({
+      sourcePaymentId: "payment_1",
+      amountMinor: 3000,
+    });
   });
 
   it("rejects partial deposit refund when deposit allocation < plan.depositAmountMinor", async () => {
@@ -757,13 +925,14 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
 
   it("allows mixed refund: full deposit + other allocation when deposit allocation equals plan.depositAmountMinor", async () => {
     // Mixed refund: deposit allocation = 2000 (exact), plus another allocation = 1000
-    // Total refundAmount = 3000, deposit allocation = 2000 (exact) -> should PASS
-    const db = processRefundDb({
+    // Total refundAmount = 3000, deposit allocation = 2000 (exact) -> passes
+    const db = settledProcessRefundDb({
       plan: { id: "plan_1", depositAmountMinor: 2000, status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" },
       order: {
         id: "order_1",
         totalAmountMinor: 10000,
         paidAmountMinor: 10000,
+        paymentStatus: PaymentStatus.PAID,
         status: OrderStatus.CONFIRMED,
         version: 1,
         currencyCode: "EGP",
@@ -776,8 +945,6 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       ],
     });
 
-    (db.batch as any).mockResolvedValueOnce([[{ changes: 1 }]]); // claim batch
-
     const params = {
       orderId: "order_1",
       amountMinor: 3000, // total refund (deposit 2000 + balance 1000)
@@ -787,10 +954,20 @@ describe("processRefund — manual COD deposit amount validation (Fix B)", () =>
       caller: "staff" as RefundCaller,
     };
 
-    // Should not throw the deposit validation error
-    await expect(processRefund(db as any, params, TEST_MASTER_SECRET)).rejects.not.toThrow(
-      "Partial refunds of a manual COD deposit are not supported"
-    );
+    const result = await processRefund(db as any, params, TEST_MASTER_SECRET);
+
+    expect(result).toMatchObject({
+      success: true,
+      manualSettlementRecorded: true,
+      amount: 30,
+    });
+    // Two allocations: the deposit in full, and part of the COD balance.
+    expect(db.__claimedAttempts).toHaveLength(2);
+    expect(db.__claimedAttempts.map((attempt: Record<string, unknown>) => attempt.sourcePaymentId)).toEqual(["payment_1", "payment_2"]);
+    expect(db.__claimedAttempts.map((attempt: Record<string, unknown>) => attempt.amountMinor)).toEqual([2000, 1000]);
+    // The deposit plan is cancelled, because exactly the whole deposit went back.
+    const planWrite = db.__setCalls.find(([table]: [unknown]) => table === paymentPlans);
+    expect(planWrite?.[1].status).toBe(PaymentPlanStatus.CANCELLED);
   });
 
   it("rejects when manualSettlementConfirmed is not true for manual COD deposit", async () => {

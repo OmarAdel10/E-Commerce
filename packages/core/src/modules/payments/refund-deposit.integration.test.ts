@@ -46,6 +46,21 @@ describe("manual deposit refund persisted ledger", () => {
     expect(plan()).toBe("deposit_paid");
     expect(f.sqlite.prepare("SELECT paid_amount_minor FROM orders WHERE id='o'").get()!.paid_amount_minor).toBe(1000);
   });
+  it.each(["{}", '{"manualDepositRefund":false}', '{"manualDepositRefund":true}'])(
+    "cancels the plan for a genuine deposit refund whose metadata is %s",
+    async (metadata) => {
+      // The claim is recovered from the durable source relationship: the
+      // attempt's source payment is the manual COD deposit itself. A legacy
+      // attempt that predates the marker, or whose marker was cleared, must
+      // still cancel the plan, so a refunded deposit never stays
+      // fulfilment-eligible.
+      f.sqlite.prepare("UPDATE refund_attempts SET metadata=? WHERE id='ad'").run(metadata);
+      await finalizeAcceptedRefundAttemptIds(f.db, ["ad"], secret);
+      expect(plan()).toBe("cancelled");
+      expect(f.sqlite.prepare("SELECT status FROM refund_attempts WHERE id='ad'").get()!.status).toBe("refunded");
+      expect(f.sqlite.prepare("SELECT status FROM order_payments WHERE id='rd'").get()!.status).toBe("refunded");
+    },
+  );
   it("rejects signed tampering without committing any refund", async () => {
     const payload = { manualDepositRefund: true };
     const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: secret }, JSON.stringify(payload));
