@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSqliteD1Database, type SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
 import { recordOrderPayment } from "./recorded-payment";
-import { assertManualCodDepositVerified } from "./manual-cod-deposit";
+import { assertManualCodDepositVerified } from "../order-kernel";
 import { applyOrderStatusChange } from "../orders/status/lifecycle";
 import { paymentPlans } from "@scalius/database/schema";
 import { eq } from "drizzle-orm";

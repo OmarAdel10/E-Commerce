@@ -2,9 +2,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Database } from "@scalius/database/client";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
 import { sql, eq, inArray } from "drizzle-orm";
-import { assertManualCodDepositVerified, readPaymentPlan } from "../../payments/manual-cod-deposit";
 import { applyOrderStatusChange, reconcileRefundedOrderInventory } from "../status/lifecycle";
-import { OrderStatus, PaymentMethod, PaymentPlanStatus, PaymentStatus } from "@scalius/database/schema";
+import { OrderStatus, PaymentMethod, PaymentStatus } from "@scalius/database/schema";
 import { orders } from "@scalius/database/schema";
 
 vi.mock("../../payments", () => ({
@@ -38,25 +37,6 @@ vi.mock("../../inventory", () => ({
 }));
 
 import { assertManualCodDepositVerified as mockedAssertManualCodDepositVerified } from "../../payments";
-
-function mockDb(plan: { id: string; status: string; kind: string } | null): Database {
-  return {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          get: vi.fn().mockResolvedValue(plan),
-        }),
-      }),
-    }) as any,
-    update: vi.fn() as any,
-    insert: vi.fn() as any,
-    delete: vi.fn() as any,
-    batch: vi.fn().mockResolvedValue([]) as any,
-    exec: vi.fn() as any,
-    prepare: vi.fn() as any,
-    transaction: vi.fn() as any,
-  } as unknown as Database;
-}
 
 function createOrderMock(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -116,54 +96,6 @@ function createAppDb(order: Record<string, unknown>): Database {
     transaction: vi.fn(),
   } as unknown as Database;
 }
-
-describe("assertManualCodDepositVerified", () => {
-  it("throws when plan is PENDING", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.PENDING, kind: "manual" });
-    await expect(assertManualCodDepositVerified(db, "order_1")).rejects.toThrow(
-      "The deposit must be recorded before this order can move on.",
-    );
-  });
-
-  it("throws when plan is CANCELLED", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.CANCELLED, kind: "manual" });
-    await expect(assertManualCodDepositVerified(db, "order_1")).rejects.toThrow(
-      "This order's deposit was refunded. Fulfilment is blocked.",
-    );
-  });
-
-  it("passes when plan is DEPOSIT_PAID", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.DEPOSIT_PAID, kind: "manual" });
-    await expect(assertManualCodDepositVerified(db, "order_1")).resolves.toBeUndefined();
-  });
-
-  it("passes when plan is COMPLETED", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.COMPLETED, kind: "manual" });
-    await expect(assertManualCodDepositVerified(db, "order_1")).resolves.toBeUndefined();
-  });
-
-  it("passes when there is no payment plan", async () => {
-    const db = mockDb(null);
-    await expect(assertManualCodDepositVerified(db, "order_1")).resolves.toBeUndefined();
-  });
-
-  it("passes when plan kind is not manual", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.PENDING, kind: "online" });
-    await expect(assertManualCodDepositVerified(db, "order_1")).resolves.toBeUndefined();
-  });
-
-  it("readPaymentPlan returns null when no plan exists", async () => {
-    const db = mockDb(null);
-    const plan = await readPaymentPlan(db, "order_1");
-    expect(plan).toBeNull();
-  });
-
-  it("readPaymentPlan returns plan data when plan exists", async () => {
-    const db = mockDb({ id: "plan_1", status: PaymentPlanStatus.PENDING, kind: "manual" });
-    const plan = await readPaymentPlan(db, "order_1");
-    expect(plan).toEqual({ id: "plan_1", status: PaymentPlanStatus.PENDING, kind: "manual" });
-  });
-});
 
 describe("applyOrderStatusChange — CANCELLED exemption (Fix C)", () => {
   beforeEach(() => {

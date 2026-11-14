@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSqliteD1Database, type SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
-import { ManualCodDepositBlockedError } from "../payments";
+import { ManualCodDepositBlockedError } from "../order-kernel";
 import { updateOrderStatusFromShipment } from "./tracking";
 
 function seedOrder(f: SqliteTestDatabase, overrides: {

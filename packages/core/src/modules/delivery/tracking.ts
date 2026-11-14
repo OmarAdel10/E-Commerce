@@ -5,13 +5,14 @@ import {
   assertNoActivePaymentSessionAttempt,
   assertNoActiveRefundAttempt,
   assertNoActiveShipmentClaim,
+  assertManualCodDepositVerified,
   canTransitionTo,
+  ManualCodDepositBlockedError,
   noActivePaymentSessionAttemptForOrderIdCondition,
   noActiveRefundAttemptForOrderIdCondition,
 } from "../order-kernel";
 import type { Database } from "@scalius/database/client";
 import { markShipmentReconciliationRequired } from "./delivery.service";
-import { assertManualCodDepositVerified, ManualCodDepositBlockedError } from "../payments";
 
 function parseShipmentMetadata(metadata: unknown): Record<string, unknown> {
   if (!metadata) return {};
