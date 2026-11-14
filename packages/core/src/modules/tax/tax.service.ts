@@ -1,4 +1,5 @@
 import type { Database } from "@scalius/database/client";
+import { STOREFRONT_TAX_AUTHORITY_PROOF } from "../../internals/storefront-checkout-proofs";
 import { taxClasses, taxRates, taxRegions, taxSettings } from "@scalius/database/schema";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { readStoreCurrency } from "../markets";
@@ -47,7 +48,6 @@ export interface StorefrontTaxAuthoritySnapshot {
     originCountry: string | null;
 }
 
-const STOREFRONT_TAX_AUTHORITY_PROOF = Symbol("scalius.storefrontTaxAuthority");
 
 function markTrustedStorefrontTaxAuthority(
     snapshot: StorefrontTaxAuthoritySnapshot,

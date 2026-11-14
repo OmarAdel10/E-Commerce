@@ -163,6 +163,15 @@ export function describeTimelineEvent(
     case "prices_set":
       // Staff or an app priced lines by hand when placing the order.
       return { text: t("timeline.pricesSet"), detail: null };
+    case "deposit_reconciliation_required": {
+      // A courier update was refused because the manual COD deposit is not
+      // verified. The parcel's own status is kept, the order was not moved.
+      const shipmentStatus = text(data.shipmentStatus);
+      return {
+        text: t("timeline.depositReconciliationRequired"),
+        detail: shipmentStatus ? t("timeline.depositReconciliationStatus", { status: shipmentStatus }) : body,
+      };
+    }
     case "app_event": {
       // An app's typed line: its name and the kind's title, then its message and facts as written.
       const fields = data.fields && typeof data.fields === "object" && !Array.isArray(data.fields)

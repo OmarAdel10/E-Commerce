@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [cloudflare-only, mono-repo, main]
+    branches: [cloudflare-only, mono-repo, main, development]
   push:
-    branches: [cloudflare-only, mono-repo, main]
+    branches: [cloudflare-only, mono-repo, main, development]
   workflow_dispatch:
   # The whole private suite, sharded, and every rule's proof, PostgreSQL
   # included, once a week (and on demand above): a push runs only the tests
@@ -26,6 +26,23 @@ jobs:
     # A normal push takes about 10 minutes. A push that touches the test setup or most of
     # the code selects nearly the whole suite plus every cited proof, which needs about an hour.
     timeout-minutes: 75
+    # The PostgreSQL-native migration proofs skip without a server, so the affected
+    # tests run against one. It listens on 5433: the rule proofs below start their
+    # own container on 5432, and the two never meet.
+    services:
+      postgres-tests:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -h 127.0.0.1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      SCALIUS_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5433/postgres
     steps:
       - uses: actions/checkout@v7
         with:
@@ -71,8 +88,9 @@ jobs:
       - name: Change base
         # A push is judged against the commit it replaced, a pull request against its base;
         # a rewritten history falls back to the parent commit. The full suite runs in the
-        # sharded job below.
-        if: ${{ github.event.repository.private && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
+        # sharded job below. The export carries the suite, so a pull request there is
+        # judged against its base too; the rulebook below stays private-only.
+        if: ${{ (github.event.repository.private || github.event_name == 'pull_request') && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' }}
         env:
           BEFORE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: |
@@ -134,9 +152,9 @@ jobs:
           echo "SCALIUS_TEST_POSTGRES_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres" >> "$GITHUB_ENV"
 
       - name: Affected tests
-        # The suite lives only in the private repository; the public export carries no tests.
-        # A push tests what changed since its change base.
-        if: ${{ github.event.repository.private && env.CHANGE_BASE != '' }}
+        # A push tests what changed since its change base; a pull request tests what its
+        # change can break, measured against the base branch.
+        if: ${{ (github.event.repository.private || github.event_name == 'pull_request') && env.CHANGE_BASE != '' }}
         run: pnpm test:affected --base "$CHANGE_BASE"
 
       - name: Cited rule proofs

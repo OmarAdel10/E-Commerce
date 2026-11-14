@@ -41,6 +41,13 @@ export interface CheckoutConfig {
   checkoutMode?: "guest_cod_only" | "gateways_only" | "all";
   partialPaymentEnabled?: boolean;
   partialPaymentAmount?: number;
+  /** Settings → Checkout flow: manual COD deposit required before dispatch. */
+  codDeposit?: {
+    enabled: boolean;
+    mode: "fixed" | "percentage";
+    amount: number;
+    percent: number;
+  };
   /** Settings → Checkout: every order asks for a full billing address (absent: off). */
   requireFullBillingAddress?: boolean;
   allowedCountries?: string[];
@@ -49,6 +56,7 @@ export interface CheckoutConfig {
     code: string;
     symbol: string;
     decimalPlaces: number;
+    priceIncrementMinor: number;
   };
   checkoutReadiness?: Readiness & {
     hasActiveShippingMethod: boolean;
@@ -125,10 +133,10 @@ export function takesOnlinePayment(config: CheckoutConfig | null | undefined): b
 
 /**
  * Check if only COD is active (simple COD-only flow).
- * If advance partial payments are enabled, this flow is disabled because a gateway is required.
+ * Deposits require a payment review step before placing the order.
  */
 export function isCodOnly(config: CheckoutConfig): boolean {
   if (config.unavailable) return false;
-  if (config.partialPaymentEnabled) return false;
+  if (config.partialPaymentEnabled || config.codDeposit?.enabled) return false;
   return config.gateways.length === 1 && config.gateways[0].id === "cod";
 }

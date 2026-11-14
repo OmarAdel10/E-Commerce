@@ -19,6 +19,7 @@ import { billingAddressBodyShape } from "../../schemas/billing-address";
 import { checkoutFxSchema } from "../../schemas/markets";
 import { fromMinor } from "@scalius/shared/money";
 import { readStoreCurrency } from "@scalius/core/modules/markets";
+import { checkoutDocument } from "@scalius/core/modules/settings";
 import { buildStorefrontCheckoutQuoteFingerprint } from "@scalius/core/modules/checkout/browser";
 import {
     assertNoCheckoutRuleErrors,
@@ -38,6 +39,7 @@ import {
     paymentCountryOf,
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
+    resolveManualCodDeposit,
     storefrontLinePropertiesHashes,
     validateStorefrontDeliveryPreflight,
     validateStorefrontCartItems,
@@ -115,6 +117,12 @@ const taxQuoteResponseSchema = z.object({
   taxAmount: z.number(),
   totalMinor: z.number().int(),
   totalAmount: z.number(),
+  manualCodDeposit: z.object({
+    depositMinor: z.number().int().positive(),
+    balanceMinor: z.number().int().positive(),
+  }).nullable().openapi({
+    description: "The reviewed manual deposit and cash-on-delivery balance, in the quote currency's minor units.",
+  }),
   /** The total less the applied gift cards: what cash on delivery or a gateway collects (the total without cards). */
   amountDueMinor: z.number().int(),
   amountDue: z.number(),
@@ -264,13 +272,14 @@ app.openapi(taxQuoteRoute, async (c) => {
   // beside the signed-in buyer: their per-customer limits, their segments for
   // segment-limited promotions (automatic ones need no code) and apps' facts.
   const encryptionKey = getCredentialEncryptionKey(c.env as Record<string, unknown>);
-  const [currency, builtInPaymentMethods, registrations, sessionCustomer] = await Promise.all([
+  const [currency, builtInPaymentMethods, registrations, sessionCustomer, checkoutSettings] = await Promise.all([
     readStoreCurrency(db),
     getActivePaymentMethods(db, encryptionKey),
     listActiveCheckoutRegistrations(db),
     customerSessionToken
       ? getCustomerBySession(db, customerSessionToken, getCustomerSessionHashKey(c.env as unknown as Record<string, unknown>))
       : null,
+    checkoutDocument.read(db),
   ]);
   const apps = createCheckoutAppFunctions({
     env: c.env,
@@ -377,6 +386,10 @@ app.openapi(taxQuoteRoute, async (c) => {
       .map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId))),
   });
   const coveredByGiftCards = giftCardTender.appliedTotalMinor > 0 && giftCardTender.amountDueMinor === 0;
+  const manualDeposit = resolveManualCodDeposit(checkoutSettings, quote, currency, {
+    allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
+    giftCardsApplied: giftCardTender.appliedTotalMinor > 0,
+  }, paymentProviders);
   // Paying later (an invoice) reaches only a signed-in buyer it names: read
   // only when such a method is enabled and the buyer is signed in.
   const deferred = coveredByGiftCards
@@ -391,7 +404,7 @@ app.openapi(taxQuoteRoute, async (c) => {
   const payment = coveredByGiftCards
     ? { methods: [], changed: false }
     : await resolveAppPaymentMethods(apps, pricing.appCart, resolveCartPaymentMethods(
-      paymentMethods.enabledMethods,
+      manualDeposit.error ? paymentMethods.enabledMethods.filter((method) => method !== "cod") : paymentMethods.enabledMethods,
       delivery.fulfilment,
       // A method that doesn't serve the country the order is handed over in
       // (the delivery's, else the store's) is not offered (cash on delivery: Bangladesh).
@@ -402,6 +415,9 @@ app.openapi(taxQuoteRoute, async (c) => {
       offeredDeferredMethods(deferred),
     ), paymentProviders, deferred.gated);
   const toAmount = (minor: number) => fromMinor(minor, quote.decimalPlaces);
+  const offeredManualDeposit = payment.methods.some((method) => method.methodId === "cod")
+    ? manualDeposit.terms
+    : null;
   return ok(c, {
     buyerUi: await apps.buyerUi?.({ language: c.req.header("x-storefront-language"), locale: c.req.header("x-storefront-locale"), targets: TAX_QUOTE_UI_SLOTS, currency: quote.currencyCode, cart: pricing.appCart, attributes, customer: sessionCustomer?.customerId ? { id: sessionCustomer.customerId } : null }) ?? [],
     valid: true as const,
@@ -410,6 +426,7 @@ app.openapi(taxQuoteRoute, async (c) => {
       pricing.shippingMethod,
       linePropertiesHashes,
       attributes,
+      offeredManualDeposit,
     ),
     displayLabel: quote.displayLabel,
     pricesIncludeTax: quote.pricesIncludeTax,
@@ -429,6 +446,9 @@ app.openapi(taxQuoteRoute, async (c) => {
     taxAmount: toAmount(quote.taxMinor),
     totalMinor: quote.totalMinor,
     totalAmount: toAmount(quote.totalMinor),
+    manualCodDeposit: offeredManualDeposit
+      ? { depositMinor: offeredManualDeposit.depositMinor, balanceMinor: offeredManualDeposit.balanceMinor }
+      : null,
     ...presentGiftCardTenderQuote(giftCardTender, quote.decimalPlaces),
     shippingMethod: pricing.shippingMethod,
     shippingRateToken: delivery.rateToken ?? null,

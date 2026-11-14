@@ -80,6 +80,8 @@ const refreshedShipmentSchema = deliveryShipmentSchema.extend({
     lastChecked: z.string(),
     statusChanged: z.boolean(),
     orderStatusUpdate: z.boolean(),
+    reconciliationRequired: z.boolean(),
+    reconciliationReason: z.string().nullable(),
 }).passthrough();
 
 const reconcileShipmentResponseSchema = successEnvelope(z.object({

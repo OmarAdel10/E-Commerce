@@ -8,6 +8,8 @@ import { createHostedGatewayHandler } from "./handlers/hosted";
 import { createDeferredGatewayHandler } from "./handlers/deferred";
 import { formatPageNumber, formatStoreDateTime, pageLanguage } from "@/lib/store-time-zone";
 import { formatMoney, DEFAULT_CURRENCY } from "@/lib/currency";
+import { fromMinor } from "@scalius/shared/money";
+import { codDueText } from "@/lib/order-success-state";
 import { formatBdMobile } from "@scalius/shared/phone-input";
 import { formatDiscountLineLabel } from "@scalius/shared/checkout-language-format";
 import {
@@ -845,6 +847,7 @@ export function renderOrderSummaryDetails(
   data: Record<string, unknown>,
   config: CheckoutConfig,
   quote: CheckoutTaxQuote,
+  method: string | null,
 ): void {
   details.replaceChildren();
   appendOrderItems(details, quote, freeDeliveryCartKeys(data.cartItems));
@@ -912,6 +915,19 @@ export function renderOrderSummaryDetails(
       currencyFmt(quoteAmountDue(quote).amountDue, quote),
       "flex justify-between rounded-lg border border-primary/20 bg-primary/10 p-2 font-semibold text-primary-ink",
     );
+  } else if (method === "cod" && quote.manualCodDeposit) {
+    appendSummaryRow(
+      details,
+      checkoutCopy.codDepositRequiredText,
+      currencyFmt(fromMinor(quote.manualCodDeposit.depositMinor, quote.decimalPlaces), quote),
+      "flex justify-between rounded-lg border border-primary/20 bg-primary/10 p-2 font-semibold text-primary-ink",
+    );
+    appendSummaryRow(
+      details,
+      codDueText({ shippingMethodKind: quote.deliveryMethodKind, requiresShipping: quote.requiresShipping }, checkoutCopy),
+      currencyFmt(fromMinor(quote.manualCodDeposit.balanceMinor, quote.decimalPlaces), quote),
+      "flex justify-between px-2 text-xs text-muted-foreground",
+    );
   } else if (isDepositPaymentRequired(config, quote.totalAmount, quoteLineTypes(quote))) {
     const advance = config.partialPaymentAmount;
     const balance = quote.totalAmount - advance;
@@ -943,7 +959,7 @@ function renderSummary(quote: CheckoutTaxQuote | null = authoritativeTaxQuote, p
   const details = document.getElementById("summaryDetails");
   if (!section || !details) return;
 
-  renderOrderSummaryDetails(details, checkoutData, checkoutConfig, quote);
+  renderOrderSummaryDetails(details, checkoutData, checkoutConfig, quote, selectedMethod);
 
   const mobileTotal = document.getElementById("orderSummaryToggleTotal");
   if (mobileTotal) {
@@ -985,14 +1001,21 @@ function eligibleCheckoutGateways(): CheckoutConfig["gateways"] {
       ? [{ id: GIFT_CARD_PAYMENT_METHOD, flow: "cod", name: giftCopy.paidWithGiftCardText }]
       : [];
   }
+  const manualDeposit = currentQuote.manualCodDeposit;
+  // An older quote omits the deposit split. Require fresh quote facts when
+  // the checkout configuration says the buyer owes a manual deposit.
+  const codExcluded = !manualDeposit && (currentConfig.partialPaymentEnabled
+    || (manualDeposit === undefined && currentConfig.codDeposit?.enabled));
   const eligible = gateways.filter(
     (gateway) => (
       gateway.id !== GIFT_CARD_PAYMENT_METHOD
-      && !(currentConfig.partialPaymentEnabled && gateway.id === "cod")
+      && !(codExcluded && gateway.id === "cod")
       && allowed.includes(gateway.id)
       && isGatewayEligibleForPaymentAmount(
         gateway,
-        payableAmount,
+        gateway.id === "cod" && manualDeposit
+          ? fromMinor(manualDeposit.balanceMinor, currentQuote.decimalPlaces)
+          : payableAmount,
         currentQuote.currencyCode,
       )
     ),
@@ -1243,6 +1266,7 @@ async function selectMethod(
   selectedMethod = methodId;
   writeCheckoutPaymentSelection(methodId);
   applySelectedMethodStyles(methodId);
+  renderSummary();
 
   setPayButton(
     paymentActionLabel(methodId),
@@ -1831,8 +1855,12 @@ export async function initCheckoutPage(): Promise<void> {
   renderSummary();
   await renderGateways();
   if (currentInitVersion !== initVersion) return;
-  // The cart page's total moved on the way here: the buyer pays only after seeing the new one.
-  if (reviewed && adopted && reviewed.totalMinor !== adopted.totalMinor) {
+  // The amount due at each step can change even when the order total stays the same.
+  if (reviewed && adopted && (
+    reviewed.totalMinor !== adopted.totalMinor
+    || reviewed.manualCodDeposit?.depositMinor !== adopted.manualCodDeposit?.depositMinor
+    || reviewed.manualCodDeposit?.balanceMinor !== adopted.manualCodDeposit?.balanceMinor
+  )) {
     showError(checkoutCopy.totalChangedReviewText);
   }
   applyQueuedGiftCard(true);

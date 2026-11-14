@@ -46,6 +46,11 @@ const getCustomerOrdersRoute = createRoute({
               totalAmount: z.number(),
               paidAmount: z.number(),
               balanceDue: z.number(),
+              paymentPlan: z.object({
+                kind: z.literal("manual"),
+                status: z.literal("pending"),
+                balanceDue: z.number(),
+              }).nullable(),
               shippingCharge: z.number(),
               shippingMethodId: z.string().nullable(),
               shippingMethodName: z.string().nullable(),

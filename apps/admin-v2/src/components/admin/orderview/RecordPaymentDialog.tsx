@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import { RECORDED_PAYMENT_VIAS, type RecordedPaymentVia } from "@scalius/shared/payment-terms";
-import { toMinor } from "@scalius/shared/money";
 import { Alert, AlertDescription } from "~/components/ui/alert";
 import { Button } from "~/components/ui/button";
 import {
@@ -21,6 +20,7 @@ import { orderPaymentDialogMessages } from "~/i18n/order-payment-dialogs";
 import { resourceMessages } from "~/i18n/resource";
 import { isOrderConflict, orderErrorMessage, useRecordOrderPayment } from "~/lib/api-mutations/orders";
 import { MoneyInput } from "../shared/MoneyInput";
+import { prepareRecordedPayment } from "./record-payment-request";
 
 /**
  * Money received against an invoice (net terms). Each opening mounts it fresh
@@ -36,6 +36,8 @@ export function RecordPaymentDialog({
   decimalPlaces,
   balanceDue,
   money,
+  isDeposit = false,
+  depositAmount,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,40 +48,38 @@ export function RecordPaymentDialog({
   /** Major units. */
   balanceDue: number;
   money: (major: number) => string;
+  /** When true, records a manual COD deposit against a pending plan instead of a net-terms payment. */
+  isDeposit?: boolean;
+  /** The exact deposit amount in major units (required when isDeposit). */
+  depositAmount?: number;
 }) {
   const t = useMessages(orderPaymentDialogMessages);
   const r = useMessages(resourceMessages);
   const mutation = useRecordOrderPayment();
   const [requestKey] = useState(() => `record-payment-${crypto.randomUUID()}`);
-  const [amount, setAmount] = useState<number | null>(balanceDue);
+  const [amount, setAmount] = useState<number | null>(isDeposit && depositAmount != null ? depositAmount : balanceDue);
   const [amountError, setAmountError] = useState<string | null>(null);
   const [via, setVia] = useState<RecordedPaymentVia>("bank_transfer");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
 
-  const problem = (value: number | null): string | null => {
-    if (value === null || !Number.isFinite(value) || value <= 0) return t("netTerms.amountRequired");
-    if (value > balanceDue) return t("netTerms.amountTooHigh", { amount: money(balanceDue) });
-    return null;
-  };
+  const prepare = () => prepareRecordedPayment({
+    orderId, orderVersion, requestKey, amount, decimalPlaces, balanceDue, isDeposit, depositAmount, via, reference, note,
+  });
+  const problem = (result: ReturnType<typeof prepareRecordedPayment>): string | null =>
+    result.issue
+      ? t(result.issue, result.limit === undefined ? undefined : { amount: money(result.limit) })
+      : null;
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    const issue = problem(amount);
-    if (issue) {
-      setAmountError(issue);
+    const result = prepare();
+    if (!result.request) {
+      setAmountError(problem(result));
       document.getElementById("recordPaymentAmount")?.focus();
       return;
     }
-    mutation.mutate({
-      orderId,
-      requestKey,
-      amountMinor: toMinor(amount!, decimalPlaces),
-      via,
-      ...(reference.trim() ? { reference: reference.trim() } : {}),
-      ...(note.trim() ? { note: note.trim() } : {}),
-      expectedRevision: orderVersion,
-    }, {
+    mutation.mutate(result.request, {
       onSuccess: onClose,
       // Changed in another tab: close; the page banner shows the latest.
       onError: (error) => { if (isOrderConflict(error)) onClose(); },
@@ -90,16 +90,18 @@ export function RecordPaymentDialog({
     <Dialog open={open} onOpenChange={(next) => { if (!next && !mutation.isPending) onClose(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("netTerms.recordTitle")}</DialogTitle>
-          <DialogDescription>{t("netTerms.recordHelp")}</DialogDescription>
+          <DialogTitle>{isDeposit ? t("codDeposit.recordTitle") : t("netTerms.recordTitle")}</DialogTitle>
+          <DialogDescription>{isDeposit ? t("codDeposit.recordHelp") : t("netTerms.recordHelp")}</DialogDescription>
         </DialogHeader>
         <form id="order-record-payment" method="post" className="space-y-4" onSubmit={submit} noValidate>
           {mutation.isError ? <Alert variant="destructive"><AlertDescription>{orderErrorMessage(mutation.error)}</AlertDescription></Alert> : null}
           <Field
             id="recordPaymentAmount"
-            label={t("netTerms.amount")}
+            label={isDeposit ? t("codDeposit.amount") : t("netTerms.amount")}
             error={amountError ?? undefined}
-            help={t("netTerms.amountHelp", { amount: money(balanceDue) })}
+            help={isDeposit
+              ? t("codDeposit.amountHelp", { amount: money(depositAmount ?? 0) })
+              : t("netTerms.amountHelp", { amount: money(balanceDue) })}
           >
             <MoneyInput
               currencyCode={currencyCode}
@@ -108,7 +110,7 @@ export function RecordPaymentDialog({
                 setAmount(next);
                 if (amountError) setAmountError(null);
               }}
-              onBlur={() => setAmountError(amount === null ? null : problem(amount))}
+              onBlur={() => setAmountError(amount === null ? null : problem(prepare()))}
             />
           </Field>
           <Field id="recordPaymentVia" label={t("netTerms.via")}>
@@ -129,7 +131,9 @@ export function RecordPaymentDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>{r("cancel")}</Button>
           <Button type="submit" form="order-record-payment" loading={mutation.isPending}>
-            {t("netTerms.save", { amount: money(amount !== null && Number.isFinite(amount) ? amount : 0) })}
+            {isDeposit
+              ? t("codDeposit.save", { amount: money(amount !== null && Number.isFinite(amount) ? amount : 0) })
+              : t("netTerms.save", { amount: money(amount !== null && Number.isFinite(amount) ? amount : 0) })}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,6 +1,7 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import type { Context } from "hono";
 import { MAX_LINE_QUANTITY, MAX_ORDER_LINES } from "@scalius/shared/order-limits";
+import { readMasterSecret } from "@scalius/shared/runtime-secrets";
 import { recordOrderEvent } from "@scalius/core/modules/orders";
 import type { Database } from "@scalius/database/client";
 import {
@@ -340,9 +341,15 @@ export async function executeOrderRefund(
     // app or agent may not turn a COD or recorded payment into store credit.
     const caller: RefundCaller = c.get("pluginPrincipal") ? "app" : c.get("agentPrincipal") ? "agent" : "staff";
     try {
+        // Pass master secret for HMAC integrity on refund metadata
+        const masterSecret = readMasterSecret(c.env);
+        if (!masterSecret) {
+            throw new Error("SCALIUS_SECRET is not installed or is too short.");
+        }
         result = await processRefund(
             db,
             { ...request, caller },
+            masterSecret,
             encryptionKey,
             // App gateways refund through the same port as built-in ones (read only when one is named).
             () => requestPaymentProviders(c),
@@ -448,12 +455,18 @@ const reconcileRefundAttemptRoute = createRoute({
 app.openapi(reconcileRefundAttemptRoute, async (c) => {
     const { id: orderId, attemptId } = c.req.valid("param");
     const db = c.get("db");
+    const masterSecret = readMasterSecret(c.env);
+    if (!masterSecret) {
+        throw new Error("SCALIUS_SECRET is not installed or is too short.");
+    }
     const result = await reconcileRefundAttemptForOrder(
         db,
         orderId,
         attemptId,
         {
             encryptionKey: getCredentialEncryptionKey(c.env as Record<string, unknown>),
+            masterSecret,
+            previousHmacKey: c.env.REFUND_PREVIOUS_HMAC_KEY,
             providers: () => requestPaymentProviders(c),
         },
     );

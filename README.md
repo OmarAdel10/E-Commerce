@@ -182,11 +182,19 @@ A deployment has two installed secrets, no Wrangler `vars`, and every other sett
 | `SCALIUS_SECRET` | API, storefront | Master secret, identical on both; at least 32 characters | `openssl rand -base64 48` |
 | `CREDENTIAL_ENCRYPTION_KEY` | API | AES-256-GCM key for stored provider credentials, plugin secret settings, gift-card codes, licence keys, and webhook secrets; base64 of 32 bytes | `openssl rand -base64 32` |
 
-At entry, each Worker derives every per-purpose secret (session, JWT, service token, agent token pepper, customer session hash key and three opt-in automation keys) from `SCALIUS_SECRET` with HKDF-SHA256 (`packages/shared/src/runtime-secrets.ts`). Derived values are never installed, stored, or logged.
+At entry, each Worker derives its active per-purpose secrets from `SCALIUS_SECRET` with HKDF-SHA256 (`packages/shared/src/runtime-secrets.ts`). Keep derived values out of files and logs.
 
 Without `SCALIUS_SECRET`, the API answers every request with `503 runtime_secret_missing`, except `/api/v1/health`, `/api/v1/readyz`, and `/api/v1/meta`.
 
 - Rotating `SCALIUS_SECRET` rotates every derived secret. Admins sign out, service tokens stop verifying, and agent credentials need reissue. Data encrypted with `CREDENTIAL_ENCRYPTION_KEY` survives.
+- Refund recovery verifies metadata with the key that signed the attempt. If refunds remain open during rotation, derive `RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC` from the outgoing master with `deriveRuntimeSecret` and install only that derived value as the API Worker's temporary `REFUND_PREVIOUS_HMAC_KEY` secret. The active master signs new attempts. Remove the temporary key when all attempts signed with it are terminal. Pause new refunds and run this query to check whether recovery has drained:
+
+  ```sql
+  SELECT id, status
+  FROM refund_attempts
+  WHERE status IN ('pending', 'processing', 'provider_unknown', 'reconcile_required');
+  ```
+
 - Rotating `CREDENTIAL_ENCRYPTION_KEY` makes everything encrypted with it unreadable. Re-enter every provider credential in the dashboard. Staff password hashes are keyed with this key too, so staff cannot sign in with their passwords afterwards: send each one a password reset.
 
 ### Platform settings

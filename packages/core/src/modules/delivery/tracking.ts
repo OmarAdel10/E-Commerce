@@ -1,4 +1,4 @@
-import { deliveryShipments, orders, ShipmentStatus } from "@scalius/database/schema";
+import { deliveryShipments, orders, ShipmentStatus, PaymentMethod } from "@scalius/database/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { applyInventoryForStatusChangeWithImpact } from "../inventory";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../order-kernel";
 import type { Database } from "@scalius/database/client";
 import { markShipmentReconciliationRequired } from "./delivery.service";
+import { assertManualCodDepositVerified, ManualCodDepositBlockedError } from "../payments";
 
 function parseShipmentMetadata(metadata: unknown): Record<string, unknown> {
   if (!metadata) return {};
@@ -110,6 +111,38 @@ async function reconcileShipmentInventory(
 }
 
 /**
+ * The order statuses a courier update may move an order into that need a
+ * verified manual COD deposit first. The deposit guard is never bypassed here:
+ * a parcel update cannot move an order past a deposit staff has not recorded
+ * (or has refunded).
+ */
+const DEPOSIT_GUARDED_ORDER_STATUSES = new Set<string>([
+    "processing",
+    "confirmed",
+    "shipped",
+    "delivered",
+    "completed",
+]);
+
+/** The order statuses that take the units out of the reserved stock. */
+const INVENTORY_DEDUCT_ORDER_STATUSES = new Set<string>(["shipped", "delivered"]);
+
+/**
+ * Raises the typed deposit refusal when the order's manual COD deposit is
+ * pending or was refunded. Callers treat it as a permanent business rule, not
+ * a transient failure, so the courier's status is kept and the order is left
+ * alone for staff to reconcile.
+ */
+async function assertShipmentSyncDepositVerified(
+    db: Database,
+    orderId: string,
+    newOrderStatus: string,
+): Promise<void> {
+    if (!DEPOSIT_GUARDED_ORDER_STATUSES.has(newOrderStatus)) return;
+    await assertManualCodDepositVerified(db, orderId);
+}
+
+/**
  * Updates the order status based on shipment status if applicable
  * @param db - The database instance
  * @param shipmentId - The ID of the shipment
@@ -120,6 +153,8 @@ export async function updateOrderStatusFromShipment(
   shipmentId: string,
   newStatus: string,
 ) {
+  // The order the parcel belongs to, kept for the error log below.
+  let orderIdForSync: string | null = null;
   try {
     // Get the shipment
     const [shipment] = await db
@@ -142,6 +177,8 @@ export async function updateOrderStatusFromShipment(
         customerEmail: orders.customerEmail,
         shipmentClaimId: orders.shipmentClaimId,
         shipmentClaimExpiresAt: orders.shipmentClaimExpiresAt,
+        paymentMethod: orders.paymentMethod,
+        inventoryAction: orders.inventoryAction,
       })
       .from(orders)
       .where(eq(orders.id, shipment.orderId));
@@ -151,6 +188,7 @@ export async function updateOrderStatusFromShipment(
       return;
     }
     assertNoActiveShipmentClaim(order);
+    orderIdForSync = order.id;
     await assertNoActiveRefundAttempt(db, order.id);
     await assertNoActivePaymentSessionAttempt(db, order.id);
 
@@ -211,6 +249,12 @@ export async function updateOrderStatusFromShipment(
         );
     }
 
+    // A courier update that leaves the order where it is still moves the
+    // reserved stock when the units are taken out of the store. That move
+    // needs the verified deposit too, so the guard covers it as well.
+    const stockStillReserved = order.inventoryAction === "reserved"
+      && INVENTORY_DEDUCT_ORDER_STATUSES.has(newOrderStatus);
+
     // Update order status if it has changed
     if (newOrderStatus !== order.status) {
       // Validate the transition is allowed by the state machine
@@ -224,6 +268,9 @@ export async function updateOrderStatusFromShipment(
       // CAS update FIRST: only proceed with inventory if we win the version check.
       // This prevents orphaned inventory changes when two concurrent callers
       // (e.g. admin + webhook) both apply inventory before either detects the conflict.
+      // A manual COD deposit order cannot move to a fulfilment-eligible state
+      // until staff verify the deposit.
+      await assertShipmentSyncDepositVerified(db, order.id, newOrderStatus);
       const result = await db
         .update(orders)
         .set({
@@ -271,6 +318,13 @@ export async function updateOrderStatusFromShipment(
       };
     }
 
+    // The order keeps its status, but the reserved stock may still be taken
+    // out of the store. A manual COD deposit must be verified before that
+    // move, exactly as for a status change.
+    if (stockStillReserved) {
+      await assertShipmentSyncDepositVerified(db, order.id, newOrderStatus);
+    }
+
     const availabilityTransitionVariantIds = await reconcileShipmentInventory(
       db,
       shipment,
@@ -281,6 +335,18 @@ export async function updateOrderStatusFromShipment(
 
     return { statusChange: null, availabilityTransitionVariantIds };
   } catch (error: unknown) {
+    if (error instanceof ManualCodDepositBlockedError) {
+      // A permanent business rule, not a transient failure: the courier's
+      // status is already saved and the order is left alone. The caller
+      // surfaces it for staff instead of retrying.
+      console.warn("Order status sync blocked by an unverified manual COD deposit:", {
+        shipmentId,
+        newStatus,
+        orderId: orderIdForSync,
+        error: error.message,
+      });
+      throw error;
+    }
     console.error("Error updating order status from shipment:", {
       shipmentId,
       newStatus,

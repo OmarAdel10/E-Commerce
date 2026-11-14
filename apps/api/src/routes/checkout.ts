@@ -71,6 +71,7 @@ const checkoutConfigSchema = z.object({
     code: z.string(),
     symbol: z.string(),
     decimalPlaces: z.number().int().min(0).max(3),
+    priceIncrementMinor: z.number().int().positive(),
   }),
   checkoutReadiness: readinessSchema.extend({
     hasActiveShippingMethod: z.boolean(),
@@ -96,6 +97,13 @@ const checkoutConfigSchema = z.object({
     enabled: z.boolean(),
     channels: z.array(z.enum(["email", "sms", "whatsapp"])).max(3),
     label: z.object({ en: z.string().max(200), bn: z.string().max(200) }),
+  }),
+  /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
+  codDeposit: z.object({
+    enabled: z.boolean(),
+    mode: z.enum(["fixed", "percentage"]),
+    amount: z.number().min(0),
+    percent: z.number().min(0).max(99),
   }),
 });
 

@@ -1,4 +1,5 @@
 import { validateCheckoutAttributes } from "./attributes";
+import { STOREFRONT_DELIVERY_PREFLIGHT_RESULT_PROOF } from "../../internals/storefront-checkout-proofs";
 // src/modules/checkout/prepare.ts
 // Storefront order creation — validates and prepares orders for the commit.
 
@@ -7,8 +8,10 @@ import type { Database } from "@scalius/database/client";
 import { assertOrderContact, resolveCheckoutContact, type CheckoutContactFieldSettings } from "./contact-fields";
 import { DEFAULT_CURRENCY } from "@scalius/shared/currency";
 import { defaultPriceIncrementMinor, type PricingCurrency } from "@scalius/shared/currency-policy";
-import { isDepositPaymentRequired } from "@scalius/shared/checkout-payment";
+import { isDepositPaymentRequired, type ManualCodDepositTerms } from "@scalius/shared/checkout-payment";
 import { fromMinor, toMinor } from "@scalius/shared/money";
+import { normalizeBdMobile, toLatinDigits } from "@scalius/shared/phone-input";
+import { isValidUrlScheme } from "@scalius/shared/url-scheme";
 import {
     convertStoreCurrencyMinor,
     isForeignPresentment,
@@ -38,6 +41,7 @@ import { checkoutPurchaseOptions, PAYMENT_METHOD_UNAVAILABLE_REASON, type Checko
 import { createAppLinePricer } from "./app-line-prices";
 import { bundleLineProperties, createCartTransformer, presentTransformedCart, ruleErrorsOnBuyerLines } from "./cart-transform";
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
+import { resolveManualCodDeposit } from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
 import {
     PaymentMethod,
@@ -50,7 +54,11 @@ import { nanoid } from "nanoid";
 import { generateOrderId } from "@scalius/shared/order-utils";
 import { DELIVERY_HIERARCHY_COUNTRY } from "@scalius/shared/markets";
 import { resolveAddressWithLocation, type ResolvedAddress } from "../customers";
-import { checkoutDocument } from "../settings";
+import {
+    checkoutDocument,
+    businessDocument,
+    customerAuthDocument,
+} from "../settings";
 import { ValidationError } from "@scalius/core/errors";
 import {
   orderBillingAddressColumns,
@@ -184,9 +192,18 @@ export interface StorefrontCheckoutPolicySnapshot {
      * refused, so no caller can skip the eligibility check.
      */
     paymentTermsDays?: number | null;
+    /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
+    codDepositEnabled: boolean;
+    /** "fixed" = codDepositAmount in major units; "percentage" = codDepositPercent of the order total. */
+    codDepositMode: "fixed" | "percentage";
+    /** Fixed-mode deposit amount in major units (e.g. 500.00 BDT). */
+    codDepositAmount: number;
+    /** Percentage-mode deposit: whole percent 1-99 of the order total. */
+    codDepositPercent: number;
+    /** Merchant-authored payment instructions snapshotted at order placement. */
+    codDepositInstructions: string;
 }
 
-const STOREFRONT_DELIVERY_PREFLIGHT_RESULT_PROOF = Symbol("scalius.storefrontDeliveryPreflightResult");
 const STOREFRONT_CHECKOUT_POLICY_SNAPSHOT_PROOF = Symbol("scalius.storefrontCheckoutPolicySnapshot");
 
 function markTrustedStorefrontDeliveryPreflightResult(
@@ -757,6 +774,13 @@ export async function createStorefrontOrder(
         paymentProviders?: PaymentProviders;
         /** The request's app providers (an app tax provider). */
         appProviders?: AppProviders;
+        verifyReviewedQuote?(review: {
+            taxQuote: TaxQuote;
+            shippingMethod: StorefrontOrderShippingMethodSnapshot | null;
+            linePropertiesHashes: readonly string[];
+            attributes: Record<string, string>;
+            manualCodDeposit: ManualCodDepositTerms | null;
+        }): Promise<void>;
     } = {},
 ): Promise<CreateStorefrontOrderResult> {
     if (data.items.length > MAX_ORDER_LINE_ITEMS) {
@@ -1030,19 +1054,29 @@ export async function createStorefrontOrder(
     // The deposit plan's balance is cash on delivery: it applies only where
     // cash fits every line, so a download or a gift card is paid in full
     // online and delivered at once (isDepositPaymentRequired).
-    const depositApplies = isPartialEnabled && !deferred && allowsCashOnDelivery;
-    if (paymentMethod === PaymentMethod.COD) {
-        // Cash on delivery collects cash amounts (whole taka in BDT): an
-        // amount due it cannot collect exactly is refused before the commit.
-        const cashIssue = (appOptions.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS)
-            .amountIssue(paymentMethod, giftCardTender.amountDueMinor, taxQuote.currencyCode);
+    const manualDeposit = resolveManualCodDeposit(
+        checkoutPolicySnapshot ?? fallbackSettings, taxQuote, requestCurrency,
+        { allowsCashOnDelivery, giftCardsApplied }, paymentProviders,
+    );
+    const linePropertiesHashes = await storefrontLinePropertiesHashes(cartValidation);
+    await appOptions.verifyReviewedQuote?.({
+        taxQuote, shippingMethod, linePropertiesHashes, attributes, manualCodDeposit: manualDeposit.terms,
+    });
+    if (paymentMethod === PaymentMethod.COD && manualDeposit.error) throw manualDeposit.error;
+    const manualDepositTerms = paymentMethod === PaymentMethod.COD ? manualDeposit.terms : null;
+    const onlineDepositApplies = isPartialEnabled && !deferred && allowsCashOnDelivery && paymentMethod !== PaymentMethod.COD;
+    const depositApplies = manualDepositTerms !== null || onlineDepositApplies;
+    if (paymentMethod === PaymentMethod.COD && !manualDepositTerms) {
+        const cashIssue = paymentProviders.amountIssue(paymentMethod, giftCardTender.amountDueMinor, taxQuote.currencyCode);
         if (cashIssue) throw new ValidationError(cashIssue, { reason: CASH_ON_DELIVERY_AMOUNT_REASON });
     }
 
-    if (isPartialEnabled && paymentMethod === PaymentMethod.COD) {
-        throw new ValidationError(giftCardsApplied
-            ? "This store takes an advance payment online. Pay the rest online, or cover the whole order with gift cards."
-            : "Advance deposit is required. COD cannot be selected for the full amount directly.");
+    if (paymentMethod === PaymentMethod.COD && !manualDepositTerms) {
+        if (isPartialEnabled) {
+            throw new ValidationError(giftCardsApplied
+                ? "This store takes an advance payment online. Pay the rest online, or cover the whole order with gift cards."
+                : "Advance deposit is required. COD cannot be selected for the full amount directly.");
+        }
     }
     const requiresCashCollection = paymentMethod === PaymentMethod.COD || (!giftCardsApplied && isDepositPaymentRequired({
         partialPaymentEnabled: depositApplies,
@@ -1079,6 +1113,47 @@ export async function createStorefrontOrder(
     // ------------------------------------------------------------------
     // Build Commit Payload
     // ------------------------------------------------------------------
+    // Order-time contact snapshot for manual COD deposit plans: what the
+    // buyer was told at placement (the plan, not the live setting, is the
+    // authority after settings changes).
+    let contactSnapshot: string | null = null;
+    if (manualDepositTerms) {
+        const [business, customerAuth] = await Promise.all([
+            businessDocument.read(storefrontDb),
+            customerAuthDocument.read(storefrontDb),
+        ]);
+        let whatsappUrl: string | null = null;
+        let hasWhatsappProfile = false;
+        const socialLinks = (business?.socialLinks ?? []).filter((link) => {
+            const url = isValidUrlScheme(link.url) ? URL.parse(link.url) : null;
+            const isShortLink = url?.hostname === "wa.me";
+            const isWhatsappHost = isShortLink || /(^|\.)whatsapp\.com$/.test(url?.hostname ?? "");
+            if (!isWhatsappHost && !link.label.toLowerCase().includes("whatsapp")) return true;
+
+            hasWhatsappProfile = true;
+            const opensChat = isShortLink
+                ? /^\/(?:[1-9]\d{5,14}\/?$|message\/[^/]+)/.test(url.pathname)
+                : isWhatsappHost && /^[1-9]\d{5,14}$/.test(url?.searchParams.get("phone") ?? "");
+            if (opensChat) whatsappUrl ??= link.url;
+            return false;
+        });
+        if (!whatsappUrl && (hasWhatsappProfile || customerAuth?.whatsapp === "same_as_phone") && business?.phone) {
+            const digits = toLatinDigits(normalizeBdMobile(business.phone) ?? business.phone).replace(/\D/g, "");
+            if (/^[1-9]\d{5,14}$/.test(digits)) whatsappUrl = `https://wa.me/${digits}`;
+        }
+        contactSnapshot = JSON.stringify({
+            phone: business?.phone ?? null,
+            email: business?.email ?? null,
+            whatsappUrl,
+            socialLinks: socialLinks.map((s) => ({
+                id: s.id,
+                label: s.label,
+                url: s.url,
+                iconUrl: s.iconUrl ?? null,
+            })),
+        });
+    }
+
     const orderId = identity?.orderId ?? generateOrderId();
     // The rate this order keeps: its market's, locked for the market's minutes
     // from now; the quote and the order price at the same rate (the authority
@@ -1196,6 +1271,14 @@ export async function createStorefrontOrder(
             : {}),
         requestUrl,
         taxQuote,
+        ...(manualDepositTerms ? {
+            codDeposit: {
+                amountMinor: manualDepositTerms.depositMinor,
+                instructions: manualDepositTerms.instructions,
+                percent: manualDepositTerms.percent,
+                contactSnapshot,
+            },
+        } : {}),
     };
 
     return {
@@ -1206,7 +1289,7 @@ export async function createStorefrontOrder(
         commitPayload,
         requiresShipping,
         depositPlan: depositApplies && !giftCardsApplied,
-        linePropertiesHashes: await storefrontLinePropertiesHashes(cartValidation),
+        linePropertiesHashes,
         giftCardTender,
         shippingMethod,
         appDiscounts: pricing.appDiscounts,

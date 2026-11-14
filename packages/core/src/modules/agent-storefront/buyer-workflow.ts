@@ -559,23 +559,40 @@ export async function submitAgentStorefrontCheckout(
       contactFields: authority.contactFields,
       shippingCountries: authority.shippingCountries,
       requireFullBillingAddress: authority.checkoutSettings.requireFullBillingAddress,
+      codDepositEnabled: authority.checkoutSettings.codDepositEnabled,
+      codDepositMode: authority.checkoutSettings.codDepositMode,
+      codDepositAmount: authority.checkoutSettings.codDepositAmount,
+      codDepositPercent: authority.checkoutSettings.codDepositPercent,
+      codDepositInstructions: authority.checkoutSettings.codDepositInstructions,
     }),
     authority.taxAuthority,
     {},
-    { apps, channel: "agent", paymentProviders, appProviders: options.appProviders },
+    {
+      apps,
+      channel: "agent",
+      paymentProviders,
+      appProviders: options.appProviders,
+      async verifyReviewedQuote(review) {
+        const fingerprintFor = (manualCodDeposit: typeof review.manualCodDeposit) => buildAgentStorefrontCheckoutQuoteFingerprint({
+          contextRevision: owned.revision,
+          shippingMethodId,
+          discountCode: owned.discountCode,
+          quote: review.taxQuote,
+          attributes: review.attributes,
+          manualCodDeposit,
+        });
+        const fingerprint = await fingerprintFor(review.manualCodDeposit);
+        const matchesAnotherMethod = input.paymentMethod !== PaymentMethod.COD
+          && review.manualCodDeposit !== null
+          && input.expectedQuoteFingerprint !== fingerprint;
+        assertAgentStorefrontCheckoutQuoteFingerprint(
+          input.expectedQuoteFingerprint,
+          matchesAnotherMethod ? await fingerprintFor(null) : fingerprint,
+        );
+      },
+    },
   ));
 
-  const currentQuoteFingerprint = await buildAgentStorefrontCheckoutQuoteFingerprint({
-    contextRevision: owned.revision,
-    shippingMethodId,
-    discountCode: owned.discountCode,
-    quote: prepared.taxQuote,
-    attributes,
-  });
-  assertAgentStorefrontCheckoutQuoteFingerprint(
-    input.expectedQuoteFingerprint,
-    currentQuoteFingerprint,
-  );
   // An app may have hidden the chosen method for this cart; readiness and
   // the merchant's payment policy were already checked above.
   if (apps.points.has("checkout.payment_methods")) {
@@ -589,9 +606,9 @@ export async function submitAgentStorefrontCheckout(
   const gatewayAmountIssue = paymentProviders.precommitIssue({
     paymentMethod: input.paymentMethod,
     currencyCode: prepared.taxQuote.currencyCode,
-    totalAmountMinor: prepared.taxQuote.totalMinor,
+    totalAmountMinor: prepared.taxQuote.totalMinor - (prepared.commitPayload.codDeposit?.amountMinor ?? 0),
     // The order's own deposit decision (never in a market's own currency, nor with a download).
-    partialPaymentEnabled: prepared.depositPlan,
+    partialPaymentEnabled: prepared.depositPlan && !prepared.commitPayload.codDeposit,
     partialPaymentAmount: checkoutSettings.partialPaymentAmount,
   });
   if (gatewayAmountIssue) throw new ValidationError(gatewayAmountIssue);

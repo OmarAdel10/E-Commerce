@@ -246,13 +246,17 @@ export function codDueText(order: OrderDeliveryFacts, copy: CheckoutLanguageData
 export function getOrderPaymentPresentation(
   order: Pick<OrderReceipt, "status" | "paymentMethod" | "paymentStatus" | "totalAmount" | "paidAmount" | "balanceDue">
     & OrderDeliveryFacts
-    & OrderGiftCardFacts,
+    & OrderGiftCardFacts
+    & { paymentPlan?: Pick<NonNullable<OrderReceipt["paymentPlan"]>, "kind" | "status" | "balanceDue"> | null },
   copy: CheckoutLanguageData,
 ) {
   const isCod = normalize(order.paymentMethod) === "cod";
   const paymentStatus = normalize(order.paymentStatus);
   const isClosed = CLOSED_ORDER_STATUSES.has(normalize(order.status)) || REFUNDED_PAYMENT_STATUSES.has(paymentStatus);
   const codCollection = isCod && ["unpaid", "partial"].includes(paymentStatus);
+  const manualDeposit = isCod && !isClosed && order.paymentPlan?.kind === "manual" && order.paymentPlan.status === "pending"
+    ? order.paymentPlan
+    : null;
   const giftCardTenders = readReceiptGiftCardTenders(order);
   // Gift cards paid part and cash on delivery collects the rest: that rest is due at the door.
   const codRemainder = isCod && paymentStatus === "partial" && giftCardTenders.length > 0;
@@ -261,15 +265,17 @@ export function getOrderPaymentPresentation(
     isClosed,
     statusLabel: codCollection && isClosed
       ? copy.orderReceiptPaymentStatusNoPaymentDueText
-      : isCod && (paymentStatus === "unpaid" || codRemainder)
-        ? codDueText(order, copy)
-        : formatOrderSuccessLabel(order.paymentStatus, copy),
-    badgeClass: codCollection
+      : manualDeposit
+        ? copy.codDepositRequiredText
+        : isCod && (paymentStatus === "unpaid" || codRemainder)
+          ? codDueText(order, copy)
+          : formatOrderSuccessLabel(order.paymentStatus, copy),
+    badgeClass: codCollection && !manualDeposit
       ? "bg-slate-100 text-slate-800"
       : getPaymentStatusBadgeClass(order.paymentStatus),
     methodLabel: formatOrderSuccessPaymentMethod(order.paymentMethod, copy, order),
     giftCardTenders,
-    balanceDue: getOrderSuccessVisibleBalanceDue(order),
+    balanceDue: manualDeposit?.balanceDue ?? getOrderSuccessVisibleBalanceDue(order),
     balanceLabel: isCod
       ? codDueText(order, copy)
       : giftCardTenders.length > 0

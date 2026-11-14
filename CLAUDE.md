@@ -92,6 +92,7 @@ pnpm generate:sdk        # commit any change in packages/api-client
 pnpm lint
 pnpm typecheck
 pnpm build
+pnpm test:affected --base origin/development        # test only changed units
 pnpm run deploy:api -- --dry-run
 pnpm check:dist-secrets
 pnpm check:build-canaries
@@ -118,6 +119,19 @@ No `.cursor` rules or `GEMINI.md` exist in this repository. The project does not
 ## Secrets reminder
 
 Never commit `.dev.vars`, `.env*`, real buyer data, or secrets. Install secrets via `wrangler secret put` (API: `SCALIUS_SECRET`, `CREDENTIAL_ENCRYPTION_KEY`; storefront: `SCALIUS_SECRET`).
+
+## GitHub Repository Policies
+
+- **Canonical repository:** `OmarAdel10/E-Commerce`.
+- **Authorized delivery remote:** `origin` (`https://github.com/OmarAdel10/E-Commerce.git`); `upstream` (`https://github.com/scaliuslabs/scalius-commerce-lite.git`) is fetch-only.
+- **Always use fully qualified GitHub repository identifiers.** For `gh`, use `--repo OmarAdel10/E-Commerce`; for GitHub APIs/connectors, specify owner and repository explicitly.
+- **Never infer the repository from a PR number, branch name, or GitHub CLI automatic resolution.**
+- **Verify head repository, base repository, and target branch before creating or modifying PRs.**
+- **Feature branches target `development`; promotion to `master` requires an explicitly approved release workflow.**
+- **Never create, close, retarget, merge, or force-push PRs without explicit authorization. Never write to upstream without separate explicit authorization.**
+- **Follow the `implement-review-ship` workflow:** branch from development → implement → fresh context-free reviewers → quality gate → PR. Two fresh independent reviews, scores above 90, zero Critical/High/Medium findings, zero untested changed units.
+- **Never claim a gate passed if it failed, was skipped, or only ran partially.**
+- **Preserve unrelated files, secrets, and existing business configuration.**
 
 ## Agent skills
 

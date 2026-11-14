@@ -272,6 +272,7 @@ export interface OrderListItem {
     shippingMethodKind: DeliveryMethodKind | null;
     /** Staff marked a pickup order ready to collect. */
     pickupReadyAt: Date | null;
+    hasUnverifiedManualDeposit: boolean;
 }
 
 export interface OrderDetails extends OrderListItem, OrderBillingAddressFields {
@@ -391,6 +392,18 @@ export interface OrderDetails extends OrderListItem, OrderBillingAddressFields {
     refundAttempts: OrderRefundAttemptView[];
     activeRefundOperation: ActiveRefundOperationView | null;
     supportRequests: OrderSupportRequestView[];
+    paymentPlan: {
+        totalAmount: number;
+        depositAmount: number;
+        balanceDue: number;
+        balanceDueDate: string | null;
+        kind: string;
+        status: string;
+        depositPaidAt: string | null;
+        balancePaidAt: string | null;
+        createdAt: string | null;
+        updatedAt: string | null;
+    } | null;
 }
 
 // ─────────────────────────────────────────
@@ -707,6 +720,16 @@ export interface StorefrontOrderCommitPayload {
     }>;
     requestUrl: string;
     taxQuote: TaxQuote;
+    /**
+     * Manual COD deposit plan to create with the order (PENDING, kind="manual").
+     * Present only when the COD order requires a manual deposit before fulfilment.
+     */
+    codDeposit?: {
+        amountMinor: number;
+        instructions: string | null;
+        percent: number | null;
+        contactSnapshot: string | null;
+    } | null;
 }
 
 // ─────────────────────────────────────────

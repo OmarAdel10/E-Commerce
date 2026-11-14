@@ -24,6 +24,7 @@ import {
   resolveBundlePromotionInterplay,
   paymentCountryOf,
   resolveCartPaymentMethods,
+  resolveManualCodDeposit,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
   summarizeStorefrontCartFulfilment,
@@ -34,7 +35,8 @@ import {
   type CalculatedRateOptions,
   type StorefrontCartItemIssue,
 } from "@scalius/core/modules/checkout";
-import { priceIncrementForCurrency } from "@scalius/core/modules/settings";
+import { checkoutDocument, priceIncrementForCurrency } from "@scalius/core/modules/settings";
+import type { ManualCodDepositQuote } from "@scalius/shared/checkout-payment";
 import { readStoreCurrency } from "@scalius/core/modules/markets";
 import { assertDiscountCodesApplied, quoteStorefrontDiscount } from "@scalius/core/modules/promotions";
 import { buildStorefrontTaxAllocationLineId } from "@scalius/core/modules/tax";
@@ -136,6 +138,7 @@ export interface AgentStorefrontCheckoutQuote {
   taxAmount: number;
   totalMinor: number;
   totalAmount: number;
+  manualCodDeposit: ManualCodDepositQuote | null;
   items: Array<{
     productId: string;
     variantId: string;
@@ -945,6 +948,7 @@ async function priceAgentStorefrontCheckout(
   const attributes = validateCheckoutAttributes(apps, input.attributes);
   const customerId = await getLiveContextCustomerId(db, row);
   const customerPhone = input.customerPhone?.trim() || await getLiveContextCustomerPhone(db, row);
+  const shopCurrency = await readStoreCurrency(db);
   // Promotions or bundles, then the apps, then tax: the one rule the
   // storefront quote and the submitted order use (checkout/pricing.ts), so
   // the reviewed fingerprint is the committed one.
@@ -957,7 +961,7 @@ async function priceAgentStorefrontCheckout(
     currency: {
       code: projection.currencyCode,
       decimalPlaces: projection.decimalPlaces,
-      priceIncrementMinor: priceIncrementForCurrency(await readStoreCurrency(db), projection.currencyCode),
+      priceIncrementMinor: priceIncrementForCurrency(shopCurrency, projection.currencyCode),
     },
     apps,
     attributes,
@@ -972,7 +976,7 @@ async function priceAgentStorefrontCheckout(
     // Submit lists delivery options from the order's own address (none for pickup), so the quote does too.
     location: null,
   });
-  return { pricing, attributes };
+  return { pricing, attributes, shopCurrency };
 }
 
 export async function quoteAgentStorefrontCheckout(
@@ -987,7 +991,10 @@ export async function quoteAgentStorefrontCheckout(
   const delivery = projection.delivery!;
   const discountCode = row.discountCode?.trim().toUpperCase() ?? null;
   const apps = input.apps ?? NO_CHECKOUT_APP_FUNCTIONS;
-  const { pricing, attributes } = await priceAgentStorefrontCheckout(db, row, projection, input);
+  const [{ pricing, attributes, shopCurrency }, checkoutSettings] = await Promise.all([
+    priceAgentStorefrontCheckout(db, row, projection, input),
+    checkoutDocument.read(db),
+  ]);
   assertNoCheckoutRuleErrors(pricing.ruleErrors);
   assertDiscountCodesApplied(pricing.typedCodes);
   const quote = pricing.taxQuote;
@@ -995,19 +1002,29 @@ export async function quoteAgentStorefrontCheckout(
   // app adjusts them, or when a delivery abroad may rule a method out:
   // cash on delivery serves Bangladesh).
   const paymentProviders = input.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS;
+  const manualDeposit = resolveManualCodDeposit(checkoutSettings, quote, shopCurrency, {
+    allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
+    giftCardsApplied: false,
+  }, paymentProviders);
   // Where the order is handed over: the delivery country, else the store's.
   const paymentCountry = paymentCountryOf(delivery.fulfilment, delivery.address?.countryCode, pricing.storeCountryCode);
   const abroad = paymentCountry !== null && paymentCountry !== DELIVERY_HIERARCHY_COUNTRY;
   // A market's own currency may rule a gateway out (`chargeCurrencies`, MARKETS-DESIGN step 6).
   const foreignCurrency = quote.currencyCode !== projection.money.shopCurrencyCode;
   let payment: { methods: Array<{ methodId: string; name: string }>; changed: boolean } | null = null;
-  if (apps.points.has("checkout.payment_methods") || abroad || foreignCurrency) {
+  if (apps.points.has("checkout.payment_methods") || abroad || foreignCurrency || checkoutSettings.codDepositEnabled) {
     const enabled = (await getActivePaymentMethods(db, input.credentialEncryptionKey, paymentProviders)).enabledMethods;
-    const allowed = resolveCartPaymentMethods(enabled, delivery.fulfilment, paymentCountry, paymentProviders, quote.currencyCode);
+    const allowed = resolveCartPaymentMethods(
+      manualDeposit.error ? enabled.filter((method) => method !== "cod") : enabled,
+      delivery.fulfilment, paymentCountry, paymentProviders, quote.currencyCode,
+    );
     payment = await resolveAppPaymentMethods(apps, pricing.appCart, allowed, paymentProviders);
     const withoutCountry = resolveCartPaymentMethods(enabled, delivery.fulfilment);
     if (allowed.length !== withoutCountry.length) payment = { ...payment, changed: true };
   }
+  const offeredManualDeposit = payment?.methods.some((method) => method.methodId === "cod")
+    ? manualDeposit.terms
+    : null;
   const toAmount = (minor: number) => fromMinor(minor, quote.decimalPlaces);
   const currentQuoteFingerprint = await buildAgentStorefrontCheckoutQuoteFingerprint({
     contextRevision: row.revision,
@@ -1015,6 +1032,7 @@ export async function quoteAgentStorefrontCheckout(
     discountCode,
     quote,
     attributes,
+    manualCodDeposit: offeredManualDeposit,
   });
   return {
     valid: true,
@@ -1037,6 +1055,9 @@ export async function quoteAgentStorefrontCheckout(
     taxAmount: toAmount(quote.taxMinor),
     totalMinor: quote.totalMinor,
     totalAmount: toAmount(quote.totalMinor),
+    manualCodDeposit: offeredManualDeposit
+      ? { depositMinor: offeredManualDeposit.depositMinor, balanceMinor: offeredManualDeposit.balanceMinor }
+      : null,
     items: projection.items.map((item) => ({
       productId: item.productId,
       variantId: item.variantId,

@@ -91,6 +91,7 @@
     "./integrations/tracking/*": "./src/integrations/tracking/*.ts",
     "./search": "./src/search/index.ts",
     "./testing": "./src/testing/index.ts",
+    "./testing/*": "./src/testing/*.ts",
     "./utils/*": "./src/utils/*.ts"
   },
   "dependencies": {

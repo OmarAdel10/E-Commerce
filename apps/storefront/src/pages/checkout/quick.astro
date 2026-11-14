@@ -34,6 +34,8 @@ import {
 import { processOrder } from "@/lib/cart/server";
 import { describeRejectedCode } from "@/lib/cart/discount-panel";
 import { formatMoney } from "@/lib/currency";
+import { fromMinor } from "@scalius/shared/money";
+import { codDueText } from "@/lib/order-success-state";
 import { ENDED_CUSTOMER_SESSION_COOKIES, getCustomerSessionTokenFromCookie } from "@/lib/customer-session-cookie";
 import { createOrderReceiptCookieHeader } from "@/lib/order-receipt-cookie";
 import { MIN_SHIPPING_ADDRESS_LENGTH } from "@/lib/checkout/shipping-address";
@@ -195,7 +197,10 @@ const quote = quoteResult?.ok ? quoteResult.quote : null;
 // delivery serves Bangladesh), and cash only when every line is handed over
 // in person. This page places cash orders, so without cash it sends the buyer
 // to the cart.
-const codFitsOrder = quote === null || quote.allowedPaymentMethods.includes("cod");
+const codFitsOrder = quote === null || (
+  quote.allowedPaymentMethods.includes("cod")
+  && (!checkoutConfig.codDeposit?.enabled || quote.manualCodDeposit !== undefined)
+);
 const buyerFields = [...new Map((quote?.buyerUi ?? []).flatMap((block) =>
   block.attributes.filter((attribute) => attribute.required).map((attribute) => {
     const key = `${block.appId}.${attribute.key}`;
@@ -653,6 +658,18 @@ const secondaryButtonClass =
                   <span class="font-semibold text-foreground">{copy.totalText}</span>
                   <span class="text-xl font-semibold tabular-nums text-foreground">{quoteMoney(quote.totalAmount)}</span>
                 </div>
+                {quote.manualCodDeposit && (
+                  <div class="space-y-2">
+                    <div class="flex justify-between gap-3">
+                      <span>{copy.codDepositRequiredText}</span>
+                      <span class="tabular-nums">{quoteMoney(fromMinor(quote.manualCodDeposit.depositMinor, quote.decimalPlaces))}</span>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                      <span>{codDueText({ shippingMethodKind: quote.deliveryMethodKind, requiresShipping: quote.requiresShipping }, copy)}</span>
+                      <span class="tabular-nums">{quoteMoney(fromMinor(quote.manualCodDeposit.balanceMinor, quote.decimalPlaces))}</span>
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               <p class="text-muted-foreground">{mode === "none" ? copy.calculatingText : copy.chooseAddressForDeliveryText}</p>

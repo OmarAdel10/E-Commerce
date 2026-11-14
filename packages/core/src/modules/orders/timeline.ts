@@ -38,6 +38,8 @@ export const ORDER_EVENT_KINDS = [
     "prices_set",
     /** An app's typed entry (packages/plugin-sdk/docs/apps.md, "Order timeline"): `data` names the app and its kind. */
     "app_event",
+    /** A courier update could not be applied because the manual COD deposit is not verified; staff must reconcile it. */
+    "deposit_reconciliation_required",
 ] as const;
 export type OrderEventKind = (typeof ORDER_EVENT_KINDS)[number];
 

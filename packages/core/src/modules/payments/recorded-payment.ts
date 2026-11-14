@@ -9,13 +9,15 @@
 // returns the first result and a different payment under the same key is
 // refused. The caller's timeline line (`timelineLine`) commits in the same
 // batch, so a payment has its line exactly once, whatever is retried or lost.
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import {
   orders,
   orderPayments,
+  paymentPlans,
   OrderStatus,
   PaymentRecordStatus,
+  PaymentPlanStatus,
 } from "@scalius/database/schema";
 import { buildBatchGuard, isBatchGuardError, safeBatch, type Database } from "@scalius/database/client";
 import { ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
@@ -43,6 +45,12 @@ export interface RecordOrderPaymentInput {
   requestKey: string;
   /** The order version the caller saw; a different one is refused (409) and nothing is recorded. */
   expectedVersion?: number;
+  /**
+   * `"deposit"` when recording a manual COD deposit against a pending manual
+   * payment plan. When absent, the type is inferred as `"full"` or `"balance"`
+   * as before.
+   */
+  paymentType?: "deposit";
   /**
    * The order timeline's line for this payment, written in the payment's own
    * batch (the orders module builds it: `buildOrderEventInsert`, keyed by the
@@ -87,10 +95,6 @@ function trimmed(value: string | null | undefined, max: number): string | null {
   return text ? text.slice(0, max) : null;
 }
 
-async function recordedPaymentId(orderId: string, requestKey: string): Promise<string> {
-  return `recorded:${orderId}:${(await sha256Hex(`${orderId}\n${requestKey}`)).slice(0, 32)}`;
-}
-
 function readMetadata(value: string | null): Partial<RecordedPaymentMetadata> {
   if (!value) return {};
   try {
@@ -124,10 +128,18 @@ export async function recordOrderPayment(
     note: trimmed(input.note, 500),
     recordedBy: input.recordedBy.slice(0, 160),
   };
-  const paymentId = await recordedPaymentId(input.orderId, requestKey);
 
-  const [order, existing] = await Promise.all([
-    db.select({
+  const keyInput = `${input.orderId}\n${requestKey}`;
+  const [legacyHash, alternateHash] = await Promise.all([
+    sha256Hex(keyInput), sha256Hex(`recorded\n${keyInput}`),
+  ]);
+  const paymentId = `recorded:${input.orderId}:${legacyHash.slice(0, 32)}`;
+  const alternateId = `recorded:${input.orderId}:${alternateHash}`;
+
+  // Read the replay and plan in the same snapshot. A concurrent same-key
+  // request can commit both the ledger row and the plan transition at once.
+  const snapshot = await db.select({
+    order: {
       id: orders.id,
       status: orders.status,
       totalAmountMinor: orders.totalAmountMinor,
@@ -139,22 +151,37 @@ export async function recordOrderPayment(
       deletedAt: orders.deletedAt,
       currencyCode: orders.currencyCode,
       currencyDecimalPlaces: orders.currencyDecimalPlaces,
-    }).from(orders).where(eq(orders.id, input.orderId)).get(),
-    db.select({
+    },
+    plan: {
+      id: paymentPlans.id,
+      status: paymentPlans.status,
+      kind: paymentPlans.kind,
+      depositAmountMinor: paymentPlans.depositAmountMinor,
+      balanceDueMinor: paymentPlans.balanceDueMinor,
+    },
+    existing: {
+      id: orderPayments.id,
       amountMinor: orderPayments.amountMinor,
-      status: orderPayments.status,
+      paymentType: orderPayments.paymentType,
       metadata: orderPayments.metadata,
-    }).from(orderPayments).where(eq(orderPayments.id, paymentId)).get(),
-  ]);
-  if (!order || order.deletedAt) throw new NotFoundError("Order not found");
-
+    },
+  }).from(orders)
+    .leftJoin(paymentPlans, eq(paymentPlans.orderId, orders.id))
+    .leftJoin(orderPayments, and(eq(orderPayments.orderId, orders.id), inArray(orderPayments.id, [paymentId, alternateId])))
+    .where(eq(orders.id, input.orderId))
+    .orderBy(sql`CASE WHEN ${orderPayments.id} = ${paymentId} THEN 0 ELSE 1 END`)
+    .limit(1)
+    .get();
+  if (!snapshot || snapshot.order.deletedAt) throw new NotFoundError("Order not found");
+  const { order, plan, existing } = snapshot;
   if (existing) {
     const recorded = readMetadata(existing.metadata);
-    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via) {
+    if (existing.amountMinor !== input.amountMinor || recorded.via !== input.via
+      || (existing.paymentType === "deposit") !== (input.paymentType === "deposit")) {
       throw new ConflictError("This retry key already recorded a different payment.");
     }
     return {
-      paymentId,
+      paymentId: existing.id,
       paymentStatus: order.paymentStatus,
       paidAmountMinor: order.paidAmountMinor,
       balanceDueMinor: order.balanceDueMinor,
@@ -162,14 +189,35 @@ export async function recordOrderPayment(
     };
   }
 
-  if (input.expectedVersion !== undefined && input.expectedVersion !== order.version) {
-    throw new ConflictError("This order changed. Reload it and record the payment again.");
-  }
-  if (order.paymentTermsDays === null) {
-    throw new ValidationError("Payments are recorded here only for invoice (net terms) orders. Record cash on delivery with Collect cash.");
+  // Determine if this is a manual COD deposit
+  let isDeposit = false;
+  const depositRequested = input.paymentType === "deposit";
+  if (depositRequested
+      && plan
+      && plan.kind === "manual"
+      && plan.status === PaymentPlanStatus.PENDING) {
+    isDeposit = true;
+    if (input.amountMinor !== plan.depositAmountMinor) {
+      throw new ValidationError("The deposit amount must equal the required deposit exactly.", {
+        depositAmountMinor: plan.depositAmountMinor,
+      });
+    }
+    const expectedBalance = Math.max(0, order.totalAmountMinor - input.amountMinor);
+    if (plan.balanceDueMinor !== expectedBalance) {
+      throw new ValidationError("The deposit plan's balance does not match the order total.");
+    }
+  } else if (depositRequested) {
+    // Explicit deposit request without a matching pending manual plan.
+    throw new ValidationError("No pending manual deposit plan found for this order.");
   }
   if (CLOSED_STATUSES.has(order.status)) {
     throw new ValidationError("This order is closed, so no payment can be recorded on it.");
+  }
+  if (input.expectedVersion !== undefined && input.expectedVersion !== order.version) {
+    throw new ConflictError("This order changed. Reload it and record the payment again.");
+  }
+  if (!isDeposit && order.paymentTermsDays === null) {
+    throw new ValidationError("Payments are recorded here only for invoice (net terms) orders or a pending manual deposit. Record cash on delivery with Collect cash.");
   }
   if (order.balanceDueMinor <= 0) {
     throw new ValidationError("This order has nothing left to pay.");
@@ -186,7 +234,9 @@ export async function recordOrderPayment(
     paymentAmountMinor: input.amountMinor,
   });
   const nextVersion = order.version + 1;
-  const paymentType = order.paidAmountMinor === 0 && next.balanceDueMinor === 0 ? "full" : "balance";
+  const paymentType = isDeposit
+    ? "deposit"
+    : (order.paidAmountMinor === 0 && next.balanceDueMinor === 0 ? "full" : "balance");
   // Holds only if this batch claimed the order: its own payment row exists
   // and the order moved to exactly this payment's state.
   const landed = sql`EXISTS (
@@ -213,6 +263,15 @@ export async function recordOrderPayment(
     sql`${orders.deletedAt} IS NULL`,
   );
   const statements: SQLiteBatchItem[] = [
+    ...(isDeposit && plan ? [buildBatchGuard(db, sql`EXISTS (
+      SELECT 1 FROM ${paymentPlans}
+      WHERE ${paymentPlans.id} = ${plan.id}
+        AND ${paymentPlans.orderId} = ${order.id}
+        AND ${paymentPlans.kind} = 'manual'
+        AND ${paymentPlans.status} = ${PaymentPlanStatus.PENDING}
+        AND ${paymentPlans.depositAmountMinor} = ${plan.depositAmountMinor}
+        AND ${paymentPlans.balanceDueMinor} = ${plan.balanceDueMinor}
+    )`, RECORDED_PAYMENT_BATCH_GUARD) as SQLiteBatchItem] : []),
     // The payment row first, and only while the order is still the one read:
     // its id is the claim (a racing retry inserts nothing), and a payment
     // racing under another key finds the order moved and inserts nothing, so
@@ -250,6 +309,17 @@ export async function recordOrderPayment(
       orderUnchanged,
       sql`EXISTS (SELECT 1 FROM ${orderPayments} WHERE ${orderPayments.id} = ${paymentId} AND ${orderPayments.amountMinor} = ${input.amountMinor})`,
     )) as unknown as SQLiteBatchItem,
+    ...(isDeposit && plan ? [
+      db.update(paymentPlans).set({
+        status: PaymentPlanStatus.DEPOSIT_PAID,
+        depositPaidAt: sql`unixepoch()`,
+        updatedAt: sql`unixepoch()`,
+      }).where(and(
+        eq(paymentPlans.id, plan.id),
+        eq(paymentPlans.orderId, order.id),
+        eq(paymentPlans.status, PaymentPlanStatus.PENDING),
+      )) as unknown as SQLiteBatchItem,
+    ] : []),
     ...(timelineLine ? [timelineLine as SQLiteBatchItem] : []),
     ...(reviewHold ? [reviewHold as SQLiteBatchItem] : []),
     buildBatchGuard(db, landed, RECORDED_PAYMENT_BATCH_GUARD) as SQLiteBatchItem,
@@ -261,7 +331,7 @@ export async function recordOrderPayment(
     if (isBatchGuardError(error, RECORDED_PAYMENT_BATCH_GUARD)) {
       // A retry that lost the race to itself replays; anything else changed the order.
       const replay = await db.select({ amountMinor: orderPayments.amountMinor })
-        .from(orderPayments).where(eq(orderPayments.id, paymentId)).get();
+        .from(orderPayments).where(inArray(orderPayments.id, [paymentId, alternateId])).get();
       if (replay) return recordOrderPayment(db, input);
       throw new ConflictError("The order's payment changed while this payment was being recorded. Reload and try again.");
     }

@@ -6,8 +6,6 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const blockedExactPaths = new Set([
-  "AGENTS.md",
-  "CLAUDE.md",
   "CODEX.md",
   "GEMINI.md",
   "secret-scanning-alerts.json",
@@ -22,6 +20,9 @@ const blockedPrefixes = [
   "docs/research/",
 ];
 // The agent CLI's own docs name the assistants it installs into; that is product text.
+// Exact filenames that are exempt from the assistant-text scan (root only).
+const agentClientDocExactFiles = ["CLAUDE.md", "AGENTS.md"];
+// Prefix-based exemptions (e.g., packages/cli/).
 const agentClientDocPrefixes = ["packages/cli/"];
 const blockedMarkdownText = [
   /\bChatGPT\b/iu,
@@ -68,7 +69,11 @@ export function collectRepositoryHygieneFailures(trackedFiles, {
     }
 
     if (!normalized.toLowerCase().endsWith(".md")) continue;
-    if (agentClientDocPrefixes.some((prefix) => normalized.startsWith(prefix))) continue;
+    // Exact filename match for root CLAUDE.md and AGENTS.md; prefix match for packages/cli/.
+    const isAgentDoc =
+      agentClientDocExactFiles.some((exact) => normalized === exact) ||
+      agentClientDocPrefixes.some((prefix) => normalized.startsWith(prefix));
+    if (isAgentDoc) continue;
     const source = readText(file);
     for (const pattern of blockedMarkdownText) {
       if (pattern.test(source)) {

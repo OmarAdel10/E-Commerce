@@ -9997,6 +9997,10 @@ export type PostApiV1StorefrontAgentContextsByContextIdCheckoutQuoteResponses = 
             taxAmount: number;
             totalMinor: number;
             totalAmount: number;
+            manualCodDeposit: {
+                depositMinor: number;
+                balanceMinor: number;
+            } | null;
             items: Array<{
                 productId: string;
                 variantId: string;
@@ -10749,6 +10753,24 @@ export type GetApiV1StorefrontAgentContextsByContextIdOrdersByOrderIdReceiptResp
     200: {
         success: true;
         data: {
+            paymentPlan: {
+                kind: string;
+                status: string;
+                depositAmount: number;
+                balanceDue: number;
+                instructions: string | null;
+                contactSnapshot: {
+                    phone: string | null;
+                    email: string | null;
+                    whatsappUrl: string | null;
+                    socialLinks: Array<{
+                        id: string;
+                        label: string;
+                        url: string;
+                        iconUrl: string | null;
+                    }>;
+                } | null;
+            } | null;
             [key: string]: unknown;
         };
     };
@@ -11715,6 +11737,7 @@ export type GetApiV1CheckoutConfigResponses = {
                 code: string;
                 symbol: string;
                 decimalPlaces: number;
+                priceIncrementMinor: number;
             };
             checkoutReadiness: {
                 status: 'ready' | 'incomplete' | 'error';
@@ -11743,6 +11766,12 @@ export type GetApiV1CheckoutConfigResponses = {
                     en: string;
                     bn: string;
                 };
+            };
+            codDeposit: {
+                enabled: boolean;
+                mode: 'fixed' | 'percentage';
+                amount: number;
+                percent: number;
             };
         };
     };
@@ -12323,6 +12352,11 @@ export type GetApiV1CustomerAuthOrdersResponses = {
                 totalAmount: number;
                 paidAmount: number;
                 balanceDue: number;
+                paymentPlan: {
+                    kind: 'manual';
+                    status: 'pending';
+                    balanceDue: number;
+                } | null;
                 shippingCharge: number;
                 shippingMethodId: string | null;
                 shippingMethodName: string | null;
@@ -13454,6 +13488,19 @@ export type GetApiV1CustomerAuthOrdersByIdResponses = {
              */
             supportRequestIntro: string | null;
             paymentPlan: {
+                kind: string;
+                instructions: string | null;
+                contactSnapshot: {
+                    phone: string | null;
+                    email: string | null;
+                    whatsappUrl: string | null;
+                    socialLinks: Array<{
+                        id: string;
+                        label: string;
+                        url: string;
+                        iconUrl: string | null;
+                    }>;
+                } | null;
                 totalAmount: number;
                 depositAmount: number;
                 balanceDue: number;
@@ -20684,6 +20731,24 @@ export type GetApiV1OrdersReceiptByIdResponses = {
         success: true;
         data: {
             order: {
+                paymentPlan: {
+                    kind: string;
+                    status: string;
+                    depositAmount: number;
+                    balanceDue: number;
+                    instructions: string | null;
+                    contactSnapshot: {
+                        phone: string | null;
+                        email: string | null;
+                        whatsappUrl: string | null;
+                        socialLinks: Array<{
+                            id: string;
+                            label: string;
+                            url: string;
+                            iconUrl: string | null;
+                        }>;
+                    } | null;
+                } | null;
                 buyerUi: Array<{
                     appId: string;
                     releaseId: string;
@@ -23090,6 +23155,13 @@ export type PostApiV1OrdersTaxQuoteResponses = {
             taxAmount: number;
             totalMinor: number;
             totalAmount: number;
+            /**
+             * The reviewed manual deposit and cash-on-delivery balance, in the quote currency's minor units.
+             */
+            manualCodDeposit: {
+                depositMinor: number;
+                balanceMinor: number;
+            } | null;
             amountDueMinor: number;
             amountDue: number;
             /**
@@ -25655,6 +25727,10 @@ export type PostApiV1AdminResourcesOrdersByIdPaymentsData = {
          * The order `revision` you read; a different one is refused with 409.
          */
         expectedRevision?: number;
+        /**
+         * `"deposit"` when recording a manual COD deposit. Staff only.
+         */
+        paymentType?: 'deposit';
     };
     headers?: {
         /**
@@ -50144,6 +50220,11 @@ export type GetApiV1AdminSettingsCheckoutFlowResponses = {
             partialPaymentAmount: number;
             autoFulfilMode: 'after_payment' | 'after_confirmation';
             requireFullBillingAddress: boolean;
+            codDepositEnabled: boolean;
+            codDepositMode: 'fixed' | 'percentage';
+            codDepositAmount: number;
+            codDepositPercent: number;
+            codDepositInstructions: string;
             revision: number;
         };
     };
@@ -50159,6 +50240,11 @@ export type PutApiV1AdminSettingsCheckoutFlowData = {
         partialPaymentAmount: number;
         autoFulfilMode?: 'after_payment' | 'after_confirmation';
         requireFullBillingAddress?: boolean;
+        codDepositEnabled?: boolean;
+        codDepositMode?: 'fixed' | 'percentage';
+        codDepositAmount?: number;
+        codDepositPercent?: number;
+        codDepositInstructions?: string;
         expectedRevision: number;
     };
     path?: never;
@@ -50212,6 +50298,11 @@ export type PutApiV1AdminSettingsCheckoutFlowResponses = {
             partialPaymentAmount: number;
             autoFulfilMode: 'after_payment' | 'after_confirmation';
             requireFullBillingAddress: boolean;
+            codDepositEnabled: boolean;
+            codDepositMode: 'fixed' | 'percentage';
+            codDepositAmount: number;
+            codDepositPercent: number;
+            codDepositInstructions: string;
             revision: number;
         };
     };
@@ -56211,6 +56302,8 @@ export type PostApiV1AdminOrdersByIdShipmentsByShipmentIdRefreshResponses = {
             providerName: string | null;
             statusChanged: boolean;
             orderStatusUpdate: boolean;
+            reconciliationRequired: boolean;
+            reconciliationReason: string | null;
             [key: string]: unknown;
         };
     };
@@ -58151,6 +58244,7 @@ export type GetApiV1AdminOrdersResponses = {
                  */
                 refundDue: number;
                 refundedAmount: number;
+                hasUnverifiedManualDeposit: boolean;
                 /**
                  * Some line ships, so the order has a delivery address.
                  */
@@ -58616,6 +58710,7 @@ export type GetApiV1AdminOrdersPaymentRecoveryResponses = {
                  */
                 refundDue: number;
                 refundedAmount: number;
+                hasUnverifiedManualDeposit: boolean;
                 /**
                  * Some line ships, so the order has a delivery address.
                  */
@@ -59400,7 +59495,7 @@ export type GetApiV1AdminOrdersByIdTimelineResponses = {
         data: {
             events: Array<{
                 id: string;
-                kind: 'placed' | 'comment' | 'status_changed' | 'details_edited' | 'items_edited' | 'shipment_created' | 'cod_collected' | 'cod_failed' | 'cod_returned' | 'payment_recorded' | 'refund_recorded' | 'refund_kept' | 'return_created' | 'return_approved' | 'return_received' | 'parcel_returned' | 'request_submitted' | 'request_resolved' | 'archived' | 'unarchived' | 'invoice_issued' | 'fulfillment_location_changed' | 'prices_set' | 'app_event';
+                kind: 'placed' | 'comment' | 'status_changed' | 'details_edited' | 'items_edited' | 'shipment_created' | 'cod_collected' | 'cod_failed' | 'cod_returned' | 'payment_recorded' | 'refund_recorded' | 'refund_kept' | 'return_created' | 'return_approved' | 'return_received' | 'parcel_returned' | 'request_submitted' | 'request_resolved' | 'archived' | 'unarchived' | 'invoice_issued' | 'fulfillment_location_changed' | 'prices_set' | 'app_event' | 'deposit_reconciliation_required';
                 body: string | null;
                 data: {
                     [key: string]: unknown;
@@ -59469,7 +59564,7 @@ export type PostApiV1AdminOrdersByIdTimelineResponses = {
         success: true;
         data: {
             id: string;
-            kind: 'placed' | 'comment' | 'status_changed' | 'details_edited' | 'items_edited' | 'shipment_created' | 'cod_collected' | 'cod_failed' | 'cod_returned' | 'payment_recorded' | 'refund_recorded' | 'refund_kept' | 'return_created' | 'return_approved' | 'return_received' | 'parcel_returned' | 'request_submitted' | 'request_resolved' | 'archived' | 'unarchived' | 'invoice_issued' | 'fulfillment_location_changed' | 'prices_set' | 'app_event';
+            kind: 'placed' | 'comment' | 'status_changed' | 'details_edited' | 'items_edited' | 'shipment_created' | 'cod_collected' | 'cod_failed' | 'cod_returned' | 'payment_recorded' | 'refund_recorded' | 'refund_kept' | 'return_created' | 'return_approved' | 'return_received' | 'parcel_returned' | 'request_submitted' | 'request_resolved' | 'archived' | 'unarchived' | 'invoice_issued' | 'fulfillment_location_changed' | 'prices_set' | 'app_event' | 'deposit_reconciliation_required';
             body: string | null;
             data: {
                 [key: string]: unknown;
@@ -59816,6 +59911,18 @@ export type GetApiV1AdminOrdersByIdResponses = {
             billingValidationSkipped: boolean;
             paidAmount: number | null;
             balanceDue: number | null;
+            paymentPlan: {
+                kind: string;
+                status: string;
+                totalAmount: number;
+                depositAmount: number;
+                balanceDue: number;
+                balanceDueDate: string | null;
+                depositPaidAt: string | null;
+                balancePaidAt: string | null;
+                createdAt: string | null;
+                updatedAt: string | null;
+            } | null;
             version: number;
             createdAt: string | number;
             updatedAt: string | number;
@@ -59977,6 +60084,7 @@ export type GetApiV1AdminOrdersByIdResponses = {
              */
             refundDue: number;
             refundedAmount: number;
+            hasUnverifiedManualDeposit: boolean;
             /**
              * Some line ships, so the order has a delivery address.
              */
@@ -60353,6 +60461,7 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 depositPaidAt: string | number | unknown;
                 balancePaidAt: string | number | unknown;
                 balanceDueDate: string | null;
+                kind: string;
                 status: string;
                 createdAt: string | number;
                 updatedAt: string | number;
