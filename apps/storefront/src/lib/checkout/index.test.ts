@@ -179,4 +179,13 @@ describe("renderOrderSummaryDetails — COD deposit branch", () => {
     const html = container.innerHTML;
     expect(html).not.toContain("COD deposit required");
   });
+
+  it("falls through when method is cod but manualCodDeposit is null", () => {
+    const data = { cartItems: "{}" };
+    renderOrderSummaryDetails(container, data, baseConfig, { ...baseQuote, manualCodDeposit: null }, "cod");
+
+    const html = container.innerHTML;
+    expect(html).not.toContain("COD deposit required");
+    expect(html).not.toContain("Balance due on delivery");
+  });
 });
