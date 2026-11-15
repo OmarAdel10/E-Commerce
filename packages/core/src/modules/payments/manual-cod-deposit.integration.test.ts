@@ -128,6 +128,18 @@ describe("manual COD deposit production ledger", () => {
     expect(row("orders").status).toBe("pending");
   });
 
+  it("rejects a payment recorded against a stale expectedVersion", async () => {
+    await expect(recordOrderPayment(fixture.db, { ...input(), expectedVersion: 999 })).rejects.toThrow(/order changed/);
+    expect(row("orders").paid_amount_minor).toBe(0);
+    expect(fixture.sqlite.prepare("SELECT count(*) AS n FROM order_payments").get()!.n).toBe(0);
+  });
+
+  it("accepts a payment recorded with the correct expectedVersion", async () => {
+    const result = await recordOrderPayment(fixture.db, { ...input(), expectedVersion: 1 });
+    expect(result.replayed).toBe(false);
+    expect(row("orders").paid_amount_minor).toBe(2000);
+  });
+
   it.each(["deposit_paid", "completed"])("guard accepts a %s plan", async (status) => {
     fixture.sqlite.prepare("UPDATE payment_plans SET status = ?").run(status);
     await expect(assertManualCodDepositVerified(fixture.db, "deposit_order")).resolves.toBeUndefined();
