@@ -63,6 +63,10 @@ overrides:
   # validation, and the node server's upgrade and path handling).
   hono: "4.13.16"
   "@hono/node-server": "2.1.6"
+  # Astro 7.4.7 closes GHSA-r3h5-4585-7x3w: the image endpoint in the node
+  # adapter could read a file from a case-variant sibling of the output
+  # directory on a case-sensitive filesystem.
+  astro: "7.4.12"
   # The dashboard's Radix primitives stay on one release line; a newer dialog
   # under cmdk alone duplicates the shared primitives in every route bundle.
   "cmdk>@radix-ui/react-dialog": "1.1.23"
@@ -92,9 +96,9 @@ allowBuilds:
   workerd: true
 
 minimumReleaseAgeExclude:
-  - '@astrojs/markdown-satteri@0.3.1 || 0.4.3'
+  - '@astrojs/markdown-satteri@0.3.1 || 0.4.3 || 0.4.10'
   - '@astrojs/react@6.0.1'
-  - astro@7.1.3 || 7.3.6
+  - astro@7.1.3 || 7.3.6 || 7.4.12
   - '@astrojs/cloudflare@14.1.4 || 14.3.4'
   - '@vitejs/plugin-react@6.0.3 || 6.0.5'
   - vite@8.1.5 || 8.2.0 || 8.3.3
@@ -146,6 +150,7 @@ minimumReleaseAgeExclude:
   - oxlint@1.88.0
   - turbo@2.11.8
   - agents@0.28.1
+  - '@astrojs/vite-plugin-astro@0.1.3'
 
 patchedDependencies:
   # Upstream 1.2.3 still accepts the previous refresh token (cloudflare/workers-oauth-provider#43).
