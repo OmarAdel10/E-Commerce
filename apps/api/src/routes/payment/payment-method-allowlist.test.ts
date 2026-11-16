@@ -58,6 +58,26 @@ describe("payment-method-allowlist", () => {
     expect(settings.codDepositEnabled).toBe(false);
   });
 
+  it("rejects COD gateway when codDepositEnabled=true but COD not enabled", async () => {
+    await paymentMethodsDocument.write(fixture.db, {
+      enabledMethods: ["stripe"],
+      defaultMethod: "stripe",
+    });
+    await checkoutDocument.write(fixture.db, {
+      checkoutMode: "all",
+      partialPaymentEnabled: false,
+      partialPaymentAmount: 0,
+      codDepositEnabled: true,
+      codDepositMode: "fixed",
+      codDepositAmount: 500,
+      codDepositPercent: 0,
+    });
+
+    await expect(
+      assertGatewaySelectedForCheckout(fixture.db, "cod", BUILT_IN_PAYMENT_PROVIDERS),
+    ).rejects.toThrow(/not enabled/);
+  });
+
   it("loadCheckoutGatewaySettings fails closed when gateway settings are missing", async () => {
     await paymentMethodsDocument.write(fixture.db, {
       enabledMethods: ["cod"],
