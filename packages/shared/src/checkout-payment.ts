@@ -10,6 +10,8 @@ export interface ManualCodDepositQuote {
 export interface ManualCodDepositTerms extends ManualCodDepositQuote {
   percent: number | null;
   instructions: string | null;
+  /** The originally configured deposit amount before capping, for auditability. */
+  originalAmountMinor: number;
 }
 
 /** Round up to a pricing increment and leave a positive balance for COD. */

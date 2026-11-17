@@ -244,11 +244,11 @@ describe("migration 0193_payment_plan_cod_deposit_snapshot", () => {
 
     exec(sqlite, "INSERT INTO orders (id, total_amount_minor, paid_amount_minor, balance_due_minor, currency_code, currency_decimal_places) VALUES ('o3', 10000, 0, 10000, 'BDT', 2)");
 
-    // SQLite does not enforce CHECK constraints added via ALTER TABLE ADD COLUMN.
-    // The constraint is enforced by the application layer and by PostgreSQL.
-    // Verify the column accepts the value at insert time; constraint enforcement
-    // is verified in the PostgreSQL migration test and by application code.
-    exec(sqlite, "INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, created_at, updated_at) VALUES ('plan_neg', 'o3', 10000, 0, 10000, 'manual', 'pending', -1, 1780000000, 1780000000)");
+    // SQLite enforces CHECK constraints on ALTER TABLE ADD COLUMN (SQLite 3.38+).
+    // Constraint enforcement is verified on both SQLite and PostgreSQL.
+    expect(() => {
+      exec(sqlite, "INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, created_at, updated_at) VALUES ('plan_neg', 'o3', 10000, 0, 10000, 'manual', 'pending', -1, 1780000000, 1780000000)");
+    }).toThrow();
   });
 });
 

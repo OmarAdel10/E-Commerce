@@ -63011,6 +63011,10 @@ export type GetApiV1AdminProductsData = {
          */
         status?: 'active' | 'draft';
         /**
+         * Manual COD deposit policy filter: inherit / required / exempt
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
+        /**
          * Only products published to this sales channel (or, with salesChannelState=unpublished, not published to it).
          */
         salesChannel?: string;

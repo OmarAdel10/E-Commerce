@@ -462,6 +462,7 @@ const listRoute = createRoute({
             category: z.string().optional().openapi({ description: "Category ID filter" }),
             trashed: z.enum(["true", "false"]).optional().openapi({ description: "Show trashed items" }),
             status: z.enum(["active", "draft"]).optional().openapi({ description: "Active (on sale) or draft products only" }),
+            codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional().openapi({ description: "Manual COD deposit policy filter: inherit / required / exempt" }),
             salesChannel: salesChannelIdSchema.optional().openapi({ description: "Only products published to this sales channel (or, with salesChannelState=unpublished, not published to it)." }),
             salesChannelState: z.enum(["published", "unpublished"]).optional().openapi({ description: "With salesChannel: published (default) or unpublished products." }),
             view: z.enum(["full", "compact"]).optional().default("full").openapi({ description: "Compact lists omit rich descriptions" }),
@@ -496,6 +497,7 @@ app.openapi(listRoute, async (c) => {
         status: query.status,
         salesChannelId: query.salesChannel,
         salesChannelState: query.salesChannelState,
+        codDepositPolicy: query.codDepositPolicy,
         includeDescription: query.view !== "compact",
         sort: query.sort as "name" | "price" | "category" | "createdAt" | "updatedAt" | undefined,
         order: query.order as "asc" | "desc" | undefined

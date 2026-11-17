@@ -1331,6 +1331,7 @@ export async function createStorefrontOrder(
                 contactSnapshot,
                 qualifyingMerchandiseMinor,
                 qualifyingProductIds: qualifyingProductIds ?? null,
+                originalAmountMinor: manualDepositTerms.originalAmountMinor,
             },
         } : {}),
     };

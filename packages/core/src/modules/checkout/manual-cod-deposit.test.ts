@@ -439,4 +439,121 @@ describe("resolveCodDepositQualifyingValue", () => {
     );
     expect(value).toBe(0);
   });
+
+  it("rejects NaN qualifying merchandise value", () => {
+    const { terms, error } = resolveManualCodDeposit(
+      baseSettings,
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      NaN,
+    );
+    expect(terms).toBeNull();
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as Error).message).toContain("invalid qualifying merchandise value");
+  });
+
+  it("rejects Infinity qualifying merchandise value", () => {
+    const { terms, error } = resolveManualCodDeposit(
+      baseSettings,
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      Infinity,
+    );
+    expect(terms).toBeNull();
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as Error).message).toContain("invalid qualifying merchandise value");
+  });
+
+  it("rejects negative qualifying merchandise value", () => {
+    const { terms, error } = resolveManualCodDeposit(
+      baseSettings,
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      -5000,
+    );
+    expect(terms).toBeNull();
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as Error).message).toContain("invalid qualifying merchandise value");
+  });
+
+  it("zero qualifying merchandise is legitimate (normal COD)", () => {
+    const { terms, error } = resolveManualCodDeposit(
+      baseSettings,
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      0,
+    );
+    expect(terms).toBeNull();
+    expect(error).toBeNull();
+  });
+
+  it("preserves originalAmountMinor when fixed deposit is capped", () => {
+    // Configured fixed: 200.00 BDT (20000 minor), qualifying: 100.00 BDT (10000 minor)
+    // Deposit capped at 10000, but originalAmountMinor should be 20000
+    const { terms, error } = resolveManualCodDeposit(
+      { ...baseSettings, codDepositAmount: 200 },
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      10000,
+    );
+    expect(error).toBeNull();
+    expect(terms).toMatchObject({
+      depositMinor: 10000,
+      balanceMinor: 90000,
+      originalAmountMinor: 20000,
+    });
+  });
+
+  it("preserves originalAmountMinor when fixed deposit is not capped", () => {
+    // Configured fixed: 200.00 BDT (20000 minor), qualifying: 500.00 BDT (50000 minor)
+    // Deposit is 20000, originalAmountMinor should also be 20000
+    const { terms, error } = resolveManualCodDeposit(
+      { ...baseSettings, codDepositAmount: 200 },
+      { totalMinor: 100000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      50000,
+    );
+    expect(error).toBeNull();
+    expect(terms).toMatchObject({
+      depositMinor: 20000,
+      balanceMinor: 80000,
+      originalAmountMinor: 20000,
+    });
+  });
+
+  it("missing product policy fails closed", () => {
+    const policies = new Map<string, string | null>([
+      ["prod_required", "required"],
+    ]);
+    // prod_unknown is in the cart but not in the policy map
+    expect(() => {
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+          { productId: "prod_unknown", quantity: 1, unitPriceMinor: 5000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        ],
+        policies,
+        "all",
+      );
+    }).toThrow(ValidationError);
+  });
+
+  it("invalid global default product policy fails closed", () => {
+    // "bogus" is not a valid global default product policy
+    expect(() => {
+      resolveProductDepositPolicy("inherit", "bogus" as "all" | "selected");
+    }).toThrow(ValidationError);
+  });
 });

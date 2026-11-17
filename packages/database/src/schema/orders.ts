@@ -1250,6 +1250,12 @@ export const paymentPlans = sqliteTable("payment_plans", {
      * at order placement. Snapshotted so the deposit terms can be audited.
      */
     qualifyingProductIds: text("qualifying_product_ids"),
+    /**
+     * Originally configured deposit amount before capping, for auditability.
+     * Distinguishes a merchant who configured 200 EGP but was capped at 150 EGP
+     * from one who configured 150 EGP.
+     */
+    codDepositAmount: integer("cod_deposit_amount").notNull().default(0),
     /** Set when a manual plan is cancelled on deposit refund; null otherwise */
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" })

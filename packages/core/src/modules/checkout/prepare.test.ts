@@ -872,6 +872,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
                 percent: null,
                 qualifyingMerchandiseMinor: 10000,
                 qualifyingProductIds: ["prod_1"],
+                originalAmountMinor: 2500,
                 contactSnapshot: expect.any(String), // JSON string with business contact info
             });
         });
@@ -897,6 +898,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
                 percent: 20,
                 qualifyingMerchandiseMinor: 10000,
                 qualifyingProductIds: ["prod_1"],
+                originalAmountMinor: 2000,
                 contactSnapshot: expect.any(String),
             });
         });

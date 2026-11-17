@@ -745,7 +745,7 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   {
     version: 193,
     name: "0193_payment_plan_cod_deposit_snapshot",
-    sourceSha256: "b067d2981b02620fc7c1127762610dd642cdcecadc4ee6898ce8b98c412fc261",
+    sourceSha256: "0a3e2b8d2b6832d6247970471312305647504542767db008ca11dc911936bc8a",
   },
 ] as const;
 

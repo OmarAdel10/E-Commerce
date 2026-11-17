@@ -223956,6 +223956,21 @@
           {
             "schema": {
               "type": "string",
+              "enum": [
+                "inherit",
+                "required",
+                "exempt"
+              ],
+              "description": "Manual COD deposit policy filter: inherit / required / exempt"
+            },
+            "required": false,
+            "description": "Manual COD deposit policy filter: inherit / required / exempt",
+            "name": "codDepositPolicy",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "maxLength": 160,
               "description": "Only products published to this sales channel (or, with salesChannelState=unpublished, not published to it).",
               "example": "sc_online_store"

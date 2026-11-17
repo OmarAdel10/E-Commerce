@@ -66,6 +66,13 @@ export function resolveProductDepositPolicy(
     productPolicy: string | null | undefined,
     globalDefaultProductPolicy: "all" | "selected",
 ): "required" | "exempt" {
+    // The global default product policy is a stored setting; validate it to
+    // prevent silent misconfiguration from corrupted data.
+    if (globalDefaultProductPolicy !== "all" && globalDefaultProductPolicy !== "selected") {
+        throw new ValidationError(
+            `Invalid manual COD default product policy: ${String(globalDefaultProductPolicy)}. Expected "all" or "selected".`,
+        );
+    }
     switch (productPolicy) {
         case "required":
             return "required";
@@ -86,10 +93,17 @@ export function resolveProductDepositPolicy(
 
 /**
  * The qualifying merchandise value: the sum of net line values (unit price x
- * quantity, after product-specific and order-level discounts, excluding bundle
+ * quantity, after product-specific and order-level discounts, after bundle
  * savings) for products whose effective policy is `required`. Gift cards and
  * exempt products never qualify. Shipping is not part of a line unit price, so
  * it is excluded by construction.
+ *
+ * Tax treatment: line prices are taken as-is from the authoritative tax quote.
+ * If `pricesIncludeTax` is true, unit prices are tax-inclusive and the deposit
+ * basis includes tax; if false, unit prices are tax-exclusive and the deposit
+ * basis excludes tax. Either way, the same authoritative prices used for the
+ * order total are used for the deposit basis, so tax is never double-counted
+ * and shipping tax is never treated as qualifying merchandise.
  *
  * Computed server-side from authoritative product and pricing data; never
  * derived from client-supplied amounts.
@@ -104,8 +118,18 @@ export function resolveCodDepositQualifyingValue(
         if (line.isGiftCard) continue;
         if (!Number.isFinite(line.unitPriceMinor) || line.unitPriceMinor < 0) continue;
         if (!Number.isFinite(line.quantity) || line.quantity < 1) continue;
+        const stored = productPolicyById.get(line.productId);
+        // A missing entry means the product's authoritative data was not loaded
+        // into the policy map. This is distinct from an intentionally inherited
+        // or explicitly null policy: we cannot determine the product's deposit
+        // requirement without its authoritative data, so fail closed.
+        if (!productPolicyById.has(line.productId)) {
+            throw new ValidationError(
+                `Missing authoritative deposit policy for product ${line.productId}.`,
+            );
+        }
         const effective = resolveProductDepositPolicy(
-            productPolicyById.get(line.productId),
+            stored,
             globalDefaultProductPolicy,
         );
         if (effective !== "required") continue;
@@ -132,15 +156,29 @@ export function resolveManualCodDeposit(
     if (!cart.allowsCashOnDelivery || cart.giftCardsApplied || quote.currencyCode !== shopCurrency.code) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order.") };
     }
-    if (!Number.isFinite(qualifyingMerchandiseMinor) || qualifyingMerchandiseMinor <= 0) {
+    if (!Number.isFinite(qualifyingMerchandiseMinor) || qualifyingMerchandiseMinor < 0 || qualifyingMerchandiseMinor === Infinity) {
+        // Invalid authoritative financial data: NaN, negative, or Infinity values
+        // indicate corrupted pricing data, not a legitimate zero-qualification case.
+        // Fail closed rather than silently removing a deposit requirement.
+        return {
+            terms: null,
+            error: new ValidationError("Cash on delivery is unavailable for this order: invalid qualifying merchandise value."),
+        };
+    }
+    if (qualifyingMerchandiseMinor <= 0) {
         // No qualifying merchandise: normal COD without a manual deposit plan.
         return { terms: null, error: null };
     }
 
     const percent = settings.codDepositMode === "percentage" ? settings.codDepositPercent : null;
-    const depositMinor = percent === null
+    // The originally configured amount before capping, persisted for auditability.
+    // A fixed deposit may be capped at the qualifying merchandise value; the
+    // original configured amount must be preserved to distinguish a merchant who
+    // configured 200 EGP but was capped at 150 EGP from one who configured 150 EGP.
+    const configuredAmountMinor = percent === null
         ? toMinor(settings.codDepositAmount, shopCurrency.decimalPlaces)
         : manualCodPercentageDepositMinor(qualifyingMerchandiseMinor, percent, shopCurrency.priceIncrementMinor);
+    const depositMinor = configuredAmountMinor;
     if (depositMinor <= 0) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
     }
@@ -156,7 +194,13 @@ export function resolveManualCodDeposit(
     if (cashIssue) return { terms: null, error: new ValidationError(cashIssue, { reason: CASH_ON_DELIVERY_AMOUNT_REASON }) };
 
     return {
-        terms: { depositMinor: cappedDeposit, balanceMinor, percent, instructions: settings.codDepositInstructions || null },
+        terms: {
+            depositMinor: cappedDeposit,
+            balanceMinor,
+            percent,
+            instructions: settings.codDepositInstructions || null,
+            originalAmountMinor: configuredAmountMinor,
+        },
         error: null,
     };
 }

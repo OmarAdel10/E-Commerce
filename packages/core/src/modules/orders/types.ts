@@ -733,6 +733,8 @@ export interface StorefrontOrderCommitPayload {
         qualifyingMerchandiseMinor: number;
         /** JSON array of product ids whose merchandise qualified for the deposit. */
         qualifyingProductIds: string[] | null;
+        /** Originally configured deposit amount before capping, for auditability. */
+        originalAmountMinor: number;
     } | null;
 }
 
