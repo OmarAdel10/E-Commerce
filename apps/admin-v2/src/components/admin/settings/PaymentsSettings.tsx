@@ -124,6 +124,7 @@ export function useCheckoutFlowForm(isValid: (draft: CheckoutFlow) => boolean, l
           codDepositMode: draft.codDepositMode,
           ...checkoutDepositAmountsForSave(draft),
           codDepositInstructions: draft.codDepositInstructions,
+          codDepositDefaultProductPolicy: draft.codDepositDefaultProductPolicy,
           expectedRevision,
         },
       })),
@@ -902,6 +903,29 @@ function PaymentOptionsFields() {
                 rows={3}
                 onChange={(event) => setValue("codDepositInstructions", event.target.value)}
               />
+            </SettingsField>
+            <SettingsField id="cod-deposit-default-product-policy" label={t("codDepositDefaultProductPolicy")} help={t("codDepositDefaultProductPolicyHelp")}>
+              <RadioGroup
+                aria-labelledby="cod-deposit-default-product-policy"
+                value={values.codDepositDefaultProductPolicy ?? "all"}
+                disabled={!canEdit}
+                onValueChange={(policy) => setValue("codDepositDefaultProductPolicy", policy as "all" | "selected")}
+              >
+                <label key="all" className="flex items-start gap-2 py-1 text-body">
+                  <span className="flex h-lh items-center"><RadioGroupItem value="all"/></span>
+                  <span>
+                    <span className="block font-medium">{t("codDepositDefaultProductPolicyAll")}</span>
+                    <span className="block text-muted-foreground">{t("codDepositDefaultProductPolicyAllHelp")}</span>
+                  </span>
+                </label>
+                <label key="selected" className="flex items-start gap-2 py-1 text-body">
+                  <span className="flex h-lh items-center"><RadioGroupItem value="selected"/></span>
+                  <span>
+                    <span className="block font-medium">{t("codDepositDefaultProductPolicySelected")}</span>
+                    <span className="block text-muted-foreground">{t("codDepositDefaultProductPolicySelectedHelp")}</span>
+                  </span>
+                </label>
+              </RadioGroup>
             </SettingsField>
           </>
         )}

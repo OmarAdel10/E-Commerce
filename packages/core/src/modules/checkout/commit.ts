@@ -553,6 +553,10 @@ export async function commitStorefrontOrderPayload(
                             instructions: payload.codDeposit.instructions,
                             percent: payload.codDeposit.percent,
                             contactSnapshot: payload.codDeposit.contactSnapshot,
+                            qualifyingMerchandiseMinor: payload.codDeposit.qualifyingMerchandiseMinor,
+                            qualifyingProductIds: payload.codDeposit.qualifyingProductIds
+                                ? JSON.stringify(payload.codDeposit.qualifyingProductIds)
+                                : null,
                             status: PaymentPlanStatus.PENDING,
                         }),
                     ] : []),

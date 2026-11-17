@@ -300,6 +300,16 @@ export interface CheckoutFlowSettings {
   codDepositPercent: number;
   /** Merchant-authored payment instructions shown to the buyer; snapshotted at order placement. */
   codDepositInstructions: string;
+  /**
+   * Global default product policy for manual COD deposits.
+   * `all` = every product requires a deposit when the feature is enabled
+   *   (previous behaviour; the master switch remains `codDepositEnabled`);
+   * `selected` = only products whose product-level policy is `required`
+   *   require a deposit; `inherit` products follow this default (no deposit).
+   * `codDepositEnabled` remains the master switch: when disabled, no product
+   *   requires a deposit regardless of this value or any product policy.
+   */
+  codDepositDefaultProductPolicy: "all" | "selected";
 }
 
 export const checkoutDocument = defineSettingsDocument<CheckoutFlowSettings>({
@@ -316,6 +326,7 @@ export const checkoutDocument = defineSettingsDocument<CheckoutFlowSettings>({
     codDepositAmount: z.number(),
     codDepositPercent: z.number(),
     codDepositInstructions: z.string(),
+    codDepositDefaultProductPolicy: z.enum(["all", "selected"]),
   }),
   defaults: {
     guestCheckoutEnabled: true,
@@ -329,6 +340,7 @@ export const checkoutDocument = defineSettingsDocument<CheckoutFlowSettings>({
     codDepositAmount: 0,
     codDepositPercent: 0,
     codDepositInstructions: "",
+    codDepositDefaultProductPolicy: "all",
   },
 });
 

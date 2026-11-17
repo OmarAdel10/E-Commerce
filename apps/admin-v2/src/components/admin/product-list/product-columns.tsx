@@ -183,6 +183,21 @@ export function getProductColumns(opts: {
       cell: ({ row }) => <ChannelsText product={row.original} channels={opts.channels!} />,
       enableSorting: false,
     } satisfies ColumnDef<ProductListItem, unknown>] : []),
+    {
+      id: "codDepositPolicy",
+      header: t("columnDepositPolicy"),
+      meta: { minWidth: 120 },
+      cell: ({ row }) => {
+        const policy = row.original.codDepositPolicy;
+        const label = policy === "required"
+          ? t("depositPolicyRequired")
+          : policy === "exempt"
+            ? t("depositPolicyExempt")
+            : t("depositPolicyInherit");
+        return <span className="block truncate text-muted-foreground text-caption">{label}</span>;
+      },
+      enableSorting: false,
+    },
     ...(opts.extra ?? []),
   ];
 }

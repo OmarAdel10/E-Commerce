@@ -50225,6 +50225,7 @@ export type GetApiV1AdminSettingsCheckoutFlowResponses = {
             codDepositAmount: number;
             codDepositPercent: number;
             codDepositInstructions: string;
+            codDepositDefaultProductPolicy: 'all' | 'selected';
             revision: number;
         };
     };
@@ -50238,6 +50239,7 @@ export type PutApiV1AdminSettingsCheckoutFlowData = {
         checkoutMode: 'guest_cod_only' | 'gateways_only' | 'all';
         partialPaymentEnabled: boolean;
         partialPaymentAmount: number;
+        codDepositDefaultProductPolicy?: 'all' | 'selected';
         autoFulfilMode?: 'after_payment' | 'after_confirmation';
         requireFullBillingAddress?: boolean;
         codDepositEnabled?: boolean;
@@ -50303,6 +50305,7 @@ export type PutApiV1AdminSettingsCheckoutFlowResponses = {
             codDepositAmount: number;
             codDepositPercent: number;
             codDepositInstructions: string;
+            codDepositDefaultProductPolicy: 'all' | 'selected';
             revision: number;
         };
     };
@@ -57927,6 +57930,7 @@ export type GetApiV1AdminOrdersCatalogProductsResponses = {
                  * The sales channels the product is published to.
                  */
                 salesChannelIds: Array<string>;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
                 /**
                  * Units buyers can still order across active SKUs; null when a SKU has no stock limit.
                  */
@@ -63136,6 +63140,7 @@ export type GetApiV1AdminProductsResponses = {
                  * The sales channels the product is published to.
                  */
                 salesChannelIds: Array<string>;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
             }>;
             pagination: {
                 /**
@@ -63277,6 +63282,10 @@ export type PostApiV1AdminProductsData = {
          * A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it.
          */
         warrantyPolicyId?: string | null;
+        /**
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         optionMatrix?: {
             options: Array<{
                 id: string;
@@ -63660,6 +63669,7 @@ export type GetApiV1AdminProductsBulkEditResponses = {
                  * Null: the default profile (General). Save with the base section.
                  */
                 shippingProfileId: string | null;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
                 skus: Array<{
                     id: string;
                     label: string | null;
@@ -64887,6 +64897,7 @@ export type GetApiV1AdminProductsByIdResponses = {
                 attributeId: string;
                 value: string;
             }>;
+            codDepositPolicy: 'inherit' | 'required' | 'exempt';
             relatedObjects: Array<{
                 typeId: string;
                 typeHandle: string;
@@ -64983,6 +64994,10 @@ export type PutApiV1AdminProductsByIdData = {
          * A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it.
          */
         warrantyPolicyId?: string | null;
+        /**
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         id: string;
         expectedAggregateRevision: number;
         redirectOldUrl?: boolean;

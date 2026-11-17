@@ -172,6 +172,7 @@ export async function recordCODCollection(
       .select({
         id: paymentPlans.id,
         status: paymentPlans.status,
+        kind: paymentPlans.kind,
         balanceDueMinor: paymentPlans.balanceDueMinor,
       })
       .from(paymentPlans)
@@ -254,7 +255,9 @@ export async function recordCODCollection(
     if (paymentPlan) {
       if (paymentPlan.status !== PaymentPlanStatus.DEPOSIT_PAID) {
         throw new ValidationError(
-          "The online deposit must be paid before collecting the cash balance on delivery.",
+          paymentPlan.kind === "manual"
+            ? "The manual deposit must be verified before collecting the cash balance on delivery."
+            : "The online deposit must be paid before collecting the cash balance on delivery.",
         );
       }
       if (paymentPlan.balanceDueMinor !== collection.collectedAmountMinor) {

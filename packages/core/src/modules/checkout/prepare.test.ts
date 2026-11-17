@@ -72,6 +72,22 @@ function createMockCartValidation(overrides: Partial<StorefrontCartValidationRes
         ],
         subtotalMinor: 10000,
         hasFreeDeliveryProduct: false,
+        productRows: [
+            {
+                id: "prod_1",
+                name: "Test Product",
+                isActive: true,
+                priceMinor: 10000,
+                discountBps: 0,
+                discountType: "percentage",
+                discountAmountMinor: 0,
+                freeDelivery: false,
+                isGiftCard: false,
+                customizationSchema: null,
+                taxClassId: "tax_1",
+                codDepositPolicy: "inherit",
+            },
+        ],
         ...overrides,
     });
 }
@@ -210,6 +226,7 @@ function createMockCheckoutPolicy(
         codDepositAmount?: number;
         codDepositPercent?: number;
         codDepositInstructions?: string;
+        codDepositDefaultProductPolicy?: "all" | "selected";
         partialPaymentEnabled?: boolean;
         partialPaymentAmount?: number;
     } = {},
@@ -229,6 +246,7 @@ function createMockCheckoutPolicy(
         codDepositAmount: depositConfig.codDepositAmount ?? 0,
         codDepositPercent: depositConfig.codDepositPercent ?? 0,
         codDepositInstructions: depositConfig.codDepositInstructions ?? "Please deposit to bKash number 01XXXXXXXXX",
+        codDepositDefaultProductPolicy: depositConfig.codDepositDefaultProductPolicy ?? "all",
     });
 }
 
@@ -417,15 +435,44 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             expect(result.commitPayload.codDeposit?.percent).toBeNull();
         });
 
-        it("rejects when deposit >= order total (deposit 105 BDT = 10500 minor, total 10500 minor)", async () => {
+        it("caps a fixed deposit that exceeds the qualifying merchandise value", async () => {
+            // Configured fixed 105.00 BDT (10500 minor) but only 100.00 BDT
+            // (10000 minor) of the order qualifies (prod_1; the 5.00 BDT
+            // shipping is excluded). The deposit is capped at the qualifying
+            // value, never above it, and a positive cash balance remains.
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "fixed",
-                codDepositAmount: 105, // 105.00 BDT = 10500 minor >= 105.00 BDT total
+                codDepositAmount: 105, // 105.00 BDT = 10500 minor > qualifying 10000 minor
             });
             const cart = createMockCartValidation();
             const delivery = createMockDeliveryPreflight();
             const taxQuote = createMockTaxQuote(10500); // total = 105.00 BDT = 10500 minor
+
+            const input = createMockOrderInput();
+
+            const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
+
+            expect(result.depositPlan).toBe(true);
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10000); // capped at qualifying
+            expect(result.commitPayload.codDeposit?.percent).toBeNull();
+        });
+
+        it("rejects a fixed deposit that leaves no positive cash balance", async () => {
+            // Qualifying equals the order total (no shipping): a fixed deposit
+            // equal to the total would leave nothing to collect on delivery.
+            const policy = createMockCheckoutPolicy({
+                codDepositEnabled: true,
+                codDepositMode: "fixed",
+                codDepositAmount: 100, // 100.00 BDT = 10000 minor == qualifying == total
+            });
+            const cart = createMockCartValidation({
+                subtotalMinor: 10000,
+            });
+            const delivery = createMockDeliveryPreflight({
+                shippingMinor: 0, // no shipping: total equals qualifying
+            });
+            const taxQuote = createMockTaxQuote(10000);
 
             const input = createMockOrderInput();
 
@@ -440,7 +487,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "fixed",
-                codDepositAmount: 104.00, // 104.00 BDT < 105.00 BDT total
+                codDepositAmount: 104.00, // 104.00 BDT = 10400 minor > qualifying 10000 minor
             });
             const cart = createMockCartValidation();
             const delivery = createMockDeliveryPreflight();
@@ -451,7 +498,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
             expect(result.depositPlan).toBe(true);
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400); // 104.00 * 100 = 10400
+            // Configured 10400 minor exceeds qualifying merchandise value of 10000 minor,
+            // so the deposit is capped at the qualifying value. Shipping (500 minor) is
+            // excluded from the deposit basis. Positive cash balance remains (500 minor).
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10000); // capped at qualifying
+            expect(result.commitPayload.codDeposit?.percent).toBeNull();
         });
     });
 
@@ -494,7 +545,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             );
         });
 
-        it("accepts valid percentage (10% of 10500 = 1050 minor)", async () => {
+        it("accepts valid percentage (10% of qualifying 10000 = 1000 minor)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
@@ -510,11 +561,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             expect(result.depositPlan).toBe(true);
             expect(result.commitPayload.codDeposit).toBeDefined();
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(1100); // ceil(1050 / 100) * 100 = 1100
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(1000); // 10% of qualifying 10000
             expect(result.commitPayload.codDeposit?.percent).toBe(10);
         });
 
-        it("accepts percentage that rounds up (33% of 10500 = 3465 minor, ceil to step = 3500)", async () => {
+        it("accepts percentage that rounds up (33% of qualifying 10000 = 3300 minor)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
@@ -528,11 +579,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            // ceil(10500 * 33 / 100) = ceil(3465) = 3465, ceil to step 100 = 3500
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(3500);
+            // 33% of qualifying 10000 = 3300, already on the 100 minor step
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(3300);
         });
 
-        it("caps percentage deposit at totalMinor - 1 when percentage would exceed (99% of 10500 = 10395, ceil to step = 10400)", async () => {
+        it("caps percentage deposit below qualifying (99% of qualifying 10000 = 9900 minor)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
@@ -546,16 +597,15 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            // ceil(10500 * 99 / 100) = ceil(10395) = 10395, ceil to step 100 = 10400, below totalMinor
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400);
+            // 99% of qualifying 10000 = 9900, below both qualifying and total
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(9900);
         });
 
-        it("caps at totalMinor - 1 when percentage would exceed (100% would be 10500, ceil to step = 10500, cap = 10400)", async () => {
-            // The schema should prevent 100% but let's test the cap logic with a value that would exceed
+        it("leaves a positive balance when percentage would reach qualifying (100% of qualifying 10000 -> 9900 minor)", async () => {
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "percentage",
-                codDepositPercent: 100, // Would be 100% but schema limits to 1-99
+                codDepositPercent: 100,
             });
             const cart = createMockCartValidation();
             const delivery = createMockDeliveryPreflight();
@@ -563,10 +613,10 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             const input = createMockOrderInput();
 
-            // ceil(10500 * 100 / 100) = ceil(10500) = 10500, ceil to step 100 = 10500, cap at totalMinor - step = 10400
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
-            expect(result.commitPayload.codDeposit?.amountMinor).toBe(10400);
+            // manualCodPercentageDepositMinor leaves one increment below the basis
+            expect(result.commitPayload.codDeposit?.amountMinor).toBe(9900);
         });
     });
 
@@ -722,14 +772,21 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
     describe("existing deposit >= total check preserved", () => {
         it("rejects when fixed deposit equals order total", async () => {
+            // Qualifying merchandise equals the order total (no shipping), so a
+            // fixed deposit of 10000 minor equals the total and leaves no
+            // positive cash balance: the checkout must be rejected.
             const policy = createMockCheckoutPolicy({
                 codDepositEnabled: true,
                 codDepositMode: "fixed",
-                codDepositAmount: 105.00, // Exactly equals 105.00 BDT total
+                codDepositAmount: 100.00, // 100.00 BDT = 10000 minor == qualifying == total
             });
-            const cart = createMockCartValidation();
-            const delivery = createMockDeliveryPreflight();
-            const taxQuote = createMockTaxQuote(10500);
+            const cart = createMockCartValidation({
+                subtotalMinor: 10000,
+            });
+            const delivery = createMockDeliveryPreflight({
+                shippingMinor: 0, // no shipping: qualifying equals total
+            });
+            const taxQuote = createMockTaxQuote(10000);
 
             const input = createMockOrderInput();
 
@@ -813,6 +870,8 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
                 amountMinor: 2500, // 25.00 * 100
                 instructions: "Deposit to bKash 01XXXXXXXXX",
                 percent: null,
+                qualifyingMerchandiseMinor: 10000,
+                qualifyingProductIds: ["prod_1"],
                 contactSnapshot: expect.any(String), // JSON string with business contact info
             });
         });
@@ -833,9 +892,11 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             const result = await createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot);
 
             expect(result.commitPayload.codDeposit).toEqual({
-                amountMinor: 2100, // ceil(10500 * 20 / 100) = 2100
+                amountMinor: 2000, // 20% of qualifying 10000
                 instructions: "Deposit 20% to bKash",
                 percent: 20,
+                qualifyingMerchandiseMinor: 10000,
+                qualifyingProductIds: ["prod_1"],
                 contactSnapshot: expect.any(String),
             });
         });

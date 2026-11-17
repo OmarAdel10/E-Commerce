@@ -611,6 +611,7 @@ export async function getProductDetails(
             taxClassificationVersion: products.taxClassificationVersion,
             isGiftCard: products.isGiftCard,
             warrantyPolicyId: products.warrantyPolicyId,
+            codDepositPolicy: products.codDepositPolicy,
             customizationSchema: products.customizationSchema,
             category: {
                 name: categories.name,
@@ -675,6 +676,7 @@ export async function getProductDetails(
             attributeId: attr.attributeId,
             value: attr.value,
         })),
+        codDepositPolicy: result.codDepositPolicy,
     } as ProductWithDetails & { relatedObjectsJson: string | null };
 }
 

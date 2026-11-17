@@ -144,6 +144,13 @@ export interface StorefrontCheckoutSettingsAuthority {
     codDepositPercent: number;
     /** Merchant-authored payment instructions snapshotted at order placement. */
     codDepositInstructions: string;
+    /**
+     * Global default product policy for manual COD deposits: `all` = every
+     * product requires a deposit when the feature is enabled; `selected` =
+     * only products whose product-level policy is `required`. `inherit`
+     * products follow this default (no deposit when `selected`).
+     */
+    codDepositDefaultProductPolicy: "all" | "selected";
 }
 
 /** The shop currency document and the backup market's price increment every checkout prices at. */
@@ -506,6 +513,7 @@ export function createStorefrontCheckoutAuthorityBatchReadPlan(
                                 codDepositAmount: site.codDepositAmount,
                                 codDepositPercent: site.codDepositPercent,
                                 codDepositInstructions: site.codDepositInstructions,
+                                codDepositDefaultProductPolicy: site.codDepositDefaultProductPolicy,
                             },
                             allowedCountries,
                             shippingCountries,

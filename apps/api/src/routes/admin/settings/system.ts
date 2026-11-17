@@ -326,6 +326,8 @@ const checkoutFlowSettingsSchema = z.object({
     codDepositPercent: z.number().min(0).max(99),
     /** Merchant-authored payment instructions shown to the buyer; snapshotted at order placement. */
     codDepositInstructions: z.string(),
+    /** Global default product policy: `all` = every product requires a deposit when enabled; `selected` = only products with `codDepositPolicy = "require"`. Omit to keep. */
+    codDepositDefaultProductPolicy: z.enum(["all", "selected"]),
     revision: z.number().int().nonnegative(),
 });
 
@@ -368,6 +370,8 @@ const saveCheckoutFlowSchema = checkoutFlowSettingsSchema
         codDepositPercent: checkoutFlowSettingsSchema.shape.codDepositPercent.optional(),
         /** Omitted: keep the saved choice. */
         codDepositInstructions: checkoutFlowSettingsSchema.shape.codDepositInstructions.optional(),
+        /** Omitted: keep the saved choice. */
+        codDepositDefaultProductPolicy: checkoutFlowSettingsSchema.shape.codDepositDefaultProductPolicy.optional(),
         expectedRevision: z.number().int().nonnegative(),
     })
     .strict();

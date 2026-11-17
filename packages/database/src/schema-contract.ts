@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 190,
-  name: "0190_striped_puppet_master",
+  version: 193,
+  name: "0193_payment_plan_cod_deposit_snapshot",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -731,6 +731,21 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 190,
     name: "0190_striped_puppet_master",
     sourceSha256: "59ee55d643e98a3bc7d0e0dd4a46f75bb354123319eb90ce30b87043e97f83e5",
+  },
+  {
+    version: 191,
+    name: "0191_product_cod_deposit_policy",
+    sourceSha256: "7a6594068bfee992bac363168bd5c2a45cdeacdc530db43ee7255b1ef23ca08e",
+  },
+  {
+    version: 192,
+    name: "0192_product_checkout_authority_fence",
+    sourceSha256: "1e70b88ed21104e3099fd921b7fd2d868f142e89d48c59cb021b767bcfa02906",
+  },
+  {
+    version: 193,
+    name: "0193_payment_plan_cod_deposit_snapshot",
+    sourceSha256: "b067d2981b02620fc7c1127762610dd642cdcecadc4ee6898ce8b98c412fc261",
   },
 ] as const;
 

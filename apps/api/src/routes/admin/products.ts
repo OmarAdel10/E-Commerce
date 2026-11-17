@@ -626,6 +626,7 @@ const bulkEditReadRoute = createRoute({
                     discountAmount: z.number(),
                     hasOptions: z.boolean(),
                     shippingProfileId: z.string().nullable().openapi({ description: "Null: the default profile (General). Save with the base section." }),
+                    codDepositPolicy: z.enum(["inherit", "required", "exempt"]),
                     skus: z.array(bulkEditSkuSchema),
                 })),
             })) } },

@@ -20,11 +20,13 @@ export const COD_LABEL = "Cash on Delivery";
 /**
  * The shipping countries cash on delivery serves (MARKETS-DESIGN step 3b):
  * riders collect it through Bangladesh's couriers, in BDT whole taka (its
- * amount codec), so it is offered for deliveries to Bangladesh only. Pickup
- * and orders that ship nothing have no shipping country: the counter or the
- * service collects the cash.
+ * amount codec), so it is offered for deliveries to Bangladesh and, where a
+ * merchant has configured an eligible Egyptian market, currency, delivery
+ * method and the COD payment method, Egypt. Pickup and orders that ship
+ * nothing have no shipping country: the counter or the service collects the
+ * cash.
  */
-export const COD_COUNTRIES: ProviderCountries = ["BD"];
+export const COD_COUNTRIES: ProviderCountries = ["BD", "EG"];
 
 /**
  * The built-in deferred method (`@scalius/shared/payment-terms`): an invoice

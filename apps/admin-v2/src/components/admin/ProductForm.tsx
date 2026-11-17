@@ -60,6 +60,7 @@ import { OnlinePaymentNote } from "./product-form/OnlinePaymentNote";
 import { ProductKindRulesContext, productKindRules } from "./product-form/product-kind-rules";
 import { OrganizationCard } from "./product-form/OrganizationCard";
 import { WarrantyCard } from "./product-form/WarrantyCard";
+import { CodDepositPolicyCard } from "./product-form/CodDepositPolicyCard";
 import { PublishingCard } from "./product-form/PublishingCard";
 import { useProductSubmit } from "./product-form/hooks/useProductSubmit";
 import { ProductSectionsProvider, useProductSections } from "./product-form/merchandising/product-sections";
@@ -240,7 +241,7 @@ function ProductEditor({
   // The old Additional sections tabs were saved as blocks: this save removes the originals.
   const tabsMoved = React.useRef(false);
 
-  const form = useFormWithRefusals<ProductFormValues>({
+  const form: UseFormReturn<ProductFormValues> = useFormWithRefusals<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
     // Check a field when the merchant leaves it, not while they type.
     mode: "onBlur",
@@ -574,6 +575,7 @@ function ProductEditor({
               )}
               <fieldset disabled={readOnly} className="min-w-0 space-y-4">
               <WarrantyCard form={form} readOnly={readOnly} />
+              <CodDepositPolicyCard form={form} readOnly={readOnly} />
               {isEdit && productId ? <LazyCustomFieldsCard ownerType="product" ownerId={productId} canEdit={!readOnly} /> : null}
               {isEdit && productId ? <RelatedObjectsCard records={relatedObjects} /> : null}
               {isEdit && productId ? <AppResourceCards target="product" id={productId} /> : null}
