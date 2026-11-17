@@ -1,5 +1,6 @@
 import { AppError } from "@scalius/core/errors";
 import type { TaxQuote } from "@scalius/core/modules/tax/browser";
+import type { ManualCodDepositTerms } from "@scalius/shared/checkout-payment";
 
 export interface AgentStorefrontCheckoutQuoteFingerprintInput {
   contextRevision: number;
@@ -8,6 +9,7 @@ export interface AgentStorefrontCheckoutQuoteFingerprintInput {
   discountCode: string | null;
   attributes?: Record<string, string>;
   quote: TaxQuote;
+  manualCodDeposit?: ManualCodDepositTerms | null;
 }
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -35,6 +37,12 @@ export async function buildAgentStorefrontCheckoutQuoteFingerprint(
     discountMinor: input.quote.discountMinor,
     taxMinor: input.quote.taxMinor,
     totalMinor: input.quote.totalMinor,
+    ...(input.manualCodDeposit ? {
+      manualCodDeposit: [
+        input.manualCodDeposit.depositMinor, input.manualCodDeposit.balanceMinor,
+        input.manualCodDeposit.percent, input.manualCodDeposit.instructions,
+      ],
+    } : {}),
     lines: input.quote.lines.map((line) => [
       line.productId,
       line.variantId,

@@ -435,7 +435,7 @@ const recordPaymentHeaders = z.object({
   }),
 });
 
-const recordPaymentBody = z.object({
+export const recordPaymentBody = z.object({
   amountMinor: z.number().int().min(1).max(MAX_MINOR_AMOUNT).openapi({
     description: "What was received, in minor units of the order's `currency`; at most its `balanceDueMinor`.",
   }),
@@ -443,6 +443,8 @@ const recordPaymentBody = z.object({
   reference: z.string().trim().max(120).nullable().optional().openapi({ description: "The bank, cheque or transfer reference." }),
   note: z.string().trim().max(500).nullable().optional(),
   expectedRevision: z.number().int().min(1).optional().openapi({ description: "The order `revision` you read; a different one is refused with 409." }),
+  /** `"deposit"` when recording a manual COD deposit against a pending manual payment plan. Staff only. */
+  paymentType: z.enum(["deposit"]).optional().openapi({ description: '`"deposit"` when recording a manual COD deposit. Staff only.' }),
 }).strict();
 
 app.openapi(createRoute({
@@ -450,8 +452,8 @@ app.openapi(createRoute({
   method: "post",
   path: "/orders/{id}/payments",
   tags: ["App API - Orders"],
-  summary: "Record a payment against an invoice order",
-  description: "Records money received for a deferred (net terms) order: a bank transfer, cheque or cash against its invoice. No provider is called. The order's paid amount and payment status advance in the same write, `payment.updated` (and `order.paid` once nothing is due) follow, and a refund of it is a manual settlement. When an app records it on an order with gift cards or downloads still owed, the order is held for staff review in the same write: they are handed over once staff release the hold. Send an Idempotency-Key: a repeat returns the first payment.",
+  summary: "Record a payment against an invoice order or a manual COD deposit",
+  description: "Records money received for a deferred (net terms) order: a bank transfer, cheque or cash against its invoice. Also records a manual COD deposit when `paymentType` is `\"deposit\"` against a pending manual payment plan. No provider is called. The order's paid amount and payment status advance in the same write, `payment.updated` (and `order.paid` once nothing is due) follow, and a refund of it is a manual settlement. When an app records it on an order with gift cards or downloads still owed, the order is held for staff review in the same write: they are handed over once staff release the hold. Send an Idempotency-Key: a repeat returns the first payment.",
   request: {
     params: idParam,
     headers: recordPaymentHeaders,
@@ -469,6 +471,11 @@ app.openapi(createRoute({
   const appPrincipal = c.get("pluginPrincipal");
   const user = c.get("user") as { id?: string } | undefined;
   const recordedBy = appPrincipal ? `app:${appPrincipal.pluginId}` : `staff:${user?.id ?? "unknown"}`;
+  // A manual COD deposit is recorded by staff verifying the buyer's offline
+  // payment — apps cannot record it.
+  if (body.paymentType === "deposit" && (appPrincipal || c.get("agentPrincipal"))) {
+    throw new ValidationError("A manual COD deposit must be recorded by staff, not an app or agent.");
+  }
   const result = await recordOrderPayment(db, {
     orderId,
     amountMinor: body.amountMinor,
@@ -478,6 +485,7 @@ app.openapi(createRoute({
     recordedBy,
     requestKey: await scopedRequestKey(c, "dashboard.resources.payments.create", c.req.valid("header")["idempotency-key"]),
     ...(body.expectedRevision !== undefined ? { expectedVersion: body.expectedRevision } : {}),
+    ...(body.paymentType !== undefined ? { paymentType: body.paymentType } : {}),
     // The timeline line commits with the payment, once per payment: in the
     // order's currency (the dashboard words it, like a cash collection).
     timelineLine: async ({ paymentId, currency, landed }) => ({ statement: buildOrderEventInsert(db, {

@@ -112,6 +112,7 @@ export const apps = [
     extraEnv: [
       // Installed secrets.
       "SCALIUS_SECRET",
+      "REFUND_PREVIOUS_HMAC_KEY",
       "CREDENTIAL_ENCRYPTION_KEY",
       // Optional non-D1 relational provider selection.
       "DATABASE_PROVIDER",

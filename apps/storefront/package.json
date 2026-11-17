@@ -35,7 +35,7 @@
     "@scalius/shared": "workspace:*",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
-    "astro": "^7.3.8",
+    "astro": "^7.4.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.30.0",

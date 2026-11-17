@@ -4,9 +4,11 @@
 // then dispatches each allocation through its gateway adapter (gateways/port.ts).
 
 import { inJsonArray } from "../../utils/in-json-array";
+import { nothingHandedOverCondition } from "../../utils/order-handover";
 import { orderPricePolicy, readGiftCardSettings, toStoreMinor } from "../settings";
 import { readStoreCurrency } from "../markets";
-import { eq, sql, desc, and } from "drizzle-orm";
+import { eq, ne, sql, desc, and } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import {
     orders,
     orderItems,
@@ -15,9 +17,11 @@ import {
     orderRefunds,
     refundAttempts,
     giftCards,
+    paymentPlans,
     PaymentStatus,
     OrderStatus,
     PaymentRecordStatus,
+    PaymentPlanStatus,
     type OrderPayment,
 } from "@scalius/database/schema";
 import {
@@ -61,9 +65,11 @@ import {
     giftCardIdsForTenderPayments,
     normalizeGiftCardRecipient,
 } from "../gift-cards";
-import { buildBatchGuard, isBatchGuardError } from "@scalius/database/client";
+import { buildBatchGuard, isBatchGuardError, safeBatch } from "@scalius/database/client";
 import { sha256Hex } from "@scalius/shared/hash";
 import { allocateRefundAcrossSources, type RefundSourceSettlement } from "@scalius/shared/refund-sources";
+import { deriveRuntimeSecret, readMasterSecret, RUNTIME_SECRET_PURPOSES } from "@scalius/shared/runtime-secrets";
+import type { MasterSecretEnvironment } from "@scalius/shared/runtime-secrets";
 
 export interface RefundRequest {
     orderId: string;
@@ -458,6 +464,64 @@ function parseRefundMetadata(metadata: string | null): Record<string, unknown> {
     }
 }
 
+/** Derives the HMAC key for refund metadata integrity. No module-level cache to comply with source policy. */
+export async function getRefundHmacKey(env: MasterSecretEnvironment | null | undefined): Promise<string | null> {
+    const master = readMasterSecret(env);
+    if (!master) return null;
+    return deriveRuntimeSecret(master, RUNTIME_SECRET_PURPOSES.REFUND_METADATA_HMAC);
+}
+
+/** Computes HMAC-SHA256 of the metadata payload. */
+export async function computeRefundMetadataHmac(
+    env: MasterSecretEnvironment | null | undefined,
+    payload: string,
+): Promise<string | null> {
+    const key = await getRefundHmacKey(env);
+    if (!key) return null;
+    const encoder = new TextEncoder();
+    const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(key),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(payload));
+    return btoa(String.fromCharCode(...new Uint8Array(signature)))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+/** Verifies HMAC-SHA256 of the metadata payload. */
+export async function verifyRefundMetadataHmac(
+    env: MasterSecretEnvironment | null | undefined,
+    payload: string,
+    hmac: string | undefined,
+): Promise<boolean> {
+    return verifyRefundMetadataWithKey(await getRefundHmacKey(env), payload, hmac);
+}
+
+async function verifyRefundMetadataWithKey(key: string | null | undefined, payload: string, hmac: string | undefined): Promise<boolean> {
+    if (!key || !hmac || !/^[A-Za-z0-9_-]{43}$/.test(hmac)) return false;
+    const encoder = new TextEncoder();
+    const cryptoKey = await crypto.subtle.importKey("raw", encoder.encode(key),
+        { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+    const signature = Uint8Array.from(atob(hmac.replace(/-/g, "+").replace(/_/g, "/") + "="), (c) => c.charCodeAt(0));
+    return crypto.subtle.verify("HMAC", cryptoKey, signature, encoder.encode(payload));
+}
+
+export async function verifyRefundRecoveryMetadata(
+    masterSecret: string | string[],
+    payload: string,
+    hmac: string,
+    previousHmacKey?: string,
+): Promise<boolean> {
+    for (const secret of Array.isArray(masterSecret) ? masterSecret : [masterSecret]) {
+        if (await verifyRefundMetadataHmac({ SCALIUS_SECRET: secret }, payload, hmac)) return true;
+    }
+    if (!previousHmacKey || !/^[A-Za-z0-9_-]{43}$/.test(previousHmacKey)) return false;
+    return verifyRefundMetadataWithKey(previousHmacKey, payload, hmac);
+}
+
 function getRefundSourcePaymentId(refund: Pick<OrderPayment, "metadata">): string | undefined {
     const metadata = parseRefundMetadata(refund.metadata);
     const sourcePaymentId = metadata.sourcePaymentId;
@@ -553,11 +617,19 @@ type RefundLedgerRow = Pick<OrderPayment, "id" | "amountMinor" | "metadata" | "p
 function orderedRefundSources<T extends Pick<OrderPayment, "id" | "amountMinor" | "paymentMethod">>(
     capturedPayments: readonly T[],
     refundRows: ReadonlyArray<Pick<OrderPayment, "amountMinor" | "metadata">>,
+    /**
+     * Captures a refund draws from first, ahead of the ledger order. Used for
+     * a manual COD deposit: the plan's deposit is the buyer's advance payment
+     * and the plan's cancellation follows it, so a refund that covers the
+     * deposit always repays the deposit itself.
+     */
+    priorityPaymentIds: ReadonlySet<string> = new Set(),
 ): Array<{ payment: T; settlement: RefundSourceSettlement; refundableMinor: number }> {
     const refundedBySource = computeRefundedBySourcePayment(capturedPayments, refundRows);
     return [...capturedPayments]
         .sort((left, right) =>
-            Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD))
+            Number(left.paymentMethod === GIFT_CARD_PAYMENT_METHOD) - Number(right.paymentMethod === GIFT_CARD_PAYMENT_METHOD)
+            || Number(priorityPaymentIds.has(right.id)) - Number(priorityPaymentIds.has(left.id)))
         .map((payment) => ({
             payment,
             settlement: sourceSettlement(payment.paymentMethod),
@@ -602,9 +674,10 @@ function buildRefundAllocations(params: {
     capturedPayments: CapturedPayment[];
     refundRows: Array<Pick<OrderPayment, "amountMinor" | "metadata">>;
     currency: OrderCurrencySnapshot;
+    priorityPaymentIds?: ReadonlySet<string>;
 }): RefundAllocation[] {
     const { shares, unallocatedMinor } = allocateRefundAcrossSources(
-        orderedRefundSources(params.capturedPayments, params.refundRows),
+        orderedRefundSources(params.capturedPayments, params.refundRows, params.priorityPaymentIds),
         params.refundAmountMinor,
     );
 
@@ -693,7 +766,7 @@ function stableStringify(value: unknown): string {
 }
 
 /** A partial refund is a payment fact only; the order keeps its lifecycle status. */
-function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean): string | undefined {
+function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean, hasHandover: boolean): string | undefined {
     if (!isFullRefund) return undefined;
 
     if (canTransitionTo("order", currentStatus, OrderStatus.REFUNDED)) {
@@ -701,7 +774,7 @@ function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean)
     }
 
     if (
-        PRE_FULFILLMENT_REFUND_STATUSES.has(currentStatus) &&
+        !hasHandover && PRE_FULFILLMENT_REFUND_STATUSES.has(currentStatus) &&
         canTransitionTo("order", currentStatus, OrderStatus.CANCELLED)
     ) {
         return OrderStatus.CANCELLED;
@@ -713,7 +786,7 @@ function getOrderStatusAfterRefund(currentStatus: string, isFullRefund: boolean)
 export interface FinalizeAcceptedRefundAttemptsResult {
     orderIds: string[];
     finalizedAttemptIds: string[];
-    refundNotifications: RefundNotificationFact[];
+    refundNotifications: RefundCompletionNotificationFact[];
     availabilityTransitionVariantIds: string[];
 }
 
@@ -789,31 +862,70 @@ export function computePaymentStateFromLedger(params: {
 export async function finalizeAcceptedRefundAttemptIds(
     db: Database,
     attemptIds: string[],
+    /** Master secret (SCALIUS_SECRET) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+    masterSecret: string | string[],
+    options: {
+        previousHmacKey?: string;
+        direct?: { notification: RefundCompletionNotificationFact; gateway: string; storeCreditLast4?: string };
+    } = {},
 ): Promise<FinalizeAcceptedRefundAttemptsResult> {
     const uniqueAttemptIds = [...new Set(attemptIds.filter(Boolean))];
-    if (uniqueAttemptIds.length === 0) {
-        return {
-            orderIds: [],
-            finalizedAttemptIds: [],
-            refundNotifications: [],
-            availabilityTransitionVariantIds: [],
-        };
-    }
+    const noChanges: FinalizeAcceptedRefundAttemptsResult = {
+        orderIds: [],
+        finalizedAttemptIds: [],
+        refundNotifications: [],
+        availabilityTransitionVariantIds: [],
+    };
+    if (uniqueAttemptIds.length === 0) return noChanges;
 
-    const attempts = await db
+    const requestedAttempts = await db
         .select({
             id: refundAttempts.id,
             orderId: refundAttempts.orderId,
             refundPaymentId: refundAttempts.refundPaymentId,
             providerRefundId: refundAttempts.providerRefundId,
+            sourcePaymentId: refundAttempts.sourcePaymentId,
             amountMinor: refundAttempts.amountMinor,
             currency: refundAttempts.currency,
+            status: refundAttempts.status,
+            providerStatus: refundAttempts.providerStatus,
+            metadata: refundAttempts.metadata,
         })
         .from(refundAttempts)
         .where(inJsonArray(refundAttempts.id, uniqueAttemptIds));
 
-    if (attempts.length !== uniqueAttemptIds.length) {
+    if (requestedAttempts.length !== uniqueAttemptIds.length) {
         throw new NotFoundError("One or more refund attempts could not be found for reconciliation.");
+    }
+    const attempts = requestedAttempts.filter((attempt) => attempt.status !== "refunded");
+    if (attempts.length === 0) return noChanges;
+    for (const attempt of attempts) {
+        const accepted = attempt.status === "reconcile_required"
+            || (attempt.status === "processing" && (
+                attempt.providerStatus === "accepted"
+                || attempt.providerStatus === "manual_confirmed"
+                || isInternalRefundProviderStatus(attempt.providerStatus)
+            ));
+        if (!accepted) {
+            throw new ConflictError("One or more refund attempts are not accepted for finalization.");
+        }
+    }
+
+    // Never commit a signed refund when its integrity cannot be verified.
+    // In particular, recovery must not mark the attempt terminal while leaving
+    // a refunded manual deposit plan eligible for fulfilment.
+    // When SCALIUS_SECRET rotates, try prior secrets so pending signed refunds
+    // remain verifiable across rotation without weakening signature validation.
+    for (const attempt of attempts) {
+        const metadata = parseRefundMetadata(attempt.metadata);
+        if (Object.hasOwn(metadata, "_hmac")) {
+            const { _hmac, ...payload } = metadata;
+            if (typeof _hmac !== "string" || !await verifyRefundRecoveryMetadata(
+                masterSecret, JSON.stringify(payload), _hmac, options.previousHmacKey,
+            )) {
+                throw new ValidationError("Refund metadata integrity verification failed.");
+            }
+        }
     }
 
     const refundPaymentIds = attempts.map((attempt) => attempt.refundPaymentId);
@@ -830,9 +942,16 @@ export async function finalizeAcceptedRefundAttemptIds(
         };
         currency: OrderCurrencySnapshot;
         paymentRows: Array<Pick<OrderPayment, "paymentType" | "status" | "amountMinor">>;
+        paymentState: ReturnType<typeof computePaymentStateFromLedger>;
+        nextOrderStatus: string | undefined;
+        shouldReleaseInventory: boolean;
     }>();
 
-    // Validate every immutable order/payment currency before mutating refund rows.
+    // Read orders, payment ledger, and manual COD deposit plans. Compute
+    // payment state per order before any mutation so all values are ready
+    // for the atomic batch.
+    const refundedDepositsByOrder = new Map<string, number>();
+    const manualPlansByOrder = new Map<string, { id: string; depositAmountMinor: number; status: string; kind: string } | null>();
     for (const orderId of new Set(attempts.map((attempt) => attempt.orderId))) {
         const order = await db
             .select({
@@ -843,6 +962,7 @@ export async function finalizeAcceptedRefundAttemptIds(
                 version: orders.version,
                 currencyCode: orders.currencyCode,
                 currencyDecimalPlaces: orders.currencyDecimalPlaces,
+                hasHandover: sql<number>`CASE WHEN ${nothingHandedOverCondition(orderId)} THEN 0 ELSE 1 END`,
             })
             .from(orders)
             .where(eq(orders.id, orderId))
@@ -863,111 +983,249 @@ export async function finalizeAcceptedRefundAttemptIds(
                 status: orderPayments.status,
                 amountMinor: orderPayments.amountMinor,
                 currency: orderPayments.currency,
+                paymentMethod: orderPayments.paymentMethod,
             })
             .from(orderPayments)
             .where(eq(orderPayments.orderId, orderId));
         for (const payment of ledgerRows) {
             assertOrderPaymentCurrency(payment.currency, currency, "Order payment ledger");
         }
-        reconciliationByOrder.set(orderId, {
-            order,
-            currency,
-            paymentRows: ledgerRows.map((payment) => ({
-                paymentType: payment.paymentType,
-                status: refundPaymentIdSet.has(payment.id)
-                    ? PaymentRecordStatus.REFUNDED
-                    : payment.status,
-                amountMinor: payment.amountMinor,
-            })),
-        });
-    }
-
-    await db.update(orderPayments).set({
-        status: PaymentRecordStatus.REFUNDED,
-        updatedAt: sql`unixepoch()`,
-    }).where(inJsonArray(orderPayments.id, refundPaymentIds));
-
-    const finalizedOrderIds = new Set<string>();
-    const finalizedAttemptIds: string[] = [];
-    const refundNotifications: RefundNotificationFact[] = [];
-    const availabilityTransitionVariantIds = new Set<string>();
-
-    for (const orderId of new Set(attempts.map((attempt) => attempt.orderId))) {
-        const orderAttempts = attempts.filter((attempt) => attempt.orderId === orderId);
-        const reconciliation = reconciliationByOrder.get(orderId)!;
-        const { order, currency, paymentRows } = reconciliation;
-
+        // Source identity is a durable column, not caller-editable metadata. This
+        // also recovers legacy unsigned attempts without trusting their flags.
+        // Read the manual-kind payment plan once, before the deposit check, so it can
+        // scope the equality check to match processRefund's predicate.
+        const plan = await db
+            .select({
+                id: paymentPlans.id,
+                depositAmountMinor: paymentPlans.depositAmountMinor,
+                status: paymentPlans.status,
+                kind: paymentPlans.kind,
+            })
+            .from(paymentPlans)
+            .where(and(
+                eq(paymentPlans.orderId, orderId),
+                eq(paymentPlans.kind, "manual"),
+            ))
+            .get();
+        manualPlansByOrder.set(orderId, plan ?? null);
+        const manualPlan = manualPlansByOrder.get(orderId);
+        const depositRefundAmount = orderAttempts.reduce((sum, attempt) => {
+            const source = ledgerRows.find((payment) => payment.id === attempt.sourcePaymentId);
+            const refund = ledgerRows.find((payment) => payment.id === attempt.refundPaymentId);
+            if (!source || source.paymentType !== "deposit"
+                || source.status !== PaymentRecordStatus.SUCCEEDED
+                || !isManualSettlementMethod(source.paymentMethod)) return sum;
+            if (!manualPlan || manualPlan.status !== PaymentPlanStatus.DEPOSIT_PAID && manualPlan.status !== PaymentPlanStatus.COMPLETED) return sum;
+            if (!refund || refund.paymentType !== "refund" || refund.amountMinor !== attempt.amountMinor
+                || attempt.amountMinor !== source.amountMinor) {
+                throw new ValidationError("Manual deposit refund allocation does not match its source payment.");
+            }
+            return sum + attempt.amountMinor;
+        }, 0);
+        refundedDepositsByOrder.set(orderId, depositRefundAmount);
+        const paymentRows = ledgerRows.map((payment) => ({
+            paymentType: payment.paymentType,
+            status: refundPaymentIdSet.has(payment.id)
+                ? PaymentRecordStatus.REFUNDED
+                : payment.status,
+            amountMinor: payment.amountMinor,
+        }));
         const paymentState = computePaymentStateFromLedger({
             totalAmountMinor: order.totalAmountMinor,
             deferred: order.paymentTermsDays !== null,
             payments: paymentRows,
             paymentTermsDays: order.paymentTermsDays,
         });
-        const nextOrderStatus = getOrderStatusAfterRefund(order.status, paymentState.isFullRefund);
+        const hasHandover = order.hasHandover === 1;
+        const nextOrderStatus = getOrderStatusAfterRefund(order.status, paymentState.isFullRefund, hasHandover);
         const shouldReleaseInventory =
-            paymentState.isFullRefund &&
+            paymentState.isFullRefund && !hasHandover &&
             (nextOrderStatus === OrderStatus.CANCELLED || order.status === OrderStatus.CANCELLED);
 
-        const updateResult = await db.update(orders).set({
-            paidAmountMinor: paymentState.paidAmountMinor,
-            balanceDueMinor: paymentState.balanceDueMinor,
-            paymentStatus: paymentState.paymentStatus,
-            ...(nextOrderStatus ? { status: nextOrderStatus } : {}),
-            version: sql`${orders.version} + 1`,
-            updatedAt: sql`unixepoch()`,
-        }).where(and(
-            eq(orders.id, orderId),
-            eq(orders.version, order.version),
-        )).returning({ id: orders.id });
+        reconciliationByOrder.set(orderId, {
+            order,
+            currency,
+            paymentRows,
+            paymentState,
+            nextOrderStatus,
+            shouldReleaseInventory,
+        });
 
-        if (updateResult.length === 0) {
-            throw new ConflictError("Refund settlement was recorded, but local order reconciliation lost a concurrent update.");
-        }
+    }
 
-        if (shouldReleaseInventory) {
-            const impact = await applyInventoryForStatusChangeWithImpact(
+    // ---- Atomic batch: all order/payment/plan writes in one D1 transaction ----
+    const batchStatements: BatchItem<"sqlite">[] = [];
+
+    // The refund attempt and order must still be at the state we read.
+    for (const attempt of attempts) {
+        const state = and(
+            eq(refundAttempts.id, attempt.id),
+            eq(refundAttempts.status, attempt.status),
+            sql`${refundAttempts.providerStatus} IS NOT DISTINCT FROM ${attempt.providerStatus ?? null}`,
+            sql`${refundAttempts.metadata} IS NOT DISTINCT FROM ${attempt.metadata ?? null}`,
+        );
+        batchStatements.push(buildBatchGuard(
+            db,
+            sql`EXISTS (SELECT 1 FROM ${refundAttempts} WHERE ${state})`,
+            "REFUND_FINALIZE_ATTEMPT_CONFLICT",
+        ));
+    }
+    for (const [orderId, reconciliation] of reconciliationByOrder) {
+        const { order } = reconciliation;
+        batchStatements.push(
+            buildBatchGuard(
                 db,
-                orderId,
-                OrderStatus.CANCELLED,
-            );
-            for (const variantId of impact.availabilityTransitionVariantIds) {
-                availabilityTransitionVariantIds.add(variantId);
-            }
-        }
+                sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${eq(orders.id, orderId)} AND ${eq(orders.version, order.version)})`,
+                "REFUND_FINALIZE_ORDER_CONFLICT",
+            ),
+        );
+    }
 
-        finalizedOrderIds.add(orderId);
+    // Guard 2: the manual deposit plan must retain the paid status we read.
+    for (const [orderId, plan] of manualPlansByOrder) {
+        if (plan && (plan.status === PaymentPlanStatus.DEPOSIT_PAID || plan.status === PaymentPlanStatus.COMPLETED)) {
+            batchStatements.push(
+                buildBatchGuard(
+                    db,
+                    sql`EXISTS (SELECT 1 FROM ${paymentPlans} WHERE ${eq(paymentPlans.orderId, orderId)} AND ${eq(paymentPlans.kind, "manual")} AND ${eq(paymentPlans.status, plan.status)})`,
+                    "REFUND_FINALIZE_PLAN_CONFLICT",
+                ),
+            );
+        }
+    }
+
+    // orderPayments → REFUNDED (bulk, all refunded payments at once).
+    batchStatements.push(
+        db.update(orderPayments).set({
+            status: PaymentRecordStatus.REFUNDED,
+            updatedAt: sql`unixepoch()`,
+        }).where(inJsonArray(orderPayments.id, refundPaymentIds)),
+    );
+
+    // Per-order: orders CAS update (paid/balance/paymentStatus/status/version).
+    for (const [orderId, reconciliation] of reconciliationByOrder) {
+        const { order, paymentState, nextOrderStatus } = reconciliation;
+        batchStatements.push(
+            db.update(orders).set({
+                paidAmountMinor: paymentState.paidAmountMinor,
+                balanceDueMinor: paymentState.balanceDueMinor,
+                paymentStatus: paymentState.paymentStatus,
+                ...(nextOrderStatus ? { status: nextOrderStatus } : {}),
+                version: sql`${orders.version} + 1`,
+                updatedAt: sql`unixepoch()`,
+            }).where(and(
+                eq(orders.id, orderId),
+                eq(orders.version, order.version),
+            )),
+        );
+    }
+
+    // Cancel from the accepted allocation's durable source relationship, not
+    // its metadata marker. Historical unsigned attempts use the same proof;
+    // stripping a signature cannot turn another source into a deposit.
+    for (const orderId of reconciliationByOrder.keys()) {
+        const plan = manualPlansByOrder.get(orderId);
+        const refundedDeposit = refundedDepositsByOrder.get(orderId) ?? 0;
+        if (plan && refundedDeposit > 0 && refundedDeposit !== plan.depositAmountMinor) {
+            throw new ValidationError("Manual deposit refund must equal the full deposit amount.");
+        }
+        const manualDepositRefund = refundedDeposit > 0;
+        if (plan && plan.kind === "manual" && (plan.status === PaymentPlanStatus.DEPOSIT_PAID || plan.status === PaymentPlanStatus.COMPLETED) && manualDepositRefund) {
+            batchStatements.push(
+                db.update(paymentPlans).set({
+                    status: PaymentPlanStatus.CANCELLED,
+                    cancelledAt: sql`unixepoch()`,
+                    updatedAt: sql`unixepoch()`,
+                }).where(and(
+                    eq(paymentPlans.id, plan.id),
+                    eq(paymentPlans.status, plan.status),
+                )),
+            );
+        }
+    }
+
+    // refundAttempts → "refunded" (bulk).
+    batchStatements.push(
+        db.update(refundAttempts).set({
+            status: "refunded",
+            claimId: null,
+            claimExpiresAt: null,
+            refundedAt: sql`unixepoch()`,
+            updatedAt: sql`unixepoch()`,
+    }).where(inJsonArray(refundAttempts.id, attempts.map((attempt) => attempt.id))),
+    );
+
+    // Persist the delivery intent before the refund can become terminal.
+    const refundNotifications: RefundCompletionNotificationFact[] = [];
+    for (const orderId of reconciliationByOrder.keys()) {
+        const orderAttempts = attempts.filter((attempt) => attempt.orderId === orderId);
+        const reconciliation = reconciliationByOrder.get(orderId)!;
+        const { currency } = reconciliation;
         const notificationAttemptIds = orderAttempts.map((attempt) => attempt.id);
         const notificationRefundIds = orderAttempts
             .map((attempt) => attempt.providerRefundId)
             .filter((refundId): refundId is string => Boolean(refundId));
-        refundNotifications.push({
+        const direct = attempts.length === uniqueAttemptIds.length && options.direct?.notification.orderId === orderId
+            ? options.direct
+            : undefined;
+        const notification = direct?.notification ?? {
             orderId,
-            notificationType: paymentState.isFullRefund ? "order_refunded" : "order_partially_refunded",
+            notificationType: reconciliation.paymentState.isFullRefund ? "order_refunded" : "order_partially_refunded",
             dedupeKey: buildReconciledRefundNotificationDedupeKey(
                 orderId,
                 notificationAttemptIds,
-                paymentState.isFullRefund,
+                reconciliation.paymentState.isFullRefund,
             ),
             amount: fromMinor(
                 orderAttempts.reduce((sum, attempt) => sum + attempt.amountMinor, 0),
                 currency.decimalPlaces,
             ),
             refundId: notificationRefundIds.join(",") || undefined,
+        } satisfies RefundCompletionNotificationFact;
+        const outbox = buildNotificationOutboxInsert(db, {
+            subjectType: "order",
+            subjectId: orderId,
+            audience: "customer",
+            notificationType: notification.notificationType,
+            dedupeKey: notification.dedupeKey,
+            source: direct ? "orders-refund" : "orders-refund-reconciliation",
+            data: {
+                amount: notification.amount,
+                ...(notification.refundId ? { refundId: notification.refundId } : {}),
+                ...(direct ? { gateway: direct.gateway } : {}),
+                ...(direct?.storeCreditLast4 ? { settlement: "store_credit", storeCreditLast4: direct.storeCreditLast4 } : {}),
+            },
         });
+        batchStatements.push(outbox.statement);
+        refundNotifications.push(notification);
     }
 
-    await db.update(refundAttempts).set({
-        status: "refunded",
-        claimId: null,
-        claimExpiresAt: null,
-        refundedAt: sql`unixepoch()`,
-        updatedAt: sql`unixepoch()`,
-    }).where(inJsonArray(refundAttempts.id, uniqueAttemptIds));
-    finalizedAttemptIds.push(...uniqueAttemptIds);
+    await safeBatch(db, batchStatements);
+
+    // ---- Inventory release: separate from the atomic batch ----
+    // applyInventoryForStatusChangeWithImpact calls safeBatch() internally and
+    // cannot be nested inside an outer db.batch(). The scheduled inventory
+    // drain retries cancelled, refunded orders with stock still to release.
+    const finalizedOrderIds = new Set<string>();
+    const availabilityTransitionVariantIds = new Set<string>();
+    for (const [orderId, reconciliation] of reconciliationByOrder) {
+        if (reconciliation.shouldReleaseInventory) {
+            try {
+                const impact = await applyInventoryForStatusChangeWithImpact(db, orderId, OrderStatus.CANCELLED);
+                for (const variantId of impact.availabilityTransitionVariantIds) {
+                    availabilityTransitionVariantIds.add(variantId);
+                }
+            } catch {
+                // Payment and order state have committed. Keep the attempt terminal.
+                console.warn("[refund] Inventory recovery deferred", { orderId });
+            }
+        }
+        finalizedOrderIds.add(orderId);
+    }
 
     return {
         orderIds: [...finalizedOrderIds],
-        finalizedAttemptIds,
+        finalizedAttemptIds: attempts.map((attempt) => attempt.id),
         refundNotifications,
         availabilityTransitionVariantIds: [...availabilityTransitionVariantIds],
     };
@@ -1031,15 +1289,22 @@ function buildRefundMetadata(params: {
     });
 }
 
-function buildRefundAttemptMetadata(params: {
+/** Signs the metadata for a new refund attempt. */
+export async function buildRefundAttemptMetadata(params: {
     request: RefundRequest;
     allocation: RefundAllocation;
     groupId: string;
     claimVersion: number;
     allocationCount: number;
-}): string {
+    /** Durable flag: true when this refund fully repays a manual COD deposit.
+     * Survives async finalization, retries and crash recovery — not just an
+     * in-memory parameter that would be lost across process restarts. */
+    manualDepositRefund?: boolean;
+    /** Master secret for HMAC derivation. Required for HMAC integrity protection on refund metadata. */
+    masterSecret: string;
+}): Promise<string> {
     const mode = allocationSettlementMode(params.allocation);
-    return JSON.stringify({
+    const payload = {
         reason: params.request.reason,
         gateway: params.allocation.sourcePayment.paymentMethod,
         ...(isInternalSettlement(mode) ? {
@@ -1049,60 +1314,17 @@ function buildRefundAttemptMetadata(params: {
             settlementMode: "manual_external",
             manualSettlementConfirmed: params.request.manualSettlementConfirmed === true,
         } : {}),
+        ...(params.manualDepositRefund === true ? { manualDepositRefund: true } : {}),
         refundGroupId: params.groupId,
         claimVersion: params.claimVersion,
         sourcePaymentId: params.allocation.sourcePayment.id,
         sourcePaymentType: params.allocation.sourcePayment.paymentType,
         allocationIndex: params.allocation.index,
         allocationCount: params.allocationCount,
-    });
-}
-
-function buildRefundAttemptInsert(params: {
-    request: RefundRequest;
-    allocation: RefundAllocation;
-    groupId: string;
-    claimVersion: number;
-    allocationCount: number;
-    requestHash: string;
-    currency: string;
-}) {
-    const mode = allocationSettlementMode(params.allocation);
-    // An internal settlement commits in this very batch: the attempt starts
-    // accepted, so a crash before finalization is finalized by recovery
-    // instead of being released as "never dispatched" and refunded twice.
-    const internal = isInternalSettlement(mode)
-        ? {
-            status: "processing",
-            attempts: 1,
-            providerStatus: INTERNAL_REFUND_PROVIDER_STATUSES[mode],
-            responsePayload: JSON.stringify({ settlementMode: mode, giftCardId: params.allocation.giftCardId ?? null }),
-        }
-        : { status: "pending" };
-    return {
-        id: getRefundAttemptId(params.allocation),
-        attemptKey: getRefundAttemptKeyForRequest(params.request, params.allocation),
-        refundGroupId: params.groupId,
-        orderId: params.request.orderId,
-        sourcePaymentId: params.allocation.sourcePayment.id,
-        refundPaymentId: params.allocation.id,
-        gateway: params.allocation.sourcePayment.paymentMethod,
-        amountMinor: params.allocation.amountMinor,
-        currency: params.currency,
-        reason: params.request.reason,
-        requestHash: params.requestHash,
-        providerIdempotencyKey: params.allocation.idempotencyKey,
-        refundReference: params.allocation.refundReference,
-        allocationIndex: params.allocation.index,
-        allocationCount: params.allocationCount,
-        sourceTransactionId: getRefundAttemptSourceTransactionId(params.allocation),
-        ...internal,
-        claimId: params.groupId,
-        claimExpiresAt: sql`unixepoch() + ${REFUND_ATTEMPT_LEASE_SECONDS}`,
-        metadata: buildRefundAttemptMetadata(params),
-        createdAt: sql`unixepoch()`,
-        updatedAt: sql`unixepoch()`,
     };
+    const hmac = await computeRefundMetadataHmac({ SCALIUS_SECRET: params.masterSecret }, JSON.stringify(payload));
+    if (!hmac) throw new ServiceUnavailableError("Refund metadata signing key is unavailable.");
+    return JSON.stringify({ ...payload, _hmac: hmac });
 }
 
 /** The attempt's unique key; also the idempotency key of a gift-card refund credit. */
@@ -1137,14 +1359,11 @@ async function markRefundAttemptAccepted(
     db: Database,
     allocation: CompletedRefundAllocation,
 ): Promise<void> {
-    const isManualSettlement = allocationSettlementMode(allocation) === "manual_external";
     await db.update(refundAttempts).set({
         status: "processing",
         providerRefundId: allocation.refundId ?? null,
         providerStatus: acceptedProviderStatus(allocation),
-        responsePayload: isManualSettlement
-            ? JSON.stringify({ settlementMode: "manual_external" })
-            : JSON.stringify({ refundId: allocation.refundId ?? null }),
+        responsePayload: JSON.stringify({ refundId: allocation.refundId ?? null }),
         updatedAt: sql`unixepoch()`,
     }).where(eq(refundAttempts.id, getRefundAttemptId(allocation)));
 }
@@ -1166,7 +1385,7 @@ async function markRefundAttemptsReconcileRequired(
             nextProbeAt: sql`unixepoch()`,
             lastError: serializeRefundAttemptError(error),
             updatedAt: sql`unixepoch()`,
-        }).where(eq(refundAttempts.id, getRefundAttemptId(allocation)))
+        }).where(and(eq(refundAttempts.id, getRefundAttemptId(allocation)), ne(refundAttempts.status, "refunded")))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle D1 batch typing limitation
     ) as any);
 }
@@ -1266,9 +1485,8 @@ async function markRefundAllocationsProviderUnknown(
 
 /**
  * Dispatch one refund allocation through its gateway adapter and return the
- * provider refund id. COD has no provider: the caller has already confirmed
- * the external repayment. Failures before the provider call (configuration,
- * missing references) are terminal; once the call starts, any error is an
+ * provider refund id. Failures before the provider call (configuration,
+ * missing references) are terminal. Once the call starts, any error is an
  * unknown outcome that reconciliation must resolve.
  */
 async function dispatchRefund(
@@ -1281,7 +1499,6 @@ async function dispatchRefund(
     encryptionKey: string | undefined,
     providers: PaymentProvidersSource | undefined,
 ): Promise<string | undefined> {
-    if (isManualSettlementMethod(payment.paymentMethod)) return undefined;
     const gateways = await paymentProvidersFor(providers, payment.paymentMethod);
     const gateway = gateways.get(payment.paymentMethod);
     if (!gateway?.refund) throw new ValidationError(`Unsupported refund gateway: ${payment.paymentMethod}`);
@@ -1391,6 +1608,7 @@ function refundLedgerReason(reason: string): string | null {
 
 interface PreparedStoreCredit {
     giftCardId: string;
+    last4: string;
     /** The card, its `issue` transaction and its `gift_card_issued` outbox row. */
     statements: unknown[];
     notificationOutboxId: string;
@@ -1450,6 +1668,7 @@ async function prepareStoreCredit(
     });
     return {
         giftCardId: built.giftCardId,
+        last4: built.last4,
         statements: [...built.statements, notification.statement],
         notificationOutboxId: notification.outboxId,
     };
@@ -1517,6 +1736,9 @@ async function assignAllocationSettlements(
 export async function processRefund(
     db: Database,
     params: RefundRequest,
+    /** The master secret (SCALIUS_SECRET) for deriving HMAC keys. Required for HMAC integrity on refund metadata. */
+    masterSecret: string,
+    /** The credential encryption key for sealing store-credit card codes. */
     encryptionKey?: string,
     /** The request's gateways (built-in and app providers); built-in ones alone by default. */
     providers?: PaymentProvidersSource,
@@ -1526,11 +1748,13 @@ export async function processRefund(
         .select({
             id: orders.id,
             paidAmountMinor: orders.paidAmountMinor,
+            balanceDueMinor: orders.balanceDueMinor,
             paymentStatus: orders.paymentStatus,
             paymentMethod: orders.paymentMethod,
             paymentTermsDays: orders.paymentTermsDays,
             status: orders.status,
             inventoryAction: orders.inventoryAction,
+            hasHandover: sql<number>`CASE WHEN ${nothingHandedOverCondition(params.orderId)} THEN 0 ELSE 1 END`,
             version: orders.version,
             shipmentClaimId: orders.shipmentClaimId,
             shipmentClaimExpiresAt: orders.shipmentClaimExpiresAt,
@@ -1591,6 +1815,7 @@ export async function processRefund(
     if (
         order.paymentStatus === PaymentStatus.REFUNDED &&
         order.status === OrderStatus.CANCELLED &&
+        order.hasHandover !== 1 &&
         order.inventoryAction !== "deducted"
     ) {
         const impact = await applyInventoryForStatusChangeWithImpact(
@@ -1665,6 +1890,40 @@ export async function processRefund(
 
     const claimVersion = order.version + 1;
     const refundGroupId = getRefundClaimBaseId(params.orderId, order.version);
+    // A manual COD deposit plan must exist and be DEPOSIT_PAID for this to be
+    // a deposit refund. Reading the plan here (before the claim batch) also
+    // lets us validate against plan.depositAmountMinor instead of
+    // order.paidAmountMinor, which may include COD balance payments collected
+    // after the deposit.
+    const manualDepositPlan = await db
+        .select({
+            id: paymentPlans.id,
+            depositAmountMinor: paymentPlans.depositAmountMinor,
+            status: paymentPlans.status,
+        })
+        .from(paymentPlans)
+        .where(and(
+            eq(paymentPlans.orderId, params.orderId),
+            eq(paymentPlans.kind, "manual"),
+        ))
+        .get();
+    const manualPlanIsPaid = manualDepositPlan !== undefined
+        && (manualDepositPlan.status === PaymentPlanStatus.DEPOSIT_PAID
+            || manualDepositPlan.status === PaymentPlanStatus.COMPLETED);
+    // The plan's deposit is repaid before the cash collected at delivery. The
+    // cash balance is the newest capture once it is collected, so without this
+    // a deposit-sized refund would draw from the collected cash and leave the
+    // plan marked as paid even though the merchant refunded the deposit.
+    const depositCapture = manualPlanIsPaid && manualDepositPlan
+        ? capturedPayments.find((payment) =>
+            payment.paymentType === "deposit"
+            && isManualSettlementMethod(payment.paymentMethod)
+            && payment.amountMinor === manualDepositPlan.depositAmountMinor)
+        : undefined;
+    const priorityPaymentIds = depositCapture && manualDepositPlan
+        && refundAmount >= manualDepositPlan.depositAmountMinor
+        ? new Set([depositCapture.id])
+        : undefined;
     const allocations = buildRefundAllocations({
         orderId: params.orderId,
         claimVersion,
@@ -1672,6 +1931,7 @@ export async function processRefund(
         capturedPayments,
         refundRows: priorRefundRows,
         currency,
+        priorityPaymentIds,
     });
     if (settlement === "store_credit" && (params.caller ?? "staff") !== "staff"
         && allocations.some((allocation) => isManualSettlementMethod(allocation.sourcePayment.paymentMethod))) {
@@ -1680,6 +1940,51 @@ export async function processRefund(
         throw new ValidationError(
             "Store credit for a cash-on-delivery or recorded payment can only be issued by staff in the dashboard. Refund it to the original payment instead.",
             { reason: STORE_CREDIT_NEEDS_STAFF_REASON },
+        );
+    }
+    const depositAllocations = allocations.filter((allocation) =>
+        allocation.sourcePayment.paymentType === "deposit"
+            && isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
+    );
+    const hasManualCodAllocation = manualPlanIsPaid && depositAllocations.length > 0;
+    if (hasManualCodAllocation && (params.caller ?? "staff") !== "staff") {
+        throw new ValidationError("Manual COD deposit refunds can only be recorded by staff in the dashboard.");
+    }
+    if (hasManualCodAllocation && order.hasHandover === 1 && order.balanceDueMinor > 0) {
+        // The goods are already handed over and the cash balance is still owed.
+        // Refunding the deposit cancels the plan, and a cancelled plan blocks
+        // the collection of the balance, so the merchant would be left with
+        // neither the deposit nor the cash. The balance is collected first, or
+        // the order is cancelled before it is handed over.
+        throw new ValidationError(
+            "This order was already handed over and still owes its cash balance, so the manual COD deposit cannot be refunded yet. Collect the cash balance first, or cancel the order before handing it over.",
+        );
+    }
+    // Any allocation repaid by hand (COD, recorded payment) requires confirmation.
+    // Store credit settles as a gift card with no cash changing hands, so it
+    // does not require manual settlement confirmation.
+    const hasManualAllocation =
+        params.settlement !== "store_credit" &&
+        allocations.some((allocation) =>
+            isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
+        );
+    // A manual COD deposit can only be refunded in full — the total amount
+    // allocated to the deposit must exactly equal the plan's depositAmountMinor.
+    // This prevents partial deposit refunds and double-counting across attempts.
+    // Validate the amount first so partial refunds are rejected on amount
+    // regardless of settlement type.
+    if (hasManualCodAllocation && (
+        depositAllocations.length !== 1
+        || depositAllocations[0]!.amountMinor !== manualDepositPlan.depositAmountMinor
+        || depositAllocations.some(({ amountMinor, sourcePayment }) => amountMinor !== sourcePayment.amountMinor)
+    )) {
+        throw new ValidationError(
+            "Partial refunds of a manual COD deposit are not supported. The deposit allocation must equal the full deposit amount.",
+        );
+    }
+    if (hasManualAllocation && params.manualSettlementConfirmed !== true) {
+        throw new ValidationError(
+            "Confirm that the customer has already received the refund by hand (cash or transfer) before recording it.",
         );
     }
     const actor = params.actorUserId
@@ -1698,14 +2003,6 @@ export async function processRefund(
         })
         : null;
     await assignAllocationSettlements(db, allocations, storeCredit?.giftCardId ?? null);
-    const hasManualCodAllocation = allocations.some(
-        (allocation) => allocationSettlementMode(allocation) === "manual_external",
-    );
-    if (hasManualCodAllocation && params.manualSettlementConfirmed !== true) {
-        throw new ValidationError(
-            "Confirm that the customer has already received the refund by hand (cash or transfer) before recording it.",
-        );
-    }
     const refundRequestHash = await buildRefundRequestHash({
         request: params,
         refundAmountMinor: refundAmount,
@@ -1728,6 +2025,28 @@ export async function processRefund(
     // so the refund rows, attempts and any card money commit only with the
     // claim: a lost claim leaves nothing behind to clean up.
     const ledgerReason = refundLedgerReason(params.reason);
+
+    // Pre-compute refund attempt metadata with HMAC for all allocations.
+    // This must be done before the batch since HMAC derivation is async.
+    const refundAttemptMetadata = await Promise.all(
+        allocations.map((allocation) =>
+            buildRefundAttemptMetadata({
+                request: params,
+                allocation,
+                groupId: refundGroupId,
+                claimVersion,
+                allocationCount: allocations.length,
+                manualDepositRefund: hasManualCodAllocation
+                    && allocation.sourcePayment.paymentType === "deposit"
+                    && isManualSettlementMethod(allocation.sourcePayment.paymentMethod),
+                masterSecret,
+            })
+        )
+    );
+    const refundAttemptMetadataByAllocationId = new Map(
+        allocations.map((allocation, index) => [allocation.id, refundAttemptMetadata[index]!])
+    );
+
     try {
         await db.batch([
             buildBatchGuard(db, sql`EXISTS (SELECT 1 FROM ${orders} WHERE ${claimCondition})`, REFUND_CLAIM_CONFLICT),
@@ -1760,7 +2079,12 @@ export async function processRefund(
             })),
             ...allocations.flatMap((allocation) => {
                 const mode = allocationSettlementMode(allocation);
-                const internal = isInternalSettlement(mode);
+                // Staff already repaid manual allocations. Card credits also
+                // settle in this transaction. Record both as accepted so a
+                // lost claim response cannot make recovery release their capacity.
+                const settledAtClaim = mode !== "provider";
+                const attemptId = getRefundAttemptId(allocation);
+                const attemptKey = getRefundAttemptKeyForRequest(params, allocation);
                 return [
                     db.insert(orderPayments).values({
                         id: allocation.id,
@@ -1771,28 +2095,52 @@ export async function processRefund(
                         ...presentedSettlement(allocation.amountMinor, currency.code),
                         paymentMethod: allocation.sourcePayment.paymentMethod,
                         paymentType: "refund",
-                        // An internal settlement is done once this batch commits.
-                        status: internal ? PaymentRecordStatus.REFUNDED : PaymentRecordStatus.PENDING,
+                        status: settledAtClaim ? PaymentRecordStatus.REFUNDED : PaymentRecordStatus.PENDING,
                         metadata: buildRefundMetadata({
                             request: params,
                             allocation,
                             groupId: refundGroupId,
                             claimVersion,
                             allocationCount: allocations.length,
-                            status: internal ? "refunded" : "pending",
+                            status: settledAtClaim ? "refunded" : "pending",
                         }),
                         createdAt: sql`unixepoch()`,
                         updatedAt: sql`unixepoch()`,
                     }),
-                    db.insert(refundAttempts).values(buildRefundAttemptInsert({
-                        request: params,
-                        allocation,
-                        groupId: refundGroupId,
-                        claimVersion,
-                        allocationCount: allocations.length,
-                        requestHash: refundRequestHash,
+                    db.insert(refundAttempts).values({
+                        id: attemptId,
+                        attemptKey,
+                        refundGroupId,
+                        orderId: params.orderId,
+                        sourcePaymentId: allocation.sourcePayment.id,
+                        refundPaymentId: allocation.id,
+                        gateway: allocation.sourcePayment.paymentMethod,
+                        amountMinor: allocation.amountMinor,
                         currency: currency.code,
-                    })),
+                        reason: params.reason,
+                        requestHash: refundRequestHash,
+                        providerIdempotencyKey: allocation.idempotencyKey,
+                        refundReference: allocation.refundReference,
+                        allocationIndex: allocation.index,
+                        allocationCount: allocations.length,
+                        sourceTransactionId: getRefundAttemptSourceTransactionId(allocation),
+                        ...(settledAtClaim
+                            ? {
+                                status: "processing" as const,
+                                attempts: 1,
+                                providerStatus: acceptedProviderStatus(allocation),
+                                responsePayload: JSON.stringify({
+                                    settlementMode: mode,
+                                    ...(isInternalSettlement(mode) ? { giftCardId: allocation.giftCardId ?? null } : {}),
+                                }),
+                            }
+                            : { status: "pending" as const }),
+                        claimId: refundGroupId,
+                        claimExpiresAt: sql`unixepoch() + ${REFUND_ATTEMPT_LEASE_SECONDS}`,
+                        metadata: refundAttemptMetadataByAllocationId.get(allocation.id)!,
+                        createdAt: sql`unixepoch()`,
+                        updatedAt: sql`unixepoch()`,
+                    }),
                     // Credit back to the tender's card, keyed by the attempt key (G5).
                     ...(mode === "gift_card" ? [buildGiftCardRefundStatement(db, {
                         giftCardId: allocation.giftCardId!,
@@ -1800,8 +2148,8 @@ export async function processRefund(
                         amountMinor: giftCardRefundCreditMinor(allocation.sourcePayment, allocation.amountMinor),
                         orderId: params.orderId,
                         orderPaymentId: allocation.id,
-                        refundAttemptId: getRefundAttemptId(allocation),
-                        idempotencyKey: getRefundAttemptKeyForRequest(params, allocation),
+                        refundAttemptId: attemptId,
+                        idempotencyKey: attemptKey,
                         actor,
                         reason: ledgerReason,
                     })] : []),
@@ -1836,15 +2184,14 @@ export async function processRefund(
     // Once a provider call starts, timeout/network/provider exceptions are
     // ambiguous: leave uncompleted rows pending so duplicate retries are blocked
     // until reconciliation proves whether the gateway accepted the refund.
-    // Internal settlements (gift card, store credit) committed with the claim:
-    // they count as done before any provider is called, so a provider failure
-    // below still finalizes them instead of marking settled money as failed.
+    // Manual repayments and card credits are already settled. A provider
+    // failure still finalizes those allocations.
     const completedAllocations: CompletedRefundAllocation[] = allocations
-        .filter((allocation) => isInternalSettlement(allocationSettlementMode(allocation)))
+        .filter((allocation) => allocationSettlementMode(allocation) !== "provider")
         .map((allocation) => ({ ...allocation }));
     try {
         for (const allocation of allocations) {
-            if (isInternalSettlement(allocationSettlementMode(allocation))) continue;
+            if (allocationSettlementMode(allocation) !== "provider") continue;
             await markRefundAttemptProcessing(db, allocation, refundGroupId);
             const refundId = await dispatchRefund(
                 db,
@@ -1914,6 +2261,7 @@ export async function processRefund(
                 finalizedResult = await finalizeAcceptedRefundAttemptIds(
                     db,
                     completedAllocations.map((allocation) => getRefundAttemptId(allocation)),
+                    masterSecret,
                 );
             } catch (finalizeError: unknown) {
                 await markRefundAttemptsReconcileRequired(db, completedAllocations, finalizeError);
@@ -1973,20 +2321,7 @@ export async function processRefund(
         throw error;
     }
 
-    let availabilityTransitionVariantIds: string[];
-    try {
-        const finalizedResult = await finalizeAcceptedRefundAttemptIds(
-            db,
-            completedAllocations.map((allocation) => getRefundAttemptId(allocation)),
-        );
-        availabilityTransitionVariantIds =
-            finalizedResult.availabilityTransitionVariantIds;
-    } catch (finalizeError: unknown) {
-        await markRefundAttemptsReconcileRequired(db, completedAllocations, finalizeError);
-        throw finalizeError;
-    }
-
-    const refundNotification = buildDirectRefundNotificationFact({
+    const directNotification = buildDirectRefundNotificationFact({
         orderId: params.orderId,
         refundGroupId,
         amountMinor: refundAmount,
@@ -1994,10 +2329,21 @@ export async function processRefund(
         refundId: getCompletedRefundIds(completedAllocations),
         currency,
     });
-    const storeCreditCard = storeCredit
-        ? await db.select({ last4: giftCards.codeLast4 }).from(giftCards).where(eq(giftCards.id, storeCredit.giftCardId)).get()
-        : undefined;
 
+    let finalizedResult: FinalizeAcceptedRefundAttemptsResult;
+    try {
+        finalizedResult = await finalizeAcceptedRefundAttemptIds(
+            db,
+            completedAllocations.map((allocation) => getRefundAttemptId(allocation)),
+            masterSecret,
+            { direct: { notification: directNotification, gateway: resultGateway, storeCreditLast4: storeCredit?.last4 } },
+        );
+    } catch (finalizeError: unknown) {
+        await markRefundAttemptsReconcileRequired(db, completedAllocations, finalizeError);
+        throw finalizeError;
+    }
+
+    const refundNotification = finalizedResult.refundNotifications[0];
     return {
         success: true,
         gateway: resultGateway,
@@ -2005,23 +2351,23 @@ export async function processRefund(
         refundId: getCompletedRefundIds(completedAllocations),
         amount: fromMinor(refundAmount, currency.decimalPlaces),
         isFullRefund,
-        manualSettlementRecorded: hasManualCodAllocation,
+        manualSettlementRecorded: hasManualAllocation,
         settlement,
-        ...(storeCredit && storeCreditCard ? {
+        ...(storeCredit ? {
             storeCredit: {
                 giftCardId: storeCredit.giftCardId,
-                last4: storeCreditCard.last4,
+                last4: storeCredit.last4,
                 amount: fromMinor(refundAmount, currency.decimalPlaces),
                 amountMinor: refundAmount,
                 notificationOutboxId: storeCredit.notificationOutboxId,
             },
         } : {}),
-        availabilityTransitionVariantIds,
-        refundNotification: {
+        availabilityTransitionVariantIds: finalizedResult.availabilityTransitionVariantIds,
+        ...(refundNotification ? { refundNotification: {
             notificationType: refundNotification.notificationType,
             dedupeKey: refundNotification.dedupeKey,
             amount: refundNotification.amount,
             refundId: refundNotification.refundId,
-        },
+        } } : {}),
     };
 }

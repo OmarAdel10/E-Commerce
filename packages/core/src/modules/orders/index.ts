@@ -29,6 +29,7 @@ export * from "./returns/validation";
 export * from "./status/policy";
 export * from "./number";
 export * from "./timeline";
+export * from "./deposit-reconciliation";
 export * from "./invoices/service";
 export * from "./lookup";
 export * from "./stale-incomplete";

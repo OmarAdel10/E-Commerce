@@ -295,6 +295,20 @@ export interface Order {
   balanceDue?: number | null;
   fulfillmentStatus?: string | null;
   inventoryPool?: string | null;
+  hasUnverifiedManualDeposit?: boolean;
+  /** The order's payment plan (deposit plan), if any. */
+  paymentPlan?: {
+    totalAmount: number;
+    depositAmount: number;
+    balanceDue: number;
+    balanceDueDate: string | null;
+    kind: string;
+    status: string;
+    depositPaidAt: string | null;
+    balancePaidAt: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  } | null;
   refundAttempts?: OrderRefundAttempt[];
   activeRefundOperation?: ActiveRefundOperation | null;
   shipmentRecovery?: ShipmentRecovery;

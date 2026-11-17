@@ -6,6 +6,7 @@ import {
     getDecimalPlaces,
     normalizeSupportedCurrencyCode,
 } from "@scalius/shared/currency";
+import { resolvePriceIncrementMinor } from "@scalius/shared/currency-policy";
 import type { CustomerIdentitySettings } from "@scalius/shared/customer-auth-policy";
 import { currencySymbol } from "@scalius/shared/money-format";
 import { isReady } from "@scalius/shared/readiness";
@@ -41,7 +42,7 @@ import {
   selectDocumentsWithSellingCountries,
 } from "../settings";
 import type { SettingsDocumentRow } from "../../settings-store";
-import { readPresenceMarketWithDocuments, type PresenceMarket } from "../markets";
+import { backupPriceIncrementSql, readPresenceMarketWithDocuments, type PresenceMarket } from "../markets";
 import { NotFoundError } from "../../errors";
 import { applyTranslation, readTranslationChains, translationScope } from "../translations";
 
@@ -67,6 +68,7 @@ export interface CheckoutConfig {
         code: string;
         symbol: string;
         decimalPlaces: number;
+        priceIncrementMinor: number;
     };
     checkoutReadiness: CheckoutReadiness;
     unavailable: boolean;
@@ -80,6 +82,14 @@ export interface CheckoutConfig {
         enabled: boolean;
         channels: Array<"email" | "sms" | "whatsapp">;
         label: { en: string; bn: string };
+    };
+    /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
+    codDeposit: {
+        enabled: boolean;
+        mode: "fixed" | "percentage";
+        amount: number;
+        percent: number;
+        instructions: string;
     };
     /** The market of the requested presence (MARKETS-DESIGN D4); absent when none was asked for. */
     market?: PresenceMarket;
@@ -119,14 +129,16 @@ export async function getCheckoutConfig(
     let rows: SettingsDocumentRow[];
     let sellingCountries: string[];
     let market: PresenceMarket | undefined;
+    let backupPriceIncrementMinor: number | null | undefined;
     if (presence === undefined) {
-        ({ rows, sellingCountries } = await selectDocumentsWithSellingCountries(db, documents));
+        ({ rows, sellingCountries, backupPriceIncrementMinor } = await selectDocumentsWithSellingCountries(db, documents, backupPriceIncrementSql()));
     } else {
         const read = await readPresenceMarketWithDocuments(db, presence, documents);
         // No active market holds the presence: a 404, and nothing else is read.
         if (!read.market) throw new NotFoundError("Market not found");
         rows = read.documentRows;
         sellingCountries = read.sellingCountries;
+        backupPriceIncrementMinor = read.backupPriceIncrementMinor;
         market = read.market;
     }
     const [checkout, currency, customerAuth, merchantCountries, marketing] = await Promise.all([
@@ -154,6 +166,7 @@ export async function getCheckoutConfig(
     const localCurrencyCode = foreignCurrency ?? currency.currencyCode;
     const localCurrencySymbol = foreignCurrency ? currencySymbol(foreignCurrency) : currency.currencySymbol;
     const currencyDecimalPlaces = getDecimalPlaces(localCurrencyCode);
+    const priceIncrementMinor = resolvePriceIncrementMinor(localCurrencyCode, foreignCurrency ? null : backupPriceIncrementMinor);
     const { checkoutMode, partialPaymentAmount } = checkout;
     const partialPaymentEnabled = checkout.partialPaymentEnabled && foreignCurrency === null;
     const [customerIdentity, checkoutReadiness] = await Promise.all([
@@ -178,11 +191,19 @@ export async function getCheckoutConfig(
                 code: localCurrencyCode,
                 symbol: localCurrencySymbol,
                 decimalPlaces: currencyDecimalPlaces,
+                priceIncrementMinor,
             },
             checkoutReadiness,
             unavailable: true,
             unavailableMessage: CHECKOUT_READINESS_PUBLIC_UNAVAILABLE_MESSAGE,
             marketingConsent,
+            codDeposit: {
+                enabled: checkout.codDepositEnabled,
+                mode: checkout.codDepositMode,
+                amount: checkout.codDepositAmount,
+                percent: checkout.codDepositPercent,
+                instructions: checkout.codDepositInstructions,
+            },
             ...(market === undefined ? {} : { market }),
         };
     }
@@ -196,7 +217,7 @@ export async function getCheckoutConfig(
     const gateways: Array<Record<string, unknown>> = [];
     for (const methodId of activePaymentMethods.enabledMethods) {
         if (providers.currencyIssue(methodId, localCurrencyCode) !== null) continue;
-        if (!isCheckoutGatewayUsableForFlow({ gatewayId: methodId, checkoutMode, partialPaymentEnabled, partialPaymentAmount })) continue;
+        if (!isCheckoutGatewayUsableForFlow({ gatewayId: methodId, checkoutMode, partialPaymentEnabled, partialPaymentAmount, codDepositEnabled: checkout.codDepositEnabled })) continue;
         // A method that serves only some shipping countries says which:
         // checkout hides it for a delivery elsewhere (cash on delivery: BD).
         const countries = providers.countries(methodId);
@@ -266,6 +287,7 @@ export async function getCheckoutConfig(
             code: localCurrencyCode,
             symbol: localCurrencySymbol,
             decimalPlaces: currencyDecimalPlaces,
+            priceIncrementMinor,
         },
         checkoutReadiness,
         unavailable,
@@ -273,6 +295,13 @@ export async function getCheckoutConfig(
             ? "Checkout is temporarily unavailable while the merchant finishes payment setup."
             : undefined,
         marketingConsent,
+        codDeposit: {
+            enabled: checkout.codDepositEnabled,
+            mode: checkout.codDepositMode,
+            amount: checkout.codDepositAmount,
+            percent: checkout.codDepositPercent,
+            instructions: checkout.codDepositInstructions,
+        },
         ...(market === undefined ? {} : { market }),
     };
 }

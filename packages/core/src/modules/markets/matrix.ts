@@ -12,6 +12,7 @@ import { and, eq, sql, type SQL } from "drizzle-orm";
 import { deps } from "../../cache-deps";
 import { settingsDocumentsJoin, type SettingsDocumentRow } from "../../settings-store";
 import { sellingCountriesFromSql, sellingCountriesSql } from "../../utils/selling-countries";
+import { backupPriceIncrementSql } from "./pricing";
 
 export interface MarketMatrixRead {
     matrix: MarketMatrix;
@@ -172,11 +173,12 @@ export async function readPresenceMarketWithDocuments(
     db: Database,
     value: string,
     documents: readonly { key: string }[],
-): Promise<{ market: PresenceMarket | null; documentRows: SettingsDocumentRow[]; sellingCountries: string[] }> {
+): Promise<{ market: PresenceMarket | null; documentRows: SettingsDocumentRow[]; sellingCountries: string[]; backupPriceIncrementMinor?: number | null }> {
     // A language subfolder (`bn`) is the backup market in that language.
     const language = isLanguageSubfolder(value);
     const rows = await db.select({
         selling: sellingCountriesSql(),
+        backupPriceIncrementMinor: backupPriceIncrementSql(),
         id: markets.id,
         handle: markets.handle,
         name: markets.name,
@@ -220,5 +222,6 @@ export async function readPresenceMarketWithDocuments(
             ? []
             : [{ category: each.category, value: each.value, revision: each.revision ?? 0 }]),
         sellingCountries: sellingCountriesFromSql(row.selling),
+        backupPriceIncrementMinor: row.backupPriceIncrementMinor,
     };
 }

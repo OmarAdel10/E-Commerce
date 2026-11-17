@@ -1948,25 +1948,22 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
       updateCheckoutButtonState();
     };
 
-    // Gift cards are applied on the payment step: a COD-only store sends a
-    // buyer who has one (or already applied one) there instead of placing
-    // the order from this page.
+    // The payment step reviews gift cards and manual COD deposits.
     const giftCardStep = document.getElementById("giftCardCheckoutStep") as HTMLButtonElement | null;
+    const requirePaymentReview = () => {
+      codOnly = false;
+      if (meta) meta.dataset.codOnly = "false";
+      refreshCartBlockingState();
+      if (giftCardStep) giftCardStep.hidden = true;
+      initialSubmitText = checkoutCopy.continueToPaymentText;
+      setSubmitButtonText(initialSubmitText);
+    };
     if (codOnly && giftCardStep) {
-      const useGiftCardStep = () => {
-        codOnly = false;
-        // The cart no longer needs cash to pay: the payment step takes the card.
-        if (meta) meta.dataset.codOnly = "false";
-        refreshCartBlockingState();
-        giftCardStep.hidden = true;
-        initialSubmitText = checkoutCopy.continueToPaymentText;
-        setSubmitButtonText(initialSubmitText);
-      };
       if (readStoredGiftCards().length > 0) {
-        useGiftCardStep();
+        requirePaymentReview();
       } else {
         giftCardStep.hidden = false;
-        giftCardStep.addEventListener("click", useGiftCardStep, { signal: cartPageSignal });
+        giftCardStep.addEventListener("click", requirePaymentReview, { signal: cartPageSignal });
       }
     }
 
@@ -2184,6 +2181,12 @@ const templateData = await templateSectionData("cart", cartRequestTheme);
         const expectedQuoteFingerprintInput = document.getElementById(
           "expectedQuoteFingerprint",
         ) as HTMLInputElement | null;
+        // The latest quote can require a deposit even if the cart page's
+        // cached configuration still allowed direct placement.
+        if (codOnly && expectedQuoteFingerprintInput?.dataset.manualCodDeposit === "true") {
+          e.preventDefault();
+          requirePaymentReview();
+        }
         const quoted = () => /^taxq_[A-Za-z0-9_-]{22}$/.test(expectedQuoteFingerprintInput?.value ?? "");
         if (codOnly && !quoted()) {
           // A thana chosen a moment ago: its options and total are on their

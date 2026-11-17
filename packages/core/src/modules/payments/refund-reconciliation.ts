@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import {
   PaymentRecordStatus,
   refundAttempts,
@@ -25,7 +25,7 @@ import {
 } from "./gateways/registry";
 import { providerErrorOf } from "@scalius/shared/plugins/providers/kinds";
 import { canOperateExistingPayments, type GatewayProviderRefund, type GatewayRefundProbe } from "./gateways/port";
-import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus } from "./refund-service";
+import { finalizeAcceptedRefundAttemptIds, isInternalRefundProviderStatus, verifyRefundRecoveryMetadata } from "./refund-service";
 import type { RefundNotificationFact } from "./refund-service";
 import { ACTIVE_REFUND_ATTEMPT_STATUSES } from "../order-kernel";
 
@@ -67,6 +67,9 @@ type RefundAttemptProbeRow = Pick<
   | "providerRefundId"
   | "providerIdempotencyKey"
   | "refundReference"
+  | "metadata"
+  | "allocationIndex"
+  | "allocationCount"
 > & { providerStatus?: string | null };
 
 interface RefundProviderReconciliationContext {
@@ -103,6 +106,10 @@ export interface ExternalRefundWebhookReconciliationResult {
 
 export interface RefundReconciliationOptions {
   encryptionKey?: string;
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+  masterSecret: string | string[];
+  /** Previous purpose-derived key, used only to verify attempts during rotation. */
+  previousHmacKey?: string;
   limit?: number;
   nowSeconds?: number;
   /** The gateways to ask (built-in and app providers); built-in ones alone by default. */
@@ -127,6 +134,8 @@ export interface ManualRefundAttemptReconciliationResult {
 
 export interface ExternalRefundWebhookReconciliationOptions {
   encryptionKey?: string;
+  /** Master secret(s) for verifying signed refund metadata. Accepts a single secret or an array (current + prior secrets for rotation support). Required for HMAC integrity verification. */
+  masterSecret: string | string[];
   limit?: number;
   nowSeconds?: number;
   providers?: PaymentProvidersSource;
@@ -303,7 +312,7 @@ async function markAttemptDeferred(
     nextProbeAt: nowSeconds + nextProbeDelay,
     lastError: outcome.error?.slice(0, MAX_REFUND_RECONCILIATION_ERROR_LENGTH) ?? null,
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status)));
 }
 
 async function markAttemptFailed(
@@ -311,12 +320,16 @@ async function markAttemptFailed(
   attempt: RefundAttemptProbeRow,
   outcome: Extract<ProviderProbeOutcome, { outcome: "rejected" }>,
   nowSeconds: number,
-): Promise<void> {
-  await db.batch([
+): Promise<boolean> {
+  const currentAttempt = and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, attempt.status));
+  const [, changed] = await db.batch([
     db.update(orderPayments).set({
       status: PaymentRecordStatus.FAILED,
       updatedAt: sql`unixepoch()`,
-    }).where(eq(orderPayments.id, attempt.refundPaymentId)),
+    }).where(and(
+      eq(orderPayments.id, attempt.refundPaymentId),
+      sql`EXISTS (SELECT 1 FROM ${refundAttempts} WHERE ${currentAttempt})`,
+    )),
     db.update(refundAttempts).set({
       status: "failed",
       providerStatus: outcome.providerStatus,
@@ -328,9 +341,9 @@ async function markAttemptFailed(
       lastError: outcome.error?.slice(0, MAX_REFUND_RECONCILIATION_ERROR_LENGTH) ?? null,
       failedAt: sql`unixepoch()`,
       updatedAt: sql`unixepoch()`,
-    }).where(eq(refundAttempts.id, attempt.id)),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle D1 batch typing limitation
-  ] as any);
+    }).where(currentAttempt).returning({ id: refundAttempts.id }),
+  ]);
+  return changed.length > 0;
 }
 
 async function markAttemptReconcileRequired(
@@ -348,7 +361,7 @@ async function markAttemptReconcileRequired(
     nextProbeAt: nowSeconds + REFUND_RECONCILIATION_RETRY_SECONDS,
     lastError: serializeError(error),
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(eq(refundAttempts.id, attempt.id), ne(refundAttempts.status, "refunded")));
 }
 
 async function markAcceptedBeforeFinalize(
@@ -356,15 +369,40 @@ async function markAcceptedBeforeFinalize(
   attempt: RefundAttemptProbeRow,
   outcome: Extract<ProviderProbeOutcome, { outcome: "accepted" }>,
   nowSeconds: number,
-): Promise<void> {
-  await db.update(refundAttempts).set({
+): Promise<boolean> {
+  const rows = await db.update(refundAttempts).set({
+    status: "reconcile_required",
     providerStatus: outcome.providerStatus,
     providerRefundId: outcome.providerRefundId ?? attempt.providerRefundId ?? null,
     responsePayload: responsePayload(outcome.responsePayload),
     lastProbeAt: nowSeconds,
     lastError: null,
     updatedAt: sql`unixepoch()`,
-  }).where(eq(refundAttempts.id, attempt.id));
+  }).where(and(
+    eq(refundAttempts.id, attempt.id),
+    eq(refundAttempts.status, attempt.status),
+    attempt.status === "pending" ? eq(refundAttempts.metadata, attempt.metadata!) : undefined,
+  )).returning({ id: refundAttempts.id });
+  return rows.length > 0;
+}
+
+/** Before manual acceptance was atomic with the claim, confirmation could remain on a pending attempt. */
+async function verifyLegacyManualConfirmation(
+  attempt: RefundAttemptProbeRow,
+  { masterSecret, previousHmacKey }: RefundReconciliationOptions,
+): Promise<boolean> {
+  const { _hmac, ...payload } = parseJsonObject(attempt.metadata);
+  if (typeof _hmac !== "string"
+    || payload.settlementMode !== "manual_external"
+    || payload.manualSettlementConfirmed !== true
+    || payload.gateway !== attempt.gateway
+    || payload.refundGroupId !== attempt.refundGroupId
+    || payload.sourcePaymentId !== attempt.sourcePaymentId
+    || payload.allocationIndex !== attempt.allocationIndex
+    || payload.allocationCount !== attempt.allocationCount) {
+    return false;
+  }
+  return verifyRefundRecoveryMetadata(masterSecret, JSON.stringify(payload), _hmac, previousHmacKey);
 }
 
 async function probeProviderRefund(
@@ -722,7 +760,7 @@ async function reconcileExternalRefundWebhookEvent(
     importedRefundIds.push(refund.id);
 
     try {
-      const result = await finalizeAcceptedRefundAttemptIds(db, [attemptId]);
+      const result = await finalizeAcceptedRefundAttemptIds(db, [attemptId], options.masterSecret);
       finalized += result.finalizedAttemptIds.length;
       result.orderIds.forEach((orderId) => finalizedOrderIds.add(orderId));
       refundNotifications.push(...result.refundNotifications);
@@ -818,7 +856,7 @@ export async function verifyObservedRefund(
 
 export async function reconcileExternalRefundWebhooks(
   db: Database,
-  options: ExternalRefundWebhookReconciliationOptions = {},
+  options: ExternalRefundWebhookReconciliationOptions,
 ): Promise<ExternalRefundWebhookReconciliationResult> {
   const limit = normalizeLimit(options.limit);
   const rows = await db
@@ -878,7 +916,7 @@ export async function reconcileExternalRefundWebhooks(
 export async function reconcileRefundAttemptById(
   db: Database,
   attemptId: string,
-  options: Omit<RefundReconciliationOptions, "limit"> = {},
+  options: Omit<RefundReconciliationOptions, "limit">,
 ): Promise<{
   status: "finalized" | "failed" | "deferred";
   orderIds: string[];
@@ -900,6 +938,9 @@ export async function reconcileRefundAttemptById(
       providerRefundId: refundAttempts.providerRefundId,
       providerIdempotencyKey: refundAttempts.providerIdempotencyKey,
       refundReference: refundAttempts.refundReference,
+      metadata: refundAttempts.metadata,
+      allocationIndex: refundAttempts.allocationIndex,
+      allocationCount: refundAttempts.allocationCount,
       providerStatus: refundAttempts.providerStatus,
     })
     .from(refundAttempts)
@@ -913,15 +954,30 @@ export async function reconcileRefundAttemptById(
   const context = await assertRefundAttemptOrderCurrency(db, attempt);
 
   if (attempt.status === "pending") {
-    await markAttemptFailed(db, attempt, {
-      outcome: "rejected",
-      providerStatus: "not_dispatched",
-      error: "Refund attempt expired before provider dispatch and was released for retry.",
-    }, nowSeconds);
-    return { status: "failed", orderIds: [], refundNotifications: [] };
+    if (!isManualSettlementMethod(attempt.gateway)) {
+      const failed = await markAttemptFailed(db, attempt, {
+        outcome: "rejected",
+        providerStatus: "not_dispatched",
+        error: "Refund attempt expired before provider dispatch and was released for retry.",
+      }, nowSeconds);
+      return { status: failed ? "failed" : "deferred", orderIds: [], refundNotifications: [] };
+    }
+    if (!await verifyLegacyManualConfirmation(attempt, options)) {
+      // Without trustworthy confirmation, preserve the claim on refundable
+      // funds until staff verify what happened outside the platform.
+      await db.update(refundAttempts).set({
+        claimId: null,
+        claimExpiresAt: null,
+        lastProbeAt: nowSeconds,
+        nextProbeAt: nowSeconds + REFUND_RECONCILIATION_MANUAL_REVIEW_SECONDS,
+        lastError: "Legacy manual refund confirmation could not be verified. Review the external repayment before retrying.",
+        updatedAt: sql`unixepoch()`,
+      }).where(and(eq(refundAttempts.id, attempt.id), eq(refundAttempts.status, "pending")));
+      return { status: "deferred", orderIds: [], refundNotifications: [] };
+    }
   }
 
-  const outcome = attempt.status === "reconcile_required"
+  const outcome = attempt.status === "reconcile_required" || attempt.status === "pending"
     ? {
         outcome: "accepted",
         providerRefundId: attempt.providerRefundId,
@@ -932,9 +988,13 @@ export async function reconcileRefundAttemptById(
     : await probeProviderRefund(db, attempt, context, options.encryptionKey, await paymentProvidersFor(options.providers, attempt.gateway));
 
   if (outcome.outcome === "accepted") {
-    await markAcceptedBeforeFinalize(db, attempt, outcome, nowSeconds);
+    if (!await markAcceptedBeforeFinalize(db, attempt, outcome, nowSeconds)) {
+      return { status: "deferred", orderIds: [], refundNotifications: [] };
+    }
     try {
-      const result = await finalizeAcceptedRefundAttemptIds(db, [attempt.id]);
+      const result = await finalizeAcceptedRefundAttemptIds(db, [attempt.id], options.masterSecret, {
+        previousHmacKey: options.previousHmacKey,
+      });
       return {
         status: "finalized",
         orderIds: result.orderIds,
@@ -947,7 +1007,8 @@ export async function reconcileRefundAttemptById(
   }
 
   if (outcome.outcome === "rejected") {
-    await markAttemptFailed(db, attempt, outcome, nowSeconds);
+    const failed = await markAttemptFailed(db, attempt, outcome, nowSeconds);
+    if (!failed) return { status: "deferred", orderIds: [], refundNotifications: [] };
     return {
       status: "failed",
       orderIds: [],
@@ -977,7 +1038,7 @@ export async function reconcileRefundAttemptForOrder(
   db: Database,
   orderId: string,
   attemptId: string,
-  options: Omit<RefundReconciliationOptions, "limit"> = {},
+  options: Omit<RefundReconciliationOptions, "limit">,
 ): Promise<ManualRefundAttemptReconciliationResult> {
   const nowSeconds = options.nowSeconds ?? Math.floor(Date.now() / 1000);
   const attempt = await db
@@ -1037,7 +1098,7 @@ export async function reconcileRefundAttemptForOrder(
 
 export async function reconcileDueRefundAttempts(
   db: Database,
-  options: RefundReconciliationOptions = {},
+  options: RefundReconciliationOptions,
 ): Promise<RefundReconciliationResult> {
   const limit = normalizeLimit(options.limit);
   const nowSeconds = options.nowSeconds ?? Math.floor(Date.now() / 1000);

@@ -30,7 +30,7 @@ const root = resolve(import.meta.dirname, "..");
 export const defaultApps = ["apps/api", "apps/admin-v2", "apps/storefront"];
 
 /** The installed Worker secrets (apps/*\/src/env.d.ts). Never named in browser output. */
-export const INSTALLED_SECRET_NAMES = Object.freeze(["SCALIUS_SECRET", "CREDENTIAL_ENCRYPTION_KEY"]);
+export const INSTALLED_SECRET_NAMES = Object.freeze(["SCALIUS_SECRET", "CREDENTIAL_ENCRYPTION_KEY", "REFUND_PREVIOUS_HMAC_KEY"]);
 
 /** Every name that holds a credential on some deployment path. */
 export const KNOWN_SECRET_NAMES = Object.freeze([

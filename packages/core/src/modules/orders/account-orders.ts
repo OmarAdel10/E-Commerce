@@ -3,6 +3,7 @@
 // totals), the order detail with its payments, refunds, shipments, support
 // requests and tracking timeline, and the buyer-facing status words.
 
+import { presentBuyerPaymentPlan } from "./payment-plan-presentation";
 import {
     codTracking,
     customerAddresses,
@@ -16,7 +17,9 @@ import {
     orderSupportRequests,
     orders,
     OrderStatus,
+    PaymentMethod,
     paymentPlans,
+    PaymentPlanStatus,
     PaymentStatus,
     products,
 } from "@scalius/database/schema";
@@ -524,9 +527,16 @@ export async function getCustomerOrders(
             requiresShipping: orders.requiresShipping,
             shippingMethodKind: orders.shippingMethodKind,
             notes: orders.notes,
-            createdAt: sql<number>`CAST(${orders.createdAt} AS INTEGER)`
+            createdAt: sql<number>`CAST(${orders.createdAt} AS INTEGER)`,
+            pendingManualBalanceDueMinor: sql<number | null>`${paymentPlans.balanceDueMinor}`.as("pending_manual_balance_due_minor"),
         })
         .from(orders)
+        .leftJoin(paymentPlans, and(
+            eq(paymentPlans.orderId, orders.id),
+            eq(orders.paymentMethod, PaymentMethod.COD),
+            eq(paymentPlans.kind, "manual"),
+            eq(paymentPlans.status, PaymentPlanStatus.PENDING),
+        ))
         .where(and(...orderWhereConditions))
         .orderBy(desc(orders.createdAt), desc(orders.id))
         .limit(orderListLimit + 1);
@@ -551,6 +561,7 @@ export async function getCustomerOrders(
             discountAmountMinor: number;
             paidAmountMinor: number;
             balanceDueMinor: number;
+            pendingManualBalanceDueMinor: number | null;
             shippingMethodId: string | null;
             shippingMethodName: string | null;
             shippingMethodDescription: string | null;
@@ -693,21 +704,31 @@ export async function getCustomerOrders(
     }
 
     // Format response
-    const formattedOrders = customerOrders.map((order) => ({
-        ...order,
-        ...orderMoneyAmounts(order),
-        statusLabel: customerOrderStatusLabel(order.status),
-        balanceDue: fromMinor(getCustomerVisibleBalanceDueMinor(order), order.currencyDecimalPlaces),
-        createdAt: order.createdAt
-            ? new Date(order.createdAt * 1000).toISOString()
-            : null,
-        openSupportRequestType: openRequestTypeByOrder.get(order.id) ?? null,
-        latestShipment: latestShipmentByOrder.get(order.id) ?? null,
-        items: (itemsByOrder.get(order.id) || []).map(({ unitPriceMinor, ...item }) => ({
-            ...item,
-            price: fromMinor(unitPriceMinor, order.currencyDecimalPlaces),
-        })),
-    }));
+    const formattedOrders = customerOrders.map(({ pendingManualBalanceDueMinor, ...order }) => {
+        const balanceDueMinor = getCustomerVisibleBalanceDueMinor(order);
+        return {
+            ...order,
+            ...orderMoneyAmounts(order),
+            statusLabel: customerOrderStatusLabel(order.status),
+            balanceDue: fromMinor(balanceDueMinor, order.currencyDecimalPlaces),
+            paymentPlan: pendingManualBalanceDueMinor !== null && balanceDueMinor > 0
+                ? {
+                    kind: "manual" as const,
+                    status: "pending" as const,
+                    balanceDue: fromMinor(pendingManualBalanceDueMinor, order.currencyDecimalPlaces),
+                }
+                : null,
+            createdAt: order.createdAt
+                ? new Date(order.createdAt * 1000).toISOString()
+                : null,
+            openSupportRequestType: openRequestTypeByOrder.get(order.id) ?? null,
+            latestShipment: latestShipmentByOrder.get(order.id) ?? null,
+            items: (itemsByOrder.get(order.id) || []).map(({ unitPriceMinor, ...item }) => ({
+                ...item,
+                price: fromMinor(unitPriceMinor, order.currencyDecimalPlaces),
+            })),
+        };
+    });
 
     return {
         orders: formattedOrders,
@@ -953,6 +974,9 @@ export async function getCustomerOrderDetailForOrder(
                 balanceDueMinor: paymentPlans.balanceDueMinor,
                 balanceDueDate: paymentPlans.balanceDueDate,
                 status: paymentPlans.status,
+                kind: paymentPlans.kind,
+                instructions: paymentPlans.instructions,
+                contactSnapshot: paymentPlans.contactSnapshot,
                 depositPaidAt: sql<number>`CAST(${paymentPlans.depositPaidAt} AS INTEGER)`,
                 balancePaidAt: sql<number>`CAST(${paymentPlans.balancePaidAt} AS INTEGER)`,
                 createdAt: sql<number>`CAST(${paymentPlans.createdAt} AS INTEGER)`,
@@ -1051,6 +1075,9 @@ export async function getCustomerOrderDetailForOrder(
             balanceDueMinor: number;
             balanceDueDate: string | null;
             status: string;
+            kind: string;
+            instructions: string | null;
+            contactSnapshot: string | null;
             depositPaidAt: number | null;
             balancePaidAt: number | null;
             createdAt: number | null;
@@ -1116,10 +1143,8 @@ export async function getCustomerOrderDetailForOrder(
     const paymentPlan = plan
         ? {
             totalAmount: amount(plan.totalAmountMinor),
-            depositAmount: amount(plan.depositAmountMinor),
-            balanceDue: amount(plan.balanceDueMinor),
+            ...presentBuyerPaymentPlan(plan, order.currencyDecimalPlaces, order.status)!,
             balanceDueDate: plan.balanceDueDate,
-            status: plan.status,
             depositPaidAt: timestampToIso(plan.depositPaidAt),
             balancePaidAt: timestampToIso(plan.balancePaidAt),
             createdAt: timestampToIso(plan.createdAt),

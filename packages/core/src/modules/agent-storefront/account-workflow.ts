@@ -9,6 +9,7 @@ import {
   media,
   orderItems,
   orders,
+  paymentPlans,
   paymentSessionAttempts,
   PaymentStatus,
 } from "@scalius/database/schema";
@@ -36,6 +37,7 @@ import {
   orderMoneySelection,
   orderShippingAddressSelection,
 } from "../orders";
+import { presentBuyerPaymentPlan } from "../orders/browser";
 import { createCustomerOrderSupportRequest, createReceiptOrderSupportRequest } from "../conversations";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { fromMinor } from "@scalius/shared/money";
@@ -636,7 +638,16 @@ export async function getAgentStorefrontReceipt(
     fulfillmentStatus: orders.fulfillmentStatus,
     createdAt: sql<number>`CAST(${orders.createdAt} AS INTEGER)`,
     updatedAt: sql<number>`CAST(${orders.updatedAt} AS INTEGER)`,
+    paymentPlan: {
+      kind: paymentPlans.kind,
+      status: paymentPlans.status,
+      depositAmountMinor: paymentPlans.depositAmountMinor,
+      balanceDueMinor: paymentPlans.balanceDueMinor,
+      instructions: paymentPlans.instructions,
+      contactSnapshot: paymentPlans.contactSnapshot,
+    },
   }).from(orders)
+    .leftJoin(paymentPlans, eq(paymentPlans.orderId, orders.id))
     .where(and(eq(orders.id, orderId), isNull(orders.deletedAt)))
     .get();
   if (!order) throw new NotFoundError("Order receipt not found.");
@@ -660,10 +671,11 @@ export async function getAgentStorefrontReceipt(
       .where(eq(orderItems.orderId, orderId)),
     getReceiptOrderSupportRequestStateForOrder(db, order),
   ]);
-  const { paidAmountMinor: _paidAmountMinor, balanceDueMinor: _balanceDueMinor, ...orderFacts } = order;
+  const { paidAmountMinor: _paidAmountMinor, balanceDueMinor: _balanceDueMinor, paymentPlan, ...orderFacts } = order;
   return {
     ...orderFacts,
     ...orderMoneyAmounts(order),
+    paymentPlan: presentBuyerPaymentPlan(paymentPlan, order.currencyDecimalPlaces, order.status),
     createdAt: order.createdAt ? new Date(order.createdAt * 1_000).toISOString() : null,
     updatedAt: order.updatedAt ? new Date(order.updatedAt * 1_000).toISOString() : null,
     items: items.map(({ productImageObjectKey, productImageStatus, ...item }) => ({

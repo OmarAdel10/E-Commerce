@@ -27,7 +27,9 @@ import {
   cleanupExpiredScannerTokenClaims,
   pruneExpiredIdentityHandoffEvents,
 } from "@scalius/core/auth";
+import { readMasterSecret } from "@scalius/shared/runtime-secrets";
 import { reconcileDueRefundAttempts, reconcileExternalRefundWebhooks } from "@scalius/core/modules/payments";
+import { reconcileRefundedOrderInventory, refundedOrdersWithPendingInventory } from "@scalius/core/modules/orders";
 import { planLimits } from "@scalius/shared/plan-limits";
 import { getCredentialEncryptionKey } from "./utils/encryption-key";
 import { appPaymentProvidersLoader } from "./plugins/providers/payment";
@@ -120,7 +122,7 @@ async function timedScheduledOperation<T>(
     console.error(
       `[scheduled] event=scheduled_operation_failed, runId=${runContext.runId}, operation=${operation}, ` +
         `durationMs=${Date.now() - startedAt}`,
-      error,
+      error instanceof Error ? error.stack ?? String(error) : String(error),
     );
     throw error;
   }
@@ -400,9 +402,15 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
   {
     name: "refund_attempt_reconciliation",
     async run({ db, env, timed }) {
+      const masterSecret = readMasterSecret(env);
+      if (!masterSecret) {
+        throw new Error("SCALIUS_SECRET is not installed or is too short.");
+      }
       const refundReconciliation = await timed("refund_attempt_reconciliation", () =>
         reconcileDueRefundAttempts(db, {
           encryptionKey: getCredentialEncryptionKey(env as unknown as Record<string, unknown>),
+          masterSecret,
+          previousHmacKey: env.REFUND_PREVIOUS_HMAC_KEY,
           limit: scaled(REFUND_ATTEMPT_RECONCILIATION_LIMIT),
           providers: appPaymentProvidersLoader(env, db),
         }),
@@ -432,9 +440,32 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
   {
     name: "external_refund_reconciliation",
     async run({ db, env, timed }) {
+      // App tax-provider documents still owed (commit, void, refund): the
+      // provider-side half of orders and refunds, with backoff. One indexed
+      // read when none is due. Unrelated to SCALIUS_SECRET — runs regardless.
+      const { drainTaxDocumentCommands } = await import("@scalius/core/modules/tax");
+      const { detachedAppProviders } = await import("./plugins/providers/app-providers");
+      const apps = detachedAppProviders(env, db, getCredentialEncryptionKey(env as unknown as Record<string, unknown>));
+      const taxDocuments = await timed("tax_document_drain", () =>
+        drainTaxDocumentCommands(db, apps, { limit: scaled(TAX_DOCUMENT_DRAIN_LIMIT) }),
+      );
+      if (taxDocuments.scanned > 0) {
+        console.log(
+          `[scheduled] Tax documents: scanned=${taxDocuments.scanned}, done=${taxDocuments.done}, failed=${taxDocuments.failed}, ` +
+            `skipped=${taxDocuments.skipped}, dead=${taxDocuments.dead}, deferred=${taxDocuments.deferred}, busy=${taxDocuments.busy}`,
+        );
+      }
+
+      // Refund reconciliation requires SCALIUS_SECRET — skip if not installed.
+      const masterSecret = readMasterSecret(env);
+      if (!masterSecret) {
+        console.log("[scheduled] External refund reconciliation skipped: SCALIUS_SECRET not installed.");
+        return;
+      }
       const externalRefunds = await timed("external_refund_reconciliation", () =>
         reconcileExternalRefundWebhooks(db, {
           encryptionKey: getCredentialEncryptionKey(env as unknown as Record<string, unknown>),
+          masterSecret,
           limit: scaled(EXTERNAL_REFUND_RECONCILIATION_LIMIT),
           providers: appPaymentProvidersLoader(env, db),
         }),
@@ -457,21 +488,6 @@ export const MAINTENANCE_SWEEPS: readonly MaintenanceSweep[] = [
             `skipped=${externalRefunds.skipped}, deferred=${externalRefunds.deferred}, ` +
             `errors=${externalRefunds.errors.length}, limit=${externalRefunds.limit}, ` +
             `hasMore=${externalRefunds.hasMore}`,
-        );
-      }
-      // App tax-provider documents still owed (commit, void, refund): the
-      // provider-side half of orders and refunds, with backoff. One indexed
-      // read when none is due.
-      const { drainTaxDocumentCommands } = await import("@scalius/core/modules/tax");
-      const { detachedAppProviders } = await import("./plugins/providers/app-providers");
-      const apps = detachedAppProviders(env, db, getCredentialEncryptionKey(env as unknown as Record<string, unknown>));
-      const taxDocuments = await timed("tax_document_drain", () =>
-        drainTaxDocumentCommands(db, apps, { limit: scaled(TAX_DOCUMENT_DRAIN_LIMIT) }),
-      );
-      if (taxDocuments.scanned > 0) {
-        console.log(
-          `[scheduled] Tax documents: scanned=${taxDocuments.scanned}, done=${taxDocuments.done}, failed=${taxDocuments.failed}, ` +
-            `skipped=${taxDocuments.skipped}, dead=${taxDocuments.dead}, deferred=${taxDocuments.deferred}, busy=${taxDocuments.busy}`,
         );
       }
     },
@@ -711,6 +727,27 @@ export const BACKGROUND_DRAINS: ReadonlyArray<DueProbedDrain & { run(context: Sw
     async run({ db, env, executionCtx }) {
       const { drainCustomerErasure } = await import("./background/customer-erasure");
       return drainCustomerErasure(db, env, { ctx: executionCtx });
+    },
+  },
+  {
+    // Refunded order inventory recovery: finds orders that were cancelled and
+    // refunded but whose inventory was not restored (refund finalization
+    // inventory release failed). Runs the reconciliation to restore stock.
+    name: "refund_inventory_recovery_drain",
+    due: (db) => [refundedOrdersWithPendingInventory(db).limit(1)],
+    async run({ db, timed }) {
+      const result: Awaited<ReturnType<typeof reconcileRefundedOrderInventory>> = await timed(
+        "refund_inventory_recovery",
+        () => reconcileRefundedOrderInventory(db, { limit: 25 }),
+      );
+      if (result.scanned > 0 || result.failed > 0 || result.hasMore) {
+        console.log(
+          `[scheduled] Refund inventory recovery: scanned=${result.scanned}, ` +
+            `reconciled=${result.reconciled}, failed=${result.failed}, ` +
+            `errors=${result.errors.length}, hasMore=${result.hasMore}`,
+        );
+      }
+      return result;
     },
   },
   {

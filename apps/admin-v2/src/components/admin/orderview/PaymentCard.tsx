@@ -125,6 +125,9 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   const [recordOpen, setRecordOpen] = useState(false);
   const [recordSession, setRecordSession] = useState(0);
   const recordLoaded = useOpenedOnce(recordOpen);
+  const [recordDepositOpen, setRecordDepositOpen] = useState(false);
+  const [recordDepositSession, setRecordDepositSession] = useState(0);
+  const recordDepositLoaded = useOpenedOnce(recordDepositOpen);
   const terms = order.paymentTerms ?? null;
 
   // Payment history is optional: a failed read stays inside this card.
@@ -214,6 +217,7 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
   // Cash changes hands at the door: collection opens once the order is out.
   // Pickup and service orders take their cash at the counter or the visit, from confirmed on.
   const canRecordCodCollection = canUpdateCod
+    && !order.hasUnverifiedManualDeposit
     && canProcessOrderCodAction(order.status, "collected", { requiresShipping: order.requiresShipping });
   // A rider can also fail to deliver the first parcel of a part-sent order (R3-ORD-04).
   const canRecordCodFailure = canUpdateCod && (canProcessOrderCodAction(order.status, "failed") || isPartSent(order));
@@ -237,7 +241,16 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
 
   const refundCheckMutation = useReconcileRefundAttempt();
   const recoveryLinkMutation = useIssueOrderPaymentRecoveryLink();
-  const presentation = buildOrderPaymentPresentation({ orderStatus: order.status, balanceDue: order.balanceDue });
+  const presentation = buildOrderPaymentPresentation({
+    orderStatus: order.status,
+    balanceDue: order.balanceDue,
+    paymentMethod: order.paymentMethod,
+    paymentPlan: order.paymentPlan,
+    archived: Boolean(order.archivedAt),
+    canRecordPayment,
+    refundLocked: isRefundLocked,
+  });
+  const manualCodDeposit = presentation.manualCodDeposit;
   const showBadge = orderBadgeVisibility(order).payment;
 
   const openCod = (action: CodAction) => {
@@ -350,13 +363,13 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
             <>
               <Row
                 label={t("plan.deposit")}
-                value={`${fmt(plan.depositAmount)} · ${plan.depositPaidAt ? t("plan.paid") : presentation.collectionClosed ? t("plan.closed") : t("plan.pending")}`}
+                value={`${money(plan.depositAmount)} · ${plan.depositPaidAt ? t("plan.paid") : presentation.collectionClosed || plan.status === "cancelled" ? t("plan.closed") : t("plan.pending")}`}
               />
               <Row
                 label={t("plan.balance")}
-                value={`${fmt(plan.balanceDue)} · ${plan.balancePaidAt
+                value={`${money(plan.balanceDue)} · ${plan.balancePaidAt
                   ? t("plan.paid")
-                  : presentation.collectionClosed
+                  : presentation.collectionClosed || plan.status === "cancelled"
                     ? t("plan.closed")
                     : plan.balanceDueDate ? t("plan.due", { date: plan.balanceDueDate }) : t("plan.pending")}`}
               />
@@ -390,6 +403,34 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
                 {t("netTerms.recordPayment")}
               </Button>
             ) : null}
+          </section>
+        ) : null}
+
+        {/* Manual COD deposit: show status and let staff record the deposit. */}
+        {manualCodDeposit ? (
+          <section className="space-y-2" aria-label={t("codDeposit.title")} data-cod-deposit>
+            {manualCodDeposit.status === "pending" ? (
+              <>
+                <p className="font-medium text-muted-foreground">{t("codDeposit.required")}</p>
+                <p className="text-caption text-muted-foreground">
+                  {t("codDeposit.requiredHelp", { amount: money(manualCodDeposit.amount) })}
+                </p>
+                {manualCodDeposit.canRecord ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setRecordDepositSession((session) => session + 1);
+                      setRecordDepositOpen(true);
+                    }}
+                  >
+                    {t("codDeposit.recordDeposit")}
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <p className="font-medium">{t("codDeposit.received")}</p>
+            )}
           </section>
         ) : null}
 
@@ -638,6 +679,23 @@ export function PaymentCard({ order, request }: { order: Order; request?: OrderA
             decimalPlaces={order.currencyDecimalPlaces ?? 2}
             balanceDue={presentation.amountDue}
             money={money}
+          />
+        </Suspense>
+      ) : null}
+      {recordDepositLoaded && manualCodDeposit?.status === "pending" && manualCodDeposit.canRecord ? (
+        <Suspense fallback={null}>
+          <RecordPaymentDialog
+            key={recordDepositSession}
+            open={recordDepositOpen}
+            onClose={() => setRecordDepositOpen(false)}
+            orderId={order.id}
+            orderVersion={order.version}
+            currencyCode={order.currencyCode ?? ""}
+            decimalPlaces={order.currencyDecimalPlaces ?? 2}
+            balanceDue={presentation.amountDue}
+            money={money}
+            isDeposit
+            depositAmount={manualCodDeposit.amount}
           />
         </Suspense>
       ) : null}

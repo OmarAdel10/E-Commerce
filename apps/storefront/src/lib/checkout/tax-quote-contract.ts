@@ -7,6 +7,7 @@ import {
 import { buyerUiBlockSchema, checkoutAttributesSchema, type BuyerUiBlock } from "@scalius/shared/plugins/buyer-ui";
 import { LINE_PROPERTY_INPUT_LIMITS } from "@scalius/shared/line-properties";
 import { isPurchaseOptionId } from "@scalius/shared/plugins/ids";
+import type { ManualCodDepositQuote } from "@scalius/shared/checkout-payment";
 import { normalizeCartLinePurchaseOption, type CartLinePurchaseOption } from "../cart/purchase-option";
 import { GIFT_CARD_HANDLE_PATTERN, MAX_GIFT_CARDS_PER_ORDER } from "./gift-cards";
 import {
@@ -212,6 +213,8 @@ export interface CheckoutTaxQuote extends CheckoutDiscountFacts, CheckoutGiftCar
   taxAmount: number;
   totalMinor: number;
   totalAmount: number;
+  /** Quote-owned cash split. Absent only for older API responses. */
+  manualCodDeposit?: ManualCodDepositQuote | null;
   /** Null when the cart has nothing physical (no delivery method, no fee). */
   shippingMethod: TaxQuoteShippingMethod | null;
   shippingRateToken?: string | null;
@@ -533,6 +536,16 @@ export function parseTaxQuoteEnvelope(value: unknown): CheckoutTaxQuote {
   // Required: payment eligibility fails closed.
   if (!Array.isArray(data.allowedPaymentMethods) || data.allowedPaymentMethods.length > 32) fail();
   const allowedPaymentMethods = data.allowedPaymentMethods.map((method) => requiredString(method, 64));
+  let manualCodDeposit: CheckoutTaxQuote["manualCodDeposit"];
+  if (data.manualCodDeposit === null) {
+    manualCodDeposit = null;
+  } else if (data.manualCodDeposit !== undefined) {
+    if (!isRecord(data.manualCodDeposit) || !allowedPaymentMethods.includes("cod")) fail();
+    const depositMinor = nonNegativeSafeInteger(data.manualCodDeposit.depositMinor);
+    const balanceMinor = nonNegativeSafeInteger(data.manualCodDeposit.balanceMinor);
+    if (depositMinor === 0 || balanceMinor === 0 || depositMinor + balanceMinor !== totalMinor) fail();
+    manualCodDeposit = { depositMinor, balanceMinor };
+  }
 
   assertAmountMatchesMinor(subtotalAmount, subtotalMinor, decimalPlaces);
   assertAmountMatchesMinor(shippingAmount, shippingMinor, decimalPlaces);
@@ -561,6 +574,7 @@ export function parseTaxQuoteEnvelope(value: unknown): CheckoutTaxQuote {
   const bundleLine = parseBundleDiscountLine(data, decimalPlaces);
   if (bundleLine) discountFacts.discounts = [...discountFacts.discounts, bundleLine];
   const giftCardFacts = parseGiftCardQuoteFacts(data, totalMinor, decimalPlaces);
+  if (manualCodDeposit && giftCardFacts.giftCardTenders?.some((card) => card.appliedMinor > 0)) fail();
 
   if (!Array.isArray(data.items) || data.items.length === 0) fail();
   if (data.items.length > TAX_QUOTE_MAX_ITEMS) fail();
@@ -597,6 +611,7 @@ export function parseTaxQuoteEnvelope(value: unknown): CheckoutTaxQuote {
     taxAmount,
     totalMinor,
     totalAmount,
+    ...(manualCodDeposit !== undefined ? { manualCodDeposit } : {}),
     shippingMethod,
     ...(data.shippingRateToken == null ? {} : { shippingRateToken: requiredString(data.shippingRateToken, 2048) }),
     deliveryMethodKind,

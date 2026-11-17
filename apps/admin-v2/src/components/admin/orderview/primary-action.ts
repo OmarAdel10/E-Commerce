@@ -49,7 +49,7 @@ export function isPartSent(order: Pick<Order, "status" | "items">): boolean {
  * due until Collect cash records it).
  */
 export function canMarkDelivered(
-  order: Pick<Order, "status" | "items" | "paymentMethod" | "paymentStatus" | "balanceDue" | "archivedAt" | "activeRefundOperation" | "shipmentRecovery">,
+  order: Pick<Order, "status" | "items" | "paymentMethod" | "paymentStatus" | "balanceDue" | "archivedAt" | "activeRefundOperation" | "shipmentRecovery" | "hasUnverifiedManualDeposit">,
 ): boolean {
   const shipLines = order.items.filter((item) => lineFulfillmentType(item) === "ship");
   return order.status.toLowerCase() === "shipped"
@@ -58,6 +58,7 @@ export function canMarkDelivered(
     && shipLines.length > 0
     && shipLines.every((item) => fulfilledUnits(item) >= item.quantity)
     && !order.archivedAt
+    && !order.hasUnverifiedManualDeposit
     && !order.activeRefundOperation?.active
     && order.shipmentRecovery?.activeLock !== true;
 }
@@ -78,6 +79,7 @@ export function resolveOrderPrimaryAction(
   if (order.archivedAt || order.activeRefundOperation?.active || order.shipmentRecovery?.activeLock) return null;
   const status = order.status.toLowerCase();
   if (actions.canResolveOrderSupportRequests && openCancellationRequest(order)) return "reviewCancellation";
+  if (order.hasUnverifiedManualDeposit) return null;
   // A held order's next step is the hold notice's Release.
   if (openOrderHolds(order).length > 0) return null;
 

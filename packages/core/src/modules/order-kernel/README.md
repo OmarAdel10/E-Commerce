@@ -15,6 +15,7 @@ machine; safe for the dashboard).
 | `shipment-claim.ts` | `assertNoActiveShipmentClaim()`, `hasActiveShipmentClaim()`, `noActiveShipmentClaimCondition()` | The lease a courier booking holds on the order row |
 | `payment-session-guard.ts` | `assertNoActivePaymentSessionAttempt()`, `noActivePaymentSessionAttemptForOrderIdCondition()`, ... | While a hosted payment session is being set up (a claimed attempt whose lease has not expired), nothing else changes the order |
 | `refund-attempt-guard.ts` | `assertNoActiveRefundAttempt()`, `noActiveRefundAttemptForOrderIdCondition()`, `findActiveRefundAttempt()`, `ACTIVE_REFUND_ATTEMPT_STATUSES`, ... | While a refund is in flight (an active attempt or a pending refund payment), nothing else changes the order |
+| `manual-deposit-guard.ts` | `assertManualCodDepositVerified()`, `ManualCodDepositBlockedError`, `readPaymentPlan()` | While a manual COD deposit is still pending (or was refunded), fulfilment cannot progress |
 | `app-facts.ts` | `buildAppDiscountFactInserts()`, `resolveOrderAppFacts()`, `listOrderAppFacts()`, `recordAppRiskChecks()`, ... | What apps did to an order, kept as immutable `order_events` rows: app discounts (written in the checkout commit) and advisory risk checks |
 
 The three locks are checked together by every order writer: the status

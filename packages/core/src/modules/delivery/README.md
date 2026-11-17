@@ -5,7 +5,7 @@ The `delivery` domain owns the courier port, saved courier accounts (delivery pr
 ## Entries and layer
 
 - `index.ts` exports the services, the courier port and registry (`couriers/port.ts`, `couriers/registry.ts`), and re-exports `browser.ts` (`types.ts`, `zone-match.ts`, `provider-readiness.ts`). Core has no courier adapter: every courier is an app's.
-- Layer L5. It imports `inventory`, `order-kernel` and `settings`. `checkout`, `fulfilment`, `notifications` and `orders` import it (`scripts/core-domain-graph.allow.json`).
+- Layer L5. It imports `inventory`, `order-kernel` and `settings`. `checkout`, `fulfilment`, `notifications` and `orders` import it (`scripts/core-domain-graph.allow.json`). The manual COD deposit guard it needs for a courier update lives in `order-kernel`, the leaf the payment and fulfilment domains share it through.
 
 ## Owns
 

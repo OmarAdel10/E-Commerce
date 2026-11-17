@@ -5,7 +5,9 @@ import {
     deliveryShipments,
     OrderStatus,
     ShipmentStatus,
+    PaymentMethod,
 } from "@scalius/database/schema";
+import { assertManualCodDepositVerified } from "../payments";
 import {
   type CourierProvidersSource,
   createShipment,
@@ -150,6 +152,7 @@ export async function bulkShipOrders(
                 version: orders.version,
                 shipmentClaimId: orders.shipmentClaimId,
                 shipmentClaimExpiresAt: orders.shipmentClaimExpiresAt,
+                paymentMethod: orders.paymentMethod,
             }).from(orders).where(eq(orders.id, orderId)).get();
             if (!order) throw new NotFoundError(`Order ${orderId} not found`);
             await assertNoActiveRefundAttempt(db, orderId, {
@@ -157,6 +160,13 @@ export async function bulkShipOrders(
             });
             await assertNoActivePaymentSessionAttempt(db, orderId);
             if (order.status === OrderStatus.SHIPPED) {
+                // The handover record and the inventory reconciliation below run
+                // on an order that is already shipped. A manual COD deposit
+                // order cannot gain a new handover record or move reserved
+                // stock until staff verify the deposit.
+                if (order.paymentMethod === PaymentMethod.COD) {
+                    await assertManualCodDepositVerified(db, orderId);
+                }
                 await recordCourierBookingFulfilment(db, orderId, order.shipmentClaimId ?? null);
                 const availabilityTransitionVariantIds = await reconcileInventoryForStatus(
                     db,
@@ -187,6 +197,10 @@ export async function bulkShipOrders(
             }
             validateTransition("order", order.status, OrderStatus.SHIPPED);
             await assertOrderNotOnHold(db, orderId);
+            // A manual COD deposit order cannot be shipped until staff verify the deposit.
+            if (order.paymentMethod === PaymentMethod.COD) {
+                await assertManualCodDepositVerified(db, orderId);
+            }
 
             const claimId = createShipmentClaimId();
             const claimResult = await db.update(orders).set({

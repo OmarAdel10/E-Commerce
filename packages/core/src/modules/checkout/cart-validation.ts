@@ -1,4 +1,5 @@
 import type { Database } from "@scalius/database/client";
+import { STOREFRONT_CART_VALIDATION_RESULT_PROOF } from "../../internals/storefront-checkout-proofs";
 import { withGiftCardRecipientFields } from "@scalius/shared/gift-card-recipient";
 import { BACKUP_MARKET_ID, DEFAULT_SHIPPING_PROFILE_ID, products, productVariants } from "@scalius/database/schema";
 import { DEFAULT_CURRENCY, getDecimalPlaces, normalizeSupportedCurrencyCode } from "@scalius/shared/currency";
@@ -241,7 +242,6 @@ export interface StorefrontCartValidationResult {
     transform?: TransformedCart;
 }
 
-const STOREFRONT_CART_VALIDATION_RESULT_PROOF = Symbol("scalius.storefrontCartValidationResult");
 
 function markTrustedStorefrontCartValidationResult(
     result: StorefrontCartValidationResult,

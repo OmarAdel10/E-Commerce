@@ -9,6 +9,8 @@ import {
   updateOrderStatusFromShipment,
 } from "@scalius/core/modules/delivery";
 import { assertNoActiveRefundAttempt, assertNoActivePaymentSessionAttempt } from "@scalius/core/modules/order-kernel";
+import { ManualCodDepositBlockedError } from "@scalius/core/modules/payments";
+import { recordManualCodDepositReconciliationRequired } from "@scalius/core/modules/orders";
 import { eq } from "drizzle-orm";
 import { syncCourierFulfilmentFromShipment } from "@scalius/core/modules/fulfilment";
 import { NotFoundError } from "../../utils/api-error";
@@ -31,6 +33,10 @@ export type SyncedShipmentStatusPayload = Omit<ShipmentView, "lastChecked"> & {
   lastChecked: string;
   statusChanged: boolean;
   orderStatusUpdate: boolean;
+  /** The courier's status is saved, but the order could not follow it. */
+  reconciliationRequired: boolean;
+  /** Why the order could not follow the courier's status. */
+  reconciliationReason: string | null;
 };
 
 export type SyncedShipmentStatusResult = {
@@ -74,13 +80,33 @@ export async function checkAndSyncShipmentStatus(options: {
 
   // The ledger follows the parcel (F11): before the order moves for units
   // the courier holds, after it for units the courier never took.
-  await syncCourierFulfilmentFromShipment(db, shipment.id, updatedShipment.status);
-  const orderSync = await updateOrderStatusFromShipment(
-    db,
-    shipment.id,
-    updatedShipment.status,
-  );
-  await syncCourierFulfilmentFromShipment(db, shipment.id, updatedShipment.status);
+  //
+  // A manual COD deposit that is pending or was refunded stops the order from
+  // following the parcel. That is a permanent business rule, not a transient
+  // failure: the courier's status stays saved, the order and its ledger stay
+  // untouched, and the mismatch is recorded for staff to reconcile.
+  let orderSync: Awaited<ReturnType<typeof updateOrderStatusFromShipment>> = null;
+  let reconciliationRequired = false;
+  let reconciliationReason: string | null = null;
+  try {
+    await syncCourierFulfilmentFromShipment(db, shipment.id, updatedShipment.status);
+    orderSync = await updateOrderStatusFromShipment(
+      db,
+      shipment.id,
+      updatedShipment.status,
+    );
+    await syncCourierFulfilmentFromShipment(db, shipment.id, updatedShipment.status);
+  } catch (error) {
+    if (!(error instanceof ManualCodDepositBlockedError)) throw error;
+    reconciliationRequired = true;
+    reconciliationReason = error.message;
+    await recordManualCodDepositReconciliationRequired(db, {
+      orderId: shipment.orderId,
+      shipmentId: shipment.id,
+      shipmentStatus: updatedShipment.status,
+      error,
+    });
+  }
   const orderStatusChange = orderSync?.statusChange ?? null;
 
   const notificationResult = await sendOrderStatusChangeNotification({
@@ -102,6 +128,8 @@ export async function checkAndSyncShipmentStatus(options: {
       lastChecked: now.toISOString(),
       statusChanged: previousStatus !== updatedShipment.status,
       orderStatusUpdate: Boolean(orderStatusChange?.orderId),
+      reconciliationRequired,
+      reconciliationReason,
     },
     previousStatus,
     orderStatusChange,

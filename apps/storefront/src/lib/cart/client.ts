@@ -1311,7 +1311,10 @@ async function refreshTotals() {
     "expectedQuoteFingerprint",
   ) as HTMLInputElement | null;
 
-  if (expectedQuoteFingerprintInput) expectedQuoteFingerprintInput.value = "";
+  if (expectedQuoteFingerprintInput) {
+    expectedQuoteFingerprintInput.value = "";
+    delete expectedQuoteFingerprintInput.dataset.manualCodDeposit;
+  }
   updateCheckoutButtonState();
 
   if (!subtotalEl || !shippingEl || !totalEl) return;
@@ -1371,6 +1374,7 @@ async function refreshTotals() {
     if (quoteSequence !== cartTaxQuoteSequence) return;
     if (expectedQuoteFingerprintInput) {
       expectedQuoteFingerprintInput.value = quote.quoteFingerprint;
+      expectedQuoteFingerprintInput.dataset.manualCodDeposit = String(Boolean(quote.manualCodDeposit));
     }
     writeReviewedCheckoutQuote(quote);
     setQuoteRuleErrors([]);

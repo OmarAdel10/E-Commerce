@@ -12,9 +12,11 @@ import {
     orderFulfillments,
     orderItems,
     orders,
+    paymentPlans,
     FulfillmentStatus,
     OrderStatus,
     PaymentMethod,
+    PaymentPlanStatus,
     ShipmentStatus,
 } from "@scalius/database/schema";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -22,6 +24,7 @@ import { and, asc, desc, eq, ne, notInArray, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { isFulfillmentType, type FulfillmentType } from "@scalius/shared/fulfilment";
 import { ConflictError, NotFoundError, ValidationError } from "@scalius/core/errors";
+import { assertManualCodDepositVerified } from "../payments";
 import {
     recordCODCollection,
     resolveOrderCurrencySnapshot,
@@ -52,6 +55,7 @@ type Statement = BatchItem<"sqlite">;
 /** Bound values per fulfilment line row (id, fulfilment, order, line, quantity); created_at is SQL. */
 export const FULFILMENT_LINE_INSERT_PARAMETERS_PER_ROW = 5;
 const FULFILMENT_CLAIM_GUARD = "order_fulfilment_conflict";
+const COURIER_HANDOVER_GUARD = "courier_handover_conflict";
 
 export type ManualFulfilmentKind = "ship" | "pickup" | "service";
 
@@ -455,6 +459,10 @@ export async function recordOrderFulfilment(
     const shipLinesDone = allHandedOver(items, fulfilledAfter, ["ship"]);
     const shouldShip = input.kind === "ship" && shipLinesDone && order.status === OrderStatus.CONFIRMED;
     if (shouldShip) validateTransition("order", order.status, OrderStatus.SHIPPED);
+    // A manual COD deposit order cannot be handed over until staff verify the deposit.
+    if (order.paymentMethod === PaymentMethod.COD) {
+        await assertManualCodDepositVerified(db, orderId);
+    }
     // The last physical hand-over deducts the order's stock at its location:
     // refuse before recording anything when that location lacks the units.
     const completesHandOver = (input.kind === "ship" && shipLinesDone)
@@ -768,9 +776,19 @@ export async function recordCourierBookingFulfilment(
         .filter((item) => lineType(item) === "ship" && item.fulfilledQuantity < item.quantity)
         .map((item) => ({ orderItemId: item.id, quantity: item.quantity - item.fulfilledQuantity }));
     if (lines.length === 0) return { fulfillmentId: null, lines: [], recorded: false };
+    await assertManualCodDepositVerified(db, orderId);
     const fulfillmentId = createFulfilmentId();
     try {
         await safeBatch(db, [
+            buildBatchGuard(db, and(
+                noActiveRefundAttemptForOrderIdCondition(orderId),
+                sql`NOT EXISTS (
+                    SELECT 1 FROM ${paymentPlans}
+                    WHERE ${paymentPlans.orderId} = ${orderId}
+                      AND ${paymentPlans.kind} = 'manual'
+                      AND ${paymentPlans.status} IN (${PaymentPlanStatus.PENDING}, ${PaymentPlanStatus.CANCELLED})
+                )`,
+            )!, COURIER_HANDOVER_GUARD),
             ...buildFulfilmentInsertStatements(db, {
                 fulfillmentId,
                 orderId,
@@ -789,6 +807,10 @@ export async function recordCourierBookingFulfilment(
     } catch (error) {
         const raced = await findFulfilmentByRequestKey(db, orderId, requestKey).catch(() => null);
         if (raced) return { fulfillmentId: raced.id, lines: raced.lines, recorded: false };
+        if (isBatchGuardError(error, COURIER_HANDOVER_GUARD)) {
+            await assertManualCodDepositVerified(db, orderId);
+            throw new ConflictError("The order's refund state changed while the courier handover was recorded. Reload and review the order.");
+        }
         if (isLedgerBoundsError(error)) {
             throw new ConflictError("Some of this order's items were handed over meanwhile. Reload and review the order.");
         }

@@ -125,9 +125,9 @@ export type OrderNextStep = "confirm" | "fulfil" | "collect" | "deliver";
  * finished order.
  */
 export function orderNextStep(
-  order: Pick<OrderListItem, "status" | "fulfillmentStatus" | "paymentMethod" | "paymentStatus" | "totalAmount" | "paidAmount" | "archivedAt" | "onHold">,
+  order: Pick<OrderListItem, "status" | "fulfillmentStatus" | "paymentMethod" | "paymentStatus" | "totalAmount" | "paidAmount" | "archivedAt" | "onHold" | "hasUnverifiedManualDeposit">,
 ): OrderNextStep | null {
-  if (order.archivedAt || order.onHold) return null;
+  if (order.archivedAt || order.onHold || order.hasUnverifiedManualDeposit) return null;
   const status = order.status.toLowerCase();
   if (status === "pending" || status === "processing") return "confirm";
   if (codToCollect(order) > 0 && ["confirmed", "shipped", "delivered"].includes(status)) return "collect";

@@ -51,6 +51,7 @@ export function OrderStatusSelectorMenu({
       case "with_courier": return t("statusBlock.withCourier");
       case "cash_not_collected": return t("statusBlock.cashFirst");
       case "money_due": return t("statusBlock.moneyDue");
+      case "deposit_not_verified": return t("block.manualDeposit");
     }
   };
 

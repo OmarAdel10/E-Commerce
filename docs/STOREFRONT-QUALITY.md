@@ -23,6 +23,10 @@ pnpm quality:storefront --base-url http://localhost:4322 --paths /,/cart    # au
 
 Install the browser once: `pnpm exec playwright install chromium`.
 
+Run `pnpm test:browser:manual-cod-deposit` for the checkout and receipt journey
+against the fixture API. Set `SCALIUS_BROWSER_CHANNEL=chrome` to use a locally
+installed Chrome instead of Playwright's Chromium.
+
 Output goes to `.quality/storefront/` (gitignored): `index.html` (the report: findings and screenshots side by side), `results.json`, `shots/<entry>/<width>.jpg` and, with a baseline, `diffs/`.
 
 Visual diff: run once with `--update-baseline` to keep the current screenshots in `.quality/storefront-baseline/` (or `--baseline <dir>`). Later runs compare against it and report `visual-diff` when more than 0.5% of the pixels change.

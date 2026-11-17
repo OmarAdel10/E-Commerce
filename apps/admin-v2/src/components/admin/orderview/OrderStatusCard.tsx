@@ -36,6 +36,8 @@ export function statusBlockText(
       return t("statusBlock.cashFirst");
     case "money_due":
       return t("statusBlock.moneyDue");
+    case "deposit_not_verified":
+      return t("statusBlock.depositNotVerified");
   }
 }
 
@@ -84,7 +86,10 @@ export function OrderStatusCard({ order, request }: { order: Order; request?: Or
   const refundLocked = Boolean(order.activeRefundOperation?.active);
   const shipmentLocked = order.shipmentRecovery?.activeLock === true;
   // Only changes without side effects are offered; one that can't be chosen says why, right in the menu.
-  const options = getAdminOrderStatusOptions(status, { ...order, unitsWithCourier: unitsWithCourier(order) });
+  const options = getAdminOrderStatusOptions(status, {
+    ...order,
+    unitsWithCourier: unitsWithCourier(order),
+  });
   const blocked = new Map(options.filter((option) => option.block).map((option) => [option.status as string, option.block!]));
   const cancelBlock = blocked.get("cancelled");
   const changeable = !statusLocked(order, canChangeStatus) && options.length > 0;

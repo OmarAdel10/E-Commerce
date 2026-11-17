@@ -327,6 +327,7 @@ const orderListFactsShape = {
   cod: z.object({ status: z.string(), deliveryAttempts: z.number().int() }).nullable(),
   refundDue: z.number().openapi({ description: "Value of received returns not refunded yet." }),
   refundedAmount: z.number(),
+  hasUnverifiedManualDeposit: z.boolean(),
   ...orderFulfilmentListShape,
 };
 
@@ -635,6 +636,18 @@ export const orderDetailSchema = z.object({
   ...orderBillingAddressShape,
   paidAmount: z.number().nullable(),
   balanceDue: z.number().nullable(),
+  paymentPlan: z.object({
+    kind: z.string(),
+    status: z.string(),
+    totalAmount: z.number(),
+    depositAmount: z.number(),
+    balanceDue: z.number(),
+    balanceDueDate: z.string().nullable(),
+    depositPaidAt: nullableIsoTimestampSchema,
+    balancePaidAt: nullableIsoTimestampSchema,
+    createdAt: nullableIsoTimestampSchema,
+    updatedAt: nullableIsoTimestampSchema,
+  }).nullable(),
   version: z.number().int().min(1),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,

@@ -22,8 +22,8 @@ export const DATABASE_SCHEMA_LEGACY_BASELINE = {
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA = {
-  version: 188,
-  name: "0188_platform_integrity",
+  version: 190,
+  name: "0190_striped_puppet_master",
 } as const;
 
 export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
@@ -721,6 +721,16 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
     version: 188,
     name: "0188_platform_integrity",
     sourceSha256: "f957b22b83b380f41b7ad3efa6c577b3187bb0ef5e7ba9a164e0d0bd49859c16",
+  },
+  {
+    version: 189,
+    name: "0189_magical_lucky_pierre",
+    sourceSha256: "d3ab0c1e4bd3581e52a82bd8a8629f8b3d5868eb033ad133552ec6d3aa336993",
+  },
+  {
+    version: 190,
+    name: "0190_striped_puppet_master",
+    sourceSha256: "59ee55d643e98a3bc7d0e0dd4a46f75bb354123319eb90ce30b87043e97f83e5",
   },
 ] as const;
 
