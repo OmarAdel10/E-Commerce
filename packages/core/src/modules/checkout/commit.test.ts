@@ -5,15 +5,10 @@
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { DatabaseSync as SQLiteDatabase } from "node:sqlite";
-import { drizzle } from "drizzle-orm/d1";
-import * as schema from "@scalius/database/schema";
 import { wantsOrderCreatedNotification } from "./commit";
-import type { Database } from "@scalius/database/client";
-import type { StorefrontOrderCommitPayload } from "../orders";
 
 describe("commit.ts — payment plan snapshot fields", () => {
     let sqlite: SQLiteDatabase;
-    let db: Database;
 
     beforeAll(() => {
         sqlite = new SQLiteDatabase(":memory:");
@@ -53,7 +48,6 @@ describe("commit.ts — payment plan snapshot fields", () => {
             INSERT INTO checkout_authority (id, revision, updated_at)
             VALUES ('auth_1', 1, unixepoch());
         `);
-        db = drizzle(sqlite as any);
     });
 
     afterAll(() => {
@@ -116,9 +110,9 @@ describe("commit.ts — payment plan snapshot fields", () => {
                 },
             } as any,
             checkoutSideEffects: { orderCreatedNotification: false, metaPurchase: false },
-        } as unknown as StorefrontOrderCommitPayload;
+        } as any;
 
-        expect(wantsOrderCreatedNotification(payload)).toBe(false);
+    expect(wantsOrderCreatedNotification(payload)).toBe(false);
     });
 
     it("wantsOrderCreatedNotification returns true with notification flag", () => {
@@ -177,7 +171,7 @@ describe("commit.ts — payment plan snapshot fields", () => {
                 },
             } as any,
             checkoutSideEffects: { orderCreatedNotification: true, metaPurchase: false },
-        } as unknown as StorefrontOrderCommitPayload;
+        } as any;
 
         expect(wantsOrderCreatedNotification(payload)).toBe(true);
     });
@@ -207,6 +201,28 @@ describe("commit.ts — payment plan snapshot fields", () => {
         expect(plan.balance_due_minor).toBe(8000);
         expect(plan.kind).toBe("manual");
         expect(plan.status).toBe("pending");
+    });
+
+    it("rejects negative qualifying_merchandise_minor (CHECK constraint)", () => {
+        sqlite.prepare(
+            "INSERT INTO orders (id, total_amount_minor, paid_amount_minor, balance_due_minor, currency_code, currency_decimal_places) VALUES ('order_2', 20000, 0, 20000, 'EGP', 2)"
+        ).run();
+
+        expect(() => {
+            sqlite.prepare(`
+                INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, created_at, updated_at)
+                VALUES ('plan_neg', 'order_2', 20000, 0, 20000, 'manual', 'pending', -1, unixepoch(), unixepoch())
+            `).run();
+        }).toThrow();
+    });
+
+    it("rejects negative cod_deposit_amount (CHECK constraint)", () => {
+        expect(() => {
+            sqlite.prepare(`
+                INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, cod_deposit_amount, created_at, updated_at)
+                VALUES ('plan_neg2', 'order_1', 20000, 0, 20000, 'manual', 'pending', 10000, -5000, unixepoch(), unixepoch())
+            `).run();
+        }).toThrow();
     });
 
     it("checkout authority revision is bumped on product write", () => {
