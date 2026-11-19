@@ -185,7 +185,7 @@ describe("reviewed storefront manual COD deposit", () => {
 
       const firstQuote = await quote();
       expect(firstQuote.allowedPaymentMethods).toContain("cod");
-      expect(firstQuote.manualCodDeposit).toEqual({ depositMinor: 11900, balanceMinor: 24100 });
+      expect(firstQuote.manualCodDeposit).toEqual({ depositMinor: 9900, balanceMinor: 26100 });
       await checkoutDocument.write(fixture.db, { codDepositPercent: 40 });
       const stale = await post("/", { ...orderInput, expectedQuoteFingerprint: firstQuote.quoteFingerprint });
       const staleBody = await stale.json();
@@ -218,12 +218,12 @@ describe("reviewed storefront manual COD deposit", () => {
       `);
       await checkoutDocument.write(fixture.db, { codDepositMode: "percentage" });
       const refreshedQuote = await quote();
-      expect(refreshedQuote.manualCodDeposit).toEqual({ depositMinor: 14400, balanceMinor: 21600 });
+      expect(refreshedQuote.manualCodDeposit).toEqual({ depositMinor: 12000, balanceMinor: 24000 });
       const placed = await post("/", { ...orderInput, expectedQuoteFingerprint: refreshedQuote.quoteFingerprint });
       const placedBody = await placed.json();
       expect(placed.status, JSON.stringify(placedBody)).toBe(201);
       expect(fixture.one("SELECT kind, deposit_amount_minor, balance_due_minor FROM payment_plans")).toEqual({
-        kind: "manual", deposit_amount_minor: 14400, balance_due_minor: 21600,
+        kind: "manual", deposit_amount_minor: 12000, balance_due_minor: 24000,
       });
 
       await checkoutDocument.write(fixture.db, { checkoutMode: "all" });

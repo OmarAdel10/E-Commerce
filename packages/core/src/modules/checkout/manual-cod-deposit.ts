@@ -116,8 +116,16 @@ export function resolveCodDepositQualifyingValue(
     let qualifyingMinor = 0;
     for (const line of lines) {
         if (line.isGiftCard) continue;
-        if (!Number.isFinite(line.unitPriceMinor) || line.unitPriceMinor < 0) continue;
-        if (!Number.isFinite(line.quantity) || line.quantity < 1) continue;
+        if (!Number.isFinite(line.unitPriceMinor) || line.unitPriceMinor < 0) {
+            throw new ValidationError(
+                `Invalid unit price for product ${line.productId}: ${String(line.unitPriceMinor)}. Must be a non-negative finite number.`,
+            );
+        }
+        if (!Number.isFinite(line.quantity) || line.quantity < 1) {
+            throw new ValidationError(
+                `Invalid quantity for product ${line.productId}: ${String(line.quantity)}. Must be a finite number >= 1.`,
+            );
+        }
         const stored = productPolicyById.get(line.productId);
         // A missing entry means the product's authoritative data was not loaded
         // into the policy map. This is distinct from an intentionally inherited

@@ -440,6 +440,51 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(value).toBe(0);
   });
 
+  it("rejects negative unit price for a required product", () => {
+    const policies = new Map<string, string | null>([
+      ["prod_required", "required"],
+    ]);
+    expect(() => {
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 1, unitPriceMinor: -5000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        ],
+        policies,
+        "all",
+      );
+    }).toThrow(ValidationError);
+  });
+
+  it("rejects invalid quantity for a required product", () => {
+    const policies = new Map<string, string | null>([
+      ["prod_required", "required"],
+    ]);
+    expect(() => {
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 0, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        ],
+        policies,
+        "all",
+      );
+    }).toThrow(ValidationError);
+  });
+
+  it("rejects Infinity unit price for a required product", () => {
+    const policies = new Map<string, string | null>([
+      ["prod_required", "required"],
+    ]);
+    expect(() => {
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 1, unitPriceMinor: Infinity, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        ],
+        policies,
+        "all",
+      );
+    }).toThrow(ValidationError);
+  });
+
   it("rejects NaN qualifying merchandise value", () => {
     const { terms, error } = resolveManualCodDeposit(
       baseSettings,

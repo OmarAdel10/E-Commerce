@@ -105,6 +105,12 @@ async function insertTestData() {
     [DATA.catId, "Egypt Category", `egypt-e2e-${ts}`, now, now]
   );
 
+  // Enable manual COD deposits so the deposit path is exercised
+  dbExec(
+    "INSERT INTO settings (id, key, value, type, category, revision, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+    [`checkout_settings_${ts}`, "document", JSON.stringify({ codDepositEnabled: true, codDepositDefaultProductPolicy: "selected" }), "json", "checkout", now]
+  );
+
   dbExec(
     `INSERT INTO products (id, name, slug, category_id, is_active, price_minor, cod_deposit_policy, created_at, updated_at)
      VALUES (?, ?, ?, ?, 1, 20000, 'required', ?, ?)`,
