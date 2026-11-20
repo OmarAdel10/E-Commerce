@@ -85,4 +85,54 @@ describe("agent storefront manual COD deposit", () => {
       fixture.close();
     }
   });
+
+  it("applies product-level COD deposit policies through quoteAgentStorefrontCheckout", async () => {
+    const grantId = "agr_codproducttest000001";
+    const contextId = "asc_codproducttest000001";
+    const fixture = createGiftCardCheckoutFixture();
+    try {
+      // Seed products with different deposit policies
+      fixture.sqlite.prepare(`
+        INSERT INTO agent_grants (id, kind, resource, label, preset, risk_ceiling, status, expires_at)
+        VALUES (?, 'pat', 'storefront', 'Checkout tests', 'operator', 'write', 'active', unixepoch() + 3600)
+      `).run(grantId);
+      fixture.sqlite.prepare(`
+        INSERT INTO agent_storefront_contexts (
+          id, grant_id, cart_json, country_code, city_id, zone_id, shipping_method_id, expires_at
+        ) VALUES (?, ?, ?, 'BD', ?, ?, ?, unixepoch() + 3600)
+      `).run(contextId, grantId, JSON.stringify([
+        { variantId: "v_mug", quantity: 1 },
+        { variantId: "v_svc", quantity: 1 },
+      ]), DELIVERY.city, DELIVERY.zone, DELIVERY.shippingMethodId);
+
+      // mug=required, svc=exempt -> only mug contributes to deposit basis
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+        UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
+      `).run();
+
+      await checkoutDocument.write(fixture.db, {
+        checkoutMode: "guest_cod_only",
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 100,
+        codDepositInstructions: "Pay 100 BDT",
+        codDepositDefaultProductPolicy: "selected",
+      });
+
+      const customerPhone = "+880****5678";
+      const quote = await quoteAgentStorefrontCheckout(fixture.db, grantId, contextId, {
+        customerPhone, cod: true,
+      });
+
+      // mug (required, 30000 minor = 300 BDT) contributes to deposit basis
+      // svc (exempt) does not contribute
+      // Deposit = min(10000 configured, qualifying merchandise) = min(10000, 30000) = 10000
+      expect(quote.manualCodDeposit).toMatchObject({
+        depositMinor: 10000,
+      });
+    } finally {
+      fixture.close();
+    }
+  });
 });

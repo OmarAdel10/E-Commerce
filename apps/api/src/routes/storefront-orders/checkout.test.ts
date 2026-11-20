@@ -248,4 +248,70 @@ describe("reviewed storefront manual COD deposit", () => {
       fixture.close();
     }
   });
+
+  it("applies product-level COD deposit policies through tax-quote route", async () => {
+    const fixture = createGiftCardCheckoutFixture();
+    try {
+      // Seed products with different deposit policies
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+        UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
+      `).run();
+
+      await checkoutDocument.write(fixture.db, {
+        checkoutMode: "guest_cod_only",
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 100,
+        codDepositInstructions: "Pay 100 BDT",
+        codDepositDefaultProductPolicy: "selected",
+      });
+
+      const app = new OpenAPIHono<{ Bindings: Env }>();
+      app.use("*", async (c, next) => {
+        c.set("db" as never, fixture.db as never);
+        await next();
+      });
+      app.onError((error: unknown, c: any) => {
+        if (!(error instanceof AppError)) throw error;
+        return c.json({ success: false, error: { code: error.code, message: error.message } }, error.status as ContentfulStatusCode);
+      });
+      app.route("/", checkoutRoutes);
+      app.route("/", taxQuoteRoutes);
+      const rateLimit = { limit: async () => ({ success: true }) };
+      const encryptionKey = btoa("z".repeat(32));
+      const env = { SCALIUS_SECRET: TEST_MASTER_SECRET, CREDENTIAL_ENCRYPTION_KEY: encryptionKey,
+        RL_STANDARD: rateLimit, RL_STRICT: rateLimit } as unknown as Env;
+      const post = (path: string, body: unknown) => app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }, env);
+
+      const address = {
+        city: DELIVERY.city,
+        zone: DELIVERY.zone,
+        shippingMethodId: DELIVERY.shippingMethodId,
+        shippingCountryCode: "BD",
+        customerPhone: "+8801712345678",
+        items: [{ productId: "p_mug", variantId: "v_mug", quantity: 1 },
+                { productId: "p_svc", variantId: "v_svc", quantity: 1 }],
+      };
+
+      const response = await post("/tax-quote", address);
+      const body = await response.json() as {
+        data: { manualCodDeposit: ManualCodDepositQuote | null; quoteFingerprint: string };
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+
+      // mug (required, 30000 BDT) contributes to deposit basis
+      // svc (exempt) does not contribute
+      // Deposit = min(10000 configured, qualifying merchandise) = min(10000, 30000) = 10000
+      expect(body.data.manualCodDeposit).toMatchObject({
+        depositMinor: 10000,
+      });
+    } finally {
+      fixture.close();
+    }
+  });
 });
