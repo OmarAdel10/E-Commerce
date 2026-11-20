@@ -2,11 +2,11 @@
 // Coverage tests for product-admin/write.ts codDepositPolicy
 // (addresses coverage reviewer finding: product-admin/write.ts codDepositPolicy untested)
 // Real database-backed tests using createSqliteD1Database for persistence verification.
-// Note: updateProduct uses safeBatch with catalogProjectionRefreshStatements which
-// generates SQL that node:sqlite cannot execute through Drizzle D1 binding.
-// The conditional codDepositPolicy write path in updateProduct (line 1247) uses
-// the same omit-to-keep pattern as planProductBaseSection, which is tested
-// in semantic-sections.test.ts.
+// updateProduct's conditional codDepositPolicy write uses the same omit-to-keep
+// pattern as planProductBaseSection (tested in semantic-sections.test.ts).
+// updateProduct itself cannot be directly tested with real SQLite because safeBatch
+// calls catalogProjectionRefreshStatements which uses Drizzle API chains incompatible
+// with node:sqlite's D1 binding — a pre-existing infrastructure limitation.
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
