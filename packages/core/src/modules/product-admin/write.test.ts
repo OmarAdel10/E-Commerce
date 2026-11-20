@@ -2,17 +2,27 @@
 // Coverage tests for product-admin/write.ts codDepositPolicy
 // (addresses coverage reviewer finding: product-admin/write.ts codDepositPolicy untested)
 // Real database-backed tests using createSqliteD1Database for persistence verification.
-// updateProduct's conditional codDepositPolicy write uses the same omit-to-keep
-// pattern as planProductBaseSection (tested in semantic-sections.test.ts).
+// updateProduct's conditional codDepositPolicy write (write.ts:1247) uses the same
+// omit-to-keep pattern as planProductBaseSection (tested in semantic-sections.test.ts).
 // updateProduct itself cannot be directly tested with real SQLite because safeBatch
 // calls catalogProjectionRefreshStatements which uses Drizzle API chains incompatible
-// with node:sqlite's D1 binding — a pre-existing infrastructure limitation.
+// with node:sqlite's D1 binding — a pre-existing infrastructure limitation. We mock
+// catalogProjectionRefreshStatements to return [] so the rest of the batch executes
+// against the real database, and change another field (name) to trigger detailsChanged.
 
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
-import { createProduct, duplicateProduct } from "./write";
-import type { CreateProductInput } from "./validation";
+import { createProduct, duplicateProduct, updateProduct } from "./write";
+import type { CreateProductInput, UpdateProductInput } from "./validation";
 import type { Database } from "@scalius/database/client";
+
+vi.mock("../products", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../products")>();
+  return {
+    ...actual,
+    catalogProjectionRefreshStatements: vi.fn(() => [] as never[]),
+  };
+});
 
 describe("product-admin/write.ts — codDepositPolicy", () => {
     let testDb: ReturnType<typeof createSqliteD1Database>;
@@ -36,6 +46,7 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
 
     afterAll(() => {
         testDb.sqlite.close();
+        vi.restoreAllMocks();
     });
 
     const baseInput: CreateProductInput = {
@@ -87,6 +98,66 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
         const row = testDb.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
         ).get(result.id) as { cod_deposit_policy: string };
+        expect(row.cod_deposit_policy).toBe("exempt");
+    });
+
+    it("updateProduct minimally works with real SQLite", async () => {
+        const created = await createProduct(db, {
+            ...baseInput,
+            slug: "test-product-minimal",
+        });
+
+        await updateProduct(db, created.id, {
+            ...baseInput,
+            slug: "test-product-minimal",
+            name: "Minimal Updated Name",
+            expectedAggregateRevision: 1,
+        } as UpdateProductInput);
+
+        const row = testDb.sqlite.prepare(
+            "SELECT name FROM products WHERE id = ?"
+        ).get(created.id) as { name: string };
+        expect(row.name).toBe("Minimal Updated Name");
+    });
+
+    it("updateProduct conditionally writes codDepositPolicy when provided", async () => {
+        const created = await createProduct(db, {
+            ...baseInput,
+            slug: "test-product-update",
+            codDepositPolicy: "inherit",
+        });
+
+        await updateProduct(db, created.id, {
+            ...baseInput,
+            slug: "test-product-update",
+            name: "Updated Product Name",
+            codDepositPolicy: "required",
+            expectedAggregateRevision: 1,
+        } as UpdateProductInput);
+
+        const row = testDb.sqlite.prepare(
+            "SELECT cod_deposit_policy FROM products WHERE id = ?"
+        ).get(created.id) as { cod_deposit_policy: string };
+        expect(row.cod_deposit_policy).toBe("required");
+    });
+
+    it("updateProduct does not change codDepositPolicy when omitted", async () => {
+        const created = await createProduct(db, {
+            ...baseInput,
+            slug: "test-product-nochange",
+            codDepositPolicy: "exempt",
+        });
+
+        await updateProduct(db, created.id, {
+            ...baseInput,
+            slug: "test-product-nochange",
+            name: "Updated Product Name",
+            expectedAggregateRevision: 1,
+        } as UpdateProductInput);
+
+        const row = testDb.sqlite.prepare(
+            "SELECT cod_deposit_policy FROM products WHERE id = ?"
+        ).get(created.id) as { cod_deposit_policy: string };
         expect(row.cod_deposit_policy).toBe("exempt");
     });
 
