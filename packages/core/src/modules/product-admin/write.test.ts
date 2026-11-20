@@ -2,18 +2,25 @@
 // Coverage tests for product-admin/write.ts codDepositPolicy
 // (addresses coverage reviewer finding: product-admin/write.ts codDepositPolicy untested)
 // Real database-backed tests using createSqliteD1Database for persistence verification.
+// Note: updateProduct uses safeBatch with catalogProjectionRefreshStatements which
+// generates SQL that node:sqlite cannot execute through Drizzle D1 binding.
+// The conditional codDepositPolicy write path in updateProduct (line 1247) uses
+// the same omit-to-keep pattern as planProductBaseSection, which is tested
+// in semantic-sections.test.ts.
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
-import type { SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
-import { createProduct, duplicateProduct, updateProduct } from "./write";
-import type { CreateProductInput, UpdateProductInput } from "./validation";
+import { createProduct, duplicateProduct } from "./write";
+import type { CreateProductInput } from "./validation";
+import type { Database } from "@scalius/database/client";
 
 describe("product-admin/write.ts — codDepositPolicy", () => {
-    let testDb: SqliteTestDatabase;
+    let testDb: ReturnType<typeof createSqliteD1Database>;
+    let db: Database;
 
     beforeAll(() => {
         testDb = createSqliteD1Database();
+        db = testDb.db;
         // Seed currency settings so readStoreCurrency works
         testDb.sqlite.exec(`
             INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
@@ -22,6 +29,8 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
             VALUES ('shp_default', 'Default', 0);
             INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
             INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+            INSERT OR IGNORE INTO delivery_zones (id, name) VALUES ('dz_bd', 'Bangladesh');
+            INSERT OR IGNORE INTO delivery_zone_regions (country_code, zone_id) VALUES ('BD', 'dz_bd');
         `);
     });
 
@@ -50,7 +59,7 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
     };
 
     it("createProduct defaults codDepositPolicy to inherit when omitted", async () => {
-        const result = await createProduct(testDb.db, { ...baseInput });
+        const result = await createProduct(db, { ...baseInput });
         const row = testDb.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
         ).get(result.id) as { cod_deposit_policy: string };
@@ -58,7 +67,7 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
     });
 
     it("createProduct stores codDepositPolicy=required when provided", async () => {
-        const result = await createProduct(testDb.db, {
+        const result = await createProduct(db, {
             ...baseInput,
             slug: "test-product-required",
             codDepositPolicy: "required",
@@ -70,7 +79,7 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
     });
 
     it("createProduct stores codDepositPolicy=exempt when provided", async () => {
-        const result = await createProduct(testDb.db, {
+        const result = await createProduct(db, {
             ...baseInput,
             slug: "test-product-exempt",
             codDepositPolicy: "exempt",
@@ -81,21 +90,14 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
         expect(row.cod_deposit_policy).toBe("exempt");
     });
 
-    it("updateProduct conditionally writes codDepositPolicy when provided", async () => {
-        // updateProduct requires complex currency/DDL setup; the conditional
-        // codDepositPolicy write path is covered via planProductBaseSection
-        // tests in semantic-sections.test.ts.
-        expect(true).toBe(true);
-    });
-
     it("duplicateProduct copies codDepositPolicy from source product", async () => {
-        const source = await createProduct(testDb.db, {
+        const source = await createProduct(db, {
             ...baseInput,
             slug: "test-product-source",
             codDepositPolicy: "required",
         });
 
-        const copy = await duplicateProduct(testDb.db, source.id, "Copy Product");
+        const copy = await duplicateProduct(db, source.id, "Copy Product");
         const row = testDb.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
         ).get(copy.id) as { cod_deposit_policy: string };
