@@ -229115,6 +229115,15 @@
                           "emiEligible": {
                             "type": "boolean"
                           },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
+                            ],
+                            "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value."
+                          },
                           "description": {
                             "type": "string",
                             "nullable": true,

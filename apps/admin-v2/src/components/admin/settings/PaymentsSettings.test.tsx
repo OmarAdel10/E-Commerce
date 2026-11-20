@@ -117,6 +117,7 @@ it("validates and saves the active COD deposit mode through the checkout setting
       codDepositMode: "fixed",
       codDepositAmount: 12.5,
       codDepositInstructions: "Transfer to the store account.",
+      codDepositDefaultProductPolicy: "all",
     });
 
     await act(async () => percentage.click());

@@ -64530,6 +64530,10 @@ export type PatchApiV1AdminProductsByIdSectionsBySectionData = {
             slug?: string;
             redirectOldUrl?: boolean;
             emiEligible?: boolean;
+            /**
+             * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value.
+             */
+            codDepositPolicy?: 'inherit' | 'required' | 'exempt';
             description?: string | null;
             metaTitle?: string | null;
             metaDescription?: string | null;
