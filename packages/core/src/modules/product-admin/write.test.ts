@@ -141,6 +141,27 @@ describe("product-admin/write.ts — codDepositPolicy", () => {
         expect(row.cod_deposit_policy).toBe("required");
     });
 
+    it("updateProduct persists codDepositPolicy as the sole changed field", async () => {
+        const created = await createProduct(db, {
+            ...baseInput,
+            slug: "test-product-sole",
+            codDepositPolicy: "inherit",
+        });
+
+        await updateProduct(db, created.id, {
+            ...baseInput,
+            slug: "test-product-sole",
+            codDepositPolicy: "exempt",
+            expectedAggregateRevision: 1,
+        } as UpdateProductInput);
+
+        const row = testDb.sqlite.prepare(
+            "SELECT cod_deposit_policy, aggregate_revision FROM products WHERE id = ?"
+        ).get(created.id) as { cod_deposit_policy: string; aggregate_revision: number };
+        expect(row.cod_deposit_policy).toBe("exempt");
+        expect(row.aggregate_revision).toBeGreaterThan(1);
+    });
+
     it("updateProduct does not change codDepositPolicy when omitted", async () => {
         const created = await createProduct(db, {
             ...baseInput,

@@ -781,6 +781,7 @@ async function unchangedProductSaveRevision(
             customizationSchema: products.customizationSchema,
             pageTemplate: products.pageTemplate,
             emiEligible: products.emiEligible,
+            codDepositPolicy: products.codDepositPolicy,
         }).from(products).where(eq(products.id, id)),
         db.select({
             id: productMedia.id,
@@ -836,6 +837,7 @@ async function unchangedProductSaveRevision(
         customizationSchema: plan.customizationSchema,
         pageTemplate: data.pageTemplate,
         emiEligible: data.emiEligible,
+        codDepositPolicy: data.codDepositPolicy,
     };
     const stored = current as unknown as Record<string, unknown>;
     for (const [column, value] of Object.entries(expected)) {

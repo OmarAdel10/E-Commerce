@@ -313,6 +313,7 @@ export async function listProducts(db: Database, options: {
             createdAt: sql<number>`CAST(${products.createdAt} AS INTEGER)`,
             updatedAt: sql<number>`CAST(${products.updatedAt} AS INTEGER)`,
             deletedAt: sql<number>`CAST(${products.deletedAt} AS INTEGER)`,
+            codDepositPolicy: products.codDepositPolicy,
             categoryName: sql<string>`${categories.name}`.as("categoryName"),
             salesChannelIds: publishedChannelIdsSql(sql`${products.id}`).as("sales_channel_ids"),
             // The sort column as stored: a cursor compares what the ORDER BY compared.
@@ -483,6 +484,7 @@ export async function listProducts(db: Database, options: {
         primaryImage: primaryImageMap.get(product.id) || null,
         sku: skuMap.get(product.id) || undefined,
         salesChannelIds: parsePublishedChannelIds(product.salesChannelIds),
+        codDepositPolicy: product.codDepositPolicy,
         };
     });
 
