@@ -6,7 +6,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
 import type { SqliteTestDatabase } from "@scalius/database/testing/sqlite-d1";
-import { planProductBaseSection, getProductSemanticSection } from "./semantic-sections";
+import { planProductBaseSection, getProductSemanticSection, productBasePatchSchema } from "./semantic-sections";
 import type { BatchItem } from "drizzle-orm/batch";
 
 describe("product-admin/semantic-sections.ts — codDepositPolicy bulk editor persistence", () => {
@@ -144,5 +144,41 @@ describe("product-admin/semantic-sections.ts — codDepositPolicy bulk editor pe
         } else {
             throw new Error("Expected base section result with product");
         }
+    });
+
+    describe("productBasePatchSchema — codDepositPolicy Zod validation", () => {
+        it("accepts inherit", () => {
+            const result = productBasePatchSchema.safeParse({ codDepositPolicy: "inherit" });
+            expect(result.success).toBe(true);
+            expect(result.success && result.data.codDepositPolicy).toBe("inherit");
+        });
+
+        it("accepts required", () => {
+            const result = productBasePatchSchema.safeParse({ codDepositPolicy: "required" });
+            expect(result.success).toBe(true);
+            expect(result.success && result.data.codDepositPolicy).toBe("required");
+        });
+
+        it("accepts exempt", () => {
+            const result = productBasePatchSchema.safeParse({ codDepositPolicy: "exempt" });
+            expect(result.success).toBe(true);
+            expect(result.success && result.data.codDepositPolicy).toBe("exempt");
+        });
+
+        it("rejects invalid codDepositPolicy values", () => {
+            const result = productBasePatchSchema.safeParse({ codDepositPolicy: "invalid" });
+            expect(result.success).toBe(false);
+            if (!result.success) {
+                const codDepositPolicyIssue = result.error.issues.find((issue: { path: unknown[] }) =>
+                    issue.path.includes("codDepositPolicy")
+                );
+                expect(codDepositPolicyIssue).toBeDefined();
+            }
+        });
+
+        it("is optional (omitting codDepositPolicy is valid)", () => {
+            const result = productBasePatchSchema.safeParse({ name: "Test Product" });
+            expect(result.success).toBe(true);
+        });
     });
 });

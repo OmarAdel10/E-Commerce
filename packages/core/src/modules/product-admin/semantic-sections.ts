@@ -101,7 +101,7 @@ const canonicalPathPatchSchema = z
     )
     .optional();
 
-const productBasePatchSchema = z.object({
+export const productBasePatchSchema = z.object({
     name: z.string().trim().min(1).max(PRODUCT_NAME_MAX_LENGTH).optional(),
     price: z.number().min(0).max(MAX_MAJOR_AMOUNT).optional(),
     categoryId: z.string().min(1).nullable().optional(),
