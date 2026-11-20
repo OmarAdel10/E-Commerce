@@ -51,17 +51,22 @@ import { PricingCard } from "./product-form/PricingCard";
 import { pairFromStored } from "./product-form/compare-at";
 import { useVariantPricedProduct, type ProductPriceFields } from "./product-form/variant-priced";
 import { useCurrency } from "@/hooks/use-currency";
-import { LazyAttributesSection, LazyDigitalDeliveryCard, LazyGiftCardProductCard, LazyProductSearchListing } from "./product-form/LazyProductCards";
+import {
+  LazyAttributesSection,
+  LazyCodDepositPolicyCard,
+  LazyDigitalDeliveryCard,
+  LazyGiftCardProductCard,
+  LazyOrganizationCard,
+  LazyPublishingCard,
+  LazyProductSearchListing,
+  LazyWarrantyCard,
+} from "./product-form/LazyProductCards";
 import { ShippingCard } from "./product-form/ShippingCard";
 import { CollapsibleCard } from "./product-form/CollapsibleCard";
 import { ProductEditorSlotsContext, type ProductEditorSlots } from "./product-form/editor-slots";
 import { StatusCard } from "./product-form/StatusCard";
 import { OnlinePaymentNote } from "./product-form/OnlinePaymentNote";
 import { ProductKindRulesContext, productKindRules } from "./product-form/product-kind-rules";
-import { OrganizationCard } from "./product-form/OrganizationCard";
-import { WarrantyCard } from "./product-form/WarrantyCard";
-import { CodDepositPolicyCard } from "./product-form/CodDepositPolicyCard";
-import { PublishingCard } from "./product-form/PublishingCard";
 import { useProductSubmit } from "./product-form/hooks/useProductSubmit";
 import { ProductSectionsProvider, useProductSections } from "./product-form/merchandising/product-sections";
 import { LoadingFallback } from "./shared/LoadingFallback";
@@ -563,8 +568,12 @@ function ProductEditor({
                 <ProductStatusCard form={form} isEdit={isEdit} getStorefrontPath={getStorefrontPath} readOnly={readOnly} />
               </fieldset>
               <fieldset disabled={readOnly} className="min-w-0 space-y-4">
-              <PublishingCard form={form} readOnly={readOnly} />
-              <OrganizationCard form={form} categories={categories} brandName={brandName} readOnly={readOnly} />
+              <React.Suspense fallback={<div className="min-h-22" aria-hidden />}>
+                <LazyPublishingCard form={form} readOnly={readOnly} />
+              </React.Suspense>
+              <React.Suspense fallback={<div className="min-h-22" aria-hidden />}>
+                <LazyOrganizationCard form={form} categories={categories} brandName={brandName} readOnly={readOnly} />
+              </React.Suspense>
               </fieldset>
               {isEdit && productId ? (
                 <React.Suspense fallback={<LoadingFallback height="h-40" />}>
@@ -574,8 +583,12 @@ function ProductEditor({
                 <AfterSaveCard title={t("productPage")} />
               )}
               <fieldset disabled={readOnly} className="min-w-0 space-y-4">
-              <WarrantyCard form={form} readOnly={readOnly} />
-              <CodDepositPolicyCard form={form} readOnly={readOnly} />
+              <React.Suspense fallback={<div className="min-h-22" aria-hidden />}>
+                <LazyWarrantyCard form={form} readOnly={readOnly} />
+              </React.Suspense>
+              <React.Suspense fallback={<div className="min-h-22" aria-hidden />}>
+                <LazyCodDepositPolicyCard form={form} readOnly={readOnly} />
+              </React.Suspense>
               {isEdit && productId ? <LazyCustomFieldsCard ownerType="product" ownerId={productId} canEdit={!readOnly} /> : null}
               {isEdit && productId ? <RelatedObjectsCard records={relatedObjects} /> : null}
               {isEdit && productId ? <AppResourceCards target="product" id={productId} /> : null}
