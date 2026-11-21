@@ -101,13 +101,14 @@ async function insertTestData() {
   DATA.bdVariantId = `var_required_bd_${ts}`;
 
   dbExec(
-    "INSERT INTO categories (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO categories (id, name, slug, status, created_at, updated_at) VALUES (?, ?, ?, 'published', ?, ?)",
     [DATA.catId, "Egypt Category", `egypt-e2e-${ts}`, now, now]
   );
 
   // Enable manual COD deposits so the deposit path is exercised
+  // Use INSERT OR IGNORE to be idempotent across re-runs (UNIQUE on key,category)
   dbExec(
-    "INSERT INTO settings (id, key, value, type, category, revision, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+    "INSERT OR IGNORE INTO settings (id, key, value, type, category, revision, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
     [`checkout_settings_${ts}`, "document", JSON.stringify({ codDepositEnabled: true, codDepositDefaultProductPolicy: "selected" }), "json", "checkout", now]
   );
 
