@@ -40,6 +40,7 @@ import {
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
     resolveManualCodDeposit,
+    resolveCodDepositQualifyingValue,
     storefrontLinePropertiesHashes,
     validateStorefrontDeliveryPreflight,
     validateStorefrontCartItems,
@@ -386,10 +387,38 @@ app.openapi(taxQuoteRoute, async (c) => {
       .map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId))),
   });
   const coveredByGiftCards = giftCardTender.appliedTotalMinor > 0 && giftCardTender.amountDueMinor === 0;
-  const manualDeposit = resolveManualCodDeposit(checkoutSettings, quote, currency, {
-    allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
-    giftCardsApplied: giftCardTender.appliedTotalMinor > 0,
-  }, paymentProviders);
+  const lineDiscountById = new Map(
+    quote.lines.map((line) => [line.lineId, line.discountMinor ?? 0]),
+  );
+  const productPolicyById = new Map(
+    cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
+  );
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingValue(
+    cartValidation.items.map((item) => {
+      const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
+      return {
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPriceMinor: item.unitPriceMinor,
+        isGiftCard: item.isGiftCard,
+        discountMinor: lineDiscountById.get(lineId) ?? 0,
+        bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
+      };
+    }),
+    productPolicyById,
+    checkoutSettings.codDepositDefaultProductPolicy,
+  );
+  const manualDeposit = resolveManualCodDeposit(
+    checkoutSettings,
+    quote,
+    currency,
+    {
+      allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
+      giftCardsApplied: giftCardTender.appliedTotalMinor > 0,
+    },
+    paymentProviders,
+    qualifyingMerchandiseMinor,
+  );
   // Paying later (an invoice) reaches only a signed-in buyer it names: read
   // only when such a method is enabled and the buyer is signed in.
   const deferred = coveredByGiftCards

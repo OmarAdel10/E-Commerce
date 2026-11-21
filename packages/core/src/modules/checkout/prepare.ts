@@ -41,7 +41,11 @@ import { checkoutPurchaseOptions, PAYMENT_METHOD_UNAVAILABLE_REASON, type Checko
 import { createAppLinePricer } from "./app-line-prices";
 import { bundleLineProperties, createCartTransformer, presentTransformedCart, ruleErrorsOnBuyerLines } from "./cart-transform";
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
-import { resolveManualCodDeposit } from "./manual-cod-deposit";
+import {
+    resolveManualCodDeposit,
+    resolveCodDepositQualifyingValue,
+    resolveProductDepositPolicy,
+} from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
 import {
     PaymentMethod,
@@ -202,6 +206,13 @@ export interface StorefrontCheckoutPolicySnapshot {
     codDepositPercent: number;
     /** Merchant-authored payment instructions snapshotted at order placement. */
     codDepositInstructions: string;
+    /**
+     * Global default product policy for manual COD deposits: `all` = every
+     * product requires a deposit when the feature is enabled; `selected` =
+     * only products whose product-level policy is `required`. Default `all`
+     * preserves the previous behaviour for existing enabled merchants.
+     */
+    codDepositDefaultProductPolicy: "all" | "selected";
 }
 
 const STOREFRONT_CHECKOUT_POLICY_SNAPSHOT_PROOF = Symbol("scalius.storefrontCheckoutPolicySnapshot");
@@ -1054,9 +1065,50 @@ export async function createStorefrontOrder(
     // The deposit plan's balance is cash on delivery: it applies only where
     // cash fits every line, so a download or a gift card is paid in full
     // online and delivered at once (isDepositPaymentRequired).
+    const effectiveSettings = checkoutPolicySnapshot ?? fallbackSettings;
+    const productPolicyById = new Map(
+        cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
+    );
+    // Authoritative per-line discount allocation from the tax quote, keyed by
+    // the same stable line id used for tax/discount allocation.
+    const lineDiscountById = new Map(
+        taxQuote.lines.map((line) => [line.lineId, line.discountMinor ?? 0]),
+    );
+    const qualifyingMerchandiseMinor = resolveCodDepositQualifyingValue(
+        cartValidation.items.map((item) => {
+            const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
+            return {
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPriceMinor: item.unitPriceMinor,
+                isGiftCard: item.isGiftCard,
+                // Order-level discount (promotions/coupons) allocated to this line.
+                discountMinor: lineDiscountById.get(lineId) ?? 0,
+                // Quantity-bundle saving share for this line.
+                bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
+            };
+        }),
+        productPolicyById,
+        effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
+    );
+    // Which product ids qualified: snapshot for auditability of deposit terms.
+    const qualifyingProductIds = cartValidation.items
+        .filter((item) => {
+            if (item.isGiftCard) return false;
+            const effective = resolveProductDepositPolicy(
+                productPolicyById.get(item.productId),
+                effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
+            );
+            return effective === "required";
+        })
+        .map((item) => item.productId);
     const manualDeposit = resolveManualCodDeposit(
-        checkoutPolicySnapshot ?? fallbackSettings, taxQuote, requestCurrency,
-        { allowsCashOnDelivery, giftCardsApplied }, paymentProviders,
+        effectiveSettings,
+        taxQuote,
+        requestCurrency,
+        { allowsCashOnDelivery, giftCardsApplied },
+        paymentProviders,
+        qualifyingMerchandiseMinor,
     );
     const linePropertiesHashes = await storefrontLinePropertiesHashes(cartValidation);
     await appOptions.verifyReviewedQuote?.({
@@ -1277,6 +1329,9 @@ export async function createStorefrontOrder(
                 instructions: manualDepositTerms.instructions,
                 percent: manualDepositTerms.percent,
                 contactSnapshot,
+                qualifyingMerchandiseMinor,
+                qualifyingProductIds: qualifyingProductIds ?? null,
+                originalAmountMinor: manualDepositTerms.originalAmountMinor,
             },
         } : {}),
     };

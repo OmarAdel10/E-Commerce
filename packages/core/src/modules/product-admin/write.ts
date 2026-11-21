@@ -519,6 +519,7 @@ export async function createProduct(
             discountAmountMinor: (data.discountType || "percentage") === "flat" ? (productPrice.discountAmountMinor ?? 0) : 0,
             freeDelivery: shippingProfile.freeDelivery,
             shippingProfileId: shippingProfile.shippingProfileId,
+            codDepositPolicy: data.codDepositPolicy ?? "inherit",
             isGiftCard,
             customizationSchema,
             createdAt: sql`unixepoch()`,
@@ -780,6 +781,7 @@ async function unchangedProductSaveRevision(
             customizationSchema: products.customizationSchema,
             pageTemplate: products.pageTemplate,
             emiEligible: products.emiEligible,
+            codDepositPolicy: products.codDepositPolicy,
         }).from(products).where(eq(products.id, id)),
         db.select({
             id: productMedia.id,
@@ -835,6 +837,7 @@ async function unchangedProductSaveRevision(
         customizationSchema: plan.customizationSchema,
         pageTemplate: data.pageTemplate,
         emiEligible: data.emiEligible,
+        codDepositPolicy: data.codDepositPolicy,
     };
     const stored = current as unknown as Record<string, unknown>;
     for (const [column, value] of Object.entries(expected)) {
@@ -1243,6 +1246,7 @@ export async function updateProduct(
                 // Omitted keeps the template and the EMI line.
                 ...(data.pageTemplate !== undefined ? { pageTemplate: data.pageTemplate } : {}),
                 ...(data.emiEligible !== undefined ? { emiEligible: data.emiEligible } : {}),
+                ...(data.codDepositPolicy !== undefined ? { codDepositPolicy: data.codDepositPolicy } : {}),
                 aggregateRevision: sql`${products.aggregateRevision} + 1`,
                 updatedAt: sql`unixepoch()`,
             })
@@ -1538,6 +1542,7 @@ export async function duplicateProduct(
         attributes: source.attributes,
         additionalInfo: source.additionalInfo.map((item) => ({ ...item, id: `prc_${nanoid()}` })),
         customizationSchema: customizationInputFromView(source.customizationSchema),
+        codDepositPolicy: source.codDepositPolicy,
         ...(source.options.length > 0 && optionVariants.length > 0
             ? {
                 optionMatrix: {

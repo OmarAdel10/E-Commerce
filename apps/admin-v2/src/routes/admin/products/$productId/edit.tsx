@@ -113,6 +113,7 @@ function toFormValues(product: ProductDetail): ProductFormValues {
     warrantyPolicyId: product.warrantyPolicyId ?? null,
     brandId: product.brandId ?? null,
     customizationSchema: draftsFromView(product.customizationSchema),
+    codDepositPolicy: product.codDepositPolicy ?? "inherit",
   } as ProductFormValues;
 }
 

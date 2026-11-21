@@ -164,4 +164,86 @@ describe("admin settings system", () => {
     expect((await save(fixed.revision, "percentage", 15)).status).toBe(200);
     expect(await read()).toMatchObject({ codDepositMode: "percentage", codDepositPercent: 15, codDepositAmount: 75 });
   });
+
+  it("PUT /checkout-flow accepts codDepositDefaultProductPolicy = 'selected'", async () => {
+    const app = appWithDb();
+    const getResp = await app.request("/checkout-flow", {}, env);
+    const getJson = (await getResp.json()) as { success: boolean; data: { revision: number } };
+    const revision = getJson.data.revision;
+
+    const response = await app.request("/checkout-flow", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestCheckoutEnabled: true,
+        checkoutMode: "all",
+        partialPaymentEnabled: false,
+        partialPaymentAmount: 0,
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 500,
+        codDepositPercent: 0,
+        codDepositInstructions: "Pay via mobile wallet",
+        codDepositDefaultProductPolicy: "selected",
+        expectedRevision: revision,
+      }),
+    }, env);
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as { success: boolean; data: { codDepositDefaultProductPolicy: string } };
+    expect(json.data.codDepositDefaultProductPolicy).toBe("selected");
+  });
+
+  it("PUT /checkout-flow accepts codDepositDefaultProductPolicy = 'all'", async () => {
+    const app = appWithDb();
+    const getResp = await app.request("/checkout-flow", {}, env);
+    const getJson = (await getResp.json()) as { success: boolean; data: { revision: number } };
+    const revision = getJson.data.revision;
+
+    const response = await app.request("/checkout-flow", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestCheckoutEnabled: true,
+        checkoutMode: "all",
+        partialPaymentEnabled: false,
+        partialPaymentAmount: 0,
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 500,
+        codDepositPercent: 0,
+        codDepositInstructions: "Pay via mobile wallet",
+        codDepositDefaultProductPolicy: "all",
+        expectedRevision: revision,
+      }),
+    }, env);
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as { success: boolean; data: { codDepositDefaultProductPolicy: string } };
+    expect(json.data.codDepositDefaultProductPolicy).toBe("all");
+  });
+
+  it("PUT /checkout-flow rejects invalid codDepositDefaultProductPolicy with 400", async () => {
+    const app = appWithDb();
+    const getResp = await app.request("/checkout-flow", {}, env);
+    const getJson = (await getResp.json()) as { success: boolean; data: { revision: number } };
+    const revision = getJson.data.revision;
+
+    const response = await app.request("/checkout-flow", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestCheckoutEnabled: true,
+        checkoutMode: "all",
+        partialPaymentEnabled: false,
+        partialPaymentAmount: 0,
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 500,
+        codDepositPercent: 0,
+        codDepositInstructions: "Pay",
+        codDepositDefaultProductPolicy: "invalid",
+        expectedRevision: revision,
+      }),
+    }, env);
+    expect(response.status).toBe(400);
+  });
 });

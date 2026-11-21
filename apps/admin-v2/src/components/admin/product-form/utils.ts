@@ -37,10 +37,11 @@ const FIELD_LABELS: Record<keyof ProductFormValues, ProductMessageKey> = {
   warrantyPolicyId: "warranty",
   brandId: "brand",
   customizationSchema: "buyerInputs",
+  codDepositPolicy: "depositPolicy",
 };
 
 /** Product fields an edit sends only when the merchant changed them ("omit to keep"). */
-export type ProductSubmitChanges = Partial<Record<"customizationSchema" | "fulfillmentKind" | "isGiftCard" | "warrantyPolicyId" | "brandId", boolean>>;
+export type ProductSubmitChanges = Partial<Record<"customizationSchema" | "fulfillmentKind" | "isGiftCard" | "warrantyPolicyId" | "brandId" | "codDepositPolicy", boolean>>;
 
 /** The "omit to keep" fields the merchant changed, from the form's dirty state. */
 export function productSubmitChanges(dirty: Partial<Record<keyof ProductFormValues, unknown>>): ProductSubmitChanges {
@@ -50,6 +51,7 @@ export function productSubmitChanges(dirty: Partial<Record<keyof ProductFormValu
     isGiftCard: Boolean(dirty.isGiftCard),
     warrantyPolicyId: Boolean(dirty.warrantyPolicyId),
     brandId: Boolean(dirty.brandId),
+    codDepositPolicy: Boolean(dirty.codDepositPolicy),
   };
 }
 
@@ -85,12 +87,14 @@ export function formatFormValuesForSubmission(
   const sendWarranty = changed ? changed.warrantyPolicyId === true : values.warrantyPolicyId !== null;
   // The brand is "omit to keep" too: an edit sends it only when changed.
   const sendBrand = changed ? changed.brandId === true : values.brandId !== null;
+  const sendCodDepositPolicy = changed ? changed.codDepositPolicy === true : true;
   return {
     ...(sendInputs ? { customizationSchema: customizationInput(values.customizationSchema) } : {}),
     ...(sendKind && values.fulfillmentKind !== "mixed" ? { fulfillmentKind: values.fulfillmentKind } : {}),
     ...(sendGiftCard ? { isGiftCard: values.isGiftCard } : {}),
     ...(sendWarranty ? { warrantyPolicyId: values.warrantyPolicyId } : {}),
     ...(sendBrand ? { brandId: values.brandId } : {}),
+    ...(sendCodDepositPolicy ? { codDepositPolicy: values.codDepositPolicy } : {}),
     name: values.name,
     description: richTextOrNull(values.description),
     price: values.price ?? 0,

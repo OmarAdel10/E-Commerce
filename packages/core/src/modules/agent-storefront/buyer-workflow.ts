@@ -564,6 +564,7 @@ export async function submitAgentStorefrontCheckout(
       codDepositAmount: authority.checkoutSettings.codDepositAmount,
       codDepositPercent: authority.checkoutSettings.codDepositPercent,
       codDepositInstructions: authority.checkoutSettings.codDepositInstructions,
+      codDepositDefaultProductPolicy: authority.checkoutSettings.codDepositDefaultProductPolicy,
     }),
     authority.taxAuthority,
     {},

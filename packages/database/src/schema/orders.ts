@@ -1239,6 +1239,23 @@ export const paymentPlans = sqliteTable("payment_plans", {
     percent: integer("percent"),
     /** JSON snapshot of business contact (phone/WhatsApp/email/social links) at order placement */
     contactSnapshot: text("contact_snapshot"),
+    /**
+     * The qualifying merchandise value used as the deposit basis at order
+     * placement. Snapshotted so the deposit terms can be audited after
+     * settings or product policies change.
+     */
+    qualifyingMerchandiseMinor: integer("qualifying_merchandise_minor").notNull().default(0),
+    /**
+     * JSON array of product ids whose merchandise qualified for the deposit
+     * at order placement. Snapshotted so the deposit terms can be audited.
+     */
+    qualifyingProductIds: text("qualifying_product_ids"),
+    /**
+     * Originally configured deposit amount before capping, for auditability.
+     * Distinguishes a merchant who configured 200 EGP but was capped at 150 EGP
+     * from one who configured 150 EGP.
+     */
+    codDepositAmount: integer("cod_deposit_amount").notNull().default(0),
     /** Set when a manual plan is cancelled on deposit refund; null otherwise */
     cancelledAt: integer("cancelled_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" })

@@ -7,9 +7,9 @@ import {
 } from "./schema-contract";
 
 describe("CURRENT_DATABASE_SCHEMA — version contract", () => {
-    it("is at version 190 (0190_striped_puppet_master)", () => {
-        expect(CURRENT_DATABASE_SCHEMA.version).toBe(190);
-        expect(CURRENT_DATABASE_SCHEMA.name).toBe("0190_striped_puppet_master");
+    it("is at version 193 (0193_payment_plan_cod_deposit_snapshot)", () => {
+        expect(CURRENT_DATABASE_SCHEMA.version).toBe(193);
+        expect(CURRENT_DATABASE_SCHEMA.name).toBe("0193_payment_plan_cod_deposit_snapshot");
     });
 });
 
@@ -23,11 +23,11 @@ describe("CURRENT_DATABASE_SCHEMA_MIGRATIONS — migration 190 entry", () => {
         );
     });
 
-    it("has 141 migrations (versions 50 through 190)", () => {
-        expect(CURRENT_DATABASE_SCHEMA_MIGRATIONS.length).toBe(141);
+    it("has 144 migrations (versions 50 through 193)", () => {
+        expect(CURRENT_DATABASE_SCHEMA_MIGRATIONS.length).toBe(144);
     });
 
-    it("versions are sequential from 50 to 190", () => {
+    it("versions are sequential from 50 to 193", () => {
         for (let i = 0; i < CURRENT_DATABASE_SCHEMA_MIGRATIONS.length; i += 1) {
             expect(CURRENT_DATABASE_SCHEMA_MIGRATIONS[i]!.version).toBe(50 + i);
         }
@@ -49,8 +49,8 @@ describe("assertDatabaseSchemaCompatible — validation", () => {
 
     it("accepts a complete valid migration ledger", () => {
         const result = assertDatabaseSchemaCompatible(validRows);
-        expect(result.version).toBe(190);
-        expect(result.name).toBe("0190_striped_puppet_master");
+        expect(result.version).toBe(193);
+        expect(result.name).toBe("0193_payment_plan_cod_deposit_snapshot");
     });
 
     it("rejects missing ledger", () => {
@@ -64,29 +64,29 @@ describe("assertDatabaseSchemaCompatible — validation", () => {
 
     it("rejects wrong row count", () => {
         expect(() => assertDatabaseSchemaCompatible(validRows.slice(0, -1))).toThrow(
-            "Database schema migration ledger has 140 row(s); expected 141.",
+            "Database schema migration ledger has 143 row(s); expected 144.",
         );
     });
 
-    it("rejects a divergent sourceSha256 at version 190", () => {
+    it("rejects a divergent sourceSha256 at version 193", () => {
         const tampered: Array<{ version: number; name: string; sourceSha256: string }> = [...validRows];
         tampered[tampered.length - 1] = {
             ...tampered[tampered.length - 1]!,
             sourceSha256: "0".repeat(64),
         };
         expect(() => assertDatabaseSchemaCompatible(tampered)).toThrow(
-            "Database schema migration ledger diverges at version 190.",
+            "Database schema migration ledger diverges at version 193.",
         );
     });
 
-    it("rejects a divergent name at version 190", () => {
+    it("rejects a divergent name at version 193", () => {
         const tampered: Array<{ version: number; name: string; sourceSha256: string }> = [...validRows];
         tampered[tampered.length - 1] = {
             ...tampered[tampered.length - 1]!,
-            name: "0190_tampered_name",
+            name: "0193_tampered_name",
         };
         expect(() => assertDatabaseSchemaCompatible(tampered)).toThrow(
-            "Database schema migration ledger diverges at version 190.",
+            "Database schema migration ledger diverges at version 193.",
         );
     });
 

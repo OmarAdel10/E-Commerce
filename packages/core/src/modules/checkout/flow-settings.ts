@@ -30,6 +30,8 @@ export interface SaveCheckoutFlowSettingsInput {
     codDepositPercent?: number;
     /** Omitted = keep the saved choice. */
     codDepositInstructions?: string;
+    /** Omitted = keep the saved choice. */
+    codDepositDefaultProductPolicy?: "all" | "selected";
     expectedRevision: number;
     availablePaymentMethods: readonly string[];
     /** The request's gateways, for app gateways' amount limits. */
@@ -96,6 +98,7 @@ export async function saveCheckoutFlowSettingsDocument(
         ...(input.codDepositAmount === undefined ? {} : { codDepositAmount: input.codDepositAmount }),
         ...(input.codDepositPercent === undefined ? {} : { codDepositPercent: input.codDepositPercent }),
         ...(input.codDepositInstructions === undefined ? {} : { codDepositInstructions: input.codDepositInstructions }),
+        ...(input.codDepositDefaultProductPolicy === undefined ? {} : { codDepositDefaultProductPolicy: input.codDepositDefaultProductPolicy }),
     }, {}, { expectedRevision: input.expectedRevision });
     return { ...value, revision };
 }

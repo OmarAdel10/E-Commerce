@@ -23,6 +23,7 @@ function makeAuthority(overrides: {
             codDepositAmount: 0,
             codDepositPercent: 0,
             codDepositInstructions: "",
+            codDepositDefaultProductPolicy: "all",
         },
         allowedCountries: overrides.allowedCountries ?? {
             allowedCountries: ["BD"],

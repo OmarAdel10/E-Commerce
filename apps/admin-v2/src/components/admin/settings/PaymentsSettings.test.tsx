@@ -40,6 +40,7 @@ it("validates and saves the active COD deposit mode through the checkout setting
     codDepositAmount: 0,
     codDepositPercent: 0,
     codDepositInstructions: "",
+    codDepositDefaultProductPolicy: "all",
     revision: 4,
   };
   let stored = savedFlow;
@@ -116,6 +117,7 @@ it("validates and saves the active COD deposit mode through the checkout setting
       codDepositMode: "fixed",
       codDepositAmount: 12.5,
       codDepositInstructions: "Transfer to the store account.",
+      codDepositDefaultProductPolicy: "all",
     });
 
     await act(async () => percentage.click());

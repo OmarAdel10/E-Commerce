@@ -44,6 +44,8 @@ interface ProductDraft {
   pair: PricePair;
   /** Null: the default profile (General). */
   profileId: string | null;
+  /** Manual COD deposit policy: inherit / required / exempt. */
+  codDepositPolicy: "inherit" | "required" | "exempt";
   /** SKU id -> on hand. */
   stock: Record<string, number | null>;
   /** Shipped SKU id -> grams (null: no weight). */
@@ -58,6 +60,7 @@ const draftOf = (product: BulkProduct, salePrice: (price: number, discount: obje
     isActive: product.isActive,
     pair: pairFromStored(product.price, discounted ? salePrice(product.price, product) : null),
     profileId: product.shippingProfileId,
+    codDepositPolicy: product.codDepositPolicy,
     stock: Object.fromEntries(product.skus.map((sku) => [sku.id, sku.onHand])),
     weight: Object.fromEntries(product.skus.filter((sku) => sku.ships).map((sku) => [sku.id, sku.weightGrams])),
   };
@@ -152,6 +155,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     if (!next) return false;
     const was = base[product.id]!;
     return next.isActive !== was.isActive || !samePair(next.pair, was.pair) || next.profileId !== was.profileId
+      || next.codDepositPolicy !== was.codDepositPolicy
       || product.skus.some((sku) => next.stock[sku.id] !== was.stock[sku.id] || next.weight[sku.id] !== was.weight[sku.id]);
   });
   const priceProblem = (product: BulkProduct) => {
@@ -181,6 +185,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
           patch.discountPercentage = 0;
         }
         if (next.profileId !== was.profileId) patch.shippingProfileId = next.profileId;
+        if (next.codDepositPolicy !== was.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
         let revision = product.aggregateRevision;
         if (Object.keys(patch).length > 0) {
           revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
@@ -262,6 +267,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                 <TableHead data-numeric>{t("bulkEditCompareAt")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditOnHand")}</TableHead>
                 <TableHead>{t("bulkEditShippingProfile")}</TableHead>
+                <TableHead>{t("bulkEditDepositPolicy")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditWeight")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -355,6 +361,20 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                             options={profileOptions}
                           />
                         ) : null}
+                      </TableCell>
+                      <TableCell className="w-40">
+                        <SearchableSelect
+                          triggerClassName="w-36"
+                          aria-label={t("bulkEditDepositPolicyFor", { name: product.name })}
+                          disabled={!canEdit}
+                          value={next.codDepositPolicy}
+                          onValueChange={(value) => change(product.id, { codDepositPolicy: value as "inherit" | "required" | "exempt" })}
+                          options={[
+                            { value: "inherit", label: t("bulkEditDepositInherit") },
+                            { value: "required", label: t("bulkEditDepositRequired") },
+                            { value: "exempt", label: t("bulkEditDepositExempt") },
+                          ]}
+                        />
                       </TableCell>
                       <TableCell className="w-32">{product.hasOptions ? null : weightCell(single, product.name)}</TableCell>
                     </TableRow>

@@ -1338,6 +1338,27 @@
       "when": 1794023120495,
       "tag": "0190_striped_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "6",
+      "when": 1794023120496,
+      "tag": "0191_product_cod_deposit_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "6",
+      "when": 1794023120497,
+      "tag": "0192_product_checkout_authority_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "6",
+      "when": 1794023120498,
+      "tag": "0193_payment_plan_cod_deposit_snapshot",
+      "breakpoints": true
     }
   ]
 }

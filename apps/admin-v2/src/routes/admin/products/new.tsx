@@ -39,6 +39,7 @@ const defaultValues = {
   media: [],
   fulfillmentKind: "physical" as const,
   customizationSchema: [],
+  codDepositPolicy: "inherit" as const,
 };
 
 const activeDefaultValues = { ...defaultValues, isActive: true };

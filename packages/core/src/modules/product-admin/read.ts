@@ -86,6 +86,8 @@ export interface ProductListFilter {
     status?: "active" | "draft";
     salesChannelId?: string;
     salesChannelState?: "published" | "unpublished";
+    /** Manual COD deposit policy filter: inherit / required / exempt. */
+    codDepositPolicy?: "inherit" | "required" | "exempt";
     /** An app column filter (plugins/list-columns.ts): an indexed match on the app's records. */
     appCondition?: SQL;
     /** Read the search's matches first (`productListLeads`). */
@@ -139,6 +141,7 @@ export function productListConditions(db: Database, filter: ProductListFilter): 
         status,
         salesChannelId,
         salesChannelState = "published",
+        codDepositPolicy,
     } = filter;
     const whereConditions: SQL[] = filter.appCondition ? [filter.appCondition] : [];
 
@@ -152,6 +155,9 @@ export function productListConditions(db: Database, filter: ProductListFilter): 
     }
     if (status) {
         whereConditions.push(eq(products.isActive, status === "active"));
+    }
+    if (codDepositPolicy) {
+        whereConditions.push(eq(products.codDepositPolicy, codDepositPolicy));
     }
 
     let rankExpression: SQL | undefined;
@@ -228,6 +234,8 @@ export async function listProducts(db: Database, options: {
     /** Only products published (`published`, the default) or not published (`unpublished`) to this sales channel. */
     salesChannelId?: string;
     salesChannelState?: "published" | "unpublished";
+    /** Manual COD deposit policy filter: inherit / required / exempt. */
+    codDepositPolicy?: "inherit" | "required" | "exempt";
     /** An app column filter (plugins/list-columns.ts): an indexed match on the app's records. */
     appCondition?: SQL;
 }) {
@@ -246,6 +254,7 @@ export async function listProducts(db: Database, options: {
         includeDescription = true,
         salesChannelId,
         salesChannelState = "published",
+        codDepositPolicy,
     } = options;
 
     const { conditions: whereConditions, rankExpression, rankJoin } = productListConditions(db, {
@@ -255,6 +264,7 @@ export async function listProducts(db: Database, options: {
         status,
         salesChannelId,
         salesChannelState,
+        codDepositPolicy,
         appCondition: options.appCondition,
         leadWithMatches: await productListLeads(db, { search }),
     });
@@ -303,6 +313,7 @@ export async function listProducts(db: Database, options: {
             createdAt: sql<number>`CAST(${products.createdAt} AS INTEGER)`,
             updatedAt: sql<number>`CAST(${products.updatedAt} AS INTEGER)`,
             deletedAt: sql<number>`CAST(${products.deletedAt} AS INTEGER)`,
+            codDepositPolicy: products.codDepositPolicy,
             categoryName: sql<string>`${categories.name}`.as("categoryName"),
             salesChannelIds: publishedChannelIdsSql(sql`${products.id}`).as("sales_channel_ids"),
             // The sort column as stored: a cursor compares what the ORDER BY compared.
@@ -473,6 +484,7 @@ export async function listProducts(db: Database, options: {
         primaryImage: primaryImageMap.get(product.id) || null,
         sku: skuMap.get(product.id) || undefined,
         salesChannelIds: parsePublishedChannelIds(product.salesChannelIds),
+        codDepositPolicy: product.codDepositPolicy,
         };
     });
 
@@ -611,6 +623,7 @@ export async function getProductDetails(
             taxClassificationVersion: products.taxClassificationVersion,
             isGiftCard: products.isGiftCard,
             warrantyPolicyId: products.warrantyPolicyId,
+            codDepositPolicy: products.codDepositPolicy,
             customizationSchema: products.customizationSchema,
             category: {
                 name: categories.name,
@@ -675,6 +688,7 @@ export async function getProductDetails(
             attributeId: attr.attributeId,
             value: attr.value,
         })),
+        codDepositPolicy: result.codDepositPolicy,
     } as ProductWithDetails & { relatedObjectsJson: string | null };
 }
 

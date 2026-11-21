@@ -62,6 +62,12 @@ function validateProductSearch(search: SearchValidatorInput) {
     // Sales channels (MARKETS-DESIGN D6): on (or not on) one channel.
     channel: normalizeOptionalSearchString(search.channel),
     channelState: normalizeOptionalEnumSearchParam(search.channelState, CHANNEL_STATES),
+    // Manual COD deposit policy filter.
+    codDepositPolicy: normalizeOptionalEnumSearchParam(search.codDepositPolicy, [
+      "inherit",
+      "required",
+      "exempt",
+    ]),
     // An app column and its exact value: `<app id>/<column id>:<value>`.
     appFilter: normalizeAppFilterSearchParam(search.appFilter),
   };
@@ -76,6 +82,7 @@ export function productMatchingFilter(search: ProductSearch, term: string, appFi
     ...(search.category ? { category: search.category } : {}),
     ...(search.status && !search.trashed ? { status: search.status } : {}),
     ...(search.channel ? { salesChannel: search.channel, salesChannelState: search.channelState ?? "published" } : {}),
+    ...(search.codDepositPolicy ? { codDepositPolicy: search.codDepositPolicy } : {}),
     ...(appFilter ? { appFilter } : {}),
   };
 }
@@ -102,6 +109,7 @@ function listQuery(search: ProductSearch, term: string, app?: { columnsParam?: s
     view: "compact",
     appFilter: app ? app.filterParam : search.appFilter,
     appColumns: app?.columnsParam,
+    codDepositPolicy: search.codDepositPolicy || undefined,
   });
 }
 
@@ -140,6 +148,7 @@ function ProductsPage() {
   const { products: can } = useCatalogActionPermissions();
   const duplicate = useDuplicateProduct();
   const [importing, setImporting] = useState(false);
+  const [codDepositFilter, setCodDepositFilter] = useState(search.codDepositPolicy ?? "");
   // X3: the category filter searches on the server and pages; a store may have hundreds.
   const { data: chosenCategory } = useQuery({ ...categoryQueryOptions(search.category ?? ""), enabled: Boolean(search.category) });
   const { data: channelData } = useQuery(salesChannelsQueryOptions());
@@ -212,7 +221,7 @@ function ProductsPage() {
         ] }}
         searchPlaceholder={t("searchPlaceholder")}
         countLabel={(count) => t("productsCount", { count })}
-        filterParams={["category", "channel", "channelState", "appFilter"]}
+        filterParams={["category", "channel", "channelState", "codDepositPolicy"]}
         filters={
           <>
           <FilterControl label={t("category")}>
@@ -230,6 +239,34 @@ function ProductsPage() {
             searchPlaceholder={t("searchCategories")}
             emptyMessage={r("noResults")}
             ariaLabel={t("filterCategory")}
+          />
+          </FilterControl>
+          <FilterControl label={t("codDepositPolicy")}>
+          <SearchableSelect
+            value={codDepositFilter}
+            clearable
+            onValueChange={(value) => {
+              setCodDepositFilter(value);
+              void navigate({
+                to: "/admin/products",
+                search: ((prev: Record<string, unknown>) => ({
+                  ...prev,
+                  codDepositPolicy: value || undefined,
+                  page: 1,
+                  ...NO_CURSOR,
+                })) as never,
+              });
+            }}
+            options={[
+              { value: "all", label: t("codDepositPolicyAll") },
+              { value: "inherit", label: t("codDepositPolicyInherit") },
+              { value: "required", label: t("codDepositPolicyRequired") },
+              { value: "exempt", label: t("codDepositPolicyExempt") },
+            ]}
+            placeholder={t("codDepositPolicyAll")}
+            searchPlaceholder={t("filterDepositPolicy")}
+            emptyMessage={r("noResults")}
+            ariaLabel={t("filterDepositPolicy")}
           />
           </FilterControl>
           {showChannels ? (

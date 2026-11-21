@@ -729,6 +729,12 @@ export interface StorefrontOrderCommitPayload {
         instructions: string | null;
         percent: number | null;
         contactSnapshot: string | null;
+        /** Qualifying merchandise value used as the deposit basis at order placement. */
+        qualifyingMerchandiseMinor: number;
+        /** JSON array of product ids whose merchandise qualified for the deposit. */
+        qualifyingProductIds: string[] | null;
+        /** Originally configured deposit amount before capping, for auditability. */
+        originalAmountMinor: number;
     } | null;
 }
 
