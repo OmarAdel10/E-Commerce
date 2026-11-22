@@ -24,7 +24,7 @@ export function CodDepositPolicyCard({ form, readOnly }: {
       <CardContent className="space-y-2">
         <RadioGroup
           value={codDepositPolicy ?? "inherit"}
-          onValueChange={(value) => form.setValue("codDepositPolicy", value as "inherit" | "required" | "exempt")}
+          onValueChange={(value) => form.setValue("codDepositPolicy", value as "inherit" | "required" | "exempt", { shouldDirty: true })}
           disabled={readOnly}
         >
           <label className="flex items-start gap-2 py-1 text-body">

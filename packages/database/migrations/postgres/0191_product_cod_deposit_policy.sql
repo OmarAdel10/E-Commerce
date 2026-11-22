@@ -5,4 +5,4 @@ ALTER TABLE products ADD COLUMN cod_deposit_policy text NOT NULL DEFAULT 'inheri
 --> statement-breakpoint
 ALTER TABLE products ADD CONSTRAINT products_cod_deposit_policy_check CHECK (cod_deposit_policy IN ('inherit', 'required', 'exempt'));
 --> statement-breakpoint
-INSERT INTO scalius_schema_migrations (version, name, source_sha256) VALUES (191, '0191_product_cod_deposit_policy', '7a6594068bfee992bac363168bd5c2a45cdeacdc530db43ee7255b1ef23ca08e');
+INSERT INTO scalius_schema_migrations (version, name, source_sha256) VALUES (191, '0191_product_cod_deposit_policy', '9967fad38287c82679b8d85510641e3f4c14111b3a750a98563be0ca73ba16f1');
