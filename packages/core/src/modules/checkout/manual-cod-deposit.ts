@@ -18,22 +18,20 @@ export interface CodDepositLineInput {
     /** Gift-card lines never qualify for a manual COD deposit. */
     isGiftCard: boolean;
     /**
-     * Order-level discount allocated to this line (promotions/coupons), in minor
-     * units. Already reflected in the tax quote's per-line `discountMinor`. Reduces
-     * the deposit calculation basis.
+     * Order-level discount allocated to this line (promotions/coupons/bundle
+     * savings), in minor units. Already reflected in the tax quote's per-line
+     * `discountMinor` — the authoritative source of truth. Reduces the deposit
+     * calculation basis. Never subtract a separate raw bundle saving: the quote
+     * already includes it exactly once when bundles won, and excludes it when
+     * promotions won.
      */
     discountMinor: number;
-    /**
-     * This line's share of a quantity-bundle saving, in minor units. Reduces the
-     * deposit calculation basis.
-     */
-    bundleDiscountMinor: number;
 }
 
 /** The net qualifying value of one cart line after all applicable discounts. */
 function lineQualifyingValue(line: CodDepositLineInput): number {
     const gross = line.unitPriceMinor * Math.floor(line.quantity);
-    const afterDiscounts = gross - line.discountMinor - line.bundleDiscountMinor;
+    const afterDiscounts = gross - line.discountMinor;
     return afterDiscounts > 0 ? afterDiscounts : 0;
 }
 
@@ -171,7 +169,6 @@ export function resolveCodDepositQualifyingMerchandiseMinor(
             quantity: number;
             unitPriceMinor: number;
             isGiftCard: boolean;
-            bundleDiscountMinor?: number | null;
         }[];
         /** Authoritative per-product deposit policy, keyed by product id. */
         productPolicyById: ReadonlyMap<string, string | null | undefined>;
@@ -196,7 +193,6 @@ export function resolveCodDepositQualifyingMerchandiseMinor(
             unitPriceMinor: item.unitPriceMinor,
             isGiftCard: item.isGiftCard,
             discountMinor: lineDiscountById.get(lineId)!,
-            bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
         };
     });
     return resolveCodDepositQualifyingValue(lines, input.productPolicyById, input.globalDefaultProductPolicy);

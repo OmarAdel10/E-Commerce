@@ -227,10 +227,10 @@ describe("resolveCodDepositQualifyingValue", () => {
   it("sums only required-products after their own discount, excluding gift cards", () => {
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 }, // 20000
-        { productId: "prod_exempt", quantity: 10, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },  // 0 (exempt)
-        { productId: "prod_inherit", quantity: 1, unitPriceMinor: 5000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },   // 0 (inherit + selected => exempt)
-        { productId: "prod_giftcard", quantity: 1, unitPriceMinor: 50000, isGiftCard: true, discountMinor: 0, bundleDiscountMinor: 0 },   // 0 (gift card)
+        { productId: "prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0 }, // 20000
+        { productId: "prod_exempt", quantity: 10, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0 },  // 0 (exempt)
+        { productId: "prod_inherit", quantity: 1, unitPriceMinor: 5000, isGiftCard: false, discountMinor: 0 },   // 0 (inherit + selected => exempt)
+        { productId: "prod_giftcard", quantity: 1, unitPriceMinor: 50000, isGiftCard: true, discountMinor: 0 },   // 0 (gift card)
       ],
       policies,
       "selected",
@@ -242,7 +242,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     // 2 units @ 10000 = 20000 gross, 3000 order-level discount → 17000 qualifying
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 3000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 3000 },
       ],
       policies,
       "all",
@@ -250,11 +250,11 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(value).toBe(17000);
   });
 
-  it("reduce qualifying value by bundle discount on qualifying line", () => {
-    // 1 unit @ 10000 = 10000 gross, 2000 bundle discount → 8000 qualifying
+  it("reduce qualifying value by applied discount on qualifying line (bundle saving already in quote discount)", () => {
+    // 1 unit @ 10000 = 10000 gross, 2000 applied bundle discount in quote → 8000 qualifying
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 2000 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 2000 },
       ],
       policies,
       "all",
@@ -266,7 +266,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     // 1 unit @ 10000 = 10000 gross, 15000 combined discounts → 0 qualifying (not negative)
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 10000, bundleDiscountMinor: 5000 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 15000 },
       ],
       policies,
       "all",
@@ -276,7 +276,7 @@ describe("resolveCodDepositQualifyingValue", () => {
 
   it("inherit products require a deposit when the global default is all", () => {
     const value = resolveCodDepositQualifyingValue(
-      [{ productId: "prod_inherit", quantity: 1, unitPriceMinor: 7000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 }],
+      [{ productId: "prod_inherit", quantity: 1, unitPriceMinor: 7000, isGiftCard: false, discountMinor: 0 }],
       policies,
       "all",
     );
@@ -285,7 +285,7 @@ describe("resolveCodDepositQualifyingValue", () => {
 
   it("inherit products do not require a deposit when the global default is selected", () => {
     const value = resolveCodDepositQualifyingValue(
-      [{ productId: "prod_inherit", quantity: 1, unitPriceMinor: 7000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 }],
+      [{ productId: "prod_inherit", quantity: 1, unitPriceMinor: 7000, isGiftCard: false, discountMinor: 0 }],
       policies,
       "selected",
     );
@@ -294,7 +294,7 @@ describe("resolveCodDepositQualifyingValue", () => {
 
   it("treats a product with no stored policy as inherit", () => {
     const value = resolveCodDepositQualifyingValue(
-      [{ productId: "prod_missing", quantity: 3, unitPriceMinor: 4000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 }],
+      [{ productId: "prod_missing", quantity: 3, unitPriceMinor: 4000, isGiftCard: false, discountMinor: 0 }],
       policies,
       "all",
     );
@@ -308,7 +308,7 @@ describe("resolveCodDepositQualifyingValue", () => {
   it("exempt products contribute zero even with discounts", () => {
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_exempt", quantity: 5, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 1000, bundleDiscountMinor: 0 },
+        { productId: "prod_exempt", quantity: 5, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 1000 },
       ],
       policies,
       "all",
@@ -327,9 +327,9 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required_egp", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
-        { productId: "prod_exempt_1", quantity: 1, unitPriceMinor: 40000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
-        { productId: "prod_exempt_2", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        { productId: "prod_required_egp", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 0 },
+        { productId: "prod_exempt_1", quantity: 1, unitPriceMinor: 40000, isGiftCard: false, discountMinor: 0 },
+        { productId: "prod_exempt_2", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0 },
       ],
       egpPolicies,
       "all",
@@ -349,8 +349,8 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000, bundleDiscountMinor: 0 },
-        { productId: "prod_exempt", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000 },
+        { productId: "prod_exempt", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000 },
       ],
       egpPolicies,
       "all",
@@ -368,8 +368,8 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
-        { productId: "prod_exempt", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 0 },
+        { productId: "prod_exempt", quantity: 1, unitPriceMinor: 50000, isGiftCard: false, discountMinor: 10000 },
       ],
       egpPolicies,
       "all",
@@ -387,7 +387,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 100000, isGiftCard: false, discountMinor: 30000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 100000, isGiftCard: false, discountMinor: 30000 },
       ],
       egpPolicies,
       "all",
@@ -404,7 +404,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 3, unitPriceMinor: 20000, isGiftCard: false, discountMinor: 12000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 3, unitPriceMinor: 20000, isGiftCard: false, discountMinor: 12000 },
       ],
       egpPolicies,
       "all",
@@ -418,7 +418,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 5, unitPriceMinor: 0, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 5, unitPriceMinor: 0, isGiftCard: false, discountMinor: 0 },
       ],
       egpPolicies,
       "all",
@@ -432,7 +432,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     ]);
     const value = resolveCodDepositQualifyingValue(
       [
-        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 10000, bundleDiscountMinor: 0 },
+        { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 10000 },
       ],
       egpPolicies,
       "all",
@@ -447,7 +447,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(() => {
       resolveCodDepositQualifyingValue(
         [
-          { productId: "prod_required", quantity: 1, unitPriceMinor: -5000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+          { productId: "prod_required", quantity: 1, unitPriceMinor: -5000, isGiftCard: false, discountMinor: 0 },
         ],
         policies,
         "all",
@@ -462,7 +462,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(() => {
       resolveCodDepositQualifyingValue(
         [
-          { productId: "prod_required", quantity: 0, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+          { productId: "prod_required", quantity: 0, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0 },
         ],
         policies,
         "all",
@@ -477,7 +477,7 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(() => {
       resolveCodDepositQualifyingValue(
         [
-          { productId: "prod_required", quantity: 1, unitPriceMinor: Infinity, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+          { productId: "prod_required", quantity: 1, unitPriceMinor: Infinity, isGiftCard: false, discountMinor: 0 },
         ],
         policies,
         "all",
@@ -586,8 +586,8 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(() => {
       resolveCodDepositQualifyingValue(
         [
-          { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
-          { productId: "prod_unknown", quantity: 1, unitPriceMinor: 5000, isGiftCard: false, discountMinor: 0, bundleDiscountMinor: 0 },
+          { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: 0 },
+          { productId: "prod_unknown", quantity: 1, unitPriceMinor: 5000, isGiftCard: false, discountMinor: 0 },
         ],
         policies,
         "all",
@@ -616,16 +616,16 @@ describe("resolveCodDepositQualifyingMerchandiseMinor", () => {
   const cartItems = [
     { index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false },
     { index: 1, productId: "prod_exempt", variantId: "var_default_prod_exempt", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
-    { index: 2, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, bundleDiscountMinor: 2000 },
+    { index: 2, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
   ];
 
-  it("sums qualifying merchandise after per-line quote discounts and bundle savings", () => {
+  it("sums qualifying merchandise after per-line quote discounts only (bundle saving already in quote)", () => {
     // line 0: 2 x 10000 = 20000 (required); line 1 exempt -> 0;
-    // line 2: 1 x 10000 - 3000 quote discount - 2000 bundle = 5000 (required)
+    // line 2: 1 x 10000 - 3000 quote discount = 7000 (required); bundle saving already in quote discount
     const value = resolveCodDepositQualifyingMerchandiseMinor({
       quoteLines, cartItems, productPolicyById: policies, globalDefaultProductPolicy: "all",
     });
-    expect(value).toBe(25000);
+    expect(value).toBe(27000);
   });
 
   it("excludes gift card lines from the qualifying basis", () => {
@@ -634,7 +634,7 @@ describe("resolveCodDepositQualifyingMerchandiseMinor", () => {
     const value = resolveCodDepositQualifyingMerchandiseMinor({
       quoteLines: lines, cartItems: items, productPolicyById: policies, globalDefaultProductPolicy: "all",
     });
-    expect(value).toBe(25000);
+    expect(value).toBe(27000);
   });
 
   it("treats a line with no discount as a legitimate zero discount", () => {
