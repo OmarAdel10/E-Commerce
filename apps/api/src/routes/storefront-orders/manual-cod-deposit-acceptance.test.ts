@@ -13,7 +13,7 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { AppError } from "@scalius/core/errors";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { createGiftCardCheckoutFixture, DELIVERY, TEST_MASTER_SECRET, type GiftCardCheckoutFixture } from "@scalius/core/testing/gift-card-checkout";
-import { checkoutDocument } from "@scalius/core/modules/settings";
+import { checkoutDocument, paymentMethodsDocument, stripeDocument } from "@scalius/core/modules/settings";
 import type { ManualCodDepositQuote } from "@scalius/shared/checkout-payment";
 
 const rateLimit = { limit: async () => ({ success: true }) };
@@ -66,13 +66,13 @@ type QuoteData = {
   shippingMinor: number;
 };
 
-async function quote(app: ReturnType<typeof appWithDb>, items: { productId: string; variantId: string; quantity: number }[], options: { cod?: boolean; shippingCountryCode?: string } = {}): Promise<QuoteData> {
+async function quote(app: ReturnType<typeof appWithDb>, items: { productId: string; variantId: string; quantity: number }[], options: { cod?: boolean; shippingCountryCode?: string; city?: string; zone?: string; shippingMethodId?: string; customerPhone?: string } = {}): Promise<QuoteData> {
   const response = await post(app, "/tax-quote", {
     shippingCountryCode: options.shippingCountryCode ?? "BD",
-    city: DELIVERY.city,
-    zone: DELIVERY.zone,
-    shippingMethodId: DELIVERY.shippingMethodId,
-    customerPhone: "+8801712345678",
+    city: options.city ?? DELIVERY.city,
+    zone: options.zone ?? DELIVERY.zone,
+    shippingMethodId: options.shippingMethodId ?? DELIVERY.shippingMethodId,
+    customerPhone: options.customerPhone ?? "+8801712345678",
     cod: options.cod ?? true,
     items,
   });
@@ -115,7 +115,23 @@ describe("product-level manual COD deposit acceptance", () => {
   let fixture: GiftCardCheckoutFixture;
 
   beforeEach(() => {
-    fixture = createGiftCardCheckoutFixture();
+    fixture = createGiftCardCheckoutFixture(`
+      -- Egypt: valid COD destination (EG is in COD_COUNTRIES)
+      INSERT INTO places (id, name, country_code, level, parent_id, external_ids, metadata, is_active)
+        VALUES ('city_eg_cairo', 'Cairo', 'EG', 1, NULL, '{}', '{}', 1),
+               ('zone_eg_cairo', 'Cairo Governorate', 'EG', 2, 'city_eg_cairo', '{}', '{}', 1);
+      INSERT INTO delivery_zones (id, name) VALUES ('dz_eg', 'Egypt');
+      INSERT INTO delivery_zone_regions (country_code, zone_id) VALUES ('EG', 'dz_eg');
+      INSERT INTO shipping_methods (id, name, fee_minor, kind, zone_id) VALUES ('m_ship_eg', 'Standard', 10000, 'delivery', 'dz_eg');
+
+      -- United States: valid non-COD destination (US not in COD_COUNTRIES)
+      INSERT INTO places (id, name, country_code, level, parent_id, external_ids, metadata, is_active)
+        VALUES ('city_us_ny', 'New York', 'US', 1, NULL, '{}', '{}', 1),
+               ('zone_us_ny', 'New York State', 'US', 2, 'city_us_ny', '{}', '{}', 1);
+      INSERT INTO delivery_zones (id, name) VALUES ('dz_us', 'USA');
+      INSERT INTO delivery_zone_regions (country_code, zone_id) VALUES ('US', 'dz_us');
+      INSERT INTO shipping_methods (id, name, fee_minor, kind, zone_id) VALUES ('m_ship_us', 'Standard', 15000, 'delivery', 'dz_us');
+    `);
   });
   afterEach(() => fixture.close());
 
@@ -176,13 +192,16 @@ describe("product-level manual COD deposit acceptance", () => {
 
   describe("Mixed cart: required + exempt products simultaneously", () => {
     it("deposit basis covers only the required product", async () => {
-      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositDefaultProductPolicy: "selected" });
+      // 25% of qualifying merchandise. Mug (required, 30000) qualifies; svc (exempt, 50000) does not.
+      // Correct: 25% of 30000 = 7500. If svc were wrongly included: 25% of 80000 = 20000.
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "percentage", codDepositPercent: 25, codDepositAmount: 0, codDepositDefaultProductPolicy: "selected" });
       fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
       fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc'").run();
       const app = appWithDb(fixture);
       const q = await quote(app, [{ ...MUG, quantity: 1 }, { ...SVC, quantity: 1 }]);
       expect(q.manualCodDeposit).not.toBeNull();
-      expect(q.manualCodDeposit!.depositMinor).toBe(5000); // qualifying basis 30000 (mug only), capped deposit 5000
+      expect(q.manualCodDeposit!.depositMinor).toBe(7500); // 25% of 30000 qualifying
+      expect(q.manualCodDeposit!.balanceMinor).toBe(78500); // 86000 total - 7500 deposit
     });
   });
 
@@ -271,16 +290,52 @@ describe("product-level manual COD deposit acceptance", () => {
       expect(q.manualCodDeposit).not.toBeNull();
     });
 
-    it("non-BD country: no COD deposit basis for a shipping destination", async () => {
+    it("Egypt (EG) offers COD and a manual deposit with a valid EG destination", async () => {
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositDefaultProductPolicy: "selected" });
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
+      const app = appWithDb(fixture);
+      const q = await quote(app, [{ ...MUG, quantity: 1 }], {
+        shippingCountryCode: "EG",
+        city: "city_eg_cairo",
+        zone: "zone_eg_cairo",
+        shippingMethodId: "m_ship_eg",
+        customerPhone: "+201234567890",
+      });
+      expect(q.allowedPaymentMethods).toContain("cod");
+      expect(q.manualCodDeposit).not.toBeNull();
+      // 30000 mug + 10000 EG shipping = 40000 total; fixed 50 deposit
+      expect(q.manualCodDeposit).toEqual({ depositMinor: 5000, balanceMinor: 35000 });
+    });
+
+    it("non-COD country (US) with a valid destination: COD not offered, quote still succeeds", async () => {
       await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositDefaultProductPolicy: "selected" });
       fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
       const app = appWithDb(fixture);
       const response = await post(app, "/tax-quote", {
-        shippingCountryCode: "US", city: DELIVERY.city, zone: DELIVERY.zone,
-        shippingMethodId: DELIVERY.shippingMethodId, customerPhone: "+8801712345678",
-        cod: true, items: [{ ...MUG, quantity: 1 }],
+        shippingCountryCode: "US",
+        city: "city_us_ny",
+        zone: "zone_us_ny",
+        shippingMethodId: "m_ship_us",
+        customerPhone: "+14155551234",
+        cod: true,
+        items: [{ ...MUG, quantity: 1 }],
       });
-      expect(response.status).not.toBe(200);
+      expect(response.status).toBe(200);
+      const body = await response.json() as { data: { allowedPaymentMethods: string[]; manualCodDeposit: ManualCodDepositQuote | null } };
+      expect(body.data.allowedPaymentMethods).not.toContain("cod");
+      expect(body.data.manualCodDeposit).toBeNull();
+    });
+  });
+
+  describe("Gift-card scenario", () => {
+    it("gift card line never qualifies for a manual COD deposit", async () => {
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositDefaultProductPolicy: "selected" });
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_gc'").run();
+      const app = appWithDb(fixture);
+      const q = await quote(app, [{ productId: "p_gc", variantId: "v_gc", quantity: 1 }]);
+      // Gift cards can't be paid cash on delivery: no deposit, COD not offered.
+      expect(q.manualCodDeposit).toBeNull();
+      expect(q.allowedPaymentMethods).not.toContain("cod");
     });
   });
 
@@ -310,6 +365,54 @@ describe("product-level manual COD deposit acceptance", () => {
       expect(withoutDeposit.subtotalMinor).toBe(30000);
       expect(withoutDeposit.shippingMinor).toBe(6000);
       expect(withoutDeposit.manualCodDeposit).toBeNull();
+    });
+
+    it("places an actual online-payment order unaffected by COD deposit settings", async () => {
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositDefaultProductPolicy: "selected" });
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
+      const app = appWithDb(fixture);
+
+      // Enable checkout mode all + stripe, configure fake stripe credentials.
+      await checkoutDocument.write(fixture.db, { checkoutMode: "all" } as never);
+      await paymentMethodsDocument.write(fixture.db, { enabledMethods: ["cod", "stripe"] } as never);
+      await stripeDocument.write(fixture.db, {
+        enabled: true,
+        secretKey: "fixture-card-api",
+        publishableKey: "fixture-card-public",
+        webhookSecret: "fixture-card-webhook",
+      }, { encryptionKey });
+
+      // Card quote: COD not offered as a method; manual deposit terms are informational.
+      const cardQuote = await quote(app, [{ ...MUG, quantity: 1 }], { cod: false });
+      expect(cardQuote.manualCodDeposit).toEqual({ depositMinor: 5000, balanceMinor: 31000 });
+      expect(cardQuote.totalMinor).toBe(36000);
+
+      // Place the online-payment order.
+      const response = await post(app, "/", {
+        shippingCountryCode: "BD",
+        city: DELIVERY.city,
+        zone: DELIVERY.zone,
+        shippingMethodId: DELIVERY.shippingMethodId,
+        customerName: "Online Buyer",
+        customerPhone: "+8801712345678",
+        customerEmail: null,
+        notes: null,
+        shippingAddress: DELIVERY.shippingAddress,
+        shippingCharge: 60,
+        checkoutRequestId: "cr_accept_online_stripe_0001",
+        expectedQuoteFingerprint: cardQuote.quoteFingerprint,
+        paymentMethod: "stripe",
+        items: [{ productId: "p_mug", variantId: "v_mug", quantity: 1, price: 300 }],
+      });
+      expect(response.status).toBe(201);
+      const body = await response.json() as { data: { orderId: string; paymentMethod: string } };
+      expect(body.data.paymentMethod).toBe("stripe");
+
+      // No manual deposit plan for an online-paid order.
+      const planRow = fixture.one<{
+        id: string; order_id: string; deposit_amount_minor: number; balance_due_minor: number;
+      }>("SELECT * FROM payment_plans WHERE order_id = ?", body.data.orderId);
+      expect(planRow, "no payment plan for online order").toBeUndefined();
     });
   });
 });
