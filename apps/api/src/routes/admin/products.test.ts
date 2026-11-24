@@ -97,7 +97,7 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
             }),
         }, env);
         const responseText = await response.text();
-        expect(response.status).toBe(201, responseText);
+        expect(response.status).toBe(201);
         const body = JSON.parse(responseText) as { data: { id: string } };
         const row = fixture.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
@@ -140,7 +140,7 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
             }),
         }, env);
         const responseText = await response.text();
-        expect(response.status).toBe(201, responseText);
+        expect(response.status).toBe(201);
         const body = JSON.parse(responseText) as { data: { id: string } };
         const row = fixture.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
@@ -184,7 +184,7 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
             }),
         }, env);
         const createResponseText = await createResponse.text();
-        expect(createResponse.status).toBe(201, createResponseText);
+        expect(createResponse.status).toBe(201);
         const createBody = JSON.parse(createResponseText) as { data: { id: string } };
         const productId = createBody.data.id;
 
@@ -216,7 +216,7 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
             }),
         }, env);
         const updateResponseText = await updateResponse.text();
-        expect(updateResponse.status).toBe(200, updateResponseText);
+        expect(updateResponse.status).toBe(200);
         const row = fixture.sqlite.prepare(
             "SELECT cod_deposit_policy FROM products WHERE id = ?"
         ).get(productId) as { cod_deposit_policy: string };

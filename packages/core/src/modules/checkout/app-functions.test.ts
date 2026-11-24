@@ -13,6 +13,8 @@ describe("resolveAppDiscounts — app discounts combined with platform discounts
   function appResult(discounts: unknown[]): CheckoutAppFunctionResult<"checkout.discounts"> {
     return {
       pluginId: "app_discount",
+      appName: "App Discount",
+      priority: 0,
       output: { discounts } as PluginFunctionOutput<"checkout.discounts">,
       commits: [],
     };
