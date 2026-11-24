@@ -17,11 +17,11 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 
 | Requirement | Test file | Test name | Actual assertions | Result |
 |---|---|---|---|---|
-| Bundles win → bundle discount deducted exactly once in quote | `packages/core/src/modules/checkout/manual-cod-deposit-acceptance.test.ts` | (covered by unit tests above; route-level pipeline integration pending) | — | GAP — no route-level bundle-vs-promotion pricing-pipeline test exists |
-| Promotions win → losing bundle discount not deducted | `packages/core/src/modules/checkout/manual-cod-deposit.test.ts` | (unit tests above) | `discountMinor` only, no `bundleDiscountMinor` | PASS |
-| Tie → promotions kept, bundle not deducted | `packages/core/src/modules/checkout/manual-cod-deposit.test.ts` | (unit tests above) | `discountMinor` only | PASS |
-| App discounts combined with winning platform discount | `packages/core/src/modules/checkout/manual-cod-deposit.test.ts` | (unit tests above) | `discountMinor` reflects combined allocation | PASS |
-| Mixed required/exempt carts with actual allocated discounts | `packages/core/src/modules/checkout/manual-cod-deposit-acceptance.test.ts` | "deposit basis covers only the required product" | Mug required 30000 + svc exempt 50000; 25% → 7500 (not 20000 if svc wrongly included) | PASS |
+| Bundles win → bundle discount deducted exactly once in quote | `manual-cod-deposit-acceptance.test.ts` | "bundles win — bundle discount deducted exactly once in deposit basis" | bundleDiscountMinor: 6000, discountMinor: 6000, subtotal: 60000, total: 60000, deposit: {13500, 46500} | PASS |
+| Promotions win → losing bundle discount not deducted | `manual-cod-deposit-acceptance.test.ts` | "promotions win — losing bundle discount not deducted from deposit basis" | bundleDiscountMinor: 0, discountMinor: 12000, subtotal: 60000, total: 54000, deposit: {12000, 42000} | PASS |
+| Tie → promotions kept, bundle not deducted | `manual-cod-deposit-acceptance.test.ts` | "promotions and bundles tie — promotions kept, bundle not deducted separately" | bundleDiscountMinor: 0, discountMinor: 6000, subtotal: 60000, total: 60000, deposit: {13500, 46500} | PASS |
+| Mixed required/exempt cart with actual allocated discounts | `manual-cod-deposit-acceptance.test.ts` | "mixed required/exempt cart with actual allocated discounts" | bundleDiscountMinor: 0, discountMinor: 16000, subtotal: 80000, total: 70000, deposit: {6000, 64000} | PASS |
+| Deposit basis uses only quote discountMinor (not raw bundle savings) | `manual-cod-deposit.test.ts` | Unit tests (bundle discount removed from CodDepositLineInput) | bundleDiscountMinor field removed; qualifying value = gross − discountMinor only | PASS |
 
 ## Product-level COD deposit policies
 
@@ -39,8 +39,8 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 | Order + plan persist exact deposit terms | `manual-cod-deposit-acceptance.test.ts` | "order + plan persist exact deposit terms and qualifying basis" | deposit 5000, balance 31000, qualifying 30000, ids ["p_mug"], status pending, kind manual, total 36000 | PASS |
 | Stale settings change rejects stale quote fingerprint | `manual-cod-deposit-acceptance.test.ts` | "settings change rejects a stale quote fingerprint" | 409 `storefront_checkout_quote_conflict`, zero orders | PASS |
 | Stale product policy change rejects stale quote fingerprint | `manual-cod-deposit-acceptance.test.ts` | "product policy change rejects a stale quote fingerprint" | 409 `storefront_checkout_quote_conflict`, zero orders | PASS |
-| Admin product create with codDepositPolicy (HTTP) | `packages/core/src/modules/product-admin/write.test.ts` | "createProduct with explicit codDepositPolicy" | Core-level create with policy persisted | PASS |
-| Admin product update with codDepositPolicy (HTTP) | `packages/core/src/modules/product-admin/write.test.ts` | "updateProduct conditional/sole field/omit codDepositPolicy" | Core-level update with policy persisted | PASS |
+| Admin product create with codDepositPolicy | `packages/core/src/modules/product-admin/write.test.ts` | "createProduct with explicit codDepositPolicy" | Core-level create with policy persisted (not an HTTP route test) | PASS |
+| Admin product update with codDepositPolicy | `packages/core/src/modules/product-admin/write.test.ts` | "updateProduct conditional/sole field/omit codDepositPolicy" | Core-level update with policy persisted (not an HTTP route test) | PASS |
 | Admin product GET list filter by codDepositPolicy | `apps/api/src/routes/admin/products.test.ts` | "GET / accepts codDepositPolicy=required/exempt/inherit query parameter" | 200 for valid, 400 for invalid | PASS |
 
 ## COD country compatibility
@@ -90,7 +90,7 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 
 | Gap | Reason |
 |---|---|
-| Route-level pricing-pipeline integration test for bundle-vs-promotion interplay (bundles win, promotions win, tie, app+platform combined) | Requires seeding promotions and bundles through the full pricing pipeline; no existing fixture/seeder for this; out of scope for this remediation |
-| Genuine browser E2E (Playwright against running `pnpm dev` stack) | Existing browser test mocks API via gallery fixture; real-browser E2E requires dev stack provisioning not available in this session |
-| HTTP route-level POST/PUT /admin/products with codDepositPolicy body | Core business logic covered by `write.test.ts`; route is a thin delegate |
+| Genuine browser E2E (Playwright against running `pnpm dev` stack) | Storefront dev server failed to start within 30s timeout in this session; existing browser test mocks API via gallery fixture; real-browser E2E requires dev stack provisioning not available |
+| HTTP route-level POST/PUT /admin/products with codDepositPolicy body | Core business logic covered by `write.test.ts`; route is a thin delegate; no HTTP-level POST/PUT body test for codDepositPolicy |
 | Product filtering and bulk editing with codDepositPolicy | Covered by `products.bulk-edit.test.ts` and `read.test.ts` at core level; HTTP-level not separately tested |
+| Route-level bundle-vs-promotion pricing-pipeline with app discounts combined | App discount seeding through full pricing pipeline not available via existing fixtures; unit tests cover deposit basis but not full app+platform combined allocation |
