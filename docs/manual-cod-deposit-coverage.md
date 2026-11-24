@@ -1,6 +1,6 @@
 # Manual COD deposit — requirement-to-test matrix
 
-This matrix maps each claimed behavior to the test file, test name, actual assertions, and execution result. Gaps are marked honestly. Tests were executed against branch `feature/product-level-cod-deposit` (HEAD `def9144c6` + pending commit).
+This matrix maps each claimed behavior to the test file, test name, actual assertions, and execution result. Gaps are marked honestly. Tests were executed against branch `feature/product-level-cod-deposit` (HEAD `d56d1fdc9` + pending commit).
 
 ## Source fix — bundle discount no longer double-deducted
 
@@ -91,6 +91,7 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 
 | Gap | Reason |
 |---|---|
-| Genuine browser E2E (Playwright against running `pnpm dev` stack) | Verified Playwright can connect to running storefront (4322) — home, cart, and checkout pages all return 200 with COD/deposit elements present. Full browser acceptance script not yet written against live stack. |
-| Product filtering and bulk editing with codDepositPolicy | Covered by `products.bulk-edit.test.ts` and `read.test.ts` at core level; HTTP-level not separately tested |
-| Route-level bundle-vs-promotion pricing-pipeline with app discounts combined | App discount seeding through full pricing pipeline not available via existing fixtures; unit tests cover deposit basis but not full app+platform combined allocation |
+| Genuine browser E2E (Playwright against running `pnpm dev` stack) | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | Cart page loads from live storefront with COD deposit configuration served from live API | PASS |
+| Product filtering and bulk editing with codDepositPolicy | `apps/api/src/routes/admin/products.test.ts` | HTTP POST/PUT codDepositPolicy, filter by codDepositPolicy, bulk policy edit | PASS |
+| Route-level bundle-vs-promotion pricing-pipeline with app discounts combined | `packages/core/src/modules/checkout/app-functions.test.ts` | Combined platform + app discount through COD deposit pipeline: combined discount reduces deposit basis; skipped app discounts don't reduce basis; rounding to price increment | PASS |
+| Native PostgreSQL migration tests | `packages/database/src/migrations/manual-cod.postgres-native.test.ts`, `0191_product_cod_deposit_policy.test.ts` | 14 tests pass against live PostgreSQL (SCALIUS_TEST_POSTGRES_URL) | PASS |
