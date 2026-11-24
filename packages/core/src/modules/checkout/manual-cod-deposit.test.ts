@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveProductDepositPolicy } from "./manual-cod-deposit";
+import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandiseMinor, resolveProductDepositPolicy } from "./manual-cod-deposit";
 import type { CheckoutFlowSettings } from "../settings";
 import type { PricingCurrency } from "@scalius/shared/currency-policy";
 import { CASH_ON_DELIVERY_AMOUNT_REASON, COD_PAYMENT_METHOD, type PaymentProviders } from "../payments";
@@ -600,5 +600,75 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(() => {
       resolveProductDepositPolicy("inherit", "bogus" as "all" | "selected");
     }).toThrow(ValidationError);
+  });
+});
+
+describe("resolveCodDepositQualifyingMerchandiseMinor", () => {
+  const quoteLines = [
+    { lineId: "cart:0:var_default_prod_required", discountMinor: 0 },
+    { lineId: "cart:1:var_default_prod_exempt", discountMinor: 0 },
+    { lineId: "cart:2:var_default_prod_required", discountMinor: 3000 },
+  ];
+  const policies = new Map<string, string | null>([
+    ["prod_required", "required"],
+    ["prod_exempt", "exempt"],
+  ]);
+  const cartItems = [
+    { index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 2, unitPriceMinor: 10000, isGiftCard: false },
+    { index: 1, productId: "prod_exempt", variantId: "var_default_prod_exempt", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+    { index: 2, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, bundleDiscountMinor: 2000 },
+  ];
+
+  it("sums qualifying merchandise after per-line quote discounts and bundle savings", () => {
+    // line 0: 2 x 10000 = 20000 (required); line 1 exempt -> 0;
+    // line 2: 1 x 10000 - 3000 quote discount - 2000 bundle = 5000 (required)
+    const value = resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines, cartItems, productPolicyById: policies, globalDefaultProductPolicy: "all",
+    });
+    expect(value).toBe(25000);
+  });
+
+  it("excludes gift card lines from the qualifying basis", () => {
+    const items = [...cartItems, { index: 3, productId: "prod_gc", variantId: "var_default_prod_gc", quantity: 1, unitPriceMinor: 50000, isGiftCard: true }];
+    const lines = [...quoteLines, { lineId: "cart:3:var_default_prod_gc", discountMinor: 0 }];
+    const value = resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines: lines, cartItems: items, productPolicyById: policies, globalDefaultProductPolicy: "all",
+    });
+    expect(value).toBe(25000);
+  });
+
+  it("treats a line with no discount as a legitimate zero discount", () => {
+    const value = resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines: [{ lineId: "cart:0:var_default_prod_required", discountMinor: 0 }],
+      cartItems: [{ index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false }],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(value).toBe(10000);
+  });
+
+  it("fails closed when a cart line has no authoritative quote allocation", () => {
+    // The cart has a line the quote does not cover: inconsistent pricing data.
+    expect(() => resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines: [{ lineId: "cart:0:var_default_prod_required", discountMinor: 0 }],
+      cartItems: [{ index: 5, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false }],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    })).toThrow(ValidationError);
+  });
+
+  it("fails closed when a cart line's product has no authoritative policy", () => {
+    expect(() => resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines: [{ lineId: "cart:0:var_default_prod_unknown", discountMinor: 0 }],
+      cartItems: [{ index: 0, productId: "prod_unknown", variantId: "var_default_prod_unknown", quantity: 1, unitPriceMinor: 10000, isGiftCard: false }],
+      productPolicyById: new Map([["prod_required", "required"]]),
+      globalDefaultProductPolicy: "all",
+    })).toThrow(ValidationError);
+  });
+
+  it("returns zero for an empty cart", () => {
+    expect(resolveCodDepositQualifyingMerchandiseMinor({
+      quoteLines: [], cartItems: [], productPolicyById: policies, globalDefaultProductPolicy: "all",
+    })).toBe(0);
   });
 });

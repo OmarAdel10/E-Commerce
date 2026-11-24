@@ -43,7 +43,7 @@ import { bundleLineProperties, createCartTransformer, presentTransformedCart, ru
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
 import {
     resolveManualCodDeposit,
-    resolveCodDepositQualifyingValue,
+    resolveCodDepositQualifyingMerchandiseMinor,
     resolveProductDepositPolicy,
 } from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
@@ -1069,28 +1069,12 @@ export async function createStorefrontOrder(
     const productPolicyById = new Map(
         cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
     );
-    // Authoritative per-line discount allocation from the tax quote, keyed by
-    // the same stable line id used for tax/discount allocation.
-    const lineDiscountById = new Map(
-        taxQuote.lines.map((line) => [line.lineId, line.discountMinor ?? 0]),
-    );
-    const qualifyingMerchandiseMinor = resolveCodDepositQualifyingValue(
-        cartValidation.items.map((item) => {
-            const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
-            return {
-                productId: item.productId,
-                quantity: item.quantity,
-                unitPriceMinor: item.unitPriceMinor,
-                isGiftCard: item.isGiftCard,
-                // Order-level discount (promotions/coupons) allocated to this line.
-                discountMinor: lineDiscountById.get(lineId) ?? 0,
-                // Quantity-bundle saving share for this line.
-                bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
-            };
-        }),
+    const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
+        quoteLines: taxQuote.lines,
+        cartItems: cartValidation.items,
         productPolicyById,
-        effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
-    );
+        globalDefaultProductPolicy: effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
+    });
     // Which product ids qualified: snapshot for auditability of deposit terms.
     const qualifyingProductIds = cartValidation.items
         .filter((item) => {

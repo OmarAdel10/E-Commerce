@@ -4,6 +4,7 @@ import { toMinor } from "@scalius/shared/money";
 import { CASH_ON_DELIVERY_AMOUNT_REASON, COD_PAYMENT_METHOD, type PaymentProviders } from "../payments";
 import { ValidationError } from "../../errors";
 import type { CheckoutFlowSettings } from "../settings";
+import { buildStorefrontTaxAllocationLineId } from "../tax";
 import type { TaxQuote } from "../tax/browser";
 
 /** One cart line's authoritative, server-resolved facts used for the deposit decision. */
@@ -144,6 +145,61 @@ export function resolveCodDepositQualifyingValue(
         qualifyingMinor += lineQualifyingValue(line);
     }
     return qualifyingMinor;
+}
+
+/**
+ * The qualifying merchandise value for a manual COD deposit, computed from
+ * authoritative tax quote lines, product policies and cart items.
+ *
+ * This is the single implementation of the deposit-basis preparation that was
+ * previously duplicated across the storefront tax quote, the order commit and
+ * the agent storefront quote. Per-line order-level discounts are read from the
+ * authoritative tax quote, keyed by the stable tax-allocation line id; a cart
+ * item whose line has no authoritative allocation is inconsistent pricing
+ * data, not a legitimate zero discount, so it fails closed instead of being
+ * silently priced at full value (which would overstate the deposit basis).
+ */
+export function resolveCodDepositQualifyingMerchandiseMinor(
+    input: {
+        /** Authoritative tax quote lines: one per cart line, keyed by line id. */
+        quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
+        /** Validated cart items, in cart order, with quantity and unit price. */
+        cartItems: readonly {
+            index: number;
+            productId: string;
+            variantId: string;
+            quantity: number;
+            unitPriceMinor: number;
+            isGiftCard: boolean;
+            bundleDiscountMinor?: number | null;
+        }[];
+        /** Authoritative per-product deposit policy, keyed by product id. */
+        productPolicyById: ReadonlyMap<string, string | null | undefined>;
+        globalDefaultProductPolicy: "all" | "selected";
+    },
+): number {
+    const lineDiscountById = new Map(
+        input.quoteLines.map((line) => [line.lineId, line.discountMinor ?? 0]),
+    );
+    const lines = input.cartItems.map((item) => {
+        const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
+        // A missing authoritative allocation means the quote does not cover
+        // this cart line: inconsistent pricing data, fail closed.
+        if (!lineDiscountById.has(lineId)) {
+            throw new ValidationError(
+                `Missing authoritative line discount allocation for product ${item.productId}.`,
+            );
+        }
+        return {
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPriceMinor: item.unitPriceMinor,
+            isGiftCard: item.isGiftCard,
+            discountMinor: lineDiscountById.get(lineId)!,
+            bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
+        };
+    });
+    return resolveCodDepositQualifyingValue(lines, input.productPolicyById, input.globalDefaultProductPolicy);
 }
 
 /** The same deposit decision drives the offered COD method and its order. */

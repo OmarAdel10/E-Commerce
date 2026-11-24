@@ -40,7 +40,7 @@ import {
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
     resolveManualCodDeposit,
-    resolveCodDepositQualifyingValue,
+    resolveCodDepositQualifyingMerchandiseMinor,
     storefrontLinePropertiesHashes,
     validateStorefrontDeliveryPreflight,
     validateStorefrontCartItems,
@@ -142,7 +142,7 @@ const taxQuoteResponseSchema = z.object({
   /** Pickup location and hours, for a pickup method. */
   pickup: z.object({ address: z.string().nullable(), hours: z.string().nullable() }).nullable(),
   allowedPaymentMethods: allowedPaymentMethodsSchema.openapi({
-    description: "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country it serves (Bangladesh).",
+    description: "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country the configured provider serves.",
   }),
   discounts: z.array(quotedDiscountLineSchema).openapi({
     description: "One line per applied discount (automatic and code), with its own amount.",
@@ -387,27 +387,15 @@ app.openapi(taxQuoteRoute, async (c) => {
       .map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId))),
   });
   const coveredByGiftCards = giftCardTender.appliedTotalMinor > 0 && giftCardTender.amountDueMinor === 0;
-  const lineDiscountById = new Map(
-    quote.lines.map((line) => [line.lineId, line.discountMinor ?? 0]),
-  );
   const productPolicyById = new Map(
     cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
   );
-  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingValue(
-    cartValidation.items.map((item) => {
-      const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPriceMinor: item.unitPriceMinor,
-        isGiftCard: item.isGiftCard,
-        discountMinor: lineDiscountById.get(lineId) ?? 0,
-        bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
-      };
-    }),
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
+    quoteLines: quote.lines,
+    cartItems: cartValidation.items,
     productPolicyById,
-    checkoutSettings.codDepositDefaultProductPolicy,
-  );
+    globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+  });
   const manualDeposit = resolveManualCodDeposit(
     checkoutSettings,
     quote,

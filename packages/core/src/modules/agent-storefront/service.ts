@@ -25,7 +25,7 @@ import {
   paymentCountryOf,
   resolveCartPaymentMethods,
   resolveManualCodDeposit,
-  resolveCodDepositQualifyingValue,
+  resolveCodDepositQualifyingMerchandiseMinor,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
   summarizeStorefrontCartFulfilment,
@@ -1002,30 +1002,18 @@ export async function quoteAgentStorefrontCheckout(
   assertDiscountCodesApplied(pricing.typedCodes);
   const quote = pricing.taxQuote;
   // Apps narrow and present the methods submit accepts (read only when an
-  // app adjusts them, or when a delivery abroad may rule a method out:
-  // cash on delivery serves Bangladesh).
+  // app adjusts them, or when a delivery abroad may rule a method out based
+  // on the configured provider's country coverage).
   const paymentProviders = input.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS;
-  const lineDiscountById = new Map(
-    quote.lines.map((line) => [line.lineId, line.discountMinor ?? 0]),
-  );
   const productPolicyById = new Map<string, string | null | undefined>(
     projection.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
   );
-  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingValue(
-    projection.items.map((item) => {
-      const lineId = buildStorefrontTaxAllocationLineId(item.index, item.variantId);
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPriceMinor: item.unitPriceMinor,
-        isGiftCard: item.isGiftCard,
-        discountMinor: lineDiscountById.get(lineId) ?? 0,
-        bundleDiscountMinor: item.bundleDiscountMinor ?? 0,
-      };
-    }),
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
+    quoteLines: quote.lines,
+    cartItems: projection.items,
     productPolicyById,
-    checkoutSettings.codDepositDefaultProductPolicy,
-  );
+    globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+  });
   const manualDeposit = resolveManualCodDeposit(
     checkoutSettings,
     quote,
