@@ -23201,7 +23201,7 @@ export type PostApiV1OrdersTaxQuoteResponses = {
                 hours: string | null;
             } | null;
             /**
-             * Payment methods for the amount due. Exactly ["gift_card"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country it serves (Bangladesh).
+             * Payment methods for the amount due. Exactly ["gift_card"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country the configured provider serves.
              */
             allowedPaymentMethods: Array<string>;
             /**
