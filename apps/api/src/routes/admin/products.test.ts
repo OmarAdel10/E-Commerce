@@ -60,4 +60,166 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
         const response = await app.request("/?codDepositPolicy=invalid", {}, env);
         expect(response.status).toBe(400);
     });
+
+    it("POST / creates a product with codDepositPolicy=required", async () => {
+        const app = appWithDb();
+        // Seed settings, categories and shipping profile needed by createProduct
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        const response = await app.request("/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: "Test Mug",
+                description: "A ceramic mug",
+                price: 300,
+                categoryId: "cat_1",
+                isActive: true,
+                canonicalPath: "/products/test-mug",
+                slug: "test-mug",
+                media: [],
+                attributes: [],
+                additionalInfo: [],
+                customizationSchema: null,
+                isGiftCard: false,
+                metaTitle: null,
+                metaDescription: null,
+                noIndex: false,
+                excludeFromSitemap: false,
+                productCondition: "new",
+                codDepositPolicy: "required",
+            }),
+        }, env);
+        const responseText = await response.text();
+        expect(response.status).toBe(201, responseText);
+        const body = JSON.parse(responseText) as { data: { id: string } };
+        const row = fixture.sqlite.prepare(
+            "SELECT cod_deposit_policy FROM products WHERE id = ?"
+        ).get(body.data.id) as { cod_deposit_policy: string };
+        expect(row.cod_deposit_policy).toBe("required");
+    });
+
+    it("POST / creates a product with codDepositPolicy=exempt", async () => {
+        const app = appWithDb();
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        const response = await app.request("/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: "Test Service",
+                description: "A setup service",
+                price: 500,
+                categoryId: "cat_1",
+                isActive: true,
+                canonicalPath: "/products/test-service",
+                slug: "test-service",
+                media: [],
+                attributes: [],
+                additionalInfo: [],
+                customizationSchema: null,
+                isGiftCard: false,
+                metaTitle: null,
+                metaDescription: null,
+                noIndex: false,
+                excludeFromSitemap: false,
+                productCondition: "new",
+                codDepositPolicy: "exempt",
+            }),
+        }, env);
+        const responseText = await response.text();
+        expect(response.status).toBe(201, responseText);
+        const body = JSON.parse(responseText) as { data: { id: string } };
+        const row = fixture.sqlite.prepare(
+            "SELECT cod_deposit_policy FROM products WHERE id = ?"
+        ).get(body.data.id) as { cod_deposit_policy: string };
+        expect(row.cod_deposit_policy).toBe("exempt");
+    });
+
+    it("PUT /{id} updates only codDepositPolicy on an existing product", async () => {
+        const app = appWithDb();
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        // Create a product first
+        const createResponse = await app.request("/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: "Test Product",
+                description: null,
+                price: 100,
+                categoryId: "cat_1",
+                isActive: true,
+                canonicalPath: "/products/test-product",
+                slug: "test-product",
+                media: [],
+                attributes: [],
+                additionalInfo: [],
+                customizationSchema: null,
+                isGiftCard: false,
+                metaTitle: null,
+                metaDescription: null,
+                noIndex: false,
+                excludeFromSitemap: false,
+                productCondition: "new",
+                codDepositPolicy: "inherit",
+            }),
+        }, env);
+        const createResponseText = await createResponse.text();
+        expect(createResponse.status).toBe(201, createResponseText);
+        const createBody = JSON.parse(createResponseText) as { data: { id: string } };
+        const productId = createBody.data.id;
+
+        // Update only codDepositPolicy
+        const updateResponse = await app.request(`/${productId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                id: productId,
+                expectedAggregateRevision: 1,
+                name: "Test Product",
+                description: null,
+                price: 100,
+                categoryId: "cat_1",
+                isActive: true,
+                canonicalPath: "/products/test-product",
+                slug: "test-product",
+                media: [],
+                attributes: [],
+                additionalInfo: [],
+                customizationSchema: null,
+                isGiftCard: false,
+                metaTitle: null,
+                metaDescription: null,
+                noIndex: false,
+                excludeFromSitemap: false,
+                productCondition: "new",
+                codDepositPolicy: "required",
+            }),
+        }, env);
+        const updateResponseText = await updateResponse.text();
+        expect(updateResponse.status).toBe(200, updateResponseText);
+        const row = fixture.sqlite.prepare(
+            "SELECT cod_deposit_policy FROM products WHERE id = ?"
+        ).get(productId) as { cod_deposit_policy: string };
+        expect(row.cod_deposit_policy).toBe("required");
+    });
 });

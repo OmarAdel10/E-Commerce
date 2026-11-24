@@ -1,6 +1,6 @@
 # Manual COD deposit — requirement-to-test matrix
 
-This matrix maps each claimed behavior to the test file, test name, actual assertions, and execution result. Gaps are marked honestly. Tests were executed against branch `feature/product-level-cod-deposit` (HEAD `cf8b10f78` + remediation commits).
+This matrix maps each claimed behavior to the test file, test name, actual assertions, and execution result. Gaps are marked honestly. Tests were executed against branch `feature/product-level-cod-deposit` (HEAD `def9144c6` + pending commit).
 
 ## Source fix — bundle discount no longer double-deducted
 
@@ -39,8 +39,9 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 | Order + plan persist exact deposit terms | `manual-cod-deposit-acceptance.test.ts` | "order + plan persist exact deposit terms and qualifying basis" | deposit 5000, balance 31000, qualifying 30000, ids ["p_mug"], status pending, kind manual, total 36000 | PASS |
 | Stale settings change rejects stale quote fingerprint | `manual-cod-deposit-acceptance.test.ts` | "settings change rejects a stale quote fingerprint" | 409 `storefront_checkout_quote_conflict`, zero orders | PASS |
 | Stale product policy change rejects stale quote fingerprint | `manual-cod-deposit-acceptance.test.ts` | "product policy change rejects a stale quote fingerprint" | 409 `storefront_checkout_quote_conflict`, zero orders | PASS |
-| Admin product create with codDepositPolicy | `packages/core/src/modules/product-admin/write.test.ts` | "createProduct with explicit codDepositPolicy" | Core-level create with policy persisted (not an HTTP route test) | PASS |
-| Admin product update with codDepositPolicy | `packages/core/src/modules/product-admin/write.test.ts` | "updateProduct conditional/sole field/omit codDepositPolicy" | Core-level update with policy persisted (not an HTTP route test) | PASS |
+| Admin product create with codDepositPolicy | `apps/api/src/routes/admin/products.test.ts` | "POST / creates product with codDepositPolicy=required" | 201, DB row confirms codDepositPolicy=required | PASS |
+| Admin product create with codDepositPolicy=exempt | `apps/api/src/routes/admin/products.test.ts` | "POST / creates product with codDepositPolicy=exempt" | 201, DB row confirms codDepositPolicy=exempt | PASS |
+| Admin product update with codDepositPolicy | `apps/api/src/routes/admin/products.test.ts` | "PUT /{id} updates only codDepositPolicy" | 200, DB row confirms updated codDepositPolicy | PASS |
 | Admin product GET list filter by codDepositPolicy | `apps/api/src/routes/admin/products.test.ts` | "GET / accepts codDepositPolicy=required/exempt/inherit query parameter" | 200 for valid, 400 for invalid | PASS |
 
 ## COD country compatibility
@@ -90,7 +91,6 @@ This matrix maps each claimed behavior to the test file, test name, actual asser
 
 | Gap | Reason |
 |---|---|
-| Genuine browser E2E (Playwright against running `pnpm dev` stack) | Storefront dev server failed to start within 30s timeout in this session; existing browser test mocks API via gallery fixture; real-browser E2E requires dev stack provisioning not available |
-| HTTP route-level POST/PUT /admin/products with codDepositPolicy body | Core business logic covered by `write.test.ts`; route is a thin delegate; no HTTP-level POST/PUT body test for codDepositPolicy |
+| Genuine browser E2E (Playwright against running `pnpm dev` stack) | Verified Playwright can connect to running storefront (4322) — home, cart, and checkout pages all return 200 with COD/deposit elements present. Full browser acceptance script not yet written against live stack. |
 | Product filtering and bulk editing with codDepositPolicy | Covered by `products.bulk-edit.test.ts` and `read.test.ts` at core level; HTTP-level not separately tested |
 | Route-level bundle-vs-promotion pricing-pipeline with app discounts combined | App discount seeding through full pricing pipeline not available via existing fixtures; unit tests cover deposit basis but not full app+platform combined allocation |

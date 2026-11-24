@@ -121,6 +121,11 @@ describe("product-level manual COD deposit acceptance", () => {
   beforeEach(() => {
     fixture = createGiftCardCheckoutFixture(`
       -- Egypt: valid COD destination (EG is in COD_COUNTRIES)
+      INSERT INTO markets (id, handle, name, status, is_backup, price_mode)
+        VALUES ('mkt_eg', 'egypt', 'Egypt', 'active', 0, 'fixed');
+      INSERT INTO market_countries (country_code, market_id) VALUES ('EG', 'mkt_eg');
+      INSERT INTO market_presences (id, market_id, kind, value, locale)
+        VALUES ('mkp_eg', 'mkt_eg', 'subfolder', 'en-eg', 'en');
       INSERT INTO places (id, name, country_code, level, parent_id, external_ids, metadata, is_active)
         VALUES ('city_eg_cairo', 'Cairo', 'EG', 1, NULL, '{}', '{}', 1),
                ('zone_eg_cairo', 'Cairo Governorate', 'EG', 2, 'city_eg_cairo', '{}', '{}', 1);
@@ -509,6 +514,54 @@ describe("product-level manual COD deposit acceptance", () => {
       expect(q.totalMinor).toBe(70000);
       expect(q.manualCodDeposit).toEqual({ depositMinor: 6000, balanceMinor: 64000 });
     });
+
+    it("discounted order: quote-to-order consistency with persisted payment plan", async () => {
+      // 2 x p_mug @ 30000 = 60000 gross. Promotion 20% off order = 12000.
+      // Qualifying: 60000 - 12000 = 48000. Deposit 25% = 12000.
+      // Total: 60000 - 12000 + 6000 shipping = 54000. Balance 42000.
+      await createAutoPromotion(fixture, "20% off order", 2000);
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "percentage", codDepositPercent: 25, codDepositAmount: 0, codDepositDefaultProductPolicy: "selected" });
+      const app = appWithDb(fixture);
+      const q = await quote(app, [{ ...MUG, quantity: 2 }]);
+      expect(q.discountMinor).toBe(12000);
+      expect(q.subtotalMinor).toBe(60000);
+      expect(q.totalMinor).toBe(54000);
+      expect(q.manualCodDeposit).toEqual({ depositMinor: 12000, balanceMinor: 42000 });
+
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shippingCountryCode: "BD",
+          city: DELIVERY.city,
+          zone: DELIVERY.zone,
+          shippingMethodId: DELIVERY.shippingMethodId,
+          customerName: "Discounted Buyer",
+          customerPhone: "+8801712345678",
+          customerEmail: null,
+          notes: null,
+          shippingAddress: DELIVERY.shippingAddress,
+          shippingCharge: 60,
+          checkoutRequestId: "cr_discounted_order_0000000001",
+          expectedQuoteFingerprint: q.quoteFingerprint,
+          paymentMethod: "cod",
+          items: [{ productId: "p_mug", variantId: "v_mug", quantity: 2, price: 300 }],
+        }),
+      }, env);
+      const responseText = await response.text();
+      expect(response.status, responseText).toBe(201);
+      const body = JSON.parse(responseText) as { data: { orderId: string; paymentMethod: string } };
+      expect(body.data.paymentMethod).toBe("cod");
+
+      const plan = planRow(fixture, body.data.orderId);
+      expect(plan.total_amount_minor).toBe(54000);
+      expect(plan.deposit_amount_minor).toBe(12000);
+      expect(plan.balance_due_minor).toBe(42000);
+      expect(plan.qualifying_merchandise_minor).toBe(48000);
+      expect(JSON.parse(plan.qualifying_product_ids ?? "[]")).toEqual(["p_mug"]);
+      expect(plan.deposit_amount_minor + plan.balance_due_minor).toBe(plan.total_amount_minor);
+    });
   });
 
   describe("Egyptian checkout (EGP)", () => {
@@ -570,6 +623,84 @@ describe("product-level manual COD deposit acceptance", () => {
       expect(q.currencyCode).toBe("EGP");
       // 33% of 30000 = 9900; total 40000; balance 30100
       expect(q.manualCodDeposit).toEqual({ depositMinor: 9900, balanceMinor: 30100 });
+    });
+
+    it("EGP percentage deposit: percentage rounding when result is not a whole increment", async () => {
+      // EGP increment is 100 (whole EGP). Change mug price to 30050 (300.50 EGP):
+      // 25% of 30050 = 7512.5, rounded up to the increment = 7600 (not 7512).
+      await enableEGPCurrency(fixture);
+      fixture.sqlite.prepare("UPDATE products SET price_minor = 30050 WHERE id = 'p_mug'").run();
+      fixture.sqlite.prepare("UPDATE product_variants SET price_minor = 30050 WHERE id = 'v_mug'").run();
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "percentage", codDepositPercent: 25, codDepositAmount: 0, codDepositDefaultProductPolicy: "selected" });
+      const app = appWithDb(fixture);
+      const q = await quote(app, [{ ...MUG, quantity: 1 }], {
+        shippingCountryCode: "EG",
+        city: "city_eg_cairo",
+        zone: "zone_eg_cairo",
+        shippingMethodId: "m_ship_eg",
+        customerPhone: "+201234567890",
+      });
+      expect(q.currencyCode).toBe("EGP");
+      // 25% of 30050 = 7512.5 → rounded to increment 100 = 7600
+      // Total: 30050 + 10000 shipping = 40050; balance 32450
+      expect(q.manualCodDeposit).toEqual({ depositMinor: 7600, balanceMinor: 32450 });
+    });
+
+    it("EGP COD order placement: actual order with deposit and exact persisted plan", async () => {
+      await enableEGPCurrency(fixture);
+      fixture.sqlite.prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'").run();
+      await writeSettings(fixture, { codDepositEnabled: true, codDepositMode: "fixed", codDepositAmount: 50, codDepositPercent: 0, codDepositDefaultProductPolicy: "selected" });
+      const app = appWithDb(fixture);
+      const q = await quote(app, [{ ...MUG, quantity: 1 }], {
+        shippingCountryCode: "EG",
+        city: "city_eg_cairo",
+        zone: "zone_eg_cairo",
+        shippingMethodId: "m_ship_eg",
+        customerPhone: "+201234567890",
+      });
+      expect(q.currencyCode).toBe("EGP");
+      expect(q.allowedPaymentMethods).toContain("cod");
+      // 30000 mug + 10000 EG shipping = 40000 total; fixed 5000 deposit
+      expect(q.manualCodDeposit).toEqual({ depositMinor: 5000, balanceMinor: 35000 });
+
+      // Place the COD order with the reviewed quote fingerprint.
+      const response = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shippingCountryCode: "EG",
+          shippingLocality: "Cairo",
+          shippingMethodId: "m_ship_eg",
+          customerName: "Egyptian Buyer",
+          customerPhone: "+201234567890",
+          customerEmail: null,
+          notes: null,
+          shippingAddress: "Flat 4, Nile Tower, Cairo",
+          shippingCharge: 100,
+          checkoutRequestId: "cr_eg_cod_0000000001",
+          expectedQuoteFingerprint: q.quoteFingerprint,
+          paymentMethod: "cod",
+          items: [{ productId: "p_mug", variantId: "v_mug", quantity: 1, price: 300 }],
+        }),
+      }, env);
+      const responseText = await response.text();
+      if (response.status !== 201) {
+        throw new Error(`Order placement failed with status ${response.status}: ${responseText}`);
+      }
+      const body = JSON.parse(responseText) as { data: { orderId: string; paymentMethod: string } };
+      expect(body.data.paymentMethod).toBe("cod");
+
+      const plan = planRow(fixture, body.data.orderId);
+      expect(plan.total_amount_minor).toBe(40000);
+      expect(plan.deposit_amount_minor).toBe(5000);
+      expect(plan.balance_due_minor).toBe(35000);
+      expect(plan.qualifying_merchandise_minor).toBe(30000);
+      expect(JSON.parse(plan.qualifying_product_ids ?? "[]")).toEqual(["p_mug"]);
+      expect(plan.cod_deposit_amount).toBe(5000);
+      expect(plan.status).toBe("pending");
+      expect(plan.kind).toBe("manual");
+      expect(plan.deposit_amount_minor + plan.balance_due_minor).toBe(plan.total_amount_minor);
     });
   });
 });
