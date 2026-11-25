@@ -20,8 +20,6 @@ const baseSettings: Pick<CheckoutFlowSettings, "codDepositEnabled" | "codDeposit
   codDepositDefaultProductPolicy: "all",
 };
 
-const baseQuote = { totalMinor: 36000, currencyCode: "BDT" };
-
 const baseCart = { allowsCashOnDelivery: true, giftCardsApplied: false };
 
 function providers(amountIssue: string | null = null): PaymentProviders {
@@ -192,10 +190,12 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
     });
     expect(qualifying).toBe(21600);
 
-    // Manual COD deposit: 25% of 21600 = 5400, balance = 36000 - 5400 = 30600.
+    // Manual COD deposit: quote total = gross 30000 - combined discount 8400 + shipping 6000 = 27600.
+    // Deposit: 25% of 21600 = 5400. Balance = 27600 - 5400 = 22200.
+    const quote = { totalMinor: 27600, currencyCode: "BDT" };
     const deposit = resolveManualCodDeposit(
       baseSettings,
-      baseQuote,
+      quote,
       shopCurrency,
       baseCart,
       providers(),
@@ -203,7 +203,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
     );
     expect(deposit.error).toBeNull();
     expect(deposit.terms!.depositMinor).toBe(5400);
-    expect(deposit.terms!.balanceMinor).toBe(30600);
+    expect(deposit.terms!.balanceMinor).toBe(22200);
   });
 
   it("platform 20% order discount + app order discount: both order class combine", () => {
@@ -249,7 +249,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
 
     const deposit = resolveManualCodDeposit(
       baseSettings,
-      baseQuote,
+      { totalMinor: 27600, currencyCode: "BDT" },
       shopCurrency,
       baseCart,
       providers(),
@@ -257,7 +257,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
     );
     expect(deposit.error).toBeNull();
     expect(deposit.terms!.depositMinor).toBe(5400);
-    expect(deposit.terms!.balanceMinor).toBe(30600);
+    expect(deposit.terms!.balanceMinor).toBe(22200);
   });
 
   it("app discount that does not combine with platform's order class is skipped", () => {
@@ -302,7 +302,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
 
     const deposit = resolveManualCodDeposit(
       baseSettings,
-      baseQuote,
+      { totalMinor: 30000, currencyCode: "BDT" },
       shopCurrency,
       baseCart,
       providers(),
@@ -310,7 +310,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
     );
     expect(deposit.error).toBeNull();
     expect(deposit.terms!.depositMinor).toBe(6000);
-    expect(deposit.terms!.balanceMinor).toBe(30000);
+    expect(deposit.terms!.balanceMinor).toBe(24000);
   });
 
   it("no platform discount + app 10% line discount: deposit basis reduced by app only", () => {
@@ -352,7 +352,7 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
 
     const deposit = resolveManualCodDeposit(
       baseSettings,
-      baseQuote,
+      { totalMinor: 33000, currencyCode: "BDT" },
       shopCurrency,
       baseCart,
       providers(),
@@ -360,6 +360,6 @@ describe("combined platform + app discount through COD deposit pipeline", () => 
     );
     expect(deposit.error).toBeNull();
     expect(deposit.terms!.depositMinor).toBe(6800);
-    expect(deposit.terms!.balanceMinor).toBe(29200);
+    expect(deposit.terms!.balanceMinor).toBe(26200);
   });
 });
