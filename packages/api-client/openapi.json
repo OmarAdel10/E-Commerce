@@ -224771,7 +224771,7 @@
                       "required",
                       "exempt"
                     ],
-                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
+                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
                   },
                   "optionMatrix": {
                     "type": "object",
@@ -229122,7 +229122,7 @@
                               "required",
                               "exempt"
                             ],
-                            "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value."
+                            "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value."
                           },
                           "description": {
                             "type": "string",
@@ -230866,7 +230866,7 @@
                       "required",
                       "exempt"
                     ],
-                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
+                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
                   },
                   "id": {
                     "type": "string"

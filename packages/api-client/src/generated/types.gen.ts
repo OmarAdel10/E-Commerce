@@ -63287,7 +63287,7 @@ export type PostApiV1AdminProductsData = {
          */
         warrantyPolicyId?: string | null;
         /**
-         * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
          */
         codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         optionMatrix?: {
@@ -64531,7 +64531,7 @@ export type PatchApiV1AdminProductsByIdSectionsBySectionData = {
             redirectOldUrl?: boolean;
             emiEligible?: boolean;
             /**
-             * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value.
+             * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value.
              */
             codDepositPolicy?: 'inherit' | 'required' | 'exempt';
             description?: string | null;
@@ -65003,7 +65003,7 @@ export type PutApiV1AdminProductsByIdData = {
          */
         warrantyPolicyId?: string | null;
         /**
-         * Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
          */
         codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         id: string;

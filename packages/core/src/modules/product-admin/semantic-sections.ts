@@ -125,7 +125,7 @@ export const productBasePatchSchema = z.object({
     emiEligible: z.boolean().optional(),
     /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit on this product; `exempt` never requires one. Omit to keep. */
     codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional()
-        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value."),
+        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value."),
     /** Whole-field replacements, saved in the same write (the `text` section edits a range). */
     description: z.string().min(10).nullable().optional(),
     metaTitle: z.string().max(PRODUCT_SEMANTIC_TEXT_CHUNK_MAX).nullable().optional(),

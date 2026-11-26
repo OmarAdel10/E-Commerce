@@ -230,9 +230,9 @@ const productBaseSchema = z.object({
     /** A live warranty policy (wrp_…); null removes it. Omit to keep. */
     warrantyPolicyId: productWarrantyPolicyIdSchema.nullable().optional()
         .describe("A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it."),
-    /** Manual COD deposit policy: `inherit` follows the global default; `require` requires a deposit on this product; `exempt` never requires one. Omit to keep; defaults to `inherit`. */
+    /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit on this product; `exempt` never requires one. Omit to keep; defaults to `inherit`. */
     codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional()
-        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `require` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."),
+        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."),
 });
 
 function requireCanonicalProductHandle(
