@@ -7,7 +7,7 @@ Test types are labeled explicitly:
 - **Unit** — pure function tests (vitest `pure` project), no database or HTTP.
 - **API integration** — Hono app under test with an in-memory SQLite D1 database; exercises real routes, persistence, and the manual COD deposit decision end to end at the API layer.
 - **Browser smoke** — Playwright against the live storefront; loads a page and checks served state only. Does NOT drive admin auth, product creation, checkout, or order placement.
-- **Genuine browser acceptance** — Playwright driving the real admin dashboard and storefront through full user flows. NOT yet implemented (see gaps below).
+- **Genuine browser acceptance** — Playwright driving the real admin dashboard and storefront through full user flows (admin sign-in, product forms, filters, bulk editor, cart, checkout, order placement).
 - **Database migration** — applies migration SQL against SQLite/PostgreSQL and asserts the migrated schema.
 
 ---
@@ -99,14 +99,20 @@ Test types are labeled explicitly:
 
 ## Browser testing
 
+Run against the live local stack (API :8787, dashboard :4323, storefront :4322):
+`node --test apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs`
+
 | Requirement | Test file | Test name | Type | Actual assertions | Result |
 |---|---|---|---|---|---|
-| Storefront cart page loads from live API with COD deposit config served in page state | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | "storefront cart loads with COD deposit configuration served from live API" | Browser smoke | `page.goto("/cart")` → 200; body text references COD; page HTML contains `codDeposit`/`COD`/`cod` | PASS |
+| A product with a deposit policy is created through the admin UI | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | "B1: creates a product with deposit policy through the admin UI" | Genuine browser acceptance | Admin sign-in (Better Auth, real session cookies); product form filled; Save; `codDepositPolicy=required` read back from the API | PASS |
+| Editing only the deposit policy persists | same | "B2: edits only the deposit policy, saves, reloads and verifies persistence" | Genuine browser acceptance | Policy changed to `exempt` in the edit form, saved, reloaded, and read back from the API | PASS |
+| Products are filtered by deposit policy through the UI | same | "B3: filters products by deposit policy through the UI" | Genuine browser acceptance | Filter applied in the product list; the filtered rows are the fixture's | PASS |
+| Bulk editing deposit policies persists | same | "B4: bulk-edits deposit policies and verifies persistence" | Genuine browser acceptance | Bulk editor used; every edited row's policy read back from the API | PASS |
+| A cart shows the exact deposit and cash balance | same | "B5: adds product through storefront UI and verifies exact deposit and COD balance" | Genuine browser acceptance | Add to cart through the product page; cart total `E£360`; deposit `E£50`; balance `E£310` | PASS |
+| A real Egyptian COD order with a manual deposit is placed and persisted | same | "B6: places order through browser and verifies exact persisted payment plan" | Genuine browser acceptance | Cart button → payment step (`/checkout`) → cash on delivery → `/order-success`; persisted payment plan: deposit 5000 minor, balance 31000 minor, total 36000 minor | PASS |
 
 ## Gaps (not covered, not added as out of scope)
 
 | Gap | Reason |
 |---|---|
-| Genuine browser acceptance (Playwright against running `pnpm dev` stack) | The committed browser script (`apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs`) is a **smoke test only**: it loads `/cart` and greps HTML/body text for COD strings. It does NOT authenticate into the admin dashboard, create/edit a product with a deposit policy, filter or bulk-edit products by policy, add a product to a cart, assert exact deposit/balance, place an order, or verify a persisted payment plan. See Finding 2. |
-| Product filtering and bulk editing via browser | Only API integration tests (`apps/api/src/routes/admin/products.test.ts`) cover codDepositPolicy create/update/filter. No browser test drives the admin UI filter or bulk editor. |
 | Native PostgreSQL migration tests in CI | Skipped unless `SCALIUS_TEST_POSTGRES_URL` is available (Finding 4 evidence retained separately). |
