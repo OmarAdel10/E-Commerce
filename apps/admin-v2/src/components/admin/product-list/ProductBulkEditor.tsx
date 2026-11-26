@@ -314,7 +314,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                       <TableCell className="w-36">
                         <SearchableSelect
                           triggerClassName="w-32"
-                          aria-label={t("bulkEditStatusFor", { name: product.name })}
+                          ariaLabel={t("bulkEditStatusFor", { name: product.name })}
                           disabled={!canEdit}
                           value={next.isActive ? "active" : "draft"}
                           onValueChange={(value) => change(product.id, { isActive: value === "active" })}
@@ -354,7 +354,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         {ships && profileOptions.length > 1 ? (
                           <SearchableSelect
                             triggerClassName="w-40"
-                            aria-label={t("bulkEditShippingProfileFor", { name: product.name })}
+                            ariaLabel={t("bulkEditShippingProfileFor", { name: product.name })}
                             disabled={!canEdit}
                             value={next.profileId ?? DEFAULT_PROFILE}
                             onValueChange={(value) => change(product.id, { profileId: value === DEFAULT_PROFILE ? null : value })}
@@ -365,7 +365,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                       <TableCell className="w-40">
                         <SearchableSelect
                           triggerClassName="w-36"
-                          aria-label={t("bulkEditDepositPolicyFor", { name: product.name })}
+                          ariaLabel={t("bulkEditDepositPolicyFor", { name: product.name })}
                           disabled={!canEdit}
                           value={next.codDepositPolicy}
                           onValueChange={(value) => change(product.id, { codDepositPolicy: value as "inherit" | "required" | "exempt" })}
