@@ -735,7 +735,7 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   {
     version: 191,
     name: "0191_product_cod_deposit_policy",
-    sourceSha256: "7a6594068bfee992bac363168bd5c2a45cdeacdc530db43ee7255b1ef23ca08e",
+    sourceSha256: "9967fad38287c82679b8d85510641e3f4c14111b3a750a98563be0ca73ba16f1",
   },
   {
     version: 192,
