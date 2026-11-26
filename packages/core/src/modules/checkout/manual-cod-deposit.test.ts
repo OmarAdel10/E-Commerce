@@ -140,6 +140,26 @@ describe("resolveManualCodDeposit", () => {
     });
   });
 
+  it("keeps the deposit and the balance on the currency increment", () => {
+    // A discounted basis breaks the increment: 99.50 BDT of qualifying
+    // merchandise. The collected deposit stays on whole taka (99.00 BDT), so
+    // the balance collected on delivery (6.00 BDT) is collectable too.
+    const { terms, error } = call(
+      { ...baseSettings, codDepositAmount: 200 },
+      { totalMinor: 10500, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      9950,
+    );
+    expect(error).toBeNull();
+    expect(terms).toMatchObject({
+      depositMinor: 9900,
+      balanceMinor: 600,
+      originalAmountMinor: 20000,
+    });
+  });
+
   it("accepts a valid percentage deposit on the qualifying value", () => {
     const { terms, error } = call(
       { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 20 },
@@ -173,6 +193,26 @@ describe("resolveManualCodDeposit", () => {
     expect(terms).toMatchObject({
       depositMinor: 12000,
       balanceMinor: 88000,
+      percent: 20,
+    });
+  });
+
+  it("collects a percentage deposit when the basis is smaller than one increment", () => {
+    // Qualifying merchandise is 1.00 BDT and the increment is 1.00 BDT, so 20%
+    // rounds up to the whole increment. The deposit stays below the order total
+    // and leaves a collectable balance.
+    const { terms, error } = call(
+      { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 20 },
+      { totalMinor: 10000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      100,
+    );
+    expect(error).toBeNull();
+    expect(terms).toMatchObject({
+      depositMinor: 100,
+      balanceMinor: 9900,
       percent: 20,
     });
   });

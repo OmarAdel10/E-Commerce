@@ -231,21 +231,43 @@ export function resolveManualCodDeposit(
     }
 
     const percent = settings.codDepositMode === "percentage" ? settings.codDepositPercent : null;
+    // The currency increment is the smallest collectable cash amount (whole
+    // taka for BDT). Every collected amount stays on that increment so the
+    // balance collected on delivery is collectable too.
+    const step = Math.max(1, shopCurrency.priceIncrementMinor);
     // The originally configured amount before capping, persisted for auditability.
     // A fixed deposit may be capped at the qualifying merchandise value; the
     // original configured amount must be preserved to distinguish a merchant who
     // configured 200 EGP but was capped at 150 EGP from one who configured 150 EGP.
     const configuredAmountMinor = percent === null
         ? toMinor(settings.codDepositAmount, shopCurrency.decimalPlaces)
-        : manualCodPercentageDepositMinor(qualifyingMerchandiseMinor, percent, shopCurrency.priceIncrementMinor);
-    const depositMinor = configuredAmountMinor;
+        : manualCodPercentageDepositMinor(qualifyingMerchandiseMinor, percent, step);
+    // The shared percentage helper keeps one increment below the basis so a cash
+    // remainder stays on the merchandise. When the basis is smaller than one
+    // increment that remainder is zero, so fall back to the rounded deposit:
+    // it stays below the order total and on the currency increment.
+    const roundedPercentMinor = percent === null
+        ? 0
+        : Math.ceil((qualifyingMerchandiseMinor * percent) / 100 / step) * step;
+    const depositMinor = configuredAmountMinor > 0 || roundedPercentMinor <= 0
+        ? configuredAmountMinor
+        : roundedPercentMinor;
     if (depositMinor <= 0) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
     }
     // A deposit may never exceed the qualifying merchandise value, and a
-    // positive cash balance must remain for collection on delivery.
-    const cappedDeposit = Math.min(depositMinor, qualifyingMerchandiseMinor);
-    if (cappedDeposit <= 0 || cappedDeposit >= quote.totalMinor) {
+    // positive cash balance must remain for collection on delivery. The cap
+    // stays on the currency increment, so a discounted basis never pushes the
+    // deposit off the increment and leaves a balance the courier cannot
+    // collect. A merchant-configured amount is kept exactly as configured: an
+    // off-increment fixed deposit stays off the increment, and the cash balance
+    // check below then refuses COD for that currency.
+    const maxQualifyingDeposit = Math.floor(qualifyingMerchandiseMinor / step) * step;
+    const cappedDeposit = Math.min(depositMinor, maxQualifyingDeposit);
+    if (cappedDeposit <= 0) {
+        return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
+    }
+    if (cappedDeposit >= quote.totalMinor) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be less than the order total.") };
     }
 
@@ -259,7 +281,7 @@ export function resolveManualCodDeposit(
             balanceMinor,
             percent,
             instructions: settings.codDepositInstructions || null,
-            originalAmountMinor: configuredAmountMinor,
+            originalAmountMinor: depositMinor,
         },
         error: null,
     };
