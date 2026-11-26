@@ -105,9 +105,13 @@ describe("agent storefront manual COD deposit", () => {
         { variantId: "v_svc", quantity: 1 },
       ]), DELIVERY.city, DELIVERY.zone, DELIVERY.shippingMethodId);
 
-      // mug=required, svc=exempt -> only mug contributes to deposit basis
+      // mug=required, svc=exempt -> only mug contributes to deposit basis.
+      // One statement per prepare(): node:sqlite compiles only the first
+      // statement of a prepared string, so the second update would never run.
       fixture.sqlite.prepare(`
         UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+      `).run();
+      fixture.sqlite.prepare(`
         UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
       `).run();
 

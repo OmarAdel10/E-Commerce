@@ -252,9 +252,13 @@ describe("reviewed storefront manual COD deposit", () => {
   it("applies product-level COD deposit policies through tax-quote route", async () => {
     const fixture = createGiftCardCheckoutFixture();
     try {
-      // Seed products with different deposit policies
+      // Seed products with different deposit policies.
+      // One statement per prepare(): node:sqlite compiles only the first
+      // statement of a prepared string, so the second update would never run.
       fixture.sqlite.prepare(`
         UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+      `).run();
+      fixture.sqlite.prepare(`
         UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
       `).run();
 
