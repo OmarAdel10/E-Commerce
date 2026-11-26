@@ -104,6 +104,19 @@ async function productDelete(id) {
   });
 }
 
+async function productPolicyPatch(id, policy) {
+  const current = await productGet(id);
+  const res = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(id)}/sections/base`, {
+    method: "PATCH",
+    body: {
+      section: "base",
+      expectedAggregateRevision: current.aggregateRevision,
+      patch: { codDepositPolicy: policy },
+    },
+  });
+  assert.ok(res.ok, `deposit policy patch failed: ${res.status} ${JSON.stringify(res.body)}`);
+}
+
 async function waitFor(condition, { timeoutMs = 30000, intervalMs = 500, message } = {}) {
   const deadline = Date.now() + timeoutMs;
   let lastError = "";
@@ -357,7 +370,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await page.locator(`a[href="/admin/products/${encodeURIComponent(createdProductId)}/edit"]`).waitFor({ state: "visible", timeout: 30000 });
 
       // Verify against the API that every shown product is required-policy.
-      const filtered = await adminAuthed("/api/v1/admin/products?codDepositPolicy=required&limit=25");
+      const filtered = await adminAuthed("/api/v1/admin/products?codDepositPolicy=required&limit=100");
       assert.strictEqual(filtered.ok, true, `filtered product list failed: ${filtered.status}`);
       const filteredProducts = filtered.body.data?.products ?? filtered.body.products ?? [];
       assert.ok(filteredProducts.length > 0, "filter should return at least one required-policy product");
@@ -365,9 +378,37 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
         assert.strictEqual(p.codDepositPolicy, "required", `every filtered product should be required, got ${p.id}:${p.codDepositPolicy}`);
       }
 
-      // Reset filter to "All".
-      await filterTrigger.click();
-      await page.getByRole("option", { name: "All" }).click();
+      // The rendered rows must be exactly the required-policy products: read
+      // the rows the UI actually shows and tie each one to the API list.
+      const rowLinks = page.locator('a[href^="/admin/products/"][href$="/edit"]');
+      await waitFor(async () => (await rowLinks.count()) > 0, { message: "filtered rows render", timeoutMs: 30000 });
+      const renderedIds = (await rowLinks.evaluateAll((nodes) => nodes.map((node) => {
+        const match = /\/admin\/products\/([^/]+)\/edit/.exec(node.getAttribute("href") ?? "");
+        return match ? decodeURIComponent(match[1]) : null;
+      }))).filter((id) => typeof id === "string");
+      assert.ok(renderedIds.includes(createdProductId), "the required-policy fixture should render in the filtered rows");
+      const requiredIds = new Set(filteredProducts.map((p) => p.id));
+      for (const id of renderedIds) {
+        assert.ok(requiredIds.has(id), `rendered row ${id} should carry the required policy`);
+      }
+
+      // A product with another policy must leave the rows under this filter.
+      await productPolicyPatch(createdProductId, "exempt");
+      try {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
+        await page.waitForLoadState("networkidle").catch(() => undefined);
+        await waitFor(
+          () => page.locator(`a[href="/admin/products/${encodeURIComponent(createdProductId)}/edit"]`).count().then((count) => count === 0),
+          { message: "the exempt product leaves the required-policy rows", timeoutMs: 30000 },
+        );
+      } finally {
+        await productPolicyPatch(createdProductId, "required");
+      }
+
+      // The fixture comes back under the same filter once its policy returns.
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 120000 });
+      await page.waitForLoadState("networkidle").catch(() => undefined);
+      await page.locator(`a[href="/admin/products/${encodeURIComponent(createdProductId)}/edit"]`).waitFor({ state: "visible", timeout: 30000 });
     } finally {
       await context.close();
     }
@@ -448,8 +489,8 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
     }
   });
 
-  // ── B5: Add product through storefront UI, verify exact deposit and COD balance ──
-  void it("B5: adds product through storefront UI and verifies exact deposit and COD balance", async () => {
+  // ── B5: Add product through storefront UI, verify the exact cart total ──
+  void it("B5: adds product through storefront UI and verifies the exact cart total", async () => {
     assert.ok(createdProductId, "B1 must create a product first");
 
     const context = await browser.newContext();
@@ -488,6 +529,15 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       // Verify the COD deposit is required for this product.
       const bodyText = await page.locator("body").innerText();
       assert.ok(bodyText.includes(PRODUCT_NAME), `product "${PRODUCT_NAME}" should be in cart`);
+
+      // The cart's own live quote carries the manual COD deposit, so the
+      // deposit applies to this cart before any order is placed.
+      const manualDeposit = await waitFor(
+        () => page.evaluate(() => document.getElementById("expectedQuoteFingerprint")?.dataset.manualCodDeposit ?? "")
+          .then((value) => value === "true"),
+        { message: "cart quote marks the manual COD deposit", timeoutMs: 30000 },
+      ).then(() => true).catch(() => false);
+      assert.ok(manualDeposit, "the cart quote should mark the manual COD deposit");
     } finally {
       await context.close();
     }
@@ -575,6 +625,17 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await codMethod.waitFor({ state: "visible", timeout: 60000 });
       const codButton = codMethod.locator("button");
       if (await codButton.count() > 0) await codButton.click();
+
+      // The payment step shows the exact deposit and the cash balance.
+      let summaryAmounts = null;
+      await waitFor(async () => {
+        const text = await page.evaluate(() => document.getElementById("summaryDetails")?.textContent ?? "");
+        const amounts = (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((value) => Number(value.replace(/,/g, "")));
+        if (!amounts.includes(DEPOSIT_FIXED_MAJOR) || !amounts.includes(EXPECTED_BALANCE_MINOR / 100)) return false;
+        summaryAmounts = amounts;
+        return true;
+      }, { message: "payment step shows the exact deposit and balance", timeoutMs: 30000 });
+      assert.ok(summaryAmounts, `payment step should show deposit ${DEPOSIT_FIXED_MAJOR} and balance ${EXPECTED_BALANCE_MINOR / 100}`);
 
       // The payment step places a cash order itself; when it offers the
       // place-order button to the buyer, the buyer presses it.
