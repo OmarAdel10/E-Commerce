@@ -5,7 +5,7 @@
 // and verifies codDepositPolicy is passed through from product rows to result.
 
 import { describe, expect, it } from "vitest";
-import { selectStorefrontCartProductRows, resolveStorefrontCartValidationFromRows } from "./cart-validation";
+import { selectStorefrontCartProductRows, resolveStorefrontCartValidationFromRows, presentStorefrontCartValidation } from "./cart-validation";
 import type { StorefrontCartProductRow } from "./cart-validation";
 
 // Verify the module exports are importable and callable.
@@ -148,5 +148,43 @@ describe("cart-validation.ts — codDepositPolicy pass-through", () => {
 
         // Both product rows are in productRows output (filtering happens at DB level)
         expect(result.productRows).toHaveLength(2);
+    });
+});
+
+describe("cart-validation.ts — presented cart never leaks product rows", () => {
+    it("presentStorefrontCartValidation omits the internal productRows", () => {
+        const productRows: StorefrontCartProductRow[] = [
+            {
+                id: "prod_required",
+                name: "Required Deposit Product",
+                isActive: true,
+                priceMinor: 10000,
+                discountBps: 0,
+                discountType: "percentage",
+                discountAmountMinor: 0,
+                freeDelivery: false,
+                shippingProfileId: null,
+                defaultWeightGrams: null,
+                taxClassId: null,
+                isGiftCard: false,
+                customizationSchema: null,
+                codDepositPolicy: "required",
+            },
+        ];
+
+        const result = resolveStorefrontCartValidationFromRows(
+            [],
+            {
+                currencyCode: "EGP",
+                priceIncrementMinor: 1,
+            },
+            productRows,
+            [],
+            new Map(),
+        );
+
+        const presented = presentStorefrontCartValidation(result, 2) as Record<string, unknown>;
+        expect(presented.productRows).toBeUndefined();
+        expect("productRows" in presented).toBe(false);
     });
 });

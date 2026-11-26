@@ -1140,7 +1140,9 @@ export function presentStorefrontCartValidation(
     propertiesHashes: readonly string[] = [],
 ) {
     // Bundle savings are checkout discounts: the tax quote shows them.
-    const { subtotalMinor, items, bundles: _bundles, money, marketContext: _marketContext, marketAuthority: _marketAuthority, transform: _transform, pricingSegmentIds: _pricingSegmentIds, ...rest } = result;
+    // `productRows` stays internal: each row carries every active market's
+    // pricing matrix, which the buyer must never see.
+    const { subtotalMinor, items, bundles: _bundles, money, marketContext: _marketContext, marketAuthority: _marketAuthority, transform: _transform, pricingSegmentIds: _pricingSegmentIds, productRows: _productRows, ...rest } = result;
     // Amounts are in the cart's currency (its market's), with its places.
     decimalPlaces = money?.decimalPlaces ?? decimalPlaces;
     return {
