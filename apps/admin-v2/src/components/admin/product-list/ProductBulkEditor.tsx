@@ -389,6 +389,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         <TableCell />
                         <TableCell className="w-32">{stockCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
                         <TableCell />
+                        <TableCell />
                         <TableCell className="w-32">{weightCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
                       </TableRow>
                     )) : null}

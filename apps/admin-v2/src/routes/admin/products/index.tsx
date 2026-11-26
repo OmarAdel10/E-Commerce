@@ -148,7 +148,9 @@ function ProductsPage() {
   const { products: can } = useCatalogActionPermissions();
   const duplicate = useDuplicateProduct();
   const [importing, setImporting] = useState(false);
-  const [codDepositFilter, setCodDepositFilter] = useState(search.codDepositPolicy ?? "");
+  // The filter value follows the address bar, so a back/forward navigation
+  // restores the filter the URL carries.
+  const codDepositFilter = search.codDepositPolicy ?? "";
   // X3: the category filter searches on the server and pages; a store may have hundreds.
   const { data: chosenCategory } = useQuery({ ...categoryQueryOptions(search.category ?? ""), enabled: Boolean(search.category) });
   const { data: channelData } = useQuery(salesChannelsQueryOptions());
@@ -246,7 +248,6 @@ function ProductsPage() {
             value={codDepositFilter}
             clearable
             onValueChange={(value) => {
-              setCodDepositFilter(value);
               void navigate({
                 to: "/admin/products",
                 search: ((prev: Record<string, unknown>) => ({
