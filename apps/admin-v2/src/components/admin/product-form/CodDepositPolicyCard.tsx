@@ -28,21 +28,21 @@ export function CodDepositPolicyCard({ form, readOnly }: {
           disabled={readOnly}
         >
           <label className="flex items-start gap-2 py-1 text-body">
-            <span className="flex h-lh items-center"><RadioGroupItem value="inherit" /></span>
+            <span className="flex h-lh items-center"><RadioGroupItem value="inherit" aria-label={t("inheritGlobal")} /></span>
             <span>
               <span className="block font-medium">{t("inheritGlobal")}</span>
               <span className="block text-muted-foreground text-caption">{t("inheritGlobalHelp")}</span>
             </span>
           </label>
           <label className="flex items-start gap-2 py-1 text-body">
-            <span className="flex h-lh items-center"><RadioGroupItem value="required" /></span>
+            <span className="flex h-lh items-center"><RadioGroupItem value="required" aria-label={t("requireDeposit")} /></span>
             <span>
               <span className="block font-medium">{t("requireDeposit")}</span>
               <span className="block text-muted-foreground text-caption">{t("requireDepositHelp")}</span>
             </span>
           </label>
           <label className="flex items-start gap-2 py-1 text-body">
-            <span className="flex h-lh items-center"><RadioGroupItem value="exempt" /></span>
+            <span className="flex h-lh items-center"><RadioGroupItem value="exempt" aria-label={t("exemptFromDeposit")} /></span>
             <span>
               <span className="block font-medium">{t("exemptFromDeposit")}</span>
               <span className="block text-muted-foreground text-caption">{t("exemptFromDepositHelp")}</span>

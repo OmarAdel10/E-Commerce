@@ -112,6 +112,18 @@ describe("CodDepositPolicyCard", () => {
     }
   });
 
+  it("names every policy option for assistive technology", async () => {
+    const { container, root } = await renderPolicyCard({});
+
+    try {
+      expect(radio(container, "inherit").getAttribute("aria-label")).toBe("Inherit global settings");
+      expect(radio(container, "required").getAttribute("aria-label")).toBe("Require deposit");
+      expect(radio(container, "exempt").getAttribute("aria-label")).toBe("Do not require deposit");
+    } finally {
+      await unmount(root, container);
+    }
+  });
+
   it("disables every policy option and keeps the value unchanged when read-only", async () => {
     const { container, root, form } = await renderPolicyCard({ readOnly: true });
     const required = radio(container, "required");
