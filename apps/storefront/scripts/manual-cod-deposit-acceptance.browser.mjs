@@ -33,7 +33,9 @@ const STOREFRONT = "http://localhost:4322";
 
 // ── Controlled fixture inputs (correction #2) ──
 const PRODUCT_NAME = "Browser Acceptance COD Product";
-const PRODUCT_SLUG = "browser-acceptance-cod-product";
+// Unique per run: a deleted fixture keeps its handle, so a fixed handle would
+// collide with the previous run's product.
+const PRODUCT_SLUG = `browser-acceptance-cod-product-${Date.now()}`;
 const PRODUCT_PRICE_MAJOR = 300;   // 30000 minor (EGP major)
 const SHIPPING_MAJOR = 60;         // 6000 minor
 const ORDER_TOTAL_MINOR = (PRODUCT_PRICE_MAJOR + SHIPPING_MAJOR) * 100; // 36000
@@ -148,8 +150,12 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
         await productDelete(createdProductId);
       } catch { /* best-effort cleanup even on failure */ }
     }
-    await adminContext.close();
-    await browser.close();
+    try {
+      if (adminContext) await adminContext.close();
+    } finally {
+      // The browser closes even when the context cleanup fails.
+      await browser?.close();
+    }
   });
 
   // ── B1: Admin product creation with deposit policy ──
@@ -333,8 +339,16 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       // Restore to "Require deposit" for dependent scenarios.
       await page.locator('[role="radio"][value="required"]').first().click();
       await waitFor(() => saveButton.isEnabled().then((e) => e === true), { message: "Save button enabled for restore", timeoutMs: 30000 });
+      // The radio is checked by the click itself, so the restore is proven by
+      // the save response and the stored policy, not by the radio state.
+      saveResponse = null;
       await saveButton.click();
-      await waitFor(() => page.locator('[role="radio"][value="required"]').first().isChecked().then((c) => c === true), { message: "Require deposit checked after restore", timeoutMs: 30000 });
+      await waitFor(() => saveResponse !== null, { message: "product restore response received", timeoutMs: 60000 });
+      assert.ok(saveResponse.ok(), `product restore failed: ${saveResponse.status()}`);
+      const restored = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(createdProductId)}`);
+      assert.strictEqual(restored.ok, true, `product GET failed: ${restored.status}`);
+      const restoredProd = restored.body.data ?? restored.body;
+      assert.strictEqual(restoredProd.codDepositPolicy, "required", `expected codDepositPolicy=required after restore, got ${restoredProd.codDepositPolicy}`);
     } finally {
       await context.close();
     }
@@ -556,9 +570,24 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await page.waitForTimeout(1000);
 
       // Drive the actual Add to cart UI.
+      // The product page writes the line into the browser cart, so wait for
+      // that write: navigating before it lands could cancel the line.
       const addButton = page.locator('[data-action="add-to-cart"]');
       await addButton.waitFor({ state: "visible", timeout: 30000 });
       await addButton.click();
+      await waitFor(
+        () => page.evaluate((productId) => {
+          const raw = window.localStorage.getItem("cart:v3");
+          if (!raw) return false;
+          try {
+            const cart = JSON.parse(raw);
+            return Object.values(cart?.items ?? {}).some((item) => item?.id === productId);
+          } catch {
+            return false;
+          }
+        }, createdProductId),
+        { message: "the cart line is persisted", timeoutMs: 30000 },
+      );
 
       const cartRes = await page.goto(`${STOREFRONT}/cart`, { waitUntil: "domcontentloaded", timeout: 120000 });
       assert.strictEqual(cartRes.status(), 200, "cart page should load");
