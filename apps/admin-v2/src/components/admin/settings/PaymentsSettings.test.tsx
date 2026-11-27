@@ -6,7 +6,7 @@ import { DEFAULT_NET_TERMS_SETTINGS } from "@scalius/shared/payment-terms";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 import { SaveScope } from "~/components/admin/shared/SaveBar";
 import { PermissionProvider } from "~/contexts/PermissionContext";
 import { appPaymentProvidersQuery } from "~/lib/api-query-options/payment-providers";
@@ -18,6 +18,10 @@ vi.mock(import("@scalius/api-client/sdk"), async (importOriginal) => ({
   ...await importOriginal(),
   putApiV1AdminSettingsCheckoutFlow: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.mocked(putApiV1AdminSettingsCheckoutFlow).mockReset();
+});
 
 function editField(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const prototype = input instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
@@ -157,6 +161,156 @@ it("validates and saves the active COD deposit mode through the checkout setting
     });
     expect(save.mock.calls[2]?.[0].body).not.toHaveProperty("codDepositAmount");
     expect(save.mock.calls[2]?.[0].body).not.toHaveProperty("codDepositPercent");
+  } finally {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("saves the selected COD deposit default product policy", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: "static" } } });
+  const savedFlow: PutApiV1AdminSettingsCheckoutFlowResponse["data"] = {
+    checkoutMode: "all",
+    guestCheckoutEnabled: true,
+    partialPaymentEnabled: false,
+    partialPaymentAmount: 0,
+    requireFullBillingAddress: false,
+    autoFulfilMode: "after_payment",
+    codDepositEnabled: false,
+    codDepositMode: "fixed",
+    codDepositAmount: 0,
+    codDepositPercent: 0,
+    codDepositInstructions: "",
+    codDepositDefaultProductPolicy: "all",
+    revision: 4,
+  };
+  let stored = savedFlow;
+  const save = vi.mocked(putApiV1AdminSettingsCheckoutFlow);
+  save.mockImplementation(async ({ body }) => {
+    const { expectedRevision: _expectedRevision, ...changes } = body;
+    stored = { ...stored, ...changes, revision: stored.revision + 1 };
+    return {
+      data: { success: true, data: stored },
+      request: new Request("https://admin-api.invalid"),
+      response: new Response(null, { status: 200 }),
+    };
+  });
+  client.setQueryData(checkoutFlowQuery.queryKey, savedFlow);
+  client.setQueryData(currencyQuery.queryKey, { currencyCode: "USD", currencySymbol: "$" });
+  client.setQueryData(paymentMethodsQuery.queryKey, {
+    enabledMethods: ["cod"],
+    defaultMethod: "cod",
+    revision: 2,
+    gateways: [],
+    gatewayStatus: { cod: { enabled: true, configured: true, usable: true } },
+    netTerms: DEFAULT_NET_TERMS_SETTINGS,
+  });
+  client.setQueryData(appPaymentProvidersQuery.queryKey, []);
+  client.setQueryData(marketCurrenciesQueryOptions().queryKey, { shopCurrencyCode: "USD", chargeable: "any", marketCurrencies: [] });
+  const container = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(container);
+  const field = <T extends HTMLElement,>(selector: string) => container.querySelector<T>(selector)!;
+  const submit = () => field<HTMLButtonElement>("#submit-payment-settings").click();
+
+  try {
+    await act(async () => root.render(
+      <QueryClientProvider client={client}>
+        <PermissionProvider permissions={["settings.general.edit"]}>
+          <SaveScope render={(state) => (
+            <button id="submit-payment-settings" type="button" onClick={() => void state.saveAll()}>Save</button>
+          )}>
+            <PaymentMethodsCard />
+          </SaveScope>
+        </PermissionProvider>
+      </QueryClientProvider>,
+    ));
+    await act(async () => field<HTMLButtonElement>("#cod-deposit").click());
+    const selected = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+      .find((option) => option.closest("label")?.textContent?.includes("Selected products only"))!;
+    await act(async () => selected.click());
+    await act(async () => editField(field<HTMLInputElement>("#cod-deposit-amount"), "12.50"));
+    await act(async () => submit());
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(client.getQueryData(checkoutFlowQuery.queryKey)).toMatchObject({ revision: 5 });
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save.mock.calls[0]?.[0].body).toMatchObject({
+      codDepositEnabled: true,
+      codDepositDefaultProductPolicy: "selected",
+    });
+  } finally {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("does not send a changed COD deposit default product policy when read-only", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: "static" } } });
+  const savedFlow: PutApiV1AdminSettingsCheckoutFlowResponse["data"] = {
+    checkoutMode: "all",
+    guestCheckoutEnabled: true,
+    partialPaymentEnabled: false,
+    partialPaymentAmount: 0,
+    requireFullBillingAddress: false,
+    autoFulfilMode: "after_payment",
+    codDepositEnabled: true,
+    codDepositMode: "fixed",
+    codDepositAmount: 10,
+    codDepositPercent: 0,
+    codDepositInstructions: "",
+    codDepositDefaultProductPolicy: "all",
+    revision: 4,
+  };
+  client.setQueryData(checkoutFlowQuery.queryKey, savedFlow);
+  client.setQueryData(currencyQuery.queryKey, { currencyCode: "USD", currencySymbol: "$" });
+  client.setQueryData(paymentMethodsQuery.queryKey, {
+    enabledMethods: ["cod"],
+    defaultMethod: "cod",
+    revision: 2,
+    gateways: [],
+    gatewayStatus: { cod: { enabled: true, configured: true, usable: true } },
+    netTerms: DEFAULT_NET_TERMS_SETTINGS,
+  });
+  client.setQueryData(appPaymentProvidersQuery.queryKey, []);
+  client.setQueryData(marketCurrenciesQueryOptions().queryKey, { shopCurrencyCode: "USD", chargeable: "any", marketCurrencies: [] });
+  const save = vi.mocked(putApiV1AdminSettingsCheckoutFlow);
+  const container = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(container);
+  const field = <T extends HTMLElement,>(selector: string) => container.querySelector<T>(selector)!;
+  const submit = () => field<HTMLButtonElement>("#submit-payment-settings").click();
+
+  try {
+    await act(async () => root.render(
+      <QueryClientProvider client={client}>
+        <PermissionProvider permissions={[]}>
+          <SaveScope render={(state) => (
+            <button id="submit-payment-settings" type="button" onClick={() => void state.saveAll()}>Save</button>
+          )}>
+            <PaymentMethodsCard />
+          </SaveScope>
+        </PermissionProvider>
+      </QueryClientProvider>,
+    ));
+    const selected = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+      .find((option) => option.closest("label")?.textContent?.includes("Selected products only"))!;
+    const all = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+      .find((option) => option.closest("label")?.textContent?.includes("Require by default"))!;
+
+    expect(selected.disabled).toBe(true);
+    await act(async () => selected.click());
+    await act(async () => submit());
+
+    expect(selected.getAttribute("aria-checked")).toBe("false");
+    expect(all.getAttribute("aria-checked")).toBe("true");
+    expect(save).not.toHaveBeenCalled();
   } finally {
     await act(async () => root.unmount());
     client.clear();
