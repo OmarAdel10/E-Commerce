@@ -124,7 +124,7 @@ describe("agent storefront manual COD deposit", () => {
         codDepositDefaultProductPolicy: "selected",
       });
 
-      const customerPhone = "+880****5678";
+      const customerPhone = "+8801712345678";
       const quote = await quoteAgentStorefrontCheckout(fixture.db, grantId, contextId, {
         customerPhone, cod: true,
       });
@@ -134,7 +134,32 @@ describe("agent storefront manual COD deposit", () => {
       // Deposit = min(10000 configured, qualifying merchandise) = min(10000, 30000) = 10000
       expect(quote.manualCodDeposit).toMatchObject({
         depositMinor: 10000,
+        // Order total = mug 30000 + svc 50000 + shipping 6000 = 86000
+        balanceMinor: 76000,
       });
+
+      // The committed plan must record the qualifying basis, so a leak of the
+      // exempt service into the basis cannot pass unnoticed.
+      const placed = await submitAgentStorefrontCheckout(fixture.db, grantId, contextId, {
+        expectedRevision: quote.contextRevision,
+        expectedQuoteFingerprint: quote.quoteFingerprint,
+        idempotencyKey: "test-product-policy-deposit",
+        customerName: "Checkout Test",
+        customerPhone,
+        customerEmail: null,
+        shippingAddress: DELIVERY.shippingAddress,
+        notes: null,
+        paymentMethod: "cod",
+      }, { requestUrl: "https://example.test/checkout" });
+      expect(placed.response.paymentMethod).toBe("cod");
+      expect(fixture.one("SELECT deposit_amount_minor, balance_due_minor, total_amount_minor, qualifying_merchandise_minor, qualifying_product_ids FROM payment_plans"))
+        .toEqual({
+          deposit_amount_minor: 10000,
+          balance_due_minor: 76000,
+          total_amount_minor: 86000,
+          qualifying_merchandise_minor: 30000,
+          qualifying_product_ids: '["p_mug"]',
+        });
     } finally {
       fixture.close();
     }

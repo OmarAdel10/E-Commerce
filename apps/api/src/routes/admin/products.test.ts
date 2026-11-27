@@ -61,6 +61,67 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
         expect(response.status).toBe(400);
     });
 
+    it("GET / filters the listed rows by codDepositPolicy", async () => {
+        const app = appWithDb();
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        const create = async (name: string, slug: string, codDepositPolicy: string) => {
+            const response = await app.request("/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    description: null,
+                    price: 100,
+                    categoryId: "cat_1",
+                    isActive: true,
+                    canonicalPath: `/products/${slug}`,
+                    slug,
+                    media: [],
+                    attributes: [],
+                    additionalInfo: [],
+                    customizationSchema: null,
+                    isGiftCard: false,
+                    metaTitle: null,
+                    metaDescription: null,
+                    noIndex: false,
+                    excludeFromSitemap: false,
+                    productCondition: "new",
+                    codDepositPolicy,
+                }),
+            }, env);
+            expect(response.status).toBe(201);
+            const body = JSON.parse(await response.text()) as { data: { id: string } };
+            return body.data.id;
+        };
+        const requiredId = await create("Required Product", "required-product", "required");
+        const exemptId = await create("Exempt Product", "exempt-product", "exempt");
+
+        const listResponse = await app.request("/?codDepositPolicy=required", {}, env);
+        expect(listResponse.status).toBe(200);
+        const listBody = JSON.parse(await listResponse.text()) as {
+            data: { products: Array<{ id: string }> };
+        };
+        const listedIds = listBody.data.products.map((product) => product.id);
+        expect(listedIds).toContain(requiredId);
+        expect(listedIds).not.toContain(exemptId);
+
+        const exemptResponse = await app.request("/?codDepositPolicy=exempt", {}, env);
+        expect(exemptResponse.status).toBe(200);
+        const exemptBody = JSON.parse(await exemptResponse.text()) as {
+            data: { products: Array<{ id: string }> };
+        };
+        const exemptIds = exemptBody.data.products.map((product) => product.id);
+        expect(exemptIds).toContain(exemptId);
+        expect(exemptIds).not.toContain(requiredId);
+    });
+
     it("POST / creates a product with codDepositPolicy=required", async () => {
         const app = appWithDb();
         // Seed settings, categories and shipping profile needed by createProduct

@@ -300,4 +300,56 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
       client.query("INSERT INTO products (id, name, slug, cod_deposit_policy) VALUES ('p2', 'P2', 'p2', 'invalid')"),
     ).rejects.toMatchObject({ constraint: /products_cod_deposit_policy_check/ });
   });
+
+  it("bumps the checkout authority revision on every product write", async () => {
+    const before = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
+    const startRevision = Number(before.rows[0].revision);
+
+    await client.query("INSERT INTO products (id, name, slug) VALUES ('p_fence', 'Fence', 'p_fence')");
+    const afterInsert = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
+    expect(Number(afterInsert.rows[0].revision)).toBe(startRevision + 1);
+
+    await client.query("UPDATE products SET name = 'Fence renamed' WHERE id = 'p_fence'");
+    const afterUpdate = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
+    expect(Number(afterUpdate.rows[0].revision)).toBe(startRevision + 2);
+
+    await client.query("DELETE FROM products WHERE id = 'p_fence'");
+    const afterDelete = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
+    expect(Number(afterDelete.rows[0].revision)).toBe(startRevision + 3);
+  });
+
+  it("adds cod_deposit_amount with a non-negative default", async () => {
+    const result = await client.query(
+      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'payment_plans' AND column_name = 'cod_deposit_amount'",
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].column_name).toBe("cod_deposit_amount");
+    expect(result.rows[0].is_nullable).toBe("NO");
+    expect(result.rows[0].column_default).toBe("0");
+  });
+
+  it("rejects negative deposit snapshots on PostgreSQL", async () => {
+    await client.query("INSERT INTO orders (id) VALUES ('o_pg_snapshot')");
+    await client.query(
+      "INSERT INTO payment_plans (id, order_id, kind, status, cod_deposit_amount) VALUES ('plan_pg_snapshot', 'o_pg_snapshot', 'manual', 'pending', 5000)",
+    );
+
+    const stored = await client.query(
+      "SELECT cod_deposit_amount, qualifying_merchandise_minor FROM payment_plans WHERE id = 'plan_pg_snapshot'",
+    );
+    expect(stored.rows[0].cod_deposit_amount).toBe(5000);
+    expect(stored.rows[0].qualifying_merchandise_minor).toBe(0);
+
+    await expect(
+      client.query(
+        "INSERT INTO payment_plans (id, order_id, kind, status, cod_deposit_amount) VALUES ('plan_pg_negative', 'o_pg_snapshot', 'manual', 'pending', -1)",
+      ),
+    ).rejects.toThrow();
+
+    await expect(
+      client.query(
+        "INSERT INTO payment_plans (id, order_id, kind, status, qualifying_merchandise_minor) VALUES ('plan_pg_negative_basis', 'o_pg_snapshot', 'manual', 'pending', -1)",
+      ),
+    ).rejects.toThrow();
+  });
 });
