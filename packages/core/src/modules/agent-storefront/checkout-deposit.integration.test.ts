@@ -152,13 +152,14 @@ describe("agent storefront manual COD deposit", () => {
         paymentMethod: "cod",
       }, { requestUrl: "https://example.test/checkout" });
       expect(placed.response.paymentMethod).toBe("cod");
-      expect(fixture.one("SELECT deposit_amount_minor, balance_due_minor, total_amount_minor, qualifying_merchandise_minor, qualifying_product_ids FROM payment_plans"))
+      expect(fixture.one("SELECT deposit_amount_minor, balance_due_minor, total_amount_minor, qualifying_merchandise_minor, qualifying_product_ids, cod_deposit_amount FROM payment_plans"))
         .toEqual({
           deposit_amount_minor: 10000,
           balance_due_minor: 76000,
           total_amount_minor: 86000,
           qualifying_merchandise_minor: 30000,
           qualifying_product_ids: '["p_mug"]',
+          cod_deposit_amount: 10000,
         });
     } finally {
       fixture.close();
