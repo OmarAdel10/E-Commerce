@@ -223,7 +223,7 @@ function ProductsPage() {
         ] }}
         searchPlaceholder={t("searchPlaceholder")}
         countLabel={(count) => t("productsCount", { count })}
-        filterParams={["category", "channel", "channelState", "codDepositPolicy"]}
+        filterParams={["category", "channel", "channelState", "codDepositPolicy", "appFilter"]}
         filters={
           <>
           <FilterControl label={t("category")}>

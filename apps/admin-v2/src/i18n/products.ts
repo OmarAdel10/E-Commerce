@@ -325,7 +325,7 @@ export const productMessages = defineMessages({
     codDepositPolicyAll: "সব",
     codDepositPolicyInherit: "বৈশ্বিক অনুসরণ করুন",
     codDepositPolicyRequired: "প্রয়োজনীয়",
-    codDepositPolicyExempt: "চুক্তিবহির্ভূত",
+    codDepositPolicyExempt: "মুক্তি",
     filterDepositPolicy: "COD ডিপোজিট নীতি দিয়ে ফিল্টার করুন",
     emptyTitle: "প্রথম পণ্য যোগ করুন",
     emptyHint: "যোগ করা পণ্য এখানে দেখা যাবে।",

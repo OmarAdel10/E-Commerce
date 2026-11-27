@@ -906,7 +906,7 @@ function PaymentOptionsFields() {
             </SettingsField>
             <SettingsField id="cod-deposit-default-product-policy" label={t("codDepositDefaultProductPolicy")} help={t("codDepositDefaultProductPolicyHelp")}>
               <RadioGroup
-                aria-labelledby="cod-deposit-default-product-policy"
+                aria-labelledby="cod-deposit-default-product-policy-field-label"
                 value={values.codDepositDefaultProductPolicy ?? "all"}
                 disabled={!canEdit}
                 onValueChange={(policy) => setValue("codDepositDefaultProductPolicy", policy as "all" | "selected")}
