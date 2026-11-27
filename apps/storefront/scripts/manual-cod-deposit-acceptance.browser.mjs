@@ -20,6 +20,12 @@
  *   pnpm dev                  (API :8787, storefront :4322, Mailpit :8025)
  *   pnpm --filter @scalius/admin-v2 dev   (dashboard :4323)
  *   SCALIUS_WRANGLER_STATE pointing at an isolated migrated state dir.
+ *
+ * Store prerequisites (the suite asserts them, it never creates them): the
+ * store currency must be EGP, the active market must be Egypt, cash on
+ * delivery must serve EG and charge EGP, and a delivery method named
+ * "Standard" must serve EG with a 60 fee. The preflight below checks these
+ * before any scenario mutates the store and names every missing piece.
  */
 
 import assert from "node:assert/strict";
@@ -135,12 +141,73 @@ async function waitFor(condition, { timeoutMs = 30000, intervalMs = 500, message
   throw new Error(`Timed out waiting: ${message ?? ""}${lastError ? ` (${lastError})` : ""}`);
 }
 
+/**
+ * Read the store facts this suite depends on: the checkout config and the
+ * Egyptian delivery method. Read-only.
+ */
+async function readEgyptianStoreFixture() {
+  const checkoutConfig = await json("/api/v1/checkout/config");
+  assert.ok(checkoutConfig.ok, `checkout config read failed: ${checkoutConfig.status}`);
+  const config = checkoutConfig.body.data ?? checkoutConfig.body;
+  const codGateway = (config.gateways ?? []).find((gateway) => gateway.id === "cod");
+  const shippingMethods = await json("/api/v1/shipping-methods");
+  assert.ok(shippingMethods.ok, `shipping methods read failed: ${shippingMethods.status}`);
+  const methods = (shippingMethods.body.data ?? shippingMethods.body).shippingMethods ?? [];
+  const egMethods = methods.filter((method) => (method.countries ?? []).some((country) => country.code === "EG"));
+  // Pick the intended fixture method by name, never by position: a store
+  // with several EG methods must still exercise this one. A store that
+  // offers a single EG method keeps working unchanged.
+  const egMethod = egMethods.length === 1
+    ? egMethods[0]
+    : egMethods.find((method) => method.name === SHIPPING_METHOD_NAME);
+  return { config, codGateway, egMethods, egMethod, methods };
+}
+
+/**
+ * The store must already be the Egyptian one before any scenario runs:
+ * otherwise the amounts below would fit any store. The suite never creates
+ * these prerequisites, so it checks them up front and names every missing
+ * piece instead of failing later on a half-mutated store.
+ */
+async function assertEgyptianStorePrerequisites() {
+  const { config, codGateway, egMethods, egMethod } = await readEgyptianStoreFixture();
+  const missing = [];
+  if (config.currency?.code !== "EGP") {
+    missing.push(`store currency EGP (got ${config.currency?.code ?? "none"})`);
+  }
+  if (config.market?.handle !== "egypt") {
+    missing.push(`Egypt market (got ${config.market?.handle ?? "none"})`);
+  }
+  if (!codGateway) {
+    missing.push("a cash on delivery gateway");
+  } else {
+    if (!(codGateway.countries ?? []).includes("EG")) missing.push("cash on delivery serving EG");
+    if (!(codGateway.currencies ?? []).includes("EGP")) missing.push("cash on delivery charging EGP");
+  }
+  if (egMethods.length === 0) {
+    missing.push("a delivery method serving EG");
+  } else if (!egMethod) {
+    missing.push(`a delivery method named ${SHIPPING_METHOD_NAME}`);
+  } else if (egMethod.fee !== SHIPPING_MAJOR) {
+    missing.push(`the ${SHIPPING_METHOD_NAME} EG delivery fee ${SHIPPING_MAJOR} (got ${egMethod.fee})`);
+  }
+  assert.deepEqual(missing, [], [
+    "the store is missing the prerequisites this acceptance suite needs:",
+    ...missing.map((entry) => `- ${entry}`),
+    "Provision the Egyptian store first (EGP currency, Egypt market, cash on delivery for EG/EGP,",
+    `a ${SHIPPING_METHOD_NAME} delivery method for EG with a ${SHIPPING_MAJOR} fee); the suite never creates them.`,
+  ].join("\n"));
+}
+
 void describe("manual COD deposit — genuine browser acceptance (live stack)", async () => {
   let createdProductId = null;
   let createdProductSlug = null;
   let createdVariantId = null;
 
   before(async () => {
+    // The prerequisites first: a store that cannot run the suite must fail
+    // before it creates a product, not after.
+    await assertEgyptianStorePrerequisites();
     const chromeExecutable = process.env.CHROME_BIN || "/opt/google/chrome/chrome";
     browser = await chromium.launch({ executablePath: chromeExecutable });
     adminCookies = await signInAdmin();
@@ -581,28 +648,14 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       // The store under test must be the Egyptian one, otherwise the amounts
       // below would fit any store: the EGP currency, the Egypt market, cash
       // on delivery that serves EG and charges EGP, and a delivery method
-      // that serves EG for 60 EGP.
-      const checkoutConfig = await json("/api/v1/checkout/config");
-      assert.ok(checkoutConfig.ok, `checkout config read failed: ${checkoutConfig.status}`);
-      const config = checkoutConfig.body.data ?? checkoutConfig.body;
+      // that serves EG for 60 EGP. The same facts the preflight checked.
+      const { config, codGateway, egMethod, methods } = await readEgyptianStoreFixture();
       assert.strictEqual(config.currency?.code, "EGP", `expected the EGP store currency, got ${JSON.stringify(config.currency)}`);
       assert.strictEqual(config.market?.handle, "egypt", `expected the Egypt market, got ${JSON.stringify(config.market)}`);
-      const codGateway = (config.gateways ?? []).find((gateway) => gateway.id === "cod");
       assert.ok(codGateway, "cash on delivery is not offered");
       assert.ok((codGateway.countries ?? []).includes("EG"), `cash on delivery must serve EG, got ${JSON.stringify(codGateway.countries)}`);
       assert.ok((codGateway.currencies ?? []).includes("EGP"), `cash on delivery must charge EGP, got ${JSON.stringify(codGateway.currencies)}`);
-      const shippingMethods = await json("/api/v1/shipping-methods");
-      assert.ok(shippingMethods.ok, `shipping methods read failed: ${shippingMethods.status}`);
-      const methods = (shippingMethods.body.data ?? shippingMethods.body).shippingMethods ?? [];
-      const egMethods = methods.filter((method) => (method.countries ?? []).some((country) => country.code === "EG"));
-      assert.ok(egMethods.length > 0, `no delivery method serves EG, got ${JSON.stringify(methods)}`);
-      // Pick the intended fixture method by name, never by position: a store
-      // with several EG methods must still exercise this one. A store that
-      // offers a single EG method keeps working unchanged.
-      const egMethod = egMethods.length === 1
-        ? egMethods[0]
-        : egMethods.find((method) => method.name === SHIPPING_METHOD_NAME);
-      assert.ok(egMethod, `the ${SHIPPING_METHOD_NAME} delivery method must serve EG, got ${JSON.stringify(egMethods.map((method) => method.name))}`);
+      assert.ok(egMethod, `the ${SHIPPING_METHOD_NAME} delivery method must serve EG, got ${JSON.stringify(methods.map((method) => method.name))}`);
       assert.ok((egMethod.countries ?? []).some((country) => country.code === "EG"), `the chosen delivery method must serve EG, got ${JSON.stringify(egMethod.countries)}`);
       assert.strictEqual(egMethod.fee, SHIPPING_MAJOR, `expected the EG delivery fee ${SHIPPING_MAJOR}, got ${egMethod.fee}`);
 
