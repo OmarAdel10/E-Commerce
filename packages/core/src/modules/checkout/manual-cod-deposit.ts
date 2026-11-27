@@ -125,6 +125,15 @@ export function resolveCodDepositQualifyingValue(
                 `Invalid quantity for product ${line.productId}: ${String(line.quantity)}. Must be a finite number >= 1.`,
             );
         }
+        // The order-level discount is authoritative data too: a corrupt value
+        // must fail closed instead of silently changing the deposit basis.
+        // Zero is legitimate; a discount above the line value clamps the
+        // qualifying value to zero (see lineQualifyingValue).
+        if (!Number.isFinite(line.discountMinor) || line.discountMinor < 0) {
+            throw new ValidationError(
+                `Invalid discount for product ${line.productId}: ${String(line.discountMinor)}. Must be a non-negative finite number.`,
+            );
+        }
         const stored = productPolicyById.get(line.productId);
         // A missing entry means the product's authoritative data was not loaded
         // into the policy map. This is distinct from an intentionally inherited

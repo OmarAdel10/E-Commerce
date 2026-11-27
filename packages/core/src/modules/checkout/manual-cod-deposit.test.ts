@@ -329,6 +329,30 @@ describe("resolveCodDepositQualifyingValue", () => {
     expect(value).toBe(0);
   });
 
+  it("rejects a corrupt order-level discount instead of changing the basis", () => {
+    expect(() =>
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: -1 },
+        ],
+        policies,
+        "all",
+      ),
+    ).toThrow(/Invalid discount for product prod_required/);
+  });
+
+  it("rejects a non-finite order-level discount instead of changing the basis", () => {
+    expect(() =>
+      resolveCodDepositQualifyingValue(
+        [
+          { productId: "prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false, discountMinor: Number.NaN },
+        ],
+        policies,
+        "all",
+      ),
+    ).toThrow(/Invalid discount for product prod_required/);
+  });
+
   it("inherit products require a deposit when the global default is all", () => {
     const value = resolveCodDepositQualifyingValue(
       [{ productId: "prod_inherit", quantity: 1, unitPriceMinor: 7000, isGiftCard: false, discountMinor: 0 }],
