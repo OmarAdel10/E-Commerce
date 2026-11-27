@@ -284,6 +284,66 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
         expect(row.cod_deposit_policy).toBe("required");
     });
 
+    it("PATCH /{id}/sections/base stores only the deposit policy change", async () => {
+        const app = appWithDb();
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        const createResponse = await app.request("/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: "Test Product",
+                description: null,
+                price: 100,
+                categoryId: "cat_1",
+                isActive: true,
+                canonicalPath: "/products/test-product",
+                slug: "test-product",
+                media: [],
+                attributes: [],
+                additionalInfo: [],
+                customizationSchema: null,
+                isGiftCard: false,
+                metaTitle: null,
+                metaDescription: null,
+                noIndex: false,
+                excludeFromSitemap: false,
+                productCondition: "new",
+                codDepositPolicy: "inherit",
+            }),
+        }, env);
+        expect(createResponse.status).toBe(201);
+        const productId = (JSON.parse(await createResponse.text()) as { data: { id: string } }).data.id;
+
+        // The bulk editor writes the policy on its own: one base-section field,
+        // nothing else, against the revision the row was read at.
+        let revision = 1;
+        for (const policy of ["required", "exempt", "inherit"] as const) {
+            const patchResponse = await app.request(`/${productId}/sections/base`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    section: "base",
+                    expectedAggregateRevision: revision,
+                    patch: { codDepositPolicy: policy },
+                }),
+            }, env);
+            expect(patchResponse.status).toBe(200);
+            const patchBody = JSON.parse(await patchResponse.text()) as { data: { aggregateRevision: number } };
+            revision = patchBody.data.aggregateRevision;
+            const row = fixture.sqlite.prepare(
+                "SELECT cod_deposit_policy FROM products WHERE id = ?"
+            ).get(productId) as { cod_deposit_policy: string };
+            expect(row.cod_deposit_policy).toBe(policy);
+        }
+    });
+
     it("POST /bulk-delete acts on the rows the deposit policy filter matches", async () => {
         const app = appWithDb();
         fixture.sqlite.exec(`
