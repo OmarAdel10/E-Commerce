@@ -93,26 +93,43 @@ Test types are labeled explicitly:
 | Requirement | Test file | Test name | Type | Actual assertions | Result |
 |---|---|---|---|---|---|
 | SQLite migration tests | `packages/database/src/migrations/0191*` | (SQLite migration tests) | Database migration | Migrated schema applied | PASS |
-| Native PostgreSQL migration tests | `packages/database/src/migrations/manual-cod.postgres-native.test.ts`, `0191_product_cod_deposit_policy.test.ts` | 14 tests against live PostgreSQL | Database migration | See Finding 4 evidence | See Finding 4 |
+| Native PostgreSQL migration tests | `packages/database/src/migrations/0191_product_cod_deposit_policy.test.ts`, `packages/database/src/migrations/manual-cod.postgres-native.test.ts` | `migrations 0191-0193 PostgreSQL` (6 tests) plus the native deposit suite | Database migration | Run against a disposable PostgreSQL 15 server (`SCALIUS_TEST_POSTGRES_URL`): `cod_deposit_policy` column default and CHECK, `qualifying_*` and `cod_deposit_amount` columns, negative snapshot rejection, checkout-authority revision bump on product INSERT/UPDATE/DELETE | PASS |
 | API client freshness (CI guard) | `.github/workflows/ci.yml` | "Generated API client freshness" | CI | `git diff --exit-code` clean after `pnpm generate:sdk` | PASS |
 | Repository hygiene | `pnpm repo:check` | — | CI | No whitespace/issues | PASS |
 
 ## Browser testing
 
 Run against the live local stack (API :8787, dashboard :4323, storefront :4322):
-`node --test apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs`
+`pnpm test:browser:manual-cod-deposit-acceptance`
+(equivalently `node --test apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs`)
 
 | Requirement | Test file | Test name | Type | Actual assertions | Result |
 |---|---|---|---|---|---|
 | A product with a deposit policy is created through the admin UI | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | "B1: creates a product with deposit policy through the admin UI" | Genuine browser acceptance | Admin sign-in (Better Auth, real session cookies); product form filled; Save; `codDepositPolicy=required` read back from the API | PASS |
 | Editing only the deposit policy persists | same | "B2: edits only the deposit policy, saves, reloads and verifies persistence" | Genuine browser acceptance | Policy changed to `exempt` in the edit form, saved, reloaded, and read back from the API | PASS |
 | Products are filtered by deposit policy through the UI | same | "B3: filters products by deposit policy through the UI" | Genuine browser acceptance | Filter applied in the product list; every rendered row is a product the API reports with the `required` policy, and the fixture is among them; the fixture is flipped to `exempt`, the filtered page is reloaded and the fixture is then absent from the rendered rows; the policy is restored to `required` and the fixture reappears | PASS |
-| Bulk editing deposit policies persists | same | "B4: bulk-edits deposit policies and verifies persistence" | Genuine browser acceptance | Bulk editor used; every edited row's policy read back from the API | PASS |
+| Bulk editing deposit policies persists | same | "B4: bulk-edits deposit policies and verifies persistence" | Genuine browser acceptance | Bulk editor used; the edited row reads back `exempt` from the API while the untouched row keeps `inherit` — only changed rows are patched | PASS |
 | A cart shows the exact deposit and cash balance | same | "B5: adds product through storefront UI and verifies the exact cart total" | Genuine browser acceptance | Add to cart through the product page; cart total `E£360`; the cart's live quote marks the order as carrying a manual COD deposit (`expectedQuoteFingerprint` reports `manualCodDeposit=true`) | PASS |
-| A real Egyptian COD order with a manual deposit is placed and persisted | same | "B6: places order through browser and verifies exact persisted payment plan" | Genuine browser acceptance | Cart button → payment step (`/checkout`) → cash on delivery → `/order-success`; the payment step shows deposit `E£50` and balance `E£310`; persisted payment plan: deposit 5000 minor, balance 31000 minor, total 36000 minor | PASS |
+| A real Egyptian COD order with a manual deposit is placed and persisted | same | "B6: places order through browser and verifies exact persisted payment plan" | Genuine browser acceptance | The store under test is proven Egyptian first (currency `EGP`, market `egypt`, COD gateway serving `EG`, delivery method `Standard` at `E£60`); cart button → payment step (`/checkout`) → cash on delivery → `/order-success`; the payment step shows deposit `E£50` and balance `E£310`; the persisted order is `EGP`/`EG`/`cod`/`pending` with total 36000 and shipping 6000 minor; the persisted payment plan is `manual`/`pending` with deposit 5000, balance 31000, total 36000, qualifying merchandise 30000 and the fixture product id | PASS |
 
-## Gaps (not covered, not added as out of scope)
+## Review-round coverage additions
+
+| Requirement | Test file | Test name | Type | Actual assertions | Result |
+|---|---|---|---|---|---|
+| The agent storefront persists the qualifying basis, not just the deposit amount | `packages/core/src/modules/agent-storefront/checkout-deposit.integration.test.ts` | "applies product-level COD deposit policies through quoteAgentStorefrontCheckout" | API integration | Order submitted; `payment_plans` row: qualifying merchandise 30000 (mug only, the exempt service excluded), qualifying product ids `["p_mug"]`, deposit 10000, balance 76000, total 86000 | PASS |
+| The admin product list returns only the rows matching the policy filter | `apps/api/src/routes/admin/products.test.ts` | "GET / filters the listed rows by codDepositPolicy" | API integration | `?codDepositPolicy=required` returns only the required product; `=exempt` only the exempt one | PASS |
+| A saved default product policy survives a later save that omits it | `packages/core/src/modules/checkout/manual-cod-settings.integration.test.ts` | "keeps the saved default product policy when a later save omits it" | API integration | Save `selected` → save without the field → still `selected` | PASS |
+| A checkout document written before the field existed reads as `all` | same | "reads a checkout document saved before the default product policy as all" | API integration | Legacy document row → `all` | PASS |
+| The settings batch read returns exactly the asked documents | `packages/core/src/settings-store/settings-documents-join.test.ts` | (3 tests) | Unit | One document id → single-document match; several ids → multi-document match; persisted `codDepositDefaultProductPolicy=selected` returned | PASS |
+| The product form sends the deposit policy only when it changed | `apps/admin-v2/src/components/admin/product-form/utils.test.ts` | (3 tests) | Unit | New product always sends the policy; dirty edit sends the changed policy; clean edit omits it | PASS |
+| The deposit policy card renders its options and reports changes | `apps/admin-v2/src/components/admin/product-form/CodDepositPolicyCard.test.tsx` | (5 tests) | Unit | Three options; `inherit` default; selected value shown; a change is reported with the dirty flag; read-only disables the options and keeps the value | PASS |
+| The global default policy can be selected and saved, and stays read-only without permission | `apps/admin-v2/src/components/admin/settings/PaymentsSettings.test.tsx` | (2 tests) | Unit | Save body carries `codDepositDefaultProductPolicy=selected`; read-only disables the radios and blocks saving | PASS |
+| The bulk editor patches only the rows whose policy changed | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | "B4: bulk-edits deposit policies and verifies persistence" | Genuine browser acceptance | Edited row reads back `exempt`; the untouched row stays `inherit` | PASS |
+| The PostgreSQL migrations behave like the SQLite ones | `packages/database/src/migrations/0191_product_cod_deposit_policy.test.ts` | `migrations 0191-0193 PostgreSQL` | Database migration | Live PostgreSQL 15: authority revision bumps on product INSERT/UPDATE/DELETE; `cod_deposit_amount` column default `0`; negative deposit and negative qualifying values rejected | PASS |
+
+## Gaps (deferred)
 
 | Gap | Reason |
 |---|---|
-| Native PostgreSQL migration tests in CI | Skipped unless `SCALIUS_TEST_POSTGRES_URL` is available (Finding 4 evidence retained separately). |
+| Native PostgreSQL migration tests in CI | The suites run against a disposable PostgreSQL 15 server through `SCALIUS_TEST_POSTGRES_URL` and pass locally, but GitHub Actions is disabled for this repository, so no CI run can be produced. |
+| Focused tests for the product list column labels and the create/edit route mapping | Low-priority presentation coverage unrelated to the deposit behavior; deferred. |
