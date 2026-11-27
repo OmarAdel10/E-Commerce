@@ -40,6 +40,7 @@ import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
+  productMatchesBasePatch,
   samePricePair,
   type BulkEditBaseline,
   type BulkEditDraft,
@@ -149,6 +150,17 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   const revisions = useMemo(() => Object.fromEntries(loaded.map((product) => [product.id, product.aggregateRevision])), [loaded]);
   const draft = (id: string) => edits[id] ?? base[id]!;
   const baselineOf = (id: string): BulkEditBaseline | undefined => baselines[id];
+  // The row as the server holds it right now. It tells a lost response from a
+  // write that never reached the server: a row that already holds the patch
+  // means the write landed.
+  const freshBulkProduct = async (id: string): Promise<BulkProduct | null> => {
+    try {
+      const fresh = await apiData(getApiV1AdminProductsBulkEdit({ query: { ids: id } }));
+      return fresh?.products.find((row) => row.id === id) ?? null;
+    } catch {
+      return null;
+    }
+  };
   const change = (id: string, patch: Partial<ProductDraft>) => {
     setBaselines((current) => current[id]
       ? current
@@ -202,12 +214,24 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
         // The revision the baseline came from: a write by another admin since
         // then makes the guarded write fail instead of overwriting it.
         if (Object.keys(patch).length > 0) {
-          revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
-            path: { id: product.id, section: "base" },
-            body: { section: "base", expectedAggregateRevision: revision, patch } as never,
-          })) as { aggregateRevision: number }).aggregateRevision;
-          Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
-          persistProgress();
+          try {
+            revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
+              path: { id: product.id, section: "base" },
+              body: { section: "base", expectedAggregateRevision: revision, patch } as never,
+            })) as { aggregateRevision: number }).aggregateRevision;
+            Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
+            persistProgress();
+          } catch (error) {
+            // The write may have committed even though its response was lost.
+            // A fresh row that already holds the patch means the server
+            // applied it: carry on with the remaining edits instead of
+            // repeating a write against a revision the server moved past.
+            const fresh = await freshBulkProduct(product.id);
+            if (!fresh || !productMatchesBasePatch(fresh, patch)) throw error;
+            revision = fresh.aggregateRevision;
+            Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
+            persistProgress();
+          }
         }
         // Each weight under the revision the last write left.
         for (const sku of product.skus) {

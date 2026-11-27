@@ -3,6 +3,7 @@ import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
+  productMatchesBasePatch,
   samePricePair,
   type BulkEditDraft,
 } from "./bulk-edit-baseline";
@@ -97,5 +98,25 @@ describe("bulk-edit-baseline", () => {
     expect(acknowledged.pair.price).toBe(400);
     expect(acknowledged.profileId).toBe("shp_other");
     expect(acknowledged.codDepositPolicy).toBe("exempt");
+  });
+
+  it("recognises a patch the server already applied", () => {
+    const patch = { codDepositPolicy: "required", isActive: false };
+    expect(productMatchesBasePatch({ codDepositPolicy: "required", isActive: false }, patch)).toBe(true);
+  });
+
+  it("does not call a patch applied when the row still differs", () => {
+    expect(productMatchesBasePatch({ codDepositPolicy: "exempt" }, { codDepositPolicy: "required" })).toBe(false);
+    expect(productMatchesBasePatch(
+      { codDepositPolicy: "required", price: 300 },
+      { codDepositPolicy: "required", price: 400 },
+    )).toBe(false);
+  });
+
+  it("accepts a row that holds every patched field and ignores the rest", () => {
+    expect(productMatchesBasePatch(
+      { codDepositPolicy: "exempt", price: 400, shippingProfileId: "shp_default", isActive: true },
+      { codDepositPolicy: "exempt", price: 400 },
+    )).toBe(true);
   });
 });

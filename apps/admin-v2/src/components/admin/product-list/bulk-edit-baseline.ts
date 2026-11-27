@@ -34,7 +34,33 @@ export const captureBulkEditBaseline = (draft: BulkEditDraft, revision: number):
   revision,
 });
 
-/** True when two rows hold the same price and compare-at price. */
+/** The base-section fields one patch can carry. */
+export type BasePatch = {
+  isActive?: boolean;
+  price?: number;
+  discountType?: string;
+  discountAmount?: number;
+  discountPercentage?: number;
+  shippingProfileId?: string | null;
+  codDepositPolicy?: string;
+};
+
+/**
+ * True when a fresh product row already holds every value the patch intended
+ * to write.
+ *
+ * A write whose response never arrived may still have committed on the
+ * server. Comparing the fresh row with the patch tells the editor that the
+ * write landed, so the row continues with the remaining edits instead of
+ * retrying a change the server already applied against a revision it moved
+ * past.
+ */
+export const productMatchesBasePatch = (row: BasePatch, patch: BasePatch): boolean =>
+  Object.entries(patch).every(([field, value]) => row[field as keyof BasePatch] === value);
+
+/**
+ * True when two rows hold the same price and compare-at price.
+ */
 export const samePricePair = (a: PricePair, b: PricePair): boolean => a.price === b.price && a.compareAt === b.compareAt;
 
 /**
