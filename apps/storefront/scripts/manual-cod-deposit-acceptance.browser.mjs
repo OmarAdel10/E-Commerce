@@ -40,6 +40,10 @@ const PRODUCT_NAME = "Browser Acceptance COD Product";
 const PRODUCT_SLUG = `browser-acceptance-cod-product-${Date.now()}`;
 const PRODUCT_PRICE_MAJOR = 300;   // 30000 minor (EGP major)
 const SHIPPING_MAJOR = 60;         // 6000 minor
+// The fixture delivery method of the local store. The suite picks the
+// delivery method by this name, so a store with more than one EG method
+// still exercises the intended rate.
+const SHIPPING_METHOD_NAME = "Standard";
 const ORDER_TOTAL_MINOR = (PRODUCT_PRICE_MAJOR + SHIPPING_MAJOR) * 100; // 36000
 const DEPOSIT_FIXED_MAJOR = 50;    // 5000 minor
 const EXPECTED_DEPOSIT_MINOR = DEPOSIT_FIXED_MAJOR * 100; // 5000
@@ -590,8 +594,16 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       const shippingMethods = await json("/api/v1/shipping-methods");
       assert.ok(shippingMethods.ok, `shipping methods read failed: ${shippingMethods.status}`);
       const methods = (shippingMethods.body.data ?? shippingMethods.body).shippingMethods ?? [];
-      const egMethod = methods.find((method) => (method.countries ?? []).some((country) => country.code === "EG"));
-      assert.ok(egMethod, `no delivery method serves EG, got ${JSON.stringify(methods)}`);
+      const egMethods = methods.filter((method) => (method.countries ?? []).some((country) => country.code === "EG"));
+      assert.ok(egMethods.length > 0, `no delivery method serves EG, got ${JSON.stringify(methods)}`);
+      // Pick the intended fixture method by name, never by position: a store
+      // with several EG methods must still exercise this one. A store that
+      // offers a single EG method keeps working unchanged.
+      const egMethod = egMethods.length === 1
+        ? egMethods[0]
+        : egMethods.find((method) => method.name === SHIPPING_METHOD_NAME);
+      assert.ok(egMethod, `the ${SHIPPING_METHOD_NAME} delivery method must serve EG, got ${JSON.stringify(egMethods.map((method) => method.name))}`);
+      assert.ok((egMethod.countries ?? []).some((country) => country.code === "EG"), `the chosen delivery method must serve EG, got ${JSON.stringify(egMethod.countries)}`);
       assert.strictEqual(egMethod.fee, SHIPPING_MAJOR, `expected the EG delivery fee ${SHIPPING_MAJOR}, got ${egMethod.fee}`);
 
       const res = await page.goto(`${STOREFRONT}/products/${encodeURIComponent(createdProductSlug)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -662,6 +674,21 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       if (await adminAreaInput.count() > 0) await adminAreaInput.fill("Cairo");
       const postalCodeInput = page.locator("#shippingPostalCode, [name='shippingPostalCode']");
       if (await postalCodeInput.count() > 0) await postalCodeInput.fill("11511");
+
+      // Choose the intended delivery method in the cart: the options follow
+      // the address, so they appear once the address fields are filled.
+      const rateOption = page.locator(`[data-rate-id="${egMethod.id}"]`);
+      await rateOption.waitFor({ state: "visible", timeout: 30000 });
+      const rateInput = rateOption.locator('input[type="radio"]');
+      if (!(await rateInput.isChecked().catch(() => false))) {
+        await rateInput.check({ force: true });
+      }
+      await page.evaluate(() => window.cartTotalsSettled?.()).catch(() => {});
+      await waitFor(async () => {
+        const text = await page.locator("#total").innerText();
+        const major = parseFloat(text.replace(/[^0-9.,]/g, "").replace(",", ""));
+        return major === PRODUCT_PRICE_MAJOR + SHIPPING_MAJOR;
+      }, { message: "cart total keeps the chosen delivery fee", timeoutMs: 30000 });
 
       // The cart's own button: the storefront moves the buyer to the payment
       // step, where cash on delivery carries the manual COD deposit. The cart
