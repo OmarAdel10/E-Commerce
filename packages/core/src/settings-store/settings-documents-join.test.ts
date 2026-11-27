@@ -42,4 +42,10 @@ describe("selectSettingsDocuments — settingsDocumentsJoin", () => {
     expect(read.stored).toBe(true);
     expect(read.value.codDepositDefaultProductPolicy).toBe("selected");
   });
+
+  it("reads no row when no document is asked for", async () => {
+    seedDocument("checkout", { checkoutMode: "all" });
+    const rows = await selectSettingsDocuments(fixture.db, []);
+    expect(rows).toEqual([]);
+  });
 });
