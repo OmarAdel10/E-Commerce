@@ -310,6 +310,7 @@ const productMatchingFilterSchema = z.object({
     status: z.enum(["active", "draft"]).optional(),
     salesChannel: salesChannelIdSchema.optional(),
     salesChannelState: z.enum(["published", "unpublished"]).optional(),
+    codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional(),
     appFilter: appListQuerySchema.appFilter,
 }).strict();
 const productMatchingSchema = matchingSchema(productMatchingFilterSchema);
@@ -326,6 +327,7 @@ async function readProductSlice(db: Database, matching: ProductMatching, trashed
         status: trashed ? undefined : filter.status,
         salesChannelId: filter.salesChannel,
         salesChannelState: filter.salesChannelState,
+        codDepositPolicy: filter.codDepositPolicy,
         appCondition: appList.condition,
     }, readMatchingCursor(matching.cursor), limit);
 }

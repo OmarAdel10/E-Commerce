@@ -283,4 +283,67 @@ describe("api/routes/admin/products.ts — codDepositPolicy filter", () => {
         ).get(productId) as { cod_deposit_policy: string };
         expect(row.cod_deposit_policy).toBe("required");
     });
+
+    it("POST /bulk-delete acts on the rows the deposit policy filter matches", async () => {
+        const app = appWithDb();
+        fixture.sqlite.exec(`
+            INSERT OR IGNORE INTO settings (id, category, key, value, type, revision)
+            VALUES ('settings_currency', 'currency', 'document', '{"currencyCode":"BDT","currencySymbol":"BDT"}', 'document', 1);
+            INSERT OR IGNORE INTO shipping_profiles (id, name, free_delivery)
+            VALUES ('shp_default', 'Default', 0);
+            INSERT OR IGNORE INTO categories (id, name, slug) VALUES ('cat_1', 'General', 'general');
+            INSERT OR IGNORE INTO tax_classes (id) VALUES ('tax_1');
+        `);
+        const create = async (name: string, slug: string, codDepositPolicy: string) => {
+            const response = await app.request("/", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name,
+                    description: null,
+                    price: 100,
+                    categoryId: "cat_1",
+                    isActive: true,
+                    canonicalPath: `/products/${slug}`,
+                    slug,
+                    media: [],
+                    attributes: [],
+                    additionalInfo: [],
+                    customizationSchema: null,
+                    isGiftCard: false,
+                    metaTitle: null,
+                    metaDescription: null,
+                    noIndex: false,
+                    excludeFromSitemap: false,
+                    productCondition: "new",
+                    codDepositPolicy,
+                }),
+            }, env);
+            expect(response.status).toBe(201);
+            const body = JSON.parse(await response.text()) as { data: { id: string } };
+            return body.data.id;
+        };
+        const requiredId = await create("Required Product", "required-product", "required");
+        const exemptId = await create("Exempt Product", "exempt-product", "exempt");
+
+        // The dashboard sends the list's own filter for an "all matching" bulk action.
+        const bulkResponse = await app.request("/bulk-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ matching: { filter: { codDepositPolicy: "required" } } }),
+        }, env);
+        expect(bulkResponse.status).toBe(200);
+        const bulkBody = JSON.parse(await bulkResponse.text()) as {
+            data: { outcomes: Array<{ id: string; status: string }> };
+        };
+        const actedIds = bulkBody.data.outcomes.map((outcome) => outcome.id);
+        expect(actedIds).toContain(requiredId);
+        expect(actedIds).not.toContain(exemptId);
+
+        const trashed = fixture.sqlite.prepare(
+            "SELECT id FROM products WHERE deleted_at IS NOT NULL"
+        ).all() as Array<{ id: string }>;
+        expect(trashed.map((row) => row.id)).toContain(requiredId);
+        expect(trashed.map((row) => row.id)).not.toContain(exemptId);
+    });
 });
