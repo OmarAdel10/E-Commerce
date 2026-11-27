@@ -126,6 +126,8 @@ Run against the live local stack (API :8787, dashboard :4323, storefront :4322):
 | The global default policy can be selected and saved, and stays read-only without permission | `apps/admin-v2/src/components/admin/settings/PaymentsSettings.test.tsx` | (2 tests) | Unit | Save body carries `codDepositDefaultProductPolicy=selected`; read-only disables the radios and blocks saving | PASS |
 | The bulk editor patches only the rows whose policy changed | `apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs` | "B4: bulk-edits deposit policies and verifies persistence" | Genuine browser acceptance | Edited row reads back `exempt`; the untouched row stays `inherit` | PASS |
 | The PostgreSQL migrations behave like the SQLite ones | `packages/database/src/migrations/0191_product_cod_deposit_policy.test.ts` | `migrations 0191-0193 PostgreSQL` | Database migration | Live PostgreSQL 15: authority revision bumps on product INSERT/UPDATE/DELETE; `cod_deposit_amount` column default `0`; negative deposit and negative qualifying values rejected | PASS |
+| A corrupt order-level discount cannot change the deposit basis | `packages/core/src/modules/checkout/manual-cod-deposit.test.ts` | "rejects a corrupt order-level discount instead of changing the basis" / "rejects a non-finite order-level discount instead of changing the basis" | Unit | A negative or non-finite discount on a qualifying line fails closed instead of silently moving the basis | PASS |
+| The committed payment plan stores every deposit snapshot field | `packages/core/src/modules/agent-storefront/checkout-deposit.integration.test.ts` | "applies product-level COD deposit policies through quoteAgentStorefrontCheckout" | API integration | The persisted `payment_plans` row also carries `cod_deposit_amount` 10000 next to the qualifying basis and product ids | PASS |
 
 ## Gaps (deferred)
 
@@ -133,3 +135,4 @@ Run against the live local stack (API :8787, dashboard :4323, storefront :4322):
 |---|---|
 | Native PostgreSQL migration tests in CI | The suites run against a disposable PostgreSQL 15 server through `SCALIUS_TEST_POSTGRES_URL` and pass locally, but GitHub Actions is disabled for this repository, so no CI run can be produced. |
 | Focused tests for the product list column labels and the create/edit route mapping | Low-priority presentation coverage unrelated to the deposit behavior; deferred. |
+| The bulk editor keeps a moving baseline while a row is edited | Pre-existing behaviour for every draft field (price, stock, weight, policy); the deposit policy follows the same pattern. Tracked in issue #7 so the branch stays focused. |
