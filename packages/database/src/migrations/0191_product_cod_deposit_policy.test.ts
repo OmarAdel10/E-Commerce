@@ -274,7 +274,7 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
 
   it("adds cod_deposit_policy column to products", async () => {
     const result = await client.query(
-      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'cod_deposit_policy'",
+      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) AND table_name = 'products' AND column_name = 'cod_deposit_policy'",
     );
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].column_name).toBe("cod_deposit_policy");
@@ -284,7 +284,7 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
 
   it("adds qualifying columns to payment_plans", async () => {
     const result = await client.query(
-      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'payment_plans' AND column_name IN ('qualifying_merchandise_minor', 'qualifying_product_ids') ORDER BY column_name",
+      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) AND table_name = 'payment_plans' AND column_name IN ('qualifying_merchandise_minor', 'qualifying_product_ids') ORDER BY column_name",
     );
     expect(result.rows).toHaveLength(2);
     const qm = result.rows.find((r) => r.column_name === "qualifying_merchandise_minor");
@@ -320,7 +320,7 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
 
   it("adds cod_deposit_amount with a non-negative default", async () => {
     const result = await client.query(
-      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_name = 'payment_plans' AND column_name = 'cod_deposit_amount'",
+      "SELECT column_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) AND table_name = 'payment_plans' AND column_name = 'cod_deposit_amount'",
     );
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].column_name).toBe("cod_deposit_amount");
