@@ -12,6 +12,8 @@
  * through the real API. No API-only substitutions and no page-loading
  * smoke tests.
  *
+ *   pnpm test:browser:manual-cod-deposit-acceptance
+ *   # or directly:
  *   node --test apps/storefront/scripts/manual-cod-deposit-acceptance.browser.mjs
  *
  * Requires the dev stack to be running:
@@ -459,8 +461,11 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await page.locator(`a[href="/admin/products/${encodeURIComponent(createdProductId)}/edit"]`).waitFor({ state: "visible", timeout: 30000 });
       await page.locator(`a[href="/admin/products/${encodeURIComponent(secondId)}/edit"]`).waitFor({ state: "visible", timeout: 30000 });
 
-      // Set each row's deposit policy to "Exempt" via the per-row SearchableSelect.
-      for (const name of [PRODUCT_NAME, "Browser Acceptance COD Product 2"]) {
+      // The first row changes its deposit policy to "Exempt"; the second row is
+      // set back to the value it already has, so the editor must patch only the
+      // row whose policy actually changed.
+      const rowPolicies = [[PRODUCT_NAME, "Exempt"], ["Browser Acceptance COD Product 2", "Inherit"]];
+      for (const [name, option] of rowPolicies) {
         const comboboxes = page.locator('[role="combobox"]');
         await comboboxes.first().waitFor({ state: "visible", timeout: 30000 });
         const count = await comboboxes.count();
@@ -469,7 +474,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
           const label = await comboboxes.nth(i).getAttribute("aria-label") ?? "";
           if (label === `COD deposit policy of ${name}`) {
             await comboboxes.nth(i).click();
-            await page.getByRole("option", { name: "Exempt" }).click();
+            await page.getByRole("option", { name: option, exact: true }).click();
             found = true;
             break;
           }
@@ -482,12 +487,16 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await bulkSave.waitFor({ state: "visible", timeout: 30000 });
       await bulkSave.click();
 
-      // Verify persistence via API.
+      // Verify persistence via API: the changed row is saved, the untouched row
+      // keeps its own policy.
       await waitFor(async () => {
         const check = await adminAuthed("/api/v1/admin/products?limit=100");
         const rows = check.body.data?.products ?? check.body.products ?? [];
         const found = rows.filter((p) => [createdProductId, secondId].includes(p.id));
-        return found.length === 2 && found.every((p) => p.codDepositPolicy === "exempt");
+        const changed = found.find((p) => p.id === createdProductId);
+        const untouched = found.find((p) => p.id === secondId);
+        return found.length === 2 && changed?.codDepositPolicy === "exempt"
+          && untouched?.codDepositPolicy === "inherit";
       }, { message: "bulk-edited policies persist via API", timeoutMs: 60000 });
 
       // Restore original policies via API (source of truth).
@@ -565,6 +574,26 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
     const page = await context.newPage();
     let orderId = null;
     try {
+      // The store under test must be the Egyptian one, otherwise the amounts
+      // below would fit any store: the EGP currency, the Egypt market, cash
+      // on delivery that serves EG and charges EGP, and a delivery method
+      // that serves EG for 60 EGP.
+      const checkoutConfig = await json("/api/v1/checkout/config");
+      assert.ok(checkoutConfig.ok, `checkout config read failed: ${checkoutConfig.status}`);
+      const config = checkoutConfig.body.data ?? checkoutConfig.body;
+      assert.strictEqual(config.currency?.code, "EGP", `expected the EGP store currency, got ${JSON.stringify(config.currency)}`);
+      assert.strictEqual(config.market?.handle, "egypt", `expected the Egypt market, got ${JSON.stringify(config.market)}`);
+      const codGateway = (config.gateways ?? []).find((gateway) => gateway.id === "cod");
+      assert.ok(codGateway, "cash on delivery is not offered");
+      assert.ok((codGateway.countries ?? []).includes("EG"), `cash on delivery must serve EG, got ${JSON.stringify(codGateway.countries)}`);
+      assert.ok((codGateway.currencies ?? []).includes("EGP"), `cash on delivery must charge EGP, got ${JSON.stringify(codGateway.currencies)}`);
+      const shippingMethods = await json("/api/v1/shipping-methods");
+      assert.ok(shippingMethods.ok, `shipping methods read failed: ${shippingMethods.status}`);
+      const methods = (shippingMethods.body.data ?? shippingMethods.body).shippingMethods ?? [];
+      const egMethod = methods.find((method) => (method.countries ?? []).some((country) => country.code === "EG"));
+      assert.ok(egMethod, `no delivery method serves EG, got ${JSON.stringify(methods)}`);
+      assert.strictEqual(egMethod.fee, SHIPPING_MAJOR, `expected the EG delivery fee ${SHIPPING_MAJOR}, got ${egMethod.fee}`);
+
       const res = await page.goto(`${STOREFRONT}/products/${encodeURIComponent(createdProductSlug)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
       assert.ok([200].includes(res.status()), `product page should load, got ${res.status()}`);
       await page.waitForTimeout(1000);
@@ -692,6 +721,17 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       orderId = new URL(finalUrl).searchParams.get("orderId");
       assert.ok(orderId, "order-success should carry an orderId");
 
+      // The placed order itself: an Egyptian cash order in EGP.
+      const order = await adminAuthed(`/api/v1/admin/orders/${encodeURIComponent(orderId)}`);
+      assert.ok(order.ok, `order fetch failed: ${order.status} ${JSON.stringify(order.body)}`);
+      const orderRow = order.body.data ?? order.body;
+      assert.strictEqual(orderRow.currencyCode, "EGP", `expected an EGP order, got ${JSON.stringify(orderRow.currencyCode)}`);
+      assert.strictEqual(orderRow.shippingCountryCode, "EG", `expected an EG destination, got ${JSON.stringify(orderRow.shippingCountryCode)}`);
+      assert.strictEqual(orderRow.paymentMethod, "cod", `expected cash on delivery, got ${JSON.stringify(orderRow.paymentMethod)}`);
+      assert.strictEqual(orderRow.status, "pending", `expected a pending order, got ${JSON.stringify(orderRow.status)}`);
+      assert.strictEqual(orderRow.totalAmountMinor, ORDER_TOTAL_MINOR, `expected order total ${ORDER_TOTAL_MINOR} minor, got ${JSON.stringify(orderRow.totalAmountMinor)}`);
+      assert.strictEqual(orderRow.shippingAmountMinor, SHIPPING_MAJOR * 100, `expected shipping ${SHIPPING_MAJOR * 100} minor, got ${JSON.stringify(orderRow.shippingAmountMinor)}`);
+
       // Verify exact persisted payment plan via API (source of truth).
       const plan = await adminAuthed(`/api/v1/admin/orders/${encodeURIComponent(orderId)}/payments`);
       assert.ok(plan.ok, `payment plan fetch failed: ${plan.status} ${JSON.stringify(plan.body)}`);
@@ -705,6 +745,13 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       assert.strictEqual(depositMinor, EXPECTED_DEPOSIT_MINOR, `expected deposit ${EXPECTED_DEPOSIT_MINOR} minor, got ${JSON.stringify(planRow)}`);
       assert.strictEqual(balanceMinor, EXPECTED_BALANCE_MINOR, `expected balance ${EXPECTED_BALANCE_MINOR} minor, got ${JSON.stringify(planRow)}`);
       assert.strictEqual(totalMinor, ORDER_TOTAL_MINOR, `expected order total ${ORDER_TOTAL_MINOR} minor, got ${JSON.stringify(planRow)}`);
+      // The plan is a manual cash plan, still open, and it qualifies only the
+      // merchandise that carries the required policy.
+      assert.strictEqual(planRow.kind, "manual", `expected a manual cash plan, got ${JSON.stringify(planRow.kind)}`);
+      assert.strictEqual(planRow.status, "pending", `expected a pending plan, got ${JSON.stringify(planRow.status)}`);
+      assert.strictEqual(planRow.qualifyingMerchandiseMinor, PRODUCT_PRICE_MAJOR * 100, `expected qualifying merchandise ${PRODUCT_PRICE_MAJOR * 100} minor, got ${JSON.stringify(planRow.qualifyingMerchandiseMinor)}`);
+      const qualifyingProductIds = JSON.parse(planRow.qualifyingProductIds ?? "[]");
+      assert.ok(qualifyingProductIds.includes(createdProductId), `the plan must qualify the fixture product ${createdProductId}, got ${JSON.stringify(qualifyingProductIds)}`);
     } finally {
       await context.close();
       if (orderId) {
