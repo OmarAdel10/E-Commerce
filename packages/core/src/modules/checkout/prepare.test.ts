@@ -766,7 +766,7 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
 
             await expect(
                 createStorefrontOrder(mockDb, input, requestUrl, undefined, cart, delivery, undefined, requestCurrency, policy, mockTaxAuthoritySnapshot),
-            ).rejects.toThrow("Cash on delivery is unavailable for this order.");
+            ).rejects.toThrow("Cash on delivery is unavailable for this order: the manual deposit is priced in the store currency.");
         });
     });
 

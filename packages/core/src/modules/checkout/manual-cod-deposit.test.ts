@@ -82,6 +82,21 @@ describe("resolveManualCodDeposit", () => {
     expect(error).toBeInstanceOf(Error);
   });
 
+  it("keeps normal COD for an exempt cart priced in another market currency", () => {
+    // Every product is exempt, so the cart carries no deposit: the deposit
+    // currency rule must not take normal COD away from it.
+    const { terms, error } = call(
+      baseSettings,
+      { ...baseQuote, currencyCode: "USD" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      0,
+    );
+    expect(terms).toBeNull();
+    expect(error).toBeNull();
+  });
+
   it("refuses a fixed deposit of zero", () => {
     const { terms, error } = call(
       { ...baseSettings, codDepositAmount: 0 },

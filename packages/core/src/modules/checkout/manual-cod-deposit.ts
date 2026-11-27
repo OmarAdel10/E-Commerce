@@ -213,7 +213,7 @@ export function resolveManualCodDeposit(
     qualifyingMerchandiseMinor: number,
 ): { terms: ManualCodDepositTerms | null; error: ValidationError | null } {
     if (!settings?.codDepositEnabled) return { terms: null, error: null };
-    if (!cart.allowsCashOnDelivery || cart.giftCardsApplied || quote.currencyCode !== shopCurrency.code) {
+    if (!cart.allowsCashOnDelivery || cart.giftCardsApplied) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order.") };
     }
     if (!Number.isFinite(qualifyingMerchandiseMinor) || qualifyingMerchandiseMinor < 0 || qualifyingMerchandiseMinor === Infinity) {
@@ -227,7 +227,18 @@ export function resolveManualCodDeposit(
     }
     if (qualifyingMerchandiseMinor <= 0) {
         // No qualifying merchandise: normal COD without a manual deposit plan.
+        // A cart priced in another market currency needs no deposit either, so
+        // the deposit currency check below does not apply to it.
         return { terms: null, error: null };
+    }
+    if (quote.currencyCode !== shopCurrency.code) {
+        // The deposit is priced in the store currency, so a cart in another
+        // market currency cannot carry one. Normal COD in that currency stays
+        // available; only the deposit is refused.
+        return {
+            terms: null,
+            error: new ValidationError("Cash on delivery is unavailable for this order: the manual deposit is priced in the store currency."),
+        };
     }
 
     const percent = settings.codDepositMode === "percentage" ? settings.codDepositPercent : null;
