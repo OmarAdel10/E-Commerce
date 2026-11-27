@@ -318,15 +318,15 @@ const checkoutFlowSettingsSchema = z.object({
     requireFullBillingAddress: z.boolean(),
     /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
     codDepositEnabled: z.boolean(),
-    /** "fixed" = `codDepositAmount` in major units; "percentage" = `codDepositPercent` of the order total. */
+    /** "fixed" = `codDepositAmount` in major units; "percentage" = `codDepositPercent` of the qualifying merchandise after discounts (shipping excluded). */
     codDepositMode: z.enum(["fixed", "percentage"]),
     /** Fixed-mode deposit amount in major units. */
     codDepositAmount: z.number().min(0),
-    /** Percentage-mode deposit: whole percent 0-99 of the order total (0 means no deposit). */
+    /** Percentage-mode deposit: whole percent 0-99 of the qualifying merchandise after discounts (shipping excluded). */
     codDepositPercent: z.number().min(0).max(99),
     /** Merchant-authored payment instructions shown to the buyer; snapshotted at order placement. */
     codDepositInstructions: z.string(),
-    /** Global default product policy: `all` = every product requires a deposit when enabled; `selected` = only products with `codDepositPolicy = "require"`. Omit to keep. */
+    /** Global default product policy: `all` = every product requires a deposit when enabled; `selected` = only products with `codDepositPolicy = "required"`. Omit to keep. */
     codDepositDefaultProductPolicy: z.enum(["all", "selected"]),
     revision: z.number().int().nonnegative(),
 });

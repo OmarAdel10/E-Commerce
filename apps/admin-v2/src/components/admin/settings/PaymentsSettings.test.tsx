@@ -91,7 +91,7 @@ it("validates and saves the active COD deposit mode through the checkout setting
     await act(async () => field<HTMLButtonElement>("#cod-deposit").click());
 
     const percentage = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')]
-      .find((radio) => radio.closest("label")?.textContent?.includes("Percentage of total"))!;
+      .find((radio) => radio.closest("label")?.textContent?.includes("Percentage of qualifying merchandise"))!;
     const group = percentage.closest('[role="radiogroup"]');
     const label = document.getElementById(group?.getAttribute("aria-labelledby") ?? "");
     expect(label?.textContent).toBe("Deposit mode");
