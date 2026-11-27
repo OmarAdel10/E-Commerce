@@ -38,6 +38,25 @@ export const captureBulkEditBaseline = (draft: BulkEditDraft, revision: number):
 export const samePricePair = (a: PricePair, b: PricePair): boolean => a.price === b.price && a.compareAt === b.compareAt;
 
 /**
+ * The row values after the server accepted a base patch.
+ *
+ * Only the fields the patch carried changed; every other field keeps the
+ * value the baseline held. The result replaces the baseline, so a retry
+ * sends only what the server still misses.
+ *
+ * @param was The baseline the patch was built from.
+ * @param next The draft the merchant typed.
+ * @param patch The base patch the server accepted.
+ */
+export const acknowledgeBasePatch = (was: BulkEditDraft, next: BulkEditDraft, patch: Record<string, unknown>): BulkEditDraft => ({
+  ...was,
+  isActive: "isActive" in patch ? next.isActive : was.isActive,
+  pair: "price" in patch ? next.pair : was.pair,
+  profileId: "shippingProfileId" in patch ? next.profileId : was.profileId,
+  codDepositPolicy: "codDepositPolicy" in patch ? next.codDepositPolicy : was.codDepositPolicy,
+});
+
+/**
  * True when the draft differs from the captured baseline in any cell.
  *
  * @param next The draft the merchant typed.

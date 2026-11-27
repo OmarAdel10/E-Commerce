@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
   samePricePair,
@@ -65,5 +66,36 @@ describe("bulk-edit-baseline", () => {
   it("compares price and compare-at price together", () => {
     expect(samePricePair({ price: 300, compareAt: null }, { price: 300, compareAt: null })).toBe(true);
     expect(samePricePair({ price: 300, compareAt: null }, { price: 300, compareAt: 400 })).toBe(false);
+  });
+
+  it("keeps only the patched fields when a write is acknowledged", () => {
+    const was = draft();
+    const next = draft({ codDepositPolicy: "required", isActive: false });
+    const acknowledged = acknowledgeBasePatch(was, next, { codDepositPolicy: "required" });
+    expect(acknowledged.codDepositPolicy).toBe("required");
+    // The server never took the status change, so it stays pending.
+    expect(acknowledged.isActive).toBe(was.isActive);
+    expect(acknowledged.pair).toEqual(was.pair);
+    expect(acknowledged.profileId).toBe(was.profileId);
+  });
+
+  it("acknowledges every patched base field", () => {
+    const was = draft();
+    const next = draft({
+      isActive: false,
+      pair: { price: 400, compareAt: null },
+      profileId: "shp_other",
+      codDepositPolicy: "exempt",
+    });
+    const acknowledged = acknowledgeBasePatch(was, next, {
+      isActive: false,
+      price: 400,
+      shippingProfileId: "shp_other",
+      codDepositPolicy: "exempt",
+    });
+    expect(acknowledged.isActive).toBe(false);
+    expect(acknowledged.pair.price).toBe(400);
+    expect(acknowledged.profileId).toBe("shp_other");
+    expect(acknowledged.codDepositPolicy).toBe("exempt");
   });
 });

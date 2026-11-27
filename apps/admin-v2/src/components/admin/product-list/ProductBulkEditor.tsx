@@ -37,6 +37,7 @@ import { useMessages } from "~/i18n";
 import { productBulkEditMessages } from "~/i18n/product-bulk-edit";
 import { productMessages } from "~/i18n/products";
 import {
+  acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
   samePricePair,
@@ -177,45 +178,58 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     const problems: Record<string, string> = {};
     for (const product of changed) {
       const baseline = baselineOf(product.id);
-      const was = baseline?.draft ?? base[product.id]!;
       const next = draft(product.id);
+      // The values the server holds for this row, and the revision it holds:
+      // every accepted write moves them forward, so a retry sends only what
+      // the server still misses instead of repeating a write it already
+      // applied against a revision it moved past.
+      const start = baseline?.draft ?? base[product.id]!;
+      const acknowledged: BulkEditDraft = { ...start, stock: { ...start.stock }, weight: { ...start.weight } };
+      let revision = baseline?.revision ?? product.aggregateRevision;
+      const persistProgress = () => setBaselines((current) => ({ ...current, [product.id]: { draft: acknowledged, revision } }));
       try {
         const patch: Record<string, unknown> = {};
-        if (next.isActive !== was.isActive) patch.isActive = next.isActive;
-        if (!product.hasOptions && !samePricePair(next.pair, was.pair)) {
+        if (next.isActive !== acknowledged.isActive) patch.isActive = next.isActive;
+        if (!product.hasOptions && !samePricePair(next.pair, acknowledged.pair)) {
           const stored = storedFromPair(next.pair, decimalPlaces);
           patch.price = stored.price;
           patch.discountType = "flat";
           patch.discountAmount = stored.discounted ? stored.discountAmount : 0;
           patch.discountPercentage = 0;
         }
-        if (next.profileId !== was.profileId) patch.shippingProfileId = next.profileId;
-        if (next.codDepositPolicy !== was.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
+        if (next.profileId !== acknowledged.profileId) patch.shippingProfileId = next.profileId;
+        if (next.codDepositPolicy !== acknowledged.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
         // The revision the baseline came from: a write by another admin since
         // then makes the guarded write fail instead of overwriting it.
-        let revision = baseline?.revision ?? product.aggregateRevision;
         if (Object.keys(patch).length > 0) {
           revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
             path: { id: product.id, section: "base" },
             body: { section: "base", expectedAggregateRevision: revision, patch } as never,
           })) as { aggregateRevision: number }).aggregateRevision;
+          Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
+          persistProgress();
         }
         // Each weight under the revision the last write left.
         for (const sku of product.skus) {
-          if (!sku.ships || next.weight[sku.id] === was.weight[sku.id]) continue;
+          if (!sku.ships || next.weight[sku.id] === acknowledged.weight[sku.id]) continue;
           const grams = next.weight[sku.id];
+          const rounded = grams === null || grams === undefined ? null : Math.round(grams);
           revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
             path: { id: product.id, variantId: sku.id },
-            body: { expectedRevision: revision, weightGrams: grams === null || grams === undefined ? null : Math.round(grams) },
+            body: { expectedRevision: revision, weightGrams: rounded },
           }))).product.revision;
+          acknowledged.weight[sku.id] = rounded;
+          persistProgress();
         }
         for (const sku of product.skus) {
           const newStock = next.stock[sku.id];
-          if (!sku.trackInventory || newStock === was.stock[sku.id] || newStock === null || newStock === undefined) continue;
+          if (!sku.trackInventory || newStock === acknowledged.stock[sku.id] || newStock === null || newStock === undefined) continue;
           await apiData(postApiV1AdminInventoryStockSet({
             body: { variantId: sku.id, newStock, reason: "Bulk edit" },
             headers: { "idempotency-key": crypto.randomUUID() },
           }));
+          acknowledged.stock[sku.id] = newStock;
+          persistProgress();
         }
         setEdits((current) => { const { [product.id]: _, ...rest } = current; return rest; });
         setBaselines((current) => { const { [product.id]: _, ...rest } = current; return rest; });
