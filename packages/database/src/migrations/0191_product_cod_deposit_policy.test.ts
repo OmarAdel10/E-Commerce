@@ -298,7 +298,7 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
     await client.query("INSERT INTO products (id, name, slug, cod_deposit_policy) VALUES ('p1', 'P1', 'p1', 'inherit')");
     await expect(
       client.query("INSERT INTO products (id, name, slug, cod_deposit_policy) VALUES ('p2', 'P2', 'p2', 'invalid')"),
-    ).rejects.toMatchObject({ constraint: /products_cod_deposit_policy_check/ });
+    ).rejects.toMatchObject({ constraint: "products_cod_deposit_policy_check" });
   });
 
   it("bumps the checkout authority revision on every product write", async () => {
