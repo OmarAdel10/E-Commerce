@@ -28,4 +28,4 @@ export * from "./payment-terms";
 export * from "./store-copy";
 
 export * from "./attributes";
-export { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandiseMinor } from "./manual-cod-deposit";
+export { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandise, resolveCodDepositQualifyingMerchandiseMinor } from "./manual-cod-deposit";

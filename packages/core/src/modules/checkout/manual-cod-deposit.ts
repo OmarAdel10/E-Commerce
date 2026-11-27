@@ -91,28 +91,31 @@ export function resolveProductDepositPolicy(
 }
 
 /**
- * The qualifying merchandise value: the sum of net line values (unit price x
- * quantity, after product-specific and order-level discounts, after bundle
- * savings) for products whose effective policy is `required`. Gift cards and
- * exempt products never qualify. Shipping is not part of a line unit price, so
- * it is excluded by construction.
- *
- * Tax treatment: line prices are taken as-is from the authoritative tax quote.
- * If `pricesIncludeTax` is true, unit prices are tax-inclusive and the deposit
- * basis includes tax; if false, unit prices are tax-exclusive and the deposit
- * basis excludes tax. Either way, the same authoritative prices used for the
- * order total are used for the deposit basis, so tax is never double-counted
- * and shipping tax is never treated as qualifying merchandise.
- *
- * Computed server-side from authoritative product and pricing data; never
- * derived from client-supplied amounts.
+ * The qualifying merchandise value and the products that contributed to it.
  */
-export function resolveCodDepositQualifyingValue(
+export interface CodDepositQualifyingMerchandise {
+  /** Qualifying merchandise value in minor units. */
+  minor: number;
+  /** Product ids that contributed to the basis, each once, in cart order. */
+  productIds: string[];
+}
+
+/**
+ * One pass over the cart lines: the qualifying merchandise value and the
+ * products behind it.
+ *
+ * A line that contributes nothing (its value is zero after discounts) belongs
+ * to no product's qualifying set: it adds no value to the basis, so it must
+ * not appear in the deposit's product snapshot either.
+ */
+function resolveCodDepositQualifying(
     lines: readonly CodDepositLineInput[],
     productPolicyById: ReadonlyMap<string, string | null | undefined>,
     globalDefaultProductPolicy: "all" | "selected",
-): number {
+): CodDepositQualifyingMerchandise {
     let qualifyingMinor = 0;
+    const productIds: string[] = [];
+    const seen = new Set<string>();
     for (const line of lines) {
         if (line.isGiftCard) continue;
         if (!Number.isFinite(line.unitPriceMinor) || line.unitPriceMinor < 0) {
@@ -149,13 +152,44 @@ export function resolveCodDepositQualifyingValue(
             globalDefaultProductPolicy,
         );
         if (effective !== "required") continue;
-        qualifyingMinor += lineQualifyingValue(line);
+        const lineValue = lineQualifyingValue(line);
+        if (lineValue <= 0) continue;
+        qualifyingMinor += lineValue;
+        if (!seen.has(line.productId)) {
+            seen.add(line.productId);
+            productIds.push(line.productId);
+        }
     }
-    return qualifyingMinor;
+    return { minor: qualifyingMinor, productIds };
 }
 
 /**
- * The qualifying merchandise value for a manual COD deposit, computed from
+ * The qualifying merchandise value: the sum of net line values (unit price x
+ * quantity, after product-specific and order-level discounts, after bundle
+ * savings) for products whose effective policy is `required`. Gift cards and
+ * exempt products never qualify. Shipping is not part of a line unit price, so
+ * it is excluded by construction.
+ *
+ * Tax treatment: line prices are taken as-is from the authoritative tax quote.
+ * If `pricesIncludeTax` is true, unit prices are tax-inclusive and the deposit
+ * basis includes tax; if false, unit prices are tax-exclusive and the deposit
+ * basis excludes tax. Either way, the same authoritative prices used for the
+ * order total are used for the deposit basis, so tax is never double-counted
+ * and shipping tax is never treated as qualifying merchandise.
+ *
+ * Computed server-side from authoritative product and pricing data; never
+ * derived from client-supplied amounts.
+ */
+export function resolveCodDepositQualifyingValue(
+    lines: readonly CodDepositLineInput[],
+    productPolicyById: ReadonlyMap<string, string | null | undefined>,
+    globalDefaultProductPolicy: "all" | "selected",
+): number {
+    return resolveCodDepositQualifying(lines, productPolicyById, globalDefaultProductPolicy).minor;
+}
+
+/**
+ * The qualifying merchandise for a manual COD deposit, computed from
  * authoritative tax quote lines, product policies and cart items.
  *
  * This is the single implementation of the deposit-basis preparation that was
@@ -165,8 +199,11 @@ export function resolveCodDepositQualifyingValue(
  * item whose line has no authoritative allocation is inconsistent pricing
  * data, not a legitimate zero discount, so it fails closed instead of being
  * silently priced at full value (which would overstate the deposit basis).
+ *
+ * The product ids come from the same pass as the value: a product qualifies
+ * only when one of its lines contributed to the basis.
  */
-export function resolveCodDepositQualifyingMerchandiseMinor(
+export function resolveCodDepositQualifyingMerchandise(
     input: {
         /** Authoritative tax quote lines: one per cart line, keyed by line id. */
         quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
@@ -183,7 +220,7 @@ export function resolveCodDepositQualifyingMerchandiseMinor(
         productPolicyById: ReadonlyMap<string, string | null | undefined>;
         globalDefaultProductPolicy: "all" | "selected";
     },
-): number {
+): CodDepositQualifyingMerchandise {
     const lineDiscountById = new Map(
         input.quoteLines.map((line) => [line.lineId, line.discountMinor ?? 0]),
     );
@@ -204,7 +241,26 @@ export function resolveCodDepositQualifyingMerchandiseMinor(
             discountMinor: lineDiscountById.get(lineId)!,
         };
     });
-    return resolveCodDepositQualifyingValue(lines, input.productPolicyById, input.globalDefaultProductPolicy);
+    return resolveCodDepositQualifying(lines, input.productPolicyById, input.globalDefaultProductPolicy);
+}
+
+/** The qualifying merchandise value alone, in minor units. */
+export function resolveCodDepositQualifyingMerchandiseMinor(
+    input: {
+        quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
+        cartItems: readonly {
+            index: number;
+            productId: string;
+            variantId: string;
+            quantity: number;
+            unitPriceMinor: number;
+            isGiftCard: boolean;
+        }[];
+        productPolicyById: ReadonlyMap<string, string | null | undefined>;
+        globalDefaultProductPolicy: "all" | "selected";
+    },
+): number {
+    return resolveCodDepositQualifyingMerchandise(input).minor;
 }
 
 /** The same deposit decision drives the offered COD method and its order. */

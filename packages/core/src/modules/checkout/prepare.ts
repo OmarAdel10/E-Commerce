@@ -43,8 +43,7 @@ import { bundleLineProperties, createCartTransformer, presentTransformedCart, ru
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
 import {
     resolveManualCodDeposit,
-    resolveCodDepositQualifyingMerchandiseMinor,
-    resolveProductDepositPolicy,
+    resolveCodDepositQualifyingMerchandise,
 } from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
 import {
@@ -1069,23 +1068,17 @@ export async function createStorefrontOrder(
     const productPolicyById = new Map(
         cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
     );
-    const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
+    const qualifying = resolveCodDepositQualifyingMerchandise({
         quoteLines: taxQuote.lines,
         cartItems: cartValidation.items,
         productPolicyById,
         globalDefaultProductPolicy: effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
     });
+    const qualifyingMerchandiseMinor = qualifying.minor;
     // Which product ids qualified: snapshot for auditability of deposit terms.
-    const qualifyingProductIds = cartValidation.items
-        .filter((item) => {
-            if (item.isGiftCard) return false;
-            const effective = resolveProductDepositPolicy(
-                productPolicyById.get(item.productId),
-                effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
-            );
-            return effective === "required";
-        })
-        .map((item) => item.productId);
+    // The ids come from the same pass as the basis, so the snapshot names only
+    // the products that actually contributed to it.
+    const qualifyingProductIds = qualifying.productIds;
     const manualDeposit = resolveManualCodDeposit(
         effectiveSettings,
         taxQuote,

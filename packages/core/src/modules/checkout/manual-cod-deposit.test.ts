@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandiseMinor, resolveProductDepositPolicy } from "./manual-cod-deposit";
+import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandise, resolveCodDepositQualifyingMerchandiseMinor, resolveProductDepositPolicy } from "./manual-cod-deposit";
 import type { CheckoutFlowSettings } from "../settings";
 import type { PricingCurrency } from "@scalius/shared/currency-policy";
 import { CASH_ON_DELIVERY_AMOUNT_REASON, COD_PAYMENT_METHOD, type PaymentProviders } from "../payments";
@@ -749,5 +749,76 @@ describe("resolveCodDepositQualifyingMerchandiseMinor", () => {
     expect(resolveCodDepositQualifyingMerchandiseMinor({
       quoteLines: [], cartItems: [], productPolicyById: policies, globalDefaultProductPolicy: "all",
     })).toBe(0);
+  });
+});
+
+describe("resolveCodDepositQualifyingMerchandise", () => {
+  const policies = new Map<string, string | null>([
+    ["prod_required", "required"],
+    ["prod_other", "required"],
+    ["prod_exempt", "exempt"],
+    ["prod_gc", "required"],
+  ]);
+
+  it("names each qualifying product once, in cart order", () => {
+    const result = resolveCodDepositQualifyingMerchandise({
+      quoteLines: [
+        { lineId: "cart:0:var_default_prod_required", discountMinor: 0 },
+        { lineId: "cart:1:var_default_prod_other", discountMinor: 0 },
+        { lineId: "cart:2:var_default_prod_required", discountMinor: 0 },
+      ],
+      cartItems: [
+        { index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+        { index: 1, productId: "prod_other", variantId: "var_default_prod_other", quantity: 1, unitPriceMinor: 5000, isGiftCard: false },
+        { index: 2, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+      ],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result.productIds).toEqual(["prod_required", "prod_other"]);
+    expect(result.minor).toBe(25000);
+  });
+
+  it("omits a product whose only line contributes nothing after discounts", () => {
+    const result = resolveCodDepositQualifyingMerchandise({
+      quoteLines: [
+        { lineId: "cart:0:var_default_prod_required", discountMinor: 0 },
+        { lineId: "cart:1:var_default_prod_other", discountMinor: 10000 },
+      ],
+      cartItems: [
+        { index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+        { index: 1, productId: "prod_other", variantId: "var_default_prod_other", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+      ],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result.productIds).toEqual(["prod_required"]);
+    expect(result.minor).toBe(10000);
+  });
+
+  it("omits gift card products even when their policy requires a deposit", () => {
+    const result = resolveCodDepositQualifyingMerchandise({
+      quoteLines: [{ lineId: "cart:0:var_default_prod_gc", discountMinor: 0 }],
+      cartItems: [
+        { index: 0, productId: "prod_gc", variantId: "var_default_prod_gc", quantity: 1, unitPriceMinor: 50000, isGiftCard: true },
+      ],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result.productIds).toEqual([]);
+    expect(result.minor).toBe(0);
+  });
+
+  it("omits exempt products from the qualifying set", () => {
+    const result = resolveCodDepositQualifyingMerchandise({
+      quoteLines: [{ lineId: "cart:0:var_default_prod_exempt", discountMinor: 0 }],
+      cartItems: [
+        { index: 0, productId: "prod_exempt", variantId: "var_default_prod_exempt", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+      ],
+      productPolicyById: policies,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result.productIds).toEqual([]);
+    expect(result.minor).toBe(0);
   });
 });
