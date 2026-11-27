@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { AdminApiResponseError } from "~/lib/admin-api-error";
 import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
+  isLostWriteResponse,
+  productHasSkuWeight,
   productMatchesBasePatch,
   samePricePair,
   type BulkEditDraft,
@@ -118,5 +121,31 @@ describe("bulk-edit-baseline", () => {
       { codDepositPolicy: "exempt", price: 400, shippingProfileId: "shp_default", isActive: true },
       { codDepositPolicy: "exempt", price: 400 },
     )).toBe(true);
+  });
+
+  it("calls a failure without an HTTP status a lost response", () => {
+    // No answer arrived: the write may still have committed on the server.
+    expect(isLostWriteResponse(new TypeError("Failed to fetch"))).toBe(true);
+    expect(isLostWriteResponse(new Error("socket hang up"))).toBe(true);
+  });
+
+  it("calls an answer the server sent authoritative", () => {
+    // A stale revision, a rejected value and a server fault are answers: the
+    // row failed, so the editor must report it instead of reading the row
+    // again and adopting another admin's value.
+    expect(isLostWriteResponse(new AdminApiResponseError("stale revision", 409))).toBe(false);
+    expect(isLostWriteResponse(new AdminApiResponseError("rejected value", 422))).toBe(false);
+    expect(isLostWriteResponse(new AdminApiResponseError("server fault", 500))).toBe(false);
+  });
+
+  it("recognises a weight the server already applied", () => {
+    const row = { skus: [{ id: "sku_1", weightGrams: 250 }] };
+    expect(productHasSkuWeight(row, "sku_1", 250)).toBe(true);
+    expect(productHasSkuWeight(row, "sku_1", 200)).toBe(false);
+    expect(productHasSkuWeight(row, "sku_2", 250)).toBe(false);
+  });
+
+  it("reads a sku without a weight as no weight", () => {
+    expect(productHasSkuWeight({ skus: [{ id: "sku_1" }] }, "sku_1", null)).toBe(true);
   });
 });

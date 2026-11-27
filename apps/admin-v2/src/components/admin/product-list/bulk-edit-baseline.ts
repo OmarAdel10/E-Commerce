@@ -1,4 +1,5 @@
 import type { PricePair } from "~/components/admin/product-form/compare-at";
+import { readAdminApiError } from "~/lib/admin-api-error";
 
 /** One editable cell set of a product row in the bulk editor. */
 export interface BulkEditDraft {
@@ -57,6 +58,38 @@ export type BasePatch = {
  */
 export const productMatchesBasePatch = (row: BasePatch, patch: BasePatch): boolean =>
   Object.entries(patch).every(([field, value]) => row[field as keyof BasePatch] === value);
+
+/**
+ * True when a failed write carries no HTTP status: no answer arrived, so the
+ * write may still have committed on the server.
+ *
+ * An answer the server did send is authoritative, whatever its status: a
+ * stale revision (409), a rejected value (422) or a server fault (500) means
+ * the write did not take the row where the editor wanted it. Reconciling such
+ * a failure against a fresh row would adopt another admin's write - or the
+ * editor's own - instead of reporting the refusal, and the next write would
+ * then overwrite a value nobody changed.
+ */
+export const isLostWriteResponse = (error: unknown): boolean =>
+  readAdminApiError(error)?.status == null;
+
+/**
+ * True when a fresh product row already holds the weight a write intended.
+ *
+ * A weight write whose response never arrived may still have committed. The
+ * fresh row tells the editor that it landed, so the row continues with the
+ * revision the server moved to instead of repeating the write against a
+ * revision the server already moved past.
+ */
+export const productHasSkuWeight = (
+  row: { skus?: readonly { id: string; weightGrams?: number | null }[] },
+  skuId: string,
+  grams: number | null,
+): boolean => {
+  const sku = row.skus?.find((entry) => entry.id === skuId);
+  if (!sku) return false;
+  return (sku.weightGrams ?? null) === grams;
+};
 
 /**
  * True when two rows hold the same price and compare-at price.

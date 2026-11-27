@@ -40,6 +40,8 @@ import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
   hasBulkEditChanges,
+  isLostWriteResponse,
+  productHasSkuWeight,
   productMatchesBasePatch,
   samePricePair,
   type BulkEditBaseline,
@@ -222,6 +224,10 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
             Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
             persistProgress();
           } catch (error) {
+            // A refusal the server sent is authoritative: the row failed, and
+            // reading the row again would adopt the value another admin wrote
+            // - the weight writes below would then overwrite their change.
+            if (!isLostWriteResponse(error)) throw error;
             // The write may have committed even though its response was lost.
             // A fresh row that already holds the patch means the server
             // applied it: carry on with the remaining edits instead of
@@ -238,10 +244,22 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
           if (!sku.ships || next.weight[sku.id] === acknowledged.weight[sku.id]) continue;
           const grams = next.weight[sku.id];
           const rounded = grams === null || grams === undefined ? null : Math.round(grams);
-          revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
-            path: { id: product.id, variantId: sku.id },
-            body: { expectedRevision: revision, weightGrams: rounded },
-          }))).product.revision;
+          try {
+            revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
+              path: { id: product.id, variantId: sku.id },
+              body: { expectedRevision: revision, weightGrams: rounded },
+            }))).product.revision;
+          } catch (error) {
+            // A refusal the server sent is authoritative: the row failed.
+            if (!isLostWriteResponse(error)) throw error;
+            // The write may have committed even though its response was lost.
+            // A fresh row that holds the weight means it landed: carry the
+            // row's revision forward, so the next write - and the merchant's
+            // retry - does not send the revision the server moved past.
+            const fresh = await freshBulkProduct(product.id);
+            if (!fresh || !productHasSkuWeight(fresh, sku.id, rounded)) throw error;
+            revision = fresh.aggregateRevision;
+          }
           acknowledged.weight[sku.id] = rounded;
           persistProgress();
         }
