@@ -27,7 +27,7 @@ import { Page } from "~/components/admin/resource/Page";
 import { PageHeader } from "~/components/admin/resource/PageHeader";
 import { EmptyState, ErrorState } from "~/components/admin/states";
 import { SaveBarProvider, SaveNotCompleted, useSaveBar } from "~/components/admin/shared/SaveBar";
-import { pairFromStored, storedFromPair, type PricePair } from "~/components/admin/product-form/compare-at";
+import { pairFromStored, storedFromPair } from "~/components/admin/product-form/compare-at";
 import { usePermissions } from "~/contexts/PermissionContext";
 import { useCurrency } from "~/hooks/use-currency";
 import { apiData, type ApiResult } from "~/lib/api";
@@ -36,21 +36,17 @@ import { queryKeys } from "~/lib/query-keys";
 import { useMessages } from "~/i18n";
 import { productBulkEditMessages } from "~/i18n/product-bulk-edit";
 import { productMessages } from "~/i18n/products";
+import {
+  captureBulkEditBaseline,
+  hasBulkEditChanges,
+  samePricePair,
+  type BulkEditBaseline,
+  type BulkEditDraft,
+} from "./bulk-edit-baseline";
 
 type BulkProduct = ApiResult<typeof getApiV1AdminProductsBulkEdit>["products"][number];
 
-interface ProductDraft {
-  isActive: boolean;
-  pair: PricePair;
-  /** Null: the default profile (General). */
-  profileId: string | null;
-  /** Manual COD deposit policy: inherit / required / exempt. */
-  codDepositPolicy: "inherit" | "required" | "exempt";
-  /** SKU id -> on hand. */
-  stock: Record<string, number | null>;
-  /** Shipped SKU id -> grams (null: no weight). */
-  weight: Record<string, number | null>;
-}
+type ProductDraft = BulkEditDraft;
 
 const DEFAULT_PROFILE = "shp_default";
 
@@ -65,8 +61,6 @@ const draftOf = (product: BulkProduct, salePrice: (price: number, discount: obje
     weight: Object.fromEntries(product.skus.filter((sku) => sku.ships).map((sku) => [sku.id, sku.weightGrams])),
   };
 };
-
-const samePair = (a: PricePair, b: PricePair) => a.price === b.price && a.compareAt === b.compareAt;
 
 /**
  * Bulk editor (Shopify's "Bulk edit"): the selected products in one grid,
@@ -145,22 +139,32 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     [loaded, salePrice],
   );
   const [edits, setEdits] = useState<Record<string, ProductDraft>>({});
+  // The values each row held when the merchant started editing it, and the
+  // revision they came from: the draft is compared with this baseline, never
+  // with a refetched row, so a write by another admin cannot turn an
+  // untouched cell into a change and overwrite it with a stale value.
+  const [baselines, setBaselines] = useState<Record<string, BulkEditBaseline>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
+  const revisions = useMemo(() => Object.fromEntries(loaded.map((product) => [product.id, product.aggregateRevision])), [loaded]);
   const draft = (id: string) => edits[id] ?? base[id]!;
-  const change = (id: string, patch: Partial<ProductDraft>) =>
+  const baselineOf = (id: string): BulkEditBaseline | undefined => baselines[id];
+  const change = (id: string, patch: Partial<ProductDraft>) => {
+    setBaselines((current) => current[id]
+      ? current
+      : { ...current, [id]: captureBulkEditBaseline(base[id]!, revisions[id] ?? 0) });
     setEdits((current) => ({ ...current, [id]: { ...(current[id] ?? base[id]!), ...patch } }));
+  };
 
   const changed = loaded.filter((product) => {
     const next = edits[product.id];
     if (!next) return false;
-    const was = base[product.id]!;
-    return next.isActive !== was.isActive || !samePair(next.pair, was.pair) || next.profileId !== was.profileId
-      || next.codDepositPolicy !== was.codDepositPolicy
-      || product.skus.some((sku) => next.stock[sku.id] !== was.stock[sku.id] || next.weight[sku.id] !== was.weight[sku.id]);
+    const was = baselineOf(product.id)?.draft ?? base[product.id]!;
+    return hasBulkEditChanges(next, was, product.skus.map((sku) => sku.id));
   });
   const priceProblem = (product: BulkProduct) => {
     const pair = draft(product.id).pair;
-    if (product.hasOptions || samePair(pair, base[product.id]!.pair)) return null;
+    const was = baselineOf(product.id)?.draft ?? base[product.id]!;
+    if (product.hasOptions || samePricePair(pair, was.pair)) return null;
     if (pair.price === null || !Number.isFinite(pair.price) || pair.price < 0) return t("bulkEditPriceRequired");
     return storedFromPair(pair, decimalPlaces).problem ? t("bulkEditCompareAtHigher") : null;
   };
@@ -172,12 +176,13 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   const save = async () => {
     const problems: Record<string, string> = {};
     for (const product of changed) {
-      const was = base[product.id]!;
+      const baseline = baselineOf(product.id);
+      const was = baseline?.draft ?? base[product.id]!;
       const next = draft(product.id);
       try {
         const patch: Record<string, unknown> = {};
         if (next.isActive !== was.isActive) patch.isActive = next.isActive;
-        if (!product.hasOptions && !samePair(next.pair, was.pair)) {
+        if (!product.hasOptions && !samePricePair(next.pair, was.pair)) {
           const stored = storedFromPair(next.pair, decimalPlaces);
           patch.price = stored.price;
           patch.discountType = "flat";
@@ -186,7 +191,9 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
         }
         if (next.profileId !== was.profileId) patch.shippingProfileId = next.profileId;
         if (next.codDepositPolicy !== was.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
-        let revision = product.aggregateRevision;
+        // The revision the baseline came from: a write by another admin since
+        // then makes the guarded write fail instead of overwriting it.
+        let revision = baseline?.revision ?? product.aggregateRevision;
         if (Object.keys(patch).length > 0) {
           revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
             path: { id: product.id, section: "base" },
@@ -211,6 +218,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
           }));
         }
         setEdits((current) => { const { [product.id]: _, ...rest } = current; return rest; });
+        setBaselines((current) => { const { [product.id]: _, ...rest } = current; return rest; });
       } catch (error) {
         problems[product.id] = getServerFnError(error, t("bulkEditRowFailed"));
       }
@@ -226,7 +234,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     dirty: changed.length > 0,
     invalid,
     save,
-    discard: () => { setEdits({}); setFailures({}); },
+    discard: () => { setEdits({}); setBaselines({}); setFailures({}); },
   });
 
   const statusOptions = [
