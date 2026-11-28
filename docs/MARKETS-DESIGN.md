@@ -52,7 +52,7 @@ default market equal to the current store.
 - A payment method that cannot charge the market currency is either hidden
   for that market or charges the shop currency with the checkout stating the
   charged amount (Shopify's display-only trap made explicit). COD charges
-  BDT only.
+  the market currency (BDT, EGP).
 - Payment transactions store `settlement_currency`, `settlement_amount_minor`,
   `settlement_rate`, and `exchange_adjustment_minor` (Shopify's
   `currencyExchangeAdjustment`). Refunds are always in the presentment
@@ -1237,7 +1237,7 @@ dashboard warns. Placed orders retain their rate even after the automatic quote 
 - Cash collection uses the CLDR cash increment (`cashIncrementMinor`: CHF
   0.05, SEK whole kronor, BDT whole taka). An amount due it cannot collect
   is refused before the commit, never rounded silently. Cash on delivery
-  still serves Bangladesh only. No POS cash path exists yet; it takes the
+  serves Bangladesh and Egypt. No POS cash path exists yet; it takes the
   same rule.
 - **Gift cards** (Shopify's rule): a card in the shop currency or the order's
   currency pays; a card in another currency is converted down at the locked
