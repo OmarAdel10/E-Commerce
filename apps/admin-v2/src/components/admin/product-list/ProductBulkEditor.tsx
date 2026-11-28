@@ -38,6 +38,7 @@ import { productBulkEditMessages } from "~/i18n/product-bulk-edit";
 import { productMessages } from "~/i18n/products";
 import {
   acknowledgeBasePatch,
+  bulkBasePatch,
   captureBulkEditBaseline,
   changedSkuWeights,
   hasBulkEditChanges,
@@ -206,17 +207,10 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
       let revision = baseline?.revision ?? product.aggregateRevision;
       const persistProgress = () => setBaselines((current) => ({ ...current, [product.id]: { draft: acknowledged, revision } }));
       try {
-        const patch: Record<string, unknown> = {};
-        if (next.isActive !== acknowledged.isActive) patch.isActive = next.isActive;
-        if (!product.hasOptions && !samePricePair(next.pair, acknowledged.pair)) {
-          const stored = storedFromPair(next.pair, decimalPlaces);
-          patch.price = stored.price;
-          patch.discountType = "flat";
-          patch.discountAmount = stored.discounted ? stored.discountAmount : 0;
-          patch.discountPercentage = 0;
-        }
-        if (next.profileId !== acknowledged.profileId) patch.shippingProfileId = next.profileId;
-        if (next.codDepositPolicy !== acknowledged.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
+        const patch = bulkBasePatch(next, acknowledged, {
+          hasOptions: product.hasOptions,
+          decimalPlaces,
+        });
         // The revision the baseline came from: a write by another admin since
         // then makes the guarded write fail instead of overwriting it.
         if (Object.keys(patch).length > 0) {

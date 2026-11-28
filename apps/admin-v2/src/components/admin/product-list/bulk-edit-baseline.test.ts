@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AdminApiResponseError } from "~/lib/admin-api-error";
 import {
   acknowledgeBasePatch,
+  bulkBasePatch,
   captureBulkEditBaseline,
   changedSkuWeights,
   hasBulkEditChanges,
@@ -211,5 +212,51 @@ describe("bulk-edit-baseline", () => {
   it("keeps a recorded empty baseline weight equal to an empty server weight", () => {
     const row = { skus: [{ id: "sku_5", weightGrams: null }] };
     expect(changedSkuWeights(row, [{ id: "sku_5" }], { sku_5: null })).toEqual([]);
+  });
+});
+
+describe("bulkBasePatch", () => {
+  const options = { hasOptions: false, decimalPlaces: 2 };
+
+  it("patches the deposit policy the merchant changed", () => {
+    // The cell the bulk grid shows writes the policy alone, so a policy
+    // change never drags the other base fields along.
+    expect(bulkBasePatch(draft({ codDepositPolicy: "required" }), draft(), options))
+      .toEqual({ codDepositPolicy: "required" });
+  });
+
+  it("leaves an unchanged deposit policy out of the patch", () => {
+    expect(bulkBasePatch(draft(), draft(), options)).toEqual({});
+  });
+
+  it("patches the status and the shipping profile the merchant changed", () => {
+    expect(bulkBasePatch(
+      draft({ isActive: false, profileId: "shp_other" }),
+      draft(),
+      options,
+    )).toEqual({ isActive: false, shippingProfileId: "shp_other" });
+  });
+
+  it("patches the price of a product without options", () => {
+    expect(bulkBasePatch(
+      draft({ pair: { price: 400, compareAt: 500 } }),
+      draft(),
+      options,
+    )).toEqual({
+      price: 500,
+      discountType: "flat",
+      discountAmount: 100,
+      discountPercentage: 0,
+    });
+  });
+
+  it("leaves the price of a product with options alone", () => {
+    // A product with options carries its prices on its variants, so the base
+    // section has no price to write.
+    expect(bulkBasePatch(
+      draft({ pair: { price: 400, compareAt: null } }),
+      draft(),
+      { ...options, hasOptions: true },
+    )).toEqual({});
   });
 });

@@ -1,4 +1,4 @@
-import type { PricePair } from "~/components/admin/product-form/compare-at";
+import { storedFromPair, type PricePair } from "~/components/admin/product-form/compare-at";
 import { readAdminApiError } from "~/lib/admin-api-error";
 
 /** One editable cell set of a product row in the bulk editor. */
@@ -38,12 +38,44 @@ export const captureBulkEditBaseline = (draft: BulkEditDraft, revision: number):
 /** The base-section fields one patch can carry. */
 export type BasePatch = {
   isActive?: boolean;
-  price?: number;
+  price?: number | null;
   discountType?: string;
   discountAmount?: number;
   discountPercentage?: number;
   shippingProfileId?: string | null;
   codDepositPolicy?: "inherit" | "required" | "exempt";
+};
+
+/**
+ * The base-section patch a row's draft needs.
+ *
+ * Only the fields the merchant changed are written: the patch is the
+ * difference between the draft and the row the server holds, so a policy
+ * change writes the policy alone and never drags the price or the status
+ * along. A product with options carries its prices on its variants, so its
+ * base section has no price to write.
+ *
+ * @param next The draft the merchant typed.
+ * @param acknowledged The row values the server holds for this row.
+ * @param options Whether the product has options, and the currency's decimal places.
+ */
+export const bulkBasePatch = (
+  next: BulkEditDraft,
+  acknowledged: BulkEditDraft,
+  options: { hasOptions: boolean; decimalPlaces: number },
+): BasePatch => {
+  const patch: BasePatch = {};
+  if (next.isActive !== acknowledged.isActive) patch.isActive = next.isActive;
+  if (!options.hasOptions && !samePricePair(next.pair, acknowledged.pair)) {
+    const stored = storedFromPair(next.pair, options.decimalPlaces);
+    patch.price = stored.price;
+    patch.discountType = "flat";
+    patch.discountAmount = stored.discounted ? stored.discountAmount : 0;
+    patch.discountPercentage = 0;
+  }
+  if (next.profileId !== acknowledged.profileId) patch.shippingProfileId = next.profileId;
+  if (next.codDepositPolicy !== acknowledged.codDepositPolicy) patch.codDepositPolicy = next.codDepositPolicy;
+  return patch;
 };
 
 /**
