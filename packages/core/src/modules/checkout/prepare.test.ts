@@ -705,10 +705,9 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
             expect(result.commitPayload.codDeposit).toBeUndefined();
         });
 
-        // TODO: Add test for gift cards with codDepositEnabled true once
-        // quoteStorefrontGiftCardTender can be properly mocked in the test harness.
-        // The current mock database does not return gift card data, so the tender
-        // calculation returns 0 applied, making giftCardsApplied false.
+        // Gift cards with codDepositEnabled true need a real gift_cards row, so
+        // they are covered by the core integration suite:
+        // modules/checkout/manual-cod-gift-card.integration.test.ts
 
         it("does not create deposit plan when order is in foreign currency (codDepositEnabled disabled)", async () => {
             const policy = createMockCheckoutPolicy({
