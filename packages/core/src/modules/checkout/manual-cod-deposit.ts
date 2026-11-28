@@ -188,6 +188,24 @@ export function resolveCodDepositQualifyingValue(
     return resolveCodDepositQualifying(lines, productPolicyById, globalDefaultProductPolicy).minor;
 }
 
+/** The authoritative inputs the deposit basis is read from. */
+export interface CodDepositQualifyingMerchandiseInput {
+  /** Authoritative tax quote lines: one per cart line, keyed by line id. */
+  quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
+  /** Validated cart items, in cart order, with quantity and unit price. */
+  cartItems: readonly {
+    index: number;
+    productId: string;
+    variantId: string;
+    quantity: number;
+    unitPriceMinor: number;
+    isGiftCard: boolean;
+  }[];
+  /** Authoritative per-product deposit policy, keyed by product id. */
+  productPolicyById: ReadonlyMap<string, string | null | undefined>;
+  globalDefaultProductPolicy: "all" | "selected";
+}
+
 /**
  * The qualifying merchandise for a manual COD deposit, computed from
  * authoritative tax quote lines, product policies and cart items.
@@ -204,22 +222,7 @@ export function resolveCodDepositQualifyingValue(
  * only when one of its lines contributed to the basis.
  */
 export function resolveCodDepositQualifyingMerchandise(
-    input: {
-        /** Authoritative tax quote lines: one per cart line, keyed by line id. */
-        quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
-        /** Validated cart items, in cart order, with quantity and unit price. */
-        cartItems: readonly {
-            index: number;
-            productId: string;
-            variantId: string;
-            quantity: number;
-            unitPriceMinor: number;
-            isGiftCard: boolean;
-        }[];
-        /** Authoritative per-product deposit policy, keyed by product id. */
-        productPolicyById: ReadonlyMap<string, string | null | undefined>;
-        globalDefaultProductPolicy: "all" | "selected";
-    },
+    input: CodDepositQualifyingMerchandiseInput,
 ): CodDepositQualifyingMerchandise {
     const lineDiscountById = new Map(
         input.quoteLines.map((line) => [line.lineId, line.discountMinor ?? 0]),
@@ -246,21 +249,25 @@ export function resolveCodDepositQualifyingMerchandise(
 
 /** The qualifying merchandise value alone, in minor units. */
 export function resolveCodDepositQualifyingMerchandiseMinor(
-    input: {
-        quoteLines: readonly { lineId: string; discountMinor?: number | null }[];
-        cartItems: readonly {
-            index: number;
-            productId: string;
-            variantId: string;
-            quantity: number;
-            unitPriceMinor: number;
-            isGiftCard: boolean;
-        }[];
-        productPolicyById: ReadonlyMap<string, string | null | undefined>;
-        globalDefaultProductPolicy: "all" | "selected";
-    },
+    input: CodDepositQualifyingMerchandiseInput,
 ): number {
     return resolveCodDepositQualifyingMerchandise(input).minor;
+}
+
+/**
+ * The qualifying merchandise, read only when a deposit can apply.
+ *
+ * A store with the manual deposit switched off (or an order that never pays
+ * cash on delivery) carries no deposit terms, so the deposit basis is never
+ * read there: a pricing inconsistency in the deposit policy must not fail a
+ * checkout that carries no deposit.
+ */
+export function resolveCodDepositQualifyingMerchandiseWhenApplicable(
+    applicable: boolean,
+    input: CodDepositQualifyingMerchandiseInput,
+): CodDepositQualifyingMerchandise {
+    if (!applicable) return { minor: 0, productIds: [] };
+    return resolveCodDepositQualifyingMerchandise(input);
 }
 
 /** The same deposit decision drives the offered COD method and its order. */
@@ -311,6 +318,18 @@ export function resolveManualCodDeposit(
     // taka for BDT). Every collected amount stays on that increment so the
     // balance collected on delivery is collectable too.
     const step = Math.max(1, shopCurrency.priceIncrementMinor);
+    // A deposit may never exceed the qualifying merchandise value, and a
+    // positive cash balance must remain for collection on delivery. The cap
+    // stays on the currency increment, so a discounted basis never pushes the
+    // deposit off the increment and leaves a balance the courier cannot
+    // collect.
+    const maxQualifyingDeposit = Math.floor(qualifyingMerchandiseMinor / step) * step;
+    if (maxQualifyingDeposit <= 0) {
+        // The qualifying merchandise is worth less than one currency increment,
+        // so it cannot carry a collectable cash deposit. The order stays a
+        // normal COD order without a deposit plan instead of being refused.
+        return { terms: null, error: null };
+    }
     // The originally configured amount before capping, persisted for auditability.
     // A fixed deposit may be capped at the qualifying merchandise value; the
     // original configured amount must be preserved to distinguish a merchant who
@@ -318,31 +337,27 @@ export function resolveManualCodDeposit(
     const configuredAmountMinor = percent === null
         ? toMinor(settings.codDepositAmount, shopCurrency.decimalPlaces)
         : manualCodPercentageDepositMinor(qualifyingMerchandiseMinor, percent, step);
-    // The shared percentage helper keeps one increment below the basis so a cash
-    // remainder stays on the merchandise. When the basis is smaller than one
-    // increment that remainder is zero, so fall back to the rounded deposit:
-    // it stays below the order total and on the currency increment.
-    const roundedPercentMinor = percent === null
-        ? 0
-        : Math.ceil((qualifyingMerchandiseMinor * percent) / 100 / step) * step;
-    const depositMinor = configuredAmountMinor > 0 || roundedPercentMinor <= 0
-        ? configuredAmountMinor
-        : roundedPercentMinor;
+    if (percent !== null && percent <= 0) {
+        // The configured percentage is not a usable deposit. A stored setting
+        // like this is corrupt, so the order is refused instead of being
+        // placed without the deposit the merchant configured.
+        return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
+    }
+    if (percent !== null && configuredAmountMinor <= 0) {
+        // The percentage cannot be collected on the currency increment without
+        // consuming the whole qualifying merchandise. The order stays a normal
+        // COD order without a deposit plan: the buyer is never charged the
+        // configured percentage times over.
+        return { terms: null, error: null };
+    }
+    const depositMinor = configuredAmountMinor;
     if (depositMinor <= 0) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
     }
-    // A deposit may never exceed the qualifying merchandise value, and a
-    // positive cash balance must remain for collection on delivery. The cap
-    // stays on the currency increment, so a discounted basis never pushes the
-    // deposit off the increment and leaves a balance the courier cannot
-    // collect. A merchant-configured amount is kept exactly as configured: an
+    // A merchant-configured amount is kept exactly as configured: an
     // off-increment fixed deposit stays off the increment, and the cash balance
     // check below then refuses COD for that currency.
-    const maxQualifyingDeposit = Math.floor(qualifyingMerchandiseMinor / step) * step;
     const cappedDeposit = Math.min(depositMinor, maxQualifyingDeposit);
-    if (cappedDeposit <= 0) {
-        return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
-    }
     if (cappedDeposit >= quote.totalMinor) {
         return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be less than the order total.") };
     }

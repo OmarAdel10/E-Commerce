@@ -43,7 +43,7 @@ import { bundleLineProperties, createCartTransformer, presentTransformedCart, ru
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
 import {
     resolveManualCodDeposit,
-    resolveCodDepositQualifyingMerchandise,
+    resolveCodDepositQualifyingMerchandiseWhenApplicable,
 } from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
 import {
@@ -1068,12 +1068,15 @@ export async function createStorefrontOrder(
     const productPolicyById = new Map(
         cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
     );
-    const qualifying = resolveCodDepositQualifyingMerchandise({
-        quoteLines: taxQuote.lines,
-        cartItems: cartValidation.items,
-        productPolicyById,
-        globalDefaultProductPolicy: effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
-    });
+    const qualifying = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+        effectiveSettings?.codDepositEnabled === true,
+        {
+            quoteLines: taxQuote.lines,
+            cartItems: cartValidation.items,
+            productPolicyById,
+            globalDefaultProductPolicy: effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
+        },
+    );
     const qualifyingMerchandiseMinor = qualifying.minor;
     // Which product ids qualified: snapshot for auditability of deposit terms.
     // The ids come from the same pass as the basis, so the snapshot names only

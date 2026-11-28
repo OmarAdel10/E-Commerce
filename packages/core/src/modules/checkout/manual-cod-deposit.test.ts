@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandise, resolveCodDepositQualifyingMerchandiseMinor, resolveProductDepositPolicy } from "./manual-cod-deposit";
+import { resolveManualCodDeposit, resolveCodDepositQualifyingValue, resolveCodDepositQualifyingMerchandise, resolveCodDepositQualifyingMerchandiseMinor, resolveCodDepositQualifyingMerchandiseWhenApplicable, resolveProductDepositPolicy } from "./manual-cod-deposit";
 import type { CheckoutFlowSettings } from "../settings";
 import type { PricingCurrency } from "@scalius/shared/currency-policy";
 import { CASH_ON_DELIVERY_AMOUNT_REASON, COD_PAYMENT_METHOD, type PaymentProviders } from "../payments";
@@ -193,6 +193,34 @@ describe("resolveManualCodDeposit", () => {
     });
   });
 
+  it("refuses the order when the stored percentage cannot be a deposit", () => {
+    // A percentage of zero or less is a corrupt setting, not a small deposit:
+    // the order is refused instead of being placed without a deposit.
+    const { terms, error } = call(
+      { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 0 },
+      baseQuote,
+      shopCurrency,
+      baseCart,
+      providers(),
+      100000,
+    );
+    expect(terms).toBeNull();
+    expect(error?.message).toContain("the deposit must be greater than zero");
+  });
+
+  it("refuses the order when the stored percentage is negative", () => {
+    const { terms, error } = call(
+      { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: -10 },
+      baseQuote,
+      shopCurrency,
+      baseCart,
+      providers(),
+      100000,
+    );
+    expect(terms).toBeNull();
+    expect(error?.message).toContain("the deposit must be greater than zero");
+  });
+
   it("calculates a percentage deposit from qualifying merchandise only, not shipping", () => {
     // Order total 1000.00 BDT of which 600.00 BDT qualifies and 400.00 BDT is
     // exempt (or shipping is excluded). 20% of 600.00 = 120.00 BDT.
@@ -212,10 +240,12 @@ describe("resolveManualCodDeposit", () => {
     });
   });
 
-  it("collects a percentage deposit when the basis is smaller than one increment", () => {
+  it("leaves the order without a deposit when the percentage cannot fit the qualifying value", () => {
     // Qualifying merchandise is 1.00 BDT and the increment is 1.00 BDT, so 20%
-    // rounds up to the whole increment. The deposit stays below the order total
-    // and leaves a collectable balance.
+    // would round up to the whole qualifying value. The order stays a normal
+    // COD order: a percentage deposit never consumes the qualifying
+    // merchandise, and the buyer is never charged the configured percentage
+    // times over.
     const { terms, error } = call(
       { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 20 },
       { totalMinor: 10000, currencyCode: "BDT" },
@@ -225,11 +255,35 @@ describe("resolveManualCodDeposit", () => {
       100,
     );
     expect(error).toBeNull();
-    expect(terms).toMatchObject({
-      depositMinor: 100,
-      balanceMinor: 9900,
-      percent: 20,
-    });
+    expect(terms).toBeNull();
+  });
+
+  it("keeps normal COD when the qualifying value is below one currency increment", () => {
+    // 0.50 BDT of qualifying merchandise cannot carry a 1.00 BDT cash deposit.
+    // The order stays a normal COD order instead of being refused outright.
+    const { terms, error } = call(
+      baseSettings,
+      { totalMinor: 10000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      50,
+    );
+    expect(error).toBeNull();
+    expect(terms).toBeNull();
+  });
+
+  it("keeps normal COD for a percentage deposit below one currency increment", () => {
+    const { terms, error } = call(
+      { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 20 },
+      { totalMinor: 10000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      50,
+    );
+    expect(error).toBeNull();
+    expect(terms).toBeNull();
   });
 
   it("propagates provider amount issues with the COD reason", () => {
@@ -820,5 +874,35 @@ describe("resolveCodDepositQualifyingMerchandise", () => {
     });
     expect(result.productIds).toEqual([]);
     expect(result.minor).toBe(0);
+  });
+});
+
+describe("resolveCodDepositQualifyingMerchandiseWhenApplicable", () => {
+  const cartItems = [
+    { index: 0, productId: "prod_required", variantId: "var_default_prod_required", quantity: 1, unitPriceMinor: 10000, isGiftCard: false },
+  ];
+  const productPolicyById = new Map<string, string | null>([["prod_required", "required"]]);
+
+  it("reads no deposit basis when no deposit can apply", () => {
+    // The quote does not cover the cart line: with no deposit in play the
+    // checkout must not read the deposit basis at all, so the inconsistency
+    // cannot fail a checkout that carries no deposit.
+    const result = resolveCodDepositQualifyingMerchandiseWhenApplicable(false, {
+      quoteLines: [],
+      cartItems,
+      productPolicyById,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result).toEqual({ minor: 0, productIds: [] });
+  });
+
+  it("reads the deposit basis when a deposit can apply", () => {
+    const result = resolveCodDepositQualifyingMerchandiseWhenApplicable(true, {
+      quoteLines: [{ lineId: "cart:0:var_default_prod_required", discountMinor: 0 }],
+      cartItems,
+      productPolicyById,
+      globalDefaultProductPolicy: "all",
+    });
+    expect(result).toEqual({ minor: 10000, productIds: ["prod_required"] });
   });
 });

@@ -25,7 +25,7 @@ import {
   paymentCountryOf,
   resolveCartPaymentMethods,
   resolveManualCodDeposit,
-  resolveCodDepositQualifyingMerchandiseMinor,
+  resolveCodDepositQualifyingMerchandiseWhenApplicable,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
   summarizeStorefrontCartFulfilment,
@@ -1008,12 +1008,15 @@ export async function quoteAgentStorefrontCheckout(
   const productPolicyById = new Map<string, string | null | undefined>(
     projection.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
   );
-  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
-    quoteLines: quote.lines,
-    cartItems: projection.items,
-    productPolicyById,
-    globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
-  });
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+    checkoutSettings.codDepositEnabled === true,
+    {
+      quoteLines: quote.lines,
+      cartItems: projection.items,
+      productPolicyById,
+      globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+    },
+  ).minor;
   const manualDeposit = resolveManualCodDeposit(
     checkoutSettings,
     quote,

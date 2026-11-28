@@ -40,7 +40,7 @@ import {
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
     resolveManualCodDeposit,
-    resolveCodDepositQualifyingMerchandiseMinor,
+    resolveCodDepositQualifyingMerchandiseWhenApplicable,
     storefrontLinePropertiesHashes,
     validateStorefrontDeliveryPreflight,
     validateStorefrontCartItems,
@@ -390,12 +390,15 @@ app.openapi(taxQuoteRoute, async (c) => {
   const productPolicyById = new Map(
     cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
   );
-  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseMinor({
-    quoteLines: quote.lines,
-    cartItems: cartValidation.items,
-    productPolicyById,
-    globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
-  });
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+    checkoutSettings.codDepositEnabled === true,
+    {
+      quoteLines: quote.lines,
+      cartItems: cartValidation.items,
+      productPolicyById,
+      globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+    },
+  ).minor;
   const manualDeposit = resolveManualCodDeposit(
     checkoutSettings,
     quote,
