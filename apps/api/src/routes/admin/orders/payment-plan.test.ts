@@ -46,8 +46,17 @@ describe("admin order payment-plan reads", () => {
       expect(await readListedOrder()).toMatchObject({ id: orderId, hasUnverifiedManualDeposit: true });
       const payments = await app.request(`/orders/${orderId}/payments`);
       expect(payments.status).toBe(200);
-      expect(await payments.json()).toMatchObject({
+      const paymentsBody = await payments.json() as { data: { plan: Record<string, unknown> | null } };
+      expect(paymentsBody).toMatchObject({
         data: { plan: { kind: "manual", status: "pending", depositAmount: 100 } },
+      });
+      // The deposit snapshot the plan carries: the configured amount before the
+      // cap, the qualifying merchandise it was taken from, and the products
+      // that qualified. Staff read them to audit what the buyer was charged.
+      expect(paymentsBody.data.plan).toMatchObject({
+        codDepositAmount: 10000,
+        qualifyingMerchandiseMinor: 30000,
+        qualifyingProductIds: '["p_mug"]',
       });
 
       fixture.sqlite.prepare("UPDATE payment_plans SET status = 'deposit_paid' WHERE order_id = ?").run(orderId);
@@ -74,6 +83,31 @@ describe("admin order payment-plan reads", () => {
       fixture.sqlite.prepare("DELETE FROM payment_plans WHERE order_id = ?").run(orderId);
       expect(await readOrder()).toMatchObject({ hasUnverifiedManualDeposit: false, paymentPlan: null });
       expect(await readListedOrder()).toMatchObject({ hasUnverifiedManualDeposit: false });
+    } finally {
+      fixture.close();
+    }
+  });
+
+  it("reports no plan for an order that carries no deposit", async () => {
+    const fixture = createGiftCardCheckoutFixture();
+    try {
+      const { orderId } = await fixture.checkout({
+        ...DELIVERY,
+        shippingCountryCode: "BD",
+        items: [line("p_mug", "v_mug", 1, 300)],
+      });
+      const app = new OpenAPIHono();
+      app.use("*", async (c, next) => {
+        c.set("db" as never, fixture.db as never);
+        await next();
+      });
+      app.route("/orders", adminOrderDetailRoutes);
+
+      const response = await app.request(`/orders/${orderId}/payments`);
+      expect(response.status).toBe(200);
+      // An order without a deposit has no plan at all, so there is no snapshot
+      // to read: the route says so instead of inventing one.
+      expect(await response.json()).toMatchObject({ data: { plan: null } });
     } finally {
       fixture.close();
     }
