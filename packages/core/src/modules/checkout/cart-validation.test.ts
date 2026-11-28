@@ -5,6 +5,7 @@
 // and verifies codDepositPolicy is passed through from product rows to result.
 
 import { describe, expect, it } from "vitest";
+import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
 import { selectStorefrontCartProductRows, resolveStorefrontCartValidationFromRows, presentStorefrontCartValidation } from "./cart-validation";
 import type { StorefrontCartProductRow } from "./cart-validation";
 
@@ -148,6 +149,34 @@ describe("cart-validation.ts — codDepositPolicy pass-through", () => {
 
         // Both product rows are in productRows output (filtering happens at DB level)
         expect(result.productRows).toHaveLength(2);
+    });
+});
+
+describe("cart-validation.ts — the cart query reads the deposit policy", () => {
+    it("returns the deposit policy each product row carries", async () => {
+        const testDb = createSqliteD1Database();
+        try {
+            // The migration publishes a new product to every channel, so the
+            // cart query finds these rows without a publication of its own.
+            testDb.sqlite.exec(`
+                INSERT INTO products (id, name, slug, cod_deposit_policy, is_active, price_minor, aggregate_revision)
+                VALUES ('cart_required', 'Required Cart Product', 'cart-required', 'required', 1, 10000, 1),
+                       ('cart_exempt', 'Exempt Cart Product', 'cart-exempt', 'exempt', 1, 5000, 1),
+                       ('cart_inherit', 'Inherit Cart Product', 'cart-inherit', 'inherit', 1, 8000, 1);
+            `);
+
+            const rows = await selectStorefrontCartProductRows(
+                testDb.db,
+                ["cart_required", "cart_exempt", "cart_inherit"],
+            );
+
+            const byId = new Map(rows.map((row) => [row.id, row.codDepositPolicy]));
+            expect(byId.get("cart_required")).toBe("required");
+            expect(byId.get("cart_exempt")).toBe("exempt");
+            expect(byId.get("cart_inherit")).toBe("inherit");
+        } finally {
+            testDb.sqlite.close();
+        }
     });
 });
 
