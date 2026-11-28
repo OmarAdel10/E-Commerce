@@ -59,7 +59,13 @@ describe("product-admin/bulk-edit.ts — codDepositPolicy", () => {
     });
 
     it("readProductsForBulkEdit returns only the products that exist", async () => {
-        const rows = await readProductsForBulkEdit(testDb.db, ["p1", "p_missing"]);
-        expect(rows.map((row) => row.id)).toEqual(["p1"]);
+        // The product is seeded inside the test, so the test stands on its own.
+        testDb.sqlite.exec(`
+            INSERT INTO products (id, name, slug, cod_deposit_policy, is_active, price_minor, category_id, aggregate_revision)
+            VALUES ('p_bulk_existing', 'Bulk Existing Product', 'bulk-existing-product', 'required', 1, 10000, 'cat_1', 1)
+        `);
+
+        const rows = await readProductsForBulkEdit(testDb.db, ["p_bulk_existing", "p_missing"]);
+        expect(rows.map((row) => row.id)).toEqual(["p_bulk_existing"]);
     });
 });
