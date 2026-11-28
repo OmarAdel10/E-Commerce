@@ -117,6 +117,29 @@ export const productSkuWeightChanged = (
 };
 
 /**
+ * The SKUs whose server weight no longer matches the baseline the editor
+ * started from.
+ *
+ * The bulk editor writes the SKU weights one after another, and a write whose
+ * response never arrived makes the editor read the row again and continue
+ * with the revision the server moved to. That fresh row can be newer than
+ * the row the editor checked before the first write, so the remaining SKUs
+ * have to be checked against it again: otherwise a weight another admin
+ * changed in between would be overwritten by the next write.
+ *
+ * A SKU the baseline does not carry is reported as changed: the editor has
+ * no weight to compare it with, so it does not write over it.
+ */
+export const changedSkuWeights = (
+  row: { skus?: readonly { id: string; weightGrams?: number | null }[] },
+  skus: readonly { id: string }[],
+  baselineWeights: Record<string, number | null>,
+): string[] =>
+  skus
+    .filter((sku) => productSkuWeightChanged(row, sku.id, baselineWeights[sku.id] ?? null))
+    .map((sku) => sku.id);
+
+/**
  * The outcome of reading a product row back from the server.
  *
  * A failed read is not an absent row: the editor must tell the two apart, or a

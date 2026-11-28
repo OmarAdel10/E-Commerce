@@ -3,6 +3,7 @@ import { AdminApiResponseError } from "~/lib/admin-api-error";
 import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
+  changedSkuWeights,
   hasBulkEditChanges,
   isLostWriteResponse,
   productHasSkuWeight,
@@ -185,5 +186,20 @@ describe("bulk-edit-baseline", () => {
     const read = await readBulkRow(async () => ({ id: "prod_1" }));
     expect(read.row).toEqual({ id: "prod_1" });
     expect(read.error).toBeNull();
+  });
+
+  it("names the sku weights another admin changed since the baseline", () => {
+    const row = { skus: [{ id: "sku_1", weightGrams: 500 }, { id: "sku_2", weightGrams: 900 }] };
+    expect(changedSkuWeights(row, [{ id: "sku_1" }, { id: "sku_2" }], { sku_1: 500, sku_2: 800 })).toEqual(["sku_2"]);
+  });
+
+  it("names no sku weight when the server still holds every baseline weight", () => {
+    const row = { skus: [{ id: "sku_1", weightGrams: 500 }] };
+    expect(changedSkuWeights(row, [{ id: "sku_1" }], { sku_1: 500 })).toEqual([]);
+  });
+
+  it("names a sku that carries no baseline weight", () => {
+    const row = { skus: [{ id: "sku_3", weightGrams: 100 }] };
+    expect(changedSkuWeights(row, [{ id: "sku_3" }], {})).toEqual(["sku_3"]);
   });
 });

@@ -39,11 +39,11 @@ import { productMessages } from "~/i18n/products";
 import {
   acknowledgeBasePatch,
   captureBulkEditBaseline,
+  changedSkuWeights,
   hasBulkEditChanges,
   isLostWriteResponse,
   productHasSkuWeight,
   productMatchesBasePatch,
-  productSkuWeightChanged,
   readBulkRow,
   samePricePair,
   type BulkEditBaseline,
@@ -252,11 +252,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
           const current = await freshBulkProduct(product.id);
           if (current.error) throw current.error;
           if (!current.row) throw new Error(t("bulkEditRowFailed"));
-          for (const sku of weightWrites) {
-            const baselineWeight = acknowledged.weight[sku.id] ?? null;
-            if (productSkuWeightChanged(current.row, sku.id, baselineWeight)) {
-              throw new Error(t("bulkEditWeightChanged"));
-            }
+          if (changedSkuWeights(current.row, weightWrites, acknowledged.weight).length > 0) {
+            throw new Error(t("bulkEditWeightChanged"));
           }
         }
         // Each weight under the revision the last write left.
@@ -279,6 +276,17 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
             const fresh = await freshBulkProduct(product.id);
             if (fresh.error || !fresh.row || !productHasSkuWeight(fresh.row, sku.id, rounded)) throw error;
             revision = fresh.row.aggregateRevision;
+            // The row the editor holds now is newer than the row it checked
+            // before the first write. The weights that are still pending have
+            // to be checked against it again: another admin may have changed
+            // one of them in between, and the next write would overwrite it.
+            acknowledged.weight[sku.id] = rounded;
+            const pendingWeights = product.skus.filter(
+              (entry) => entry.ships && next.weight[entry.id] !== acknowledged.weight[entry.id],
+            );
+            if (changedSkuWeights(fresh.row, pendingWeights, acknowledged.weight).length > 0) {
+              throw new Error(t("bulkEditWeightChanged"));
+            }
           }
           acknowledged.weight[sku.id] = rounded;
           persistProgress();
