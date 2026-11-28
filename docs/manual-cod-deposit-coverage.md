@@ -111,10 +111,15 @@ mutates the store and names every missing piece, so a store that cannot run
 the suite fails fast instead of half-way through.
 
 After the scenarios the suite restores the checkout settings it changed and
-deletes the category it created, so the store is left as it was found. B6
+deletes the categories it created, so the store is left as it was found. B6
 asserts the persisted payment plan twice: the deposit that was actually
-charged (`depositAmountMinor`) and the configured amount before the cap
-(`codDepositAmount`).
+charged (`depositAmount`, converted to minor units) and the configured amount
+before the cap (`codDepositAmount`).
+
+The suite needs its own migrated state directory: it imports the Egyptian
+delivery locations the store needs, and those locations stay behind because
+they are store data, not test fixtures. Run the suite against a disposable
+state directory rather than a shared development store.
 
 | Requirement | Test file | Test name | Type | Actual assertions | Result |
 |---|---|---|---|---|---|
