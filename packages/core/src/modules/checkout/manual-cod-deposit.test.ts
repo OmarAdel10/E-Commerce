@@ -273,6 +273,22 @@ describe("resolveManualCodDeposit", () => {
     expect(terms).toBeNull();
   });
 
+  it("refuses the order when the stored percentage cannot be a deposit and the qualifying value is below one increment", () => {
+    // A corrupt percentage is refused even when the qualifying value is too
+    // small to carry a deposit: the order must not slip through as a normal
+    // COD order with a broken deposit setting.
+    const { terms, error } = call(
+      { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 0 },
+      { totalMinor: 10000, currencyCode: "BDT" },
+      shopCurrency,
+      baseCart,
+      providers(),
+      50,
+    );
+    expect(terms).toBeNull();
+    expect(error?.message).toContain("the deposit must be greater than zero");
+  });
+
   it("keeps normal COD for a percentage deposit below one currency increment", () => {
     const { terms, error } = call(
       { ...baseSettings, codDepositMode: "percentage", codDepositAmount: 0, codDepositPercent: 20 },

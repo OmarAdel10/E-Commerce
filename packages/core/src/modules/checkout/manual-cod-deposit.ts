@@ -324,6 +324,14 @@ export function resolveManualCodDeposit(
     // deposit off the increment and leaves a balance the courier cannot
     // collect.
     const maxQualifyingDeposit = Math.floor(qualifyingMerchandiseMinor / step) * step;
+    if (percent !== null && percent <= 0) {
+        // The configured percentage is not a usable deposit. A stored setting
+        // like this is corrupt, so the order is refused instead of being
+        // placed without the deposit the merchant configured. The check runs
+        // before the qualifying value is measured, so a corrupt percentage can
+        // never slip through as a normal COD order.
+        return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
+    }
     if (maxQualifyingDeposit <= 0) {
         // The qualifying merchandise is worth less than one currency increment,
         // so it cannot carry a collectable cash deposit. The order stays a
@@ -337,12 +345,6 @@ export function resolveManualCodDeposit(
     const configuredAmountMinor = percent === null
         ? toMinor(settings.codDepositAmount, shopCurrency.decimalPlaces)
         : manualCodPercentageDepositMinor(qualifyingMerchandiseMinor, percent, step);
-    if (percent !== null && percent <= 0) {
-        // The configured percentage is not a usable deposit. A stored setting
-        // like this is corrupt, so the order is refused instead of being
-        // placed without the deposit the merchant configured.
-        return { terms: null, error: new ValidationError("Cash on delivery is unavailable for this order: the deposit must be greater than zero.") };
-    }
     if (percent !== null && configuredAmountMinor <= 0) {
         // The percentage cannot be collected on the currency increment without
         // consuming the whole qualifying merchandise. The order stays a normal
