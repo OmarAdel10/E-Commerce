@@ -136,7 +136,11 @@ export const changedSkuWeights = (
   baselineWeights: Record<string, number | null>,
 ): string[] =>
   skus
-    .filter((sku) => productSkuWeightChanged(row, sku.id, baselineWeights[sku.id] ?? null))
+    .filter(
+      (sku) =>
+        !(sku.id in baselineWeights) ||
+        productSkuWeightChanged(row, sku.id, baselineWeights[sku.id] ?? null),
+    )
     .map((sku) => sku.id);
 
 /**

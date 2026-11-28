@@ -202,4 +202,14 @@ describe("bulk-edit-baseline", () => {
     const row = { skus: [{ id: "sku_3", weightGrams: 100 }] };
     expect(changedSkuWeights(row, [{ id: "sku_3" }], {})).toEqual(["sku_3"]);
   });
+
+  it("names a sku the baseline does not carry even when the server weight is empty", () => {
+    const row = { skus: [{ id: "sku_4", weightGrams: null }] };
+    expect(changedSkuWeights(row, [{ id: "sku_4" }], {})).toEqual(["sku_4"]);
+  });
+
+  it("keeps a recorded empty baseline weight equal to an empty server weight", () => {
+    const row = { skus: [{ id: "sku_5", weightGrams: null }] };
+    expect(changedSkuWeights(row, [{ id: "sku_5" }], { sku_5: null })).toEqual([]);
+  });
 });

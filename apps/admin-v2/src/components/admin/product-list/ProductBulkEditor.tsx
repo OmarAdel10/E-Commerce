@@ -281,6 +281,10 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
             // to be checked against it again: another admin may have changed
             // one of them in between, and the next write would overwrite it.
             acknowledged.weight[sku.id] = rounded;
+            // Persist the confirmed weight and the fresh revision before the
+            // pending-weight check: a conflict below must not lose the fact
+            // that this write landed.
+            persistProgress();
             const pendingWeights = product.skus.filter(
               (entry) => entry.ships && next.weight[entry.id] !== acknowledged.weight[entry.id],
             );
