@@ -41,6 +41,12 @@ export interface Category {
   depth?: number;
 }
 
+/**
+ * The manual COD deposit policy a product starts with: it follows the
+ * store's default until the merchant picks another one.
+ */
+export const DEFAULT_COD_DEPOSIT_POLICY = "inherit" as const;
+
 export const productFormSchema = z.object({
   id: z.string().optional(),
   /** 1 to 255 characters, as Shopify's: "TV" is a title. */

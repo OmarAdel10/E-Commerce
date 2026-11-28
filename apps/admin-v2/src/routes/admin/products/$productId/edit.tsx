@@ -14,6 +14,7 @@ import type {
   ProductDetailDto as ProductDetail,
 } from "~/lib/api-query-options/products";
 import {
+  DEFAULT_COD_DEPOSIT_POLICY,
   DEFAULT_PRODUCT_CONDITION,
   type ProductFormValues,
   type Category,
@@ -113,7 +114,7 @@ function toFormValues(product: ProductDetail): ProductFormValues {
     warrantyPolicyId: product.warrantyPolicyId ?? null,
     brandId: product.brandId ?? null,
     customizationSchema: draftsFromView(product.customizationSchema),
-    codDepositPolicy: product.codDepositPolicy ?? "inherit",
+    codDepositPolicy: product.codDepositPolicy ?? DEFAULT_COD_DEPOSIT_POLICY,
   } as ProductFormValues;
 }
 
