@@ -1,7 +1,23 @@
 /** The list filter fields the "all matching" bulk actions forward. */
+import { normalizeOptionalEnumSearchParam } from "./list-helpers";
+
 export type ProductListStatus = "active" | "draft";
 export type ProductListChannelState = "published" | "unpublished";
 export type ProductListDepositPolicy = "inherit" | "required" | "exempt";
+
+/** The deposit policies the list can be filtered by. */
+export const PRODUCT_LIST_DEPOSIT_POLICIES = ["inherit", "required", "exempt"] as const;
+
+/**
+ * The deposit policy the URL asks for.
+ *
+ * The URL carries the filter, so it is read as a plain value: a policy the
+ * merchant cannot pick is no filter at all, never a default that would hide
+ * rows by accident.
+ */
+export function normalizeCodDepositPolicySearchParam(value: unknown): ProductListDepositPolicy | undefined {
+  return normalizeOptionalEnumSearchParam(value, PRODUCT_LIST_DEPOSIT_POLICIES);
+}
 
 export interface ProductListFilterState {
   category?: string | null;

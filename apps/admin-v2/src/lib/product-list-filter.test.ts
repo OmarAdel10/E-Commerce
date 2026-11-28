@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { productMatchingFilter } from "./product-list-filter";
+import { normalizeCodDepositPolicySearchParam, productMatchingFilter } from "./product-list-filter";
+
+describe("normalizeCodDepositPolicySearchParam", () => {
+  it("keeps every policy the merchant can filter by", () => {
+    expect(normalizeCodDepositPolicySearchParam("inherit")).toBe("inherit");
+    expect(normalizeCodDepositPolicySearchParam("required")).toBe("required");
+    expect(normalizeCodDepositPolicySearchParam("exempt")).toBe("exempt");
+  });
+
+  it("reads a policy that is not one the merchant can pick as no filter", () => {
+    // An unknown policy must not fall back to a default: that would hide rows
+    // the merchant did not ask to hide.
+    expect(normalizeCodDepositPolicySearchParam("other")).toBeUndefined();
+    expect(normalizeCodDepositPolicySearchParam(undefined)).toBeUndefined();
+    expect(normalizeCodDepositPolicySearchParam(null)).toBeUndefined();
+    expect(normalizeCodDepositPolicySearchParam(7)).toBeUndefined();
+  });
+});
 
 describe("productMatchingFilter", () => {
   it("forwards the deposit policy the list is filtered by", () => {

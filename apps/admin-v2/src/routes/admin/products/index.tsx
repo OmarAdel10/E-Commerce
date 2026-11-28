@@ -17,7 +17,7 @@ import {
   type SearchValidatorInput,
 } from "~/lib/list-helpers";
 import { adoptListSearch, listSearchKey, useListSearch } from "~/lib/list-search";
-import { productMatchingFilter } from "~/lib/product-list-filter";
+import { normalizeCodDepositPolicySearchParam, productMatchingFilter } from "~/lib/product-list-filter";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { apiData } from "~/lib/api";
 import { queryKeys } from "~/lib/query-keys";
@@ -64,11 +64,7 @@ function validateProductSearch(search: SearchValidatorInput) {
     channel: normalizeOptionalSearchString(search.channel),
     channelState: normalizeOptionalEnumSearchParam(search.channelState, CHANNEL_STATES),
     // Manual COD deposit policy filter.
-    codDepositPolicy: normalizeOptionalEnumSearchParam(search.codDepositPolicy, [
-      "inherit",
-      "required",
-      "exempt",
-    ]),
+    codDepositPolicy: normalizeCodDepositPolicySearchParam(search.codDepositPolicy),
     // An app column and its exact value: `<app id>/<column id>:<value>`.
     appFilter: normalizeAppFilterSearchParam(search.appFilter),
   };
