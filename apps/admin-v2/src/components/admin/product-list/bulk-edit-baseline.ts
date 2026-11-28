@@ -31,7 +31,7 @@ export interface BulkEditBaseline {
 
 /** Copies a row into a baseline, so later edits cannot rewrite it. */
 export const captureBulkEditBaseline = (draft: BulkEditDraft, revision: number): BulkEditBaseline => ({
-  draft: { ...draft, stock: { ...draft.stock }, weight: { ...draft.weight } },
+  draft: { ...draft, pair: { ...draft.pair }, stock: { ...draft.stock }, weight: { ...draft.weight } },
   revision,
 });
 
@@ -43,7 +43,7 @@ export type BasePatch = {
   discountAmount?: number;
   discountPercentage?: number;
   shippingProfileId?: string | null;
-  codDepositPolicy?: string;
+  codDepositPolicy?: "inherit" | "required" | "exempt";
 };
 
 /**
@@ -60,18 +60,25 @@ export const productMatchesBasePatch = (row: BasePatch, patch: BasePatch): boole
   Object.entries(patch).every(([field, value]) => row[field as keyof BasePatch] === value);
 
 /**
- * True when a failed write carries no HTTP status: no answer arrived, so the
- * write may still have committed on the server.
+ * True when a failed write leaves the editor in doubt: no answer arrived, or
+ * the server faulted.
  *
- * An answer the server did send is authoritative, whatever its status: a
- * stale revision (409), a rejected value (422) or a server fault (500) means
- * the write did not take the row where the editor wanted it. Reconciling such
- * a failure against a fresh row would adopt another admin's write - or the
- * editor's own - instead of reporting the refusal, and the next write would
- * then overwrite a value nobody changed.
+ * A write whose response never arrived may still have committed on the
+ * server, and a server fault (5xx) can arrive after the write committed, so
+ * both leave the editor to check the fresh row before it continues.
+ *
+ * A refusal the server did send is authoritative: a stale revision (409) or
+ * a rejected value (422) means the write did not take the row where the
+ * editor wanted it. Reconciling such a failure against a fresh row would
+ * adopt another admin's write - or the editor's own - instead of reporting
+ * the refusal, and the next write would then overwrite a value nobody
+ * changed.
  */
-export const isLostWriteResponse = (error: unknown): boolean =>
-  readAdminApiError(error)?.status == null;
+export const isLostWriteResponse = (error: unknown): boolean => {
+  const status = readAdminApiError(error)?.status;
+  if (status == null) return true;
+  return status >= 500;
+};
 
 /**
  * True when a fresh product row already holds the weight a write intended.
@@ -89,6 +96,51 @@ export const productHasSkuWeight = (
   const sku = row.skus?.find((entry) => entry.id === skuId);
   if (!sku) return false;
   return (sku.weightGrams ?? null) === grams;
+};
+
+/**
+ * True when the server holds a different weight for a SKU than the baseline
+ * the editor started from.
+ *
+ * A weight write must never overwrite a weight another admin changed since
+ * the baseline: the editor reports the row as failed instead, so the
+ * merchant decides what to do with the newer value.
+ */
+export const productSkuWeightChanged = (
+  row: { skus?: readonly { id: string; weightGrams?: number | null }[] },
+  skuId: string,
+  baselineGrams: number | null,
+): boolean => {
+  const sku = row.skus?.find((entry) => entry.id === skuId);
+  if (!sku) return false;
+  return (sku.weightGrams ?? null) !== baselineGrams;
+};
+
+/**
+ * The outcome of reading a product row back from the server.
+ *
+ * A failed read is not an absent row: the editor must tell the two apart, or a
+ * transport failure looks like a deleted product and hides the real problem.
+ */
+export interface BulkRowRead<T> {
+  /** The row the server returned, or null when it has no such row. */
+  row: T | null;
+  /** The failure the read ran into, or null when the read succeeded. */
+  error: unknown | null;
+}
+
+/**
+ * Reads a product row back, keeping a transport failure apart from an absent
+ * row.
+ *
+ * @param read The read to run.
+ */
+export const readBulkRow = async <T>(read: () => Promise<T | null>): Promise<BulkRowRead<T>> => {
+  try {
+    return { row: await read(), error: null };
+  } catch (error) {
+    return { row: null, error };
+  }
 };
 
 /**

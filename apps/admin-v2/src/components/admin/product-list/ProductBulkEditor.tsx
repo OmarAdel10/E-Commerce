@@ -43,9 +43,12 @@ import {
   isLostWriteResponse,
   productHasSkuWeight,
   productMatchesBasePatch,
+  productSkuWeightChanged,
+  readBulkRow,
   samePricePair,
   type BulkEditBaseline,
   type BulkEditDraft,
+  type BulkRowRead,
 } from "./bulk-edit-baseline";
 
 type BulkProduct = ApiResult<typeof getApiV1AdminProductsBulkEdit>["products"][number];
@@ -109,6 +112,7 @@ function BulkEditorSkeleton({ rows }: { rows: number }) {
       <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
       <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
       <TableCell className="w-44"><Skeleton className="h-9 w-40" /></TableCell>
+      <TableCell className="w-40"><Skeleton className="h-9 w-36" /></TableCell>
       <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
     </TableRow>
   ));
@@ -154,19 +158,19 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   const baselineOf = (id: string): BulkEditBaseline | undefined => baselines[id];
   // The row as the server holds it right now. It tells a lost response from a
   // write that never reached the server: a row that already holds the patch
-  // means the write landed.
-  const freshBulkProduct = async (id: string): Promise<BulkProduct | null> => {
-    try {
+  // means the write landed. A failed read stays apart from an absent row, so
+  // a transport failure is not reported as a missing product.
+  const freshBulkProduct = async (id: string): Promise<BulkRowRead<BulkProduct>> =>
+    readBulkRow(async () => {
       const fresh = await apiData(getApiV1AdminProductsBulkEdit({ query: { ids: id } }));
       return fresh?.products.find((row) => row.id === id) ?? null;
-    } catch {
-      return null;
-    }
-  };
+    });
   const change = (id: string, patch: Partial<ProductDraft>) => {
     setBaselines((current) => current[id]
       ? current
-      : { ...current, [id]: captureBulkEditBaseline(base[id]!, revisions[id] ?? 0) });
+      // The revision comes from the loaded row, never from a guess: a write
+      // guarded by the wrong revision would be rejected as a conflict.
+      : { ...current, [id]: captureBulkEditBaseline(base[id]!, revisions[id]!) });
     setEdits((current) => ({ ...current, [id]: { ...(current[id] ?? base[id]!), ...patch } }));
   };
 
@@ -233,10 +237,26 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
             // applied it: carry on with the remaining edits instead of
             // repeating a write against a revision the server moved past.
             const fresh = await freshBulkProduct(product.id);
-            if (!fresh || !productMatchesBasePatch(fresh, patch)) throw error;
-            revision = fresh.aggregateRevision;
+            if (fresh.error || !fresh.row || !productMatchesBasePatch(fresh.row, patch)) throw error;
+            revision = fresh.row.aggregateRevision;
             Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
             persistProgress();
+          }
+        }
+        // The weights the server holds right now. A weight write must never
+        // overwrite a weight another admin changed since the baseline: the
+        // row fails instead, so the merchant decides what to do with the
+        // newer value.
+        const weightWrites = product.skus.filter((sku) => sku.ships && next.weight[sku.id] !== acknowledged.weight[sku.id]);
+        if (weightWrites.length > 0) {
+          const current = await freshBulkProduct(product.id);
+          if (current.error) throw current.error;
+          if (!current.row) throw new Error(t("bulkEditRowFailed"));
+          for (const sku of weightWrites) {
+            const baselineWeight = acknowledged.weight[sku.id] ?? null;
+            if (productSkuWeightChanged(current.row, sku.id, baselineWeight)) {
+              throw new Error(t("bulkEditWeightChanged"));
+            }
           }
         }
         // Each weight under the revision the last write left.
@@ -257,8 +277,8 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
             // row's revision forward, so the next write - and the merchant's
             // retry - does not send the revision the server moved past.
             const fresh = await freshBulkProduct(product.id);
-            if (!fresh || !productHasSkuWeight(fresh, sku.id, rounded)) throw error;
-            revision = fresh.aggregateRevision;
+            if (fresh.error || !fresh.row || !productHasSkuWeight(fresh.row, sku.id, rounded)) throw error;
+            revision = fresh.row.aggregateRevision;
           }
           acknowledged.weight[sku.id] = rounded;
           persistProgress();

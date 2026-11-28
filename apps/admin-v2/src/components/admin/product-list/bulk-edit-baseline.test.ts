@@ -7,6 +7,8 @@ import {
   isLostWriteResponse,
   productHasSkuWeight,
   productMatchesBasePatch,
+  productSkuWeightChanged,
+  readBulkRow,
   samePricePair,
   type BulkEditDraft,
 } from "./bulk-edit-baseline";
@@ -43,8 +45,10 @@ describe("bulk-edit-baseline", () => {
     // The merchant keeps typing on the row the baseline was taken from.
     source.stock.sku_1 = 9;
     source.codDepositPolicy = "required";
+    source.pair.price = 999;
     expect(baseline.draft.codDepositPolicy).toBe("inherit");
     expect(baseline.draft.stock.sku_1).toBe(5);
+    expect(baseline.draft.pair.price).toBe(300);
   });
 
   it("detects a changed deposit policy against the captured baseline", () => {
@@ -104,7 +108,7 @@ describe("bulk-edit-baseline", () => {
   });
 
   it("recognises a patch the server already applied", () => {
-    const patch = { codDepositPolicy: "required", isActive: false };
+    const patch = { codDepositPolicy: "required", isActive: false } as const;
     expect(productMatchesBasePatch({ codDepositPolicy: "required", isActive: false }, patch)).toBe(true);
   });
 
@@ -129,13 +133,19 @@ describe("bulk-edit-baseline", () => {
     expect(isLostWriteResponse(new Error("socket hang up"))).toBe(true);
   });
 
-  it("calls an answer the server sent authoritative", () => {
-    // A stale revision, a rejected value and a server fault are answers: the
-    // row failed, so the editor must report it instead of reading the row
-    // again and adopting another admin's value.
+  it("calls a refusal the server sent authoritative", () => {
+    // A stale revision and a rejected value are answers: the row failed, so
+    // the editor must report it instead of reading the row again and
+    // adopting another admin's value.
     expect(isLostWriteResponse(new AdminApiResponseError("stale revision", 409))).toBe(false);
     expect(isLostWriteResponse(new AdminApiResponseError("rejected value", 422))).toBe(false);
-    expect(isLostWriteResponse(new AdminApiResponseError("server fault", 500))).toBe(false);
+  });
+
+  it("calls a server fault in doubt", () => {
+    // A server fault can arrive after the write committed, so the editor
+    // has to read the row before it continues.
+    expect(isLostWriteResponse(new AdminApiResponseError("server fault", 500))).toBe(true);
+    expect(isLostWriteResponse(new AdminApiResponseError("gateway timeout", 504))).toBe(true);
   });
 
   it("recognises a weight the server already applied", () => {
@@ -147,5 +157,33 @@ describe("bulk-edit-baseline", () => {
 
   it("reads a sku without a weight as no weight", () => {
     expect(productHasSkuWeight({ skus: [{ id: "sku_1" }] }, "sku_1", null)).toBe(true);
+  });
+
+  it("calls a weight another admin changed since the baseline a conflict", () => {
+    const row = { skus: [{ id: "sku_1", weightGrams: 300 }] };
+    expect(productSkuWeightChanged(row, "sku_1", 250)).toBe(true);
+    expect(productSkuWeightChanged(row, "sku_1", 300)).toBe(false);
+    expect(productSkuWeightChanged(row, "sku_2", 250)).toBe(false);
+  });
+
+  it("calls a missing weight on the server no conflict when the baseline had none", () => {
+    expect(productSkuWeightChanged({ skus: [{ id: "sku_1" }] }, "sku_1", null)).toBe(false);
+    expect(productSkuWeightChanged({ skus: [{ id: "sku_1" }] }, "sku_1", 250)).toBe(true);
+  });
+
+  it("keeps a failed row read apart from an absent row", async () => {
+    const failed = await readBulkRow(async () => { throw new TypeError("network down"); });
+    expect(failed.row).toBeNull();
+    expect(failed.error).toBeInstanceOf(TypeError);
+
+    const absent = await readBulkRow(async () => null);
+    expect(absent.row).toBeNull();
+    expect(absent.error).toBeNull();
+  });
+
+  it("reports the row the server returned", async () => {
+    const read = await readBulkRow(async () => ({ id: "prod_1" }));
+    expect(read.row).toEqual({ id: "prod_1" });
+    expect(read.error).toBeNull();
   });
 });
