@@ -517,7 +517,7 @@ export const productMessages = defineMessages({
     giftCardProduct: "গিফট কার্ড",
     warranty: "ওয়ারেন্টি",
     depositPolicy: "ম্যানুয়াল ক্যাশ অন ডেলিভারি ডিপোজিট নীতি",
-    depositPolicyHelp: "এই প্রোডাক্টের জন্য ক্যাশ অন ডেলিভারি ডিপোজিট লাগবে কিনা তা নির্দেশ করুন। Inherit গ্লোবাল ডিফল্ট অনুসরণ করে; required সবসময় ডিপোজিট লাগে; exempt কখনো লাগে না।",
+    depositPolicyHelp: "এই প্রোডাক্টের জন্য ক্যাশ অন ডেলিভারি ডিপোজিট লাগবে কিনা তা নির্দেশ করুন। অনুসরণ করুন গ্লোবাল ডিফল্ট অনুসরণ করে; প্রয়োজনীয় সবসময় ডিপোজিট লাগে; মুক্তি কখনো লাগে না।",
     columnDepositPolicy: "COD ডিপোজিট নীতি",
     depositPolicyRequired: "প্রয়োজনীয়",
     depositPolicyExempt: "মুক্তি",
