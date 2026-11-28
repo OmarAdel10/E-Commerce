@@ -109,6 +109,43 @@ function createPre0191SchemaDatabase(): SQLiteDatabase {
   return sqlite;
 }
 
+/**
+ * The production product fence, as installed by 0048 and recreated by 0084.
+ * 0192 only adds the deposit policy to the fenced product writes, so the
+ * fixture recreates the legacy triggers: the checkout authority must be
+ * bumped exactly once per product write, never twice.
+ */
+function createLegacyCheckoutAuthorityTriggers(sqlite: SQLiteDatabase): void {
+  exec(sqlite, `CREATE TRIGGER products_checkout_authority_insert
+    AFTER INSERT ON products
+    BEGIN
+      UPDATE checkout_authority SET revision = revision + 1, updated_at = unixepoch() WHERE id = 'default';
+    END;`);
+  exec(sqlite, `CREATE TRIGGER products_checkout_authority_update
+    AFTER UPDATE ON products
+    WHEN NEW.name IS NOT OLD.name
+      OR NEW.price_minor IS NOT OLD.price_minor
+      OR NEW.category_id IS NOT OLD.category_id
+      OR NEW.deleted_at IS NOT OLD.deleted_at
+      OR NEW.is_active IS NOT OLD.is_active
+      OR NEW.discount_bps IS NOT OLD.discount_bps
+      OR NEW.discount_type IS NOT OLD.discount_type
+      OR NEW.discount_amount_minor IS NOT OLD.discount_amount_minor
+      OR NEW.free_delivery IS NOT OLD.free_delivery
+      OR NEW.tax_class_id IS NOT OLD.tax_class_id
+      OR NEW.tax_classification_version IS NOT OLD.tax_classification_version
+      OR NEW.is_gift_card IS NOT OLD.is_gift_card
+      OR NEW.customization_schema IS NOT OLD.customization_schema
+    BEGIN
+      UPDATE checkout_authority SET revision = revision + 1, updated_at = unixepoch() WHERE id = 'default';
+    END;`);
+  exec(sqlite, `CREATE TRIGGER products_checkout_authority_delete
+    AFTER DELETE ON products
+    BEGIN
+      UPDATE checkout_authority SET revision = revision + 1, updated_at = unixepoch() WHERE id = 'default';
+    END;`);
+}
+
 describe("migration 0191_product_cod_deposit_policy", () => {
   it("adds cod_deposit_policy column with default 'inherit' to existing products", () => {
     const sqlite = createPre0191SchemaDatabase();
@@ -166,29 +203,55 @@ describe("migration 0191_product_cod_deposit_policy", () => {
 });
 
 describe("migration 0192_product_checkout_authority_fence", () => {
-  it("creates triggers that bump checkout_authority.revision on product INSERT/UPDATE/DELETE", () => {
+  it("adds a single deposit policy trigger to the product fence", () => {
     const sqlite = createPre0191SchemaDatabase();
     applyMigration(sqlite, "0191_product_cod_deposit_policy.sql");
     applyMigration(sqlite, "0192_product_checkout_authority_fence.sql");
 
-    // Initial revision
-    let rev = sqlite.prepare("SELECT revision FROM checkout_authority WHERE id='default'").get() as Record<string, number>;
-    expect(rev.revision).toBe(1);
+    // The legacy fence (0048, 0084) already watches every price-relevant
+    // product write. 0192 adds the deposit policy to that fence, so it must
+    // not add a second set of product triggers: a duplicate trigger bumps the
+    // checkout authority twice for one write.
+    const triggers = sqlite
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'products' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    expect(triggers.map((trigger) => trigger.name)).toEqual([
+      "products_cod_deposit_policy_checkout_authority_update",
+    ]);
+  });
 
-    // Insert bumps revision
+  it("bumps the checkout authority once per product write next to the legacy fence", () => {
+    const sqlite = createPre0191SchemaDatabase();
+    createLegacyCheckoutAuthorityTriggers(sqlite);
+    applyMigration(sqlite, "0191_product_cod_deposit_policy.sql");
+    applyMigration(sqlite, "0192_product_checkout_authority_fence.sql");
+
+    const revision = () =>
+      (sqlite.prepare("SELECT revision FROM checkout_authority WHERE id='default'").get() as Record<string, number>).revision;
+    expect(revision()).toBe(1);
+
+    // The legacy insert trigger fences the insert: one bump.
     exec(sqlite, "INSERT INTO products (id, name, price_minor, slug, is_active) VALUES ('p1', 'P1', 10000, 'p1', 1)");
-    rev = sqlite.prepare("SELECT revision FROM checkout_authority WHERE id='default'").get() as Record<string, number>;
-    expect(rev.revision).toBe(2);
+    expect(revision()).toBe(2);
 
-    // Update bumps revision
-    exec(sqlite, "UPDATE products SET name = 'P1 Updated' WHERE id = 'p1'");
-    rev = sqlite.prepare("SELECT revision FROM checkout_authority WHERE id='default'").get() as Record<string, number>;
-    expect(rev.revision).toBe(3);
+    // A fenced column change bumps once through the legacy trigger.
+    exec(sqlite, "UPDATE products SET price_minor = 11000 WHERE id = 'p1'");
+    expect(revision()).toBe(3);
 
-    // Delete bumps revision
+    // A column the fence does not watch leaves the revision alone.
+    exec(sqlite, "UPDATE products SET page_template = 'grid' WHERE id = 'p1'");
+    expect(revision()).toBe(3);
+
+    // The deposit policy is fenced by 0192 alone: one bump, never two.
+    exec(sqlite, "UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p1'");
+    expect(revision()).toBe(4);
+
+    exec(sqlite, "UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p1'");
+    expect(revision()).toBe(5);
+
+    // The legacy delete trigger fences the delete: one bump.
     exec(sqlite, "DELETE FROM products WHERE id = 'p1'");
-    rev = sqlite.prepare("SELECT revision FROM checkout_authority WHERE id='default'").get() as Record<string, number>;
-    expect(rev.revision).toBe(4);
+    expect(revision()).toBe(6);
   });
 
   it("does not bump revision on unrelated table changes", () => {
@@ -258,12 +321,70 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
   beforeAll(async () => {
     await client.connect();
     await client.query(`
-      CREATE TEMP TABLE products (id text PRIMARY KEY, name text NOT NULL, slug text NOT NULL UNIQUE, is_active boolean NOT NULL DEFAULT true);
+      CREATE SCHEMA IF NOT EXISTS scalius_compat;
+      CREATE TEMP TABLE products (
+        id text PRIMARY KEY,
+        name text NOT NULL,
+        slug text NOT NULL UNIQUE,
+        is_active boolean NOT NULL DEFAULT true,
+        price_minor bigint NOT NULL DEFAULT 0,
+        category_id text,
+        deleted_at bigint,
+        discount_bps integer NOT NULL DEFAULT 0,
+        discount_type text,
+        discount_amount_minor bigint NOT NULL DEFAULT 0,
+        free_delivery boolean NOT NULL DEFAULT false,
+        tax_class_id text,
+        tax_classification_version integer NOT NULL DEFAULT 1,
+        is_gift_card boolean NOT NULL DEFAULT false,
+        customization_schema text,
+        brand_id text,
+        page_template text
+      );
       CREATE TEMP TABLE orders (id text PRIMARY KEY);
       CREATE TEMP TABLE payment_plans (id text PRIMARY KEY, order_id text REFERENCES orders(id), kind text NOT NULL DEFAULT 'online', status text NOT NULL DEFAULT 'pending');
       CREATE TEMP TABLE checkout_authority (id text PRIMARY KEY DEFAULT 'default', revision integer NOT NULL DEFAULT 1, updated_at bigint NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW()));
       CREATE TEMP TABLE scalius_schema_migrations (version integer PRIMARY KEY, name text, source_sha256 text);
       INSERT INTO checkout_authority (id, revision) VALUES ('default', 1);
+      CREATE OR REPLACE FUNCTION scalius_compat."products_checkout_authority_insert_fn"()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $trigger_function$
+      BEGIN
+        UPDATE "checkout_authority" SET "revision" = "revision" + 1, "updated_at" = EXTRACT(EPOCH FROM NOW())::bigint WHERE "id" = 'default';
+        RETURN NEW;
+      END
+      $trigger_function$;
+      CREATE TRIGGER products_checkout_authority_insert
+      AFTER INSERT ON products
+      FOR EACH ROW EXECUTE FUNCTION scalius_compat."products_checkout_authority_insert_fn"();
+      CREATE OR REPLACE FUNCTION scalius_compat."products_checkout_authority_update_fn"()
+      RETURNS trigger
+      LANGUAGE plpgsql
+      AS $trigger_function$
+      BEGIN
+        IF NOT coalesce((NEW."name" IS DISTINCT FROM OLD."name"
+          OR NEW."price_minor" IS DISTINCT FROM OLD."price_minor"
+          OR NEW."category_id" IS DISTINCT FROM OLD."category_id"
+          OR NEW."deleted_at" IS DISTINCT FROM OLD."deleted_at"
+          OR NEW."is_active" IS DISTINCT FROM OLD."is_active"
+          OR NEW."discount_bps" IS DISTINCT FROM OLD."discount_bps"
+          OR NEW."discount_type" IS DISTINCT FROM OLD."discount_type"
+          OR NEW."discount_amount_minor" IS DISTINCT FROM OLD."discount_amount_minor"
+          OR NEW."free_delivery" IS DISTINCT FROM OLD."free_delivery"
+          OR NEW."tax_class_id" IS DISTINCT FROM OLD."tax_class_id"
+          OR NEW."tax_classification_version" IS DISTINCT FROM OLD."tax_classification_version"
+          OR NEW."is_gift_card" IS DISTINCT FROM OLD."is_gift_card"
+          OR NEW."customization_schema" IS DISTINCT FROM OLD."customization_schema"), false) THEN
+          RETURN NEW;
+        END IF;
+        UPDATE "checkout_authority" SET "revision" = "revision" + 1, "updated_at" = EXTRACT(EPOCH FROM NOW())::bigint WHERE "id" = 'default';
+        RETURN NEW;
+      END
+      $trigger_function$;
+      CREATE TRIGGER products_checkout_authority_update
+      AFTER UPDATE ON products
+      FOR EACH ROW EXECUTE FUNCTION scalius_compat."products_checkout_authority_update_fn"();
     `);
     for (const file of ["0191_product_cod_deposit_policy.sql", "0192_product_checkout_authority_fence.sql", "0193_payment_plan_cod_deposit_snapshot.sql"]) {
       const migration = readFileSync(join(__dirname, "..", "..", "migrations", "postgres", file), "utf8");
@@ -301,21 +422,42 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
     ).rejects.toMatchObject({ constraint: "products_cod_deposit_policy_check" });
   });
 
-  it("bumps the checkout authority revision on every product write", async () => {
-    const before = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
-    const startRevision = Number(before.rows[0].revision);
+  it("bumps the checkout authority once per product write next to the legacy fence", async () => {
+    const readRevision = async () => {
+      const result = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
+      return Number(result.rows[0].revision);
+    };
+    const startRevision = await readRevision();
 
+    // The legacy product insert fence bumps the revision once.
     await client.query("INSERT INTO products (id, name, slug) VALUES ('p_fence', 'Fence', 'p_fence')");
-    const afterInsert = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
-    expect(Number(afterInsert.rows[0].revision)).toBe(startRevision + 1);
+    expect(await readRevision()).toBe(startRevision + 1);
 
-    await client.query("UPDATE products SET name = 'Fence renamed' WHERE id = 'p_fence'");
-    const afterUpdate = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
-    expect(Number(afterUpdate.rows[0].revision)).toBe(startRevision + 2);
+    // A price change is fenced by the legacy update trigger, once.
+    await client.query("UPDATE products SET price_minor = 500 WHERE id = 'p_fence'");
+    expect(await readRevision()).toBe(startRevision + 2);
 
-    await client.query("DELETE FROM products WHERE id = 'p_fence'");
-    const afterDelete = await client.query("SELECT revision FROM checkout_authority WHERE id = 'default'");
-    expect(Number(afterDelete.rows[0].revision)).toBe(startRevision + 3);
+    // A column the legacy fence does not watch leaves the revision alone.
+    await client.query("UPDATE products SET page_template = 'grid' WHERE id = 'p_fence'");
+    expect(await readRevision()).toBe(startRevision + 2);
+
+    // The deposit policy change bumps the revision exactly once.
+    await client.query("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_fence'");
+    expect(await readRevision()).toBe(startRevision + 3);
+
+    // Changing the policy back bumps it once more, never twice.
+    await client.query("UPDATE products SET cod_deposit_policy = 'inherit' WHERE id = 'p_fence'");
+    expect(await readRevision()).toBe(startRevision + 4);
+  });
+
+  it("stores the deposit snapshot money columns as 64 bit integers", async () => {
+    const result = await client.query(
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) AND table_name = 'payment_plans' AND column_name IN ('qualifying_merchandise_minor', 'cod_deposit_amount') ORDER BY column_name",
+    );
+    expect(result.rows).toHaveLength(2);
+    for (const row of result.rows) {
+      expect(row.data_type).toBe("bigint");
+    }
   });
 
   it("adds cod_deposit_amount with a non-negative default", async () => {
@@ -337,8 +479,9 @@ describe.skipIf(!nativePostgresUrl())("migrations 0191-0193 PostgreSQL", () => {
     const stored = await client.query(
       "SELECT cod_deposit_amount, qualifying_merchandise_minor FROM payment_plans WHERE id = 'plan_pg_snapshot'",
     );
-    expect(stored.rows[0].cod_deposit_amount).toBe(5000);
-    expect(stored.rows[0].qualifying_merchandise_minor).toBe(0);
+    // PostgreSQL returns 64 bit integers as strings.
+    expect(Number(stored.rows[0].cod_deposit_amount)).toBe(5000);
+    expect(Number(stored.rows[0].qualifying_merchandise_minor)).toBe(0);
 
     await expect(
       client.query(

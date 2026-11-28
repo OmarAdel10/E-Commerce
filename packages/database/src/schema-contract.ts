@@ -740,7 +740,7 @@ export const CURRENT_DATABASE_SCHEMA_MIGRATIONS = [
   {
     version: 192,
     name: "0192_product_checkout_authority_fence",
-    sourceSha256: "1e70b88ed21104e3099fd921b7fd2d868f142e89d48c59cb021b767bcfa02906",
+    sourceSha256: "1946c0532ab6287e143ecc3db1c00e1b1a8415dee14b4d1b2a6f4a222dba6765",
   },
   {
     version: 193,
