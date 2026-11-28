@@ -41,6 +41,12 @@ export interface Category {
   depth?: number;
 }
 
+/**
+ * The manual COD deposit policy a product starts with: it follows the
+ * store's default until the merchant picks another one.
+ */
+export const DEFAULT_COD_DEPOSIT_POLICY = "inherit" as const;
+
 export const productFormSchema = z.object({
   id: z.string().optional(),
   /** 1 to 255 characters, as Shopify's: "TV" is a title. */
@@ -141,6 +147,8 @@ export const productFormSchema = z.object({
   customizationSchema: z.array(z.custom<BuyerInputDraft>()).max(CUSTOMIZATION_LIMITS.fields, {
     error: () => translate(productMessages, "buyerInputsFull", { max: CUSTOMIZATION_LIMITS.fields }),
   }),
+  /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. */
+  codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional(),
 }).superRefine((data, ctx) => {
   // A saved product keeps its web address: clearing it is a mistake, not "make one up".
   if (data.id && !data.slug) {

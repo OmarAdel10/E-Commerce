@@ -15,7 +15,10 @@ const MODERATE_STALE_TIME_MS = 1000 * 60 * 2;
 const LOOKUP_STALE_TIME_MS = 1000 * 60 * 10;
 
 // status: added in wave 4; remove this intersection after generate:sdk.
-export type ProductsQuery = ApiQuery<typeof getApiV1AdminProducts> & { status?: "active" | "draft" };
+export type ProductsQuery = ApiQuery<typeof getApiV1AdminProducts> & {
+    status?: "active" | "draft";
+    codDepositPolicy?: "inherit" | "required" | "exempt";
+};
 export type ProductListItemDto = ApiResult<typeof getApiV1AdminProducts>["products"][number];
 export type ProductsByIdsPayload = ApiResult<typeof getApiV1AdminProductsByIds>;
 type ApiProductDetail = ApiResult<typeof getApiV1AdminProductsById>;

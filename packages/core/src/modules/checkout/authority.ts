@@ -136,14 +136,21 @@ export interface StorefrontCheckoutSettingsAuthority {
     requireFullBillingAddress: boolean;
     /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
     codDepositEnabled: boolean;
-    /** "fixed" = codDepositAmount in major units; "percentage" = codDepositPercent of the order total. */
+    /** "fixed" = codDepositAmount in major units; "percentage" = codDepositPercent of the qualifying merchandise (post-discount, shipping excluded). */
     codDepositMode: "fixed" | "percentage";
     /** Fixed-mode deposit amount in major units (e.g. 500.00 BDT). */
     codDepositAmount: number;
-    /** Percentage-mode deposit: whole percent 1-99 of the order total. */
+    /** Percentage-mode deposit: whole percent 1-99 of the qualifying merchandise (post-discount, shipping excluded). */
     codDepositPercent: number;
     /** Merchant-authored payment instructions snapshotted at order placement. */
     codDepositInstructions: string;
+    /**
+     * Global default product policy for manual COD deposits: `all` = every
+     * product requires a deposit when the feature is enabled; `selected` =
+     * only products whose product-level policy is `required`. `inherit`
+     * products follow this default (no deposit when `selected`).
+     */
+    codDepositDefaultProductPolicy: "all" | "selected";
 }
 
 /** The shop currency document and the backup market's price increment every checkout prices at. */
@@ -506,6 +513,7 @@ export function createStorefrontCheckoutAuthorityBatchReadPlan(
                                 codDepositAmount: site.codDepositAmount,
                                 codDepositPercent: site.codDepositPercent,
                                 codDepositInstructions: site.codDepositInstructions,
+                                codDepositDefaultProductPolicy: site.codDepositDefaultProductPolicy,
                             },
                             allowedCountries,
                             shippingCountries,

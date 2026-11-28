@@ -6048,10 +6048,6 @@ packages:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
 
-  lru-cache@11.5.2:
-    resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
-    engines: {node: 20 || >=22}
-
   lru-cache@11.5.3:
     resolution: {integrity: sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg==}
     engines: {node: 20 || >=22}
@@ -8119,7 +8115,7 @@ snapshots:
       '@babel/compat-data': 8.0.0
       '@babel/helper-validator-option': 8.0.0
       browserslist: 4.28.7
-      lru-cache: 11.5.2
+      lru-cache: 11.5.3
       semver: 7.8.5
 
   '@babel/helper-create-class-features-plugin@8.0.1(@babel/core@8.0.1)':
@@ -12619,8 +12615,6 @@ snapshots:
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
-
-  lru-cache@11.5.2: {}
 
   lru-cache@11.5.3: {}
 

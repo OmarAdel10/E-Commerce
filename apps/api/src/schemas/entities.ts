@@ -67,6 +67,8 @@ export const productSummarySchema = z.object({
   primaryImage: z.string().nullable(),
   sku: z.string().optional(),
   salesChannelIds: z.array(z.string()).openapi({ description: "The sales channels the product is published to." }),
+  /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. */
+  codDepositPolicy: z.enum(["inherit", "required", "exempt"]),
 });
 
 /** Ordered image/video association returned by product detail. */
@@ -211,6 +213,8 @@ export const productDetailSchema = z.object({
   media: z.array(productMediaSchema),
   additionalInfo: z.array(productRichContentSchema),
   attributes: z.array(productAttributeValueSchema),
+  /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. */
+  codDepositPolicy: z.enum(["inherit", "required", "exempt"]),
 });
 
 /** Product stats — returned by getProductStats (admin). */

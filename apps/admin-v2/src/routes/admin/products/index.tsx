@@ -17,6 +17,7 @@ import {
   type SearchValidatorInput,
 } from "~/lib/list-helpers";
 import { adoptListSearch, listSearchKey, useListSearch } from "~/lib/list-search";
+import { normalizeCodDepositPolicySearchParam, productMatchingFilter } from "~/lib/product-list-filter";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { apiData } from "~/lib/api";
 import { queryKeys } from "~/lib/query-keys";
@@ -62,23 +63,14 @@ function validateProductSearch(search: SearchValidatorInput) {
     // Sales channels (MARKETS-DESIGN D6): on (or not on) one channel.
     channel: normalizeOptionalSearchString(search.channel),
     channelState: normalizeOptionalEnumSearchParam(search.channelState, CHANNEL_STATES),
+    // Manual COD deposit policy filter.
+    codDepositPolicy: normalizeCodDepositPolicySearchParam(search.codDepositPolicy),
     // An app column and its exact value: `<app id>/<column id>:<value>`.
     appFilter: normalizeAppFilterSearchParam(search.appFilter),
   };
 }
 
 type ProductSearch = ReturnType<typeof validateProductSearch>;
-
-/** The list's filter as "all matching" bulk actions send it (the API reads the rows). */
-export function productMatchingFilter(search: ProductSearch, term: string, appFilter: string | undefined) {
-  return {
-    ...(term ? { search: term } : {}),
-    ...(search.category ? { category: search.category } : {}),
-    ...(search.status && !search.trashed ? { status: search.status } : {}),
-    ...(search.channel ? { salesChannel: search.channel, salesChannelState: search.channelState ?? "published" } : {}),
-    ...(appFilter ? { appFilter } : {}),
-  };
-}
 
 /**
  * `app` is what the active apps ask of the list (their columns and the filter
@@ -102,6 +94,7 @@ function listQuery(search: ProductSearch, term: string, app?: { columnsParam?: s
     view: "compact",
     appFilter: app ? app.filterParam : search.appFilter,
     appColumns: app?.columnsParam,
+    codDepositPolicy: search.codDepositPolicy || undefined,
   });
 }
 
@@ -140,6 +133,9 @@ function ProductsPage() {
   const { products: can } = useCatalogActionPermissions();
   const duplicate = useDuplicateProduct();
   const [importing, setImporting] = useState(false);
+  // The filter value follows the address bar, so a back/forward navigation
+  // restores the filter the URL carries.
+  const codDepositFilter = search.codDepositPolicy ?? "";
   // X3: the category filter searches on the server and pages; a store may have hundreds.
   const { data: chosenCategory } = useQuery({ ...categoryQueryOptions(search.category ?? ""), enabled: Boolean(search.category) });
   const { data: channelData } = useQuery(salesChannelsQueryOptions());
@@ -212,7 +208,7 @@ function ProductsPage() {
         ] }}
         searchPlaceholder={t("searchPlaceholder")}
         countLabel={(count) => t("productsCount", { count })}
-        filterParams={["category", "channel", "channelState", "appFilter"]}
+        filterParams={["category", "channel", "channelState", "codDepositPolicy", "appFilter"]}
         filters={
           <>
           <FilterControl label={t("category")}>
@@ -230,6 +226,32 @@ function ProductsPage() {
             searchPlaceholder={t("searchCategories")}
             emptyMessage={r("noResults")}
             ariaLabel={t("filterCategory")}
+          />
+          </FilterControl>
+          <FilterControl label={t("codDepositPolicy")}>
+          <SearchableSelect
+            value={codDepositFilter}
+            clearable
+            onValueChange={(value) => {
+              void navigate({
+                to: "/admin/products",
+                search: ((prev: Record<string, unknown>) => ({
+                  ...prev,
+                  codDepositPolicy: value || undefined,
+                  page: 1,
+                  ...NO_CURSOR,
+                })) as never,
+              });
+            }}
+            options={[
+              { value: "inherit", label: t("codDepositPolicyInherit") },
+              { value: "required", label: t("codDepositPolicyRequired") },
+              { value: "exempt", label: t("codDepositPolicyExempt") },
+            ]}
+            placeholder={t("codDepositPolicyAll")}
+            searchPlaceholder={t("filterDepositPolicy")}
+            emptyMessage={r("noResults")}
+            ariaLabel={t("filterDepositPolicy")}
           />
           </FilterControl>
           {showChannels ? (

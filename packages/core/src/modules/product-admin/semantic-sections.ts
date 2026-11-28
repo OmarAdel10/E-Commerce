@@ -101,7 +101,7 @@ const canonicalPathPatchSchema = z
     )
     .optional();
 
-const productBasePatchSchema = z.object({
+export const productBasePatchSchema = z.object({
     name: z.string().trim().min(1).max(PRODUCT_NAME_MAX_LENGTH).optional(),
     price: z.number().min(0).max(MAX_MAJOR_AMOUNT).optional(),
     categoryId: z.string().min(1).nullable().optional(),
@@ -123,6 +123,9 @@ const productBasePatchSchema = z.object({
     redirectOldUrl: z.boolean().optional(),
     /** Shows the store's EMI line (when the store has EMI plans). Informational only. */
     emiEligible: z.boolean().optional(),
+    /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit on this product; `exempt` never requires one. Omit to keep. */
+    codDepositPolicy: z.enum(["inherit", "required", "exempt"]).optional()
+        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value."),
     /** Whole-field replacements, saved in the same write (the `text` section edits a range). */
     description: z.string().min(10).nullable().optional(),
     metaTitle: z.string().max(PRODUCT_SEMANTIC_TEXT_CHUNK_MAX).nullable().optional(),
@@ -330,6 +333,7 @@ export async function getProductSemanticSection(
             freeDelivery: products.freeDelivery,
             shippingProfileId: products.shippingProfileId,
             emiEligible: products.emiEligible,
+            codDepositPolicy: products.codDepositPolicy,
             pageTemplate: products.pageTemplate,
             createdAt: products.createdAt,
             updatedAt: products.updatedAt,
@@ -379,6 +383,7 @@ export async function getProductSemanticSection(
                 shippingProfileId: row.shippingProfileId ?? null,
                 emiEligible: row.emiEligible,
                 pageTemplate: row.pageTemplate,
+                codDepositPolicy: row.codDepositPolicy ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
                 deletedAt: row.deletedAt,
@@ -677,6 +682,7 @@ export async function planProductBaseSection(
         productCondition: products.productCondition,
         slug: products.slug,
         emiEligible: products.emiEligible,
+        codDepositPolicy: products.codDepositPolicy,
         description: products.description,
         metaTitle: products.metaTitle,
         metaDescription: products.metaDescription,
@@ -734,6 +740,7 @@ export async function planProductBaseSection(
         productCondition: next.productCondition,
         slug: next.slug,
         emiEligible: next.emiEligible,
+        ...(patch.codDepositPolicy !== undefined ? { codDepositPolicy: patch.codDepositPolicy } : {}),
         description: next.description,
         metaTitle: next.metaTitle,
         metaDescription: next.metaDescription,

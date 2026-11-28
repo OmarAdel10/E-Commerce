@@ -5,7 +5,7 @@ import { ProductForm } from "~/components/admin/ProductForm";
 import { categoryFormOptionsQueryOptions } from "~/lib/api-query-options/categories";
 import { seoSettingsQueryOptions } from "~/lib/api-query-options/settings";
 import { salesChannelsQueryOptions } from "~/lib/api-query-options/sales-channels";
-import { DEFAULT_PRODUCT_CONDITION, type Category } from "~/components/admin/product-form/types";
+import { DEFAULT_COD_DEPOSIT_POLICY, DEFAULT_PRODUCT_CONDITION, type Category } from "~/components/admin/product-form/types";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { LoadingFallback } from "~/components/admin/shared/LoadingFallback";
 import type { OptionMatrixEditorHandle, ProductCreateComposition } from "~/components/admin/product-form/variants/option-matrix-editor-model";
@@ -39,6 +39,7 @@ const defaultValues = {
   media: [],
   fulfillmentKind: "physical" as const,
   customizationSchema: [],
+  codDepositPolicy: DEFAULT_COD_DEPOSIT_POLICY,
 };
 
 const activeDefaultValues = { ...defaultValues, isActive: true };

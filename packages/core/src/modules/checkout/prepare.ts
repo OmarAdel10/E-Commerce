@@ -41,7 +41,10 @@ import { checkoutPurchaseOptions, PAYMENT_METHOD_UNAVAILABLE_REASON, type Checko
 import { createAppLinePricer } from "./app-line-prices";
 import { bundleLineProperties, createCartTransformer, presentTransformedCart, ruleErrorsOnBuyerLines } from "./cart-transform";
 import { assertNoCheckoutRuleErrors, priceStorefrontCheckout } from "./pricing";
-import { resolveManualCodDeposit } from "./manual-cod-deposit";
+import {
+    resolveManualCodDeposit,
+    resolveCodDepositQualifyingMerchandiseWhenApplicable,
+} from "./manual-cod-deposit";
 import type { AppProviders } from "../../integrations/provider-port";
 import {
     PaymentMethod,
@@ -194,14 +197,21 @@ export interface StorefrontCheckoutPolicySnapshot {
     paymentTermsDays?: number | null;
     /** Manual COD deposit: when enabled, COD buyers pay a deposit offline before fulfilment. */
     codDepositEnabled: boolean;
-    /** "fixed" = codDepositAmount in major units; "percentage" = codDepositPercent of the order total. */
+    /** "fixed" = codDepositAmount in major units; "percentage" = codDepositPercent of the qualifying merchandise (post-discount, shipping excluded). */
     codDepositMode: "fixed" | "percentage";
     /** Fixed-mode deposit amount in major units (e.g. 500.00 BDT). */
     codDepositAmount: number;
-    /** Percentage-mode deposit: whole percent 1-99 of the order total. */
+    /** Percentage-mode deposit: whole percent 1-99 of the qualifying merchandise (post-discount, shipping excluded). */
     codDepositPercent: number;
     /** Merchant-authored payment instructions snapshotted at order placement. */
     codDepositInstructions: string;
+    /**
+     * Global default product policy for manual COD deposits: `all` = every
+     * product requires a deposit when the feature is enabled; `selected` =
+     * only products whose product-level policy is `required`. Default `all`
+     * preserves the previous behaviour for existing enabled merchants.
+     */
+    codDepositDefaultProductPolicy: "all" | "selected";
 }
 
 const STOREFRONT_CHECKOUT_POLICY_SNAPSHOT_PROOF = Symbol("scalius.storefrontCheckoutPolicySnapshot");
@@ -1054,9 +1064,37 @@ export async function createStorefrontOrder(
     // The deposit plan's balance is cash on delivery: it applies only where
     // cash fits every line, so a download or a gift card is paid in full
     // online and delivered at once (isDepositPaymentRequired).
+    const effectiveSettings = checkoutPolicySnapshot ?? fallbackSettings;
+    const productPolicyById = new Map(
+        cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
+    );
+    // The deposit basis is read only for an order that can pay cash on
+    // delivery: an order that cannot never carries deposit terms, so a
+    // pricing inconsistency in the deposit policy must not fail its order.
+    const codDepositApplies = effectiveSettings?.codDepositEnabled === true
+        && allowsCashOnDelivery
+        && !giftCardsApplied;
+    const qualifying = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+        codDepositApplies,
+        {
+            quoteLines: taxQuote.lines,
+            cartItems: cartValidation.items,
+            productPolicyById,
+            globalDefaultProductPolicy: effectiveSettings?.codDepositDefaultProductPolicy ?? "all",
+        },
+    );
+    const qualifyingMerchandiseMinor = qualifying.minor;
+    // Which product ids qualified: snapshot for auditability of deposit terms.
+    // The ids come from the same pass as the basis, so the snapshot names only
+    // the products that actually contributed to it.
+    const qualifyingProductIds = qualifying.productIds;
     const manualDeposit = resolveManualCodDeposit(
-        checkoutPolicySnapshot ?? fallbackSettings, taxQuote, requestCurrency,
-        { allowsCashOnDelivery, giftCardsApplied }, paymentProviders,
+        effectiveSettings,
+        taxQuote,
+        requestCurrency,
+        { allowsCashOnDelivery, giftCardsApplied },
+        paymentProviders,
+        qualifyingMerchandiseMinor,
     );
     const linePropertiesHashes = await storefrontLinePropertiesHashes(cartValidation);
     await appOptions.verifyReviewedQuote?.({
@@ -1277,6 +1315,9 @@ export async function createStorefrontOrder(
                 instructions: manualDepositTerms.instructions,
                 percent: manualDepositTerms.percent,
                 contactSnapshot,
+                qualifyingMerchandiseMinor,
+                qualifyingProductIds: qualifyingProductIds ?? null,
+                originalAmountMinor: manualDepositTerms.originalAmountMinor,
             },
         } : {}),
     };

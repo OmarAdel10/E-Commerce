@@ -228,6 +228,8 @@ export interface StorefrontCartValidationResult {
     hasFreeDeliveryProduct: boolean;
     /** Products whose quantity reached a bundle tier; absent means none. */
     bundles?: StorefrontCartBundleSaving[];
+    /** The product rows read for the cart (used to resolve deposit policies). */
+    productRows: readonly StorefrontCartProductRow[];
     /**
      * The signed-in buyer's segments that priced the cart (its market's live
      * segment price lists on these SKUs, `resolveCheckoutPriceScope`), sorted;
@@ -282,6 +284,12 @@ export interface StorefrontCartProductRow {
     isGiftCard: boolean;
     /** Raw `products.customization_schema`; parsed and validated per line. */
     customizationSchema: string | null;
+    /**
+     * Manual COD deposit policy for the product (`inherit`, `required`,
+     * `exempt`); `null` when the product row could not be resolved.
+     * Checkout resolves the effective policy against the global default.
+     */
+    codDepositPolicy: string | null;
 }
 
 export interface StorefrontCartVariantRow {
@@ -453,6 +461,7 @@ export function selectStorefrontCartProductRows(
             taxClassId: products.taxClassId,
             isGiftCard: products.isGiftCard,
             customizationSchema: products.customizationSchema,
+            codDepositPolicy: products.codDepositPolicy,
             // Every active market's pricing, in a statement checkout already runs.
             pricingMatrix: marketPricingMatrixSql(),
             // A pickup has no shipping-country market, even if an old address remains.
@@ -582,6 +591,7 @@ export function resolveStorefrontCartValidationFromRows(
             items: [],
             subtotalMinor: 0,
             hasFreeDeliveryProduct: false,
+            productRows,
         });
     }
 
@@ -606,6 +616,7 @@ export function resolveStorefrontCartValidationFromRows(
             items: [],
             subtotalMinor: 0,
             hasFreeDeliveryProduct: false,
+            productRows,
         });
     }
 
@@ -930,6 +941,7 @@ export function resolveStorefrontCartValidationFromRows(
         subtotalMinor,
         hasFreeDeliveryProduct,
         bundles,
+        productRows,
         ...(pricingSegmentIds.length > 0 ? { pricingSegmentIds } : {}),
     });
 }
@@ -1128,7 +1140,9 @@ export function presentStorefrontCartValidation(
     propertiesHashes: readonly string[] = [],
 ) {
     // Bundle savings are checkout discounts: the tax quote shows them.
-    const { subtotalMinor, items, bundles: _bundles, money, marketContext: _marketContext, marketAuthority: _marketAuthority, transform: _transform, pricingSegmentIds: _pricingSegmentIds, ...rest } = result;
+    // `productRows` stays internal: each row carries every active market's
+    // pricing matrix, which the buyer must never see.
+    const { subtotalMinor, items, bundles: _bundles, money, marketContext: _marketContext, marketAuthority: _marketAuthority, transform: _transform, pricingSegmentIds: _pricingSegmentIds, productRows: _productRows, ...rest } = result;
     // Amounts are in the cart's currency (its market's), with its places.
     decimalPlaces = money?.decimalPlaces ?? decimalPlaces;
     return {

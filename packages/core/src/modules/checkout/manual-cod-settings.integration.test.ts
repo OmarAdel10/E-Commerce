@@ -52,4 +52,39 @@ describe("manual COD settings remain independent of online advances", () => {
     })).rejects.toThrow(/Cash on delivery deposit/);
     expect((await getCheckoutFlowSettingsDocument(fixture.db)).checkoutMode).toBe("all");
   });
+
+  it("keeps the saved default product policy when a later save omits it", async () => {
+    const first = await saveCheckoutFlowSettingsDocument(fixture.db, {
+      ...base(), codDepositDefaultProductPolicy: "selected",
+    });
+    expect(first.codDepositDefaultProductPolicy).toBe("selected");
+    const second = await saveCheckoutFlowSettingsDocument(fixture.db, {
+      ...base(), expectedRevision: first.revision,
+    });
+    expect(second.codDepositDefaultProductPolicy).toBe("selected");
+    expect((await getCheckoutFlowSettingsDocument(fixture.db)).codDepositDefaultProductPolicy).toBe("selected");
+  });
+
+  it("reads a checkout document saved before the default product policy as all", async () => {
+    // A legacy row: written before the product-level policy existed.
+    fixture.sqlite.prepare(`
+      INSERT INTO settings (id, category, key, value, type, revision)
+      VALUES ('legacy-checkout-document', 'checkout', 'document', ?, 'json', 1)
+    `).run(JSON.stringify({
+      guestCheckoutEnabled: true,
+      checkoutMode: "all",
+      partialPaymentEnabled: false,
+      partialPaymentAmount: 0,
+      autoFulfilMode: "after_payment",
+      requireFullBillingAddress: false,
+      codDepositEnabled: true,
+      codDepositMode: "fixed",
+      codDepositAmount: 100,
+      codDepositPercent: 0,
+      codDepositInstructions: "Transfer to store",
+    }));
+    const document = await getCheckoutFlowSettingsDocument(fixture.db);
+    expect(document.codDepositDefaultProductPolicy).toBe("all");
+    expect(document.codDepositEnabled).toBe(true);
+  });
 });

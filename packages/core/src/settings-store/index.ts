@@ -28,7 +28,7 @@
 
 import { workerCacheHint, type WorkerCacheHint } from "@scalius/shared/worker-cache-hint";
 import type { ZodType } from "zod";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { settings as settingsTable } from "@scalius/database/schema";
 import { buildBatchGuard, safeBatch, type Database } from "@scalius/database/client";
@@ -247,9 +247,15 @@ export function selectSettingsDocuments(
  */
 export function settingsDocumentsJoin(documents: readonly { key: string }[]) {
   for (const document of documents) deps.settings(document.key, SETTINGS_DOCUMENT_ROW_KEY);
+  // No document to read: the condition must match no row, not the row that
+  // holds the document keys.
+  if (documents.length === 0) return sql`1 = 0`;
+  const firstKey = documents[0]!.key;
   return and(
     eq(settingsTable.key, SETTINGS_DOCUMENT_ROW_KEY),
-    inArray(settingsTable.category, documents.map((document) => document.key)),
+    documents.length === 1
+      ? eq(settingsTable.category, firstKey)
+      : or(...documents.map((document) => eq(settingsTable.category, document.key))),
   )!;
 }
 

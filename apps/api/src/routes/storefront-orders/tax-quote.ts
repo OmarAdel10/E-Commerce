@@ -40,6 +40,7 @@ import {
     resolveCartPaymentMethods,
     resolveDeferredPaymentEligibility,
     resolveManualCodDeposit,
+    resolveCodDepositQualifyingMerchandiseWhenApplicable,
     storefrontLinePropertiesHashes,
     validateStorefrontDeliveryPreflight,
     validateStorefrontCartItems,
@@ -141,7 +142,7 @@ const taxQuoteResponseSchema = z.object({
   /** Pickup location and hours, for a pickup method. */
   pickup: z.object({ address: z.string().nullable(), hours: z.string().nullable() }).nullable(),
   allowedPaymentMethods: allowedPaymentMethodsSchema.openapi({
-    description: "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country it serves (Bangladesh).",
+    description: "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country the configured provider serves.",
   }),
   discounts: z.array(quotedDiscountLineSchema).openapi({
     description: "One line per applied discount (automatic and code), with its own amount.",
@@ -385,11 +386,37 @@ app.openapi(taxQuoteRoute, async (c) => {
       .filter((item) => item.isGiftCard)
       .map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId))),
   });
-  const coveredByGiftCards = giftCardTender.appliedTotalMinor > 0 && giftCardTender.amountDueMinor === 0;
-  const manualDeposit = resolveManualCodDeposit(checkoutSettings, quote, currency, {
-    allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
-    giftCardsApplied: giftCardTender.appliedTotalMinor > 0,
-  }, paymentProviders);
+  const giftCardsApplied = giftCardTender.appliedTotalMinor > 0;
+  const coveredByGiftCards = giftCardsApplied && giftCardTender.amountDueMinor === 0;
+  const productPolicyById = new Map(
+    cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
+  );
+  // The deposit basis is read only for an order that can pay cash on
+  // delivery: an order that cannot never carries deposit terms, so a
+  // pricing inconsistency in the deposit policy must not fail its quote.
+  const codDepositApplies = checkoutSettings.codDepositEnabled === true
+    && delivery.fulfilment.allowsCashOnDelivery
+    && !giftCardsApplied;
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+    codDepositApplies,
+    {
+      quoteLines: quote.lines,
+      cartItems: cartValidation.items,
+      productPolicyById,
+      globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+    },
+  ).minor;
+  const manualDeposit = resolveManualCodDeposit(
+    checkoutSettings,
+    quote,
+    currency,
+    {
+      allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
+      giftCardsApplied,
+    },
+    paymentProviders,
+    qualifyingMerchandiseMinor,
+  );
   // Paying later (an invoice) reaches only a signed-in buyer it names: read
   // only when such a method is enabled and the buyer is signed in.
   const deferred = coveredByGiftCards

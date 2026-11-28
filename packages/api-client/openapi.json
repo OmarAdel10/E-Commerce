@@ -90395,7 +90395,7 @@
                           "items": {
                             "type": "string"
                           },
-                          "description": "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country it serves (Bangladesh)."
+                          "description": "Payment methods for the amount due. Exactly [\"gift_card\"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country the configured provider serves."
                         },
                         "discounts": {
                           "type": "array",
@@ -178365,6 +178365,13 @@
                         "codDepositInstructions": {
                           "type": "string"
                         },
+                        "codDepositDefaultProductPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "selected"
+                          ]
+                        },
                         "revision": {
                           "type": "integer",
                           "minimum": 0
@@ -178382,6 +178389,7 @@
                         "codDepositAmount",
                         "codDepositPercent",
                         "codDepositInstructions",
+                        "codDepositDefaultProductPolicy",
                         "revision"
                       ]
                     }
@@ -178519,6 +178527,13 @@
                   "partialPaymentAmount": {
                     "type": "number"
                   },
+                  "codDepositDefaultProductPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "selected"
+                    ]
+                  },
                   "autoFulfilMode": {
                     "type": "string",
                     "enum": [
@@ -178634,6 +178649,13 @@
                         "codDepositInstructions": {
                           "type": "string"
                         },
+                        "codDepositDefaultProductPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "all",
+                            "selected"
+                          ]
+                        },
                         "revision": {
                           "type": "integer",
                           "minimum": 0
@@ -178651,6 +178673,7 @@
                         "codDepositAmount",
                         "codDepositPercent",
                         "codDepositInstructions",
+                        "codDepositDefaultProductPolicy",
                         "revision"
                       ]
                     }
@@ -205031,6 +205054,14 @@
                                 },
                                 "description": "The sales channels the product is published to."
                               },
+                              "codDepositPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "inherit",
+                                  "required",
+                                  "exempt"
+                                ]
+                              },
                               "availableStock": {
                                 "type": "integer",
                                 "nullable": true,
@@ -205152,6 +205183,7 @@
                               "mediaCount",
                               "primaryImage",
                               "salesChannelIds",
+                              "codDepositPolicy",
                               "availableStock",
                               "requiresCustomization",
                               "customization"
@@ -214430,6 +214462,16 @@
                             "status": {
                               "type": "string"
                             },
+                            "codDepositAmount": {
+                              "type": "number"
+                            },
+                            "qualifyingMerchandiseMinor": {
+                              "type": "number"
+                            },
+                            "qualifyingProductIds": {
+                              "type": "string",
+                              "nullable": true
+                            },
                             "createdAt": {
                               "anyOf": [
                                 {
@@ -214463,6 +214505,9 @@
                             "balanceDueDate",
                             "kind",
                             "status",
+                            "codDepositAmount",
+                            "qualifyingMerchandiseMinor",
+                            "qualifyingProductIds",
                             "createdAt",
                             "updatedAt"
                           ]
@@ -223924,6 +223969,21 @@
           {
             "schema": {
               "type": "string",
+              "enum": [
+                "inherit",
+                "required",
+                "exempt"
+              ],
+              "description": "Manual COD deposit policy filter: inherit / required / exempt"
+            },
+            "required": false,
+            "description": "Manual COD deposit policy filter: inherit / required / exempt",
+            "name": "codDepositPolicy",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "maxLength": 160,
               "description": "Only products published to this sales channel (or, with salesChannelState=unpublished, not published to it).",
               "example": "sc_online_store"
@@ -224185,6 +224245,14 @@
                                   "type": "string"
                                 },
                                 "description": "The sales channels the product is published to."
+                              },
+                              "codDepositPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "inherit",
+                                  "required",
+                                  "exempt"
+                                ]
                               }
                             },
                             "required": [
@@ -224211,7 +224279,8 @@
                               "hasStockHistory",
                               "mediaCount",
                               "primaryImage",
-                              "salesChannelIds"
+                              "salesChannelIds",
+                              "codDepositPolicy"
                             ]
                           }
                         },
@@ -224707,6 +224776,15 @@
                     "maxLength": 80,
                     "pattern": "^wrp_[A-Za-z0-9_-]+$",
                     "description": "A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it."
+                  },
+                  "codDepositPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "inherit",
+                      "required",
+                      "exempt"
+                    ],
+                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
                   },
                   "optionMatrix": {
                     "type": "object",
@@ -225787,6 +225865,14 @@
                                 "nullable": true,
                                 "description": "Null: the default profile (General). Save with the base section."
                               },
+                              "codDepositPolicy": {
+                                "type": "string",
+                                "enum": [
+                                  "inherit",
+                                  "required",
+                                  "exempt"
+                                ]
+                              },
                               "skus": {
                                 "type": "array",
                                 "items": {
@@ -225843,6 +225929,7 @@
                               "discountAmount",
                               "hasOptions",
                               "shippingProfileId",
+                              "codDepositPolicy",
                               "skus"
                             ]
                           }
@@ -226024,6 +226111,14 @@
                             "enum": [
                               "published",
                               "unpublished"
+                            ]
+                          },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
                             ]
                           },
                           "appFilter": {
@@ -226362,6 +226457,14 @@
                               "unpublished"
                             ]
                           },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
+                            ]
+                          },
                           "appFilter": {
                             "anyOf": [
                               {
@@ -226661,6 +226764,14 @@
                             "enum": [
                               "published",
                               "unpublished"
+                            ]
+                          },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
                             ]
                           },
                           "appFilter": {
@@ -226992,6 +227103,14 @@
                             "enum": [
                               "published",
                               "unpublished"
+                            ]
+                          },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
                             ]
                           },
                           "appFilter": {
@@ -229041,6 +229160,15 @@
                           "emiEligible": {
                             "type": "boolean"
                           },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
+                            ],
+                            "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value."
+                          },
                           "description": {
                             "type": "string",
                             "nullable": true,
@@ -230331,6 +230459,14 @@
                             ]
                           }
                         },
+                        "codDepositPolicy": {
+                          "type": "string",
+                          "enum": [
+                            "inherit",
+                            "required",
+                            "exempt"
+                          ]
+                        },
                         "relatedObjects": {
                           "type": "array",
                           "items": {
@@ -230401,6 +230537,7 @@
                         "media",
                         "additionalInfo",
                         "attributes",
+                        "codDepositPolicy",
                         "relatedObjects",
                         "warrantyPolicyId"
                       ]
@@ -230766,6 +230903,15 @@
                     "maxLength": 80,
                     "pattern": "^wrp_[A-Za-z0-9_-]+$",
                     "description": "A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it."
+                  },
+                  "codDepositPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "inherit",
+                      "required",
+                      "exempt"
+                    ],
+                    "description": "Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."
                   },
                   "id": {
                     "type": "string"

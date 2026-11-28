@@ -90,6 +90,18 @@ export const products = sqliteTable(
         /** The product's shipping profile (0185); NULL is the default profile (`shp_default`). */
         shippingProfileId: text("shipping_profile_id")
             .references(() => shippingProfiles.id, { onDelete: "set null" }),
+        /**
+         * Manual COD deposit policy for this product.
+         * `inherit` = follow the global default product policy;
+         * `required` = require a manual COD deposit on this product;
+         * `exempt` = do not require a manual COD deposit on this product.
+         * Variants inherit their parent product's policy.
+         */
+        codDepositPolicy: text("cod_deposit_policy", {
+            enum: ["inherit", "required", "exempt"],
+        })
+            .notNull()
+            .default("inherit"),
     },
     (table) => [
         check("products_is_gift_card_check", sql`${table.isGiftCard} IN (0, 1)`),

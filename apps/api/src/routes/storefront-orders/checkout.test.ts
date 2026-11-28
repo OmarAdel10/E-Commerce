@@ -185,7 +185,7 @@ describe("reviewed storefront manual COD deposit", () => {
 
       const firstQuote = await quote();
       expect(firstQuote.allowedPaymentMethods).toContain("cod");
-      expect(firstQuote.manualCodDeposit).toEqual({ depositMinor: 11900, balanceMinor: 24100 });
+      expect(firstQuote.manualCodDeposit).toEqual({ depositMinor: 9900, balanceMinor: 26100 });
       await checkoutDocument.write(fixture.db, { codDepositPercent: 40 });
       const stale = await post("/", { ...orderInput, expectedQuoteFingerprint: firstQuote.quoteFingerprint });
       const staleBody = await stale.json();
@@ -218,12 +218,12 @@ describe("reviewed storefront manual COD deposit", () => {
       `);
       await checkoutDocument.write(fixture.db, { codDepositMode: "percentage" });
       const refreshedQuote = await quote();
-      expect(refreshedQuote.manualCodDeposit).toEqual({ depositMinor: 14400, balanceMinor: 21600 });
+      expect(refreshedQuote.manualCodDeposit).toEqual({ depositMinor: 12000, balanceMinor: 24000 });
       const placed = await post("/", { ...orderInput, expectedQuoteFingerprint: refreshedQuote.quoteFingerprint });
       const placedBody = await placed.json();
       expect(placed.status, JSON.stringify(placedBody)).toBe(201);
       expect(fixture.one("SELECT kind, deposit_amount_minor, balance_due_minor FROM payment_plans")).toEqual({
-        kind: "manual", deposit_amount_minor: 14400, balance_due_minor: 21600,
+        kind: "manual", deposit_amount_minor: 12000, balance_due_minor: 24000,
       });
 
       await checkoutDocument.write(fixture.db, { checkoutMode: "all" });
@@ -245,6 +245,76 @@ describe("reviewed storefront manual COD deposit", () => {
       expect(fixture.one("SELECT count(*) AS count FROM payment_plans").count).toBe(1);
     } finally {
       appPolicy.hideCod = false;
+      fixture.close();
+    }
+  });
+
+  it("applies product-level COD deposit policies through tax-quote route", async () => {
+    const fixture = createGiftCardCheckoutFixture();
+    try {
+      // Seed products with different deposit policies.
+      // One statement per prepare(): node:sqlite compiles only the first
+      // statement of a prepared string, so the second update would never run.
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+      `).run();
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
+      `).run();
+
+      await checkoutDocument.write(fixture.db, {
+        checkoutMode: "guest_cod_only",
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 100,
+        codDepositInstructions: "Pay 100 BDT",
+        codDepositDefaultProductPolicy: "selected",
+      });
+
+      const app = new OpenAPIHono<{ Bindings: Env }>();
+      app.use("*", async (c, next) => {
+        c.set("db" as never, fixture.db as never);
+        await next();
+      });
+      app.onError((error: unknown, c: any) => {
+        if (!(error instanceof AppError)) throw error;
+        return c.json({ success: false, error: { code: error.code, message: error.message } }, error.status as ContentfulStatusCode);
+      });
+      app.route("/", checkoutRoutes);
+      app.route("/", taxQuoteRoutes);
+      const rateLimit = { limit: async () => ({ success: true }) };
+      const encryptionKey = btoa("z".repeat(32));
+      const env = { SCALIUS_SECRET: TEST_MASTER_SECRET, CREDENTIAL_ENCRYPTION_KEY: encryptionKey,
+        RL_STANDARD: rateLimit, RL_STRICT: rateLimit } as unknown as Env;
+      const post = (path: string, body: unknown) => app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }, env);
+
+      const address = {
+        city: DELIVERY.city,
+        zone: DELIVERY.zone,
+        shippingMethodId: DELIVERY.shippingMethodId,
+        shippingCountryCode: "BD",
+        customerPhone: "+8801712345678",
+        items: [{ productId: "p_mug", variantId: "v_mug", quantity: 1 },
+                { productId: "p_svc", variantId: "v_svc", quantity: 1 }],
+      };
+
+      const response = await post("/tax-quote", address);
+      const body = await response.json() as {
+        data: { manualCodDeposit: ManualCodDepositQuote | null; quoteFingerprint: string };
+      };
+      expect(response.status, JSON.stringify(body)).toBe(200);
+
+      // mug (required, 30000 BDT) contributes to deposit basis
+      // svc (exempt) does not contribute
+      // Deposit = min(10000 configured, qualifying merchandise) = min(10000, 30000) = 10000
+      expect(body.data.manualCodDeposit).toMatchObject({
+        depositMinor: 10000,
+      });
+    } finally {
       fixture.close();
     }
   });

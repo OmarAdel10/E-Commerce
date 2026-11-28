@@ -25,6 +25,7 @@ import {
   paymentCountryOf,
   resolveCartPaymentMethods,
   resolveManualCodDeposit,
+  resolveCodDepositQualifyingMerchandiseWhenApplicable,
   presentStorefrontCartValidation,
   presentStorefrontDeliveryPreflight,
   summarizeStorefrontCartFulfilment,
@@ -101,6 +102,7 @@ interface AgentStorefrontCartState {
   valid: boolean;
   issues: CartValidation["issues"];
   items: CartValidation["items"];
+  productRows: CartValidation["productRows"];
   subtotalMinor: number;
   hasFreeDeliveryProduct: boolean;
   /** The buyer's segments that priced the cart (never presented). */
@@ -697,6 +699,7 @@ async function loadAgentStorefrontCart(
     valid: validation.valid,
     issues: validation.issues,
     items: validation.items,
+    productRows: validation.productRows,
     subtotalMinor: validation.subtotalMinor,
     hasFreeDeliveryProduct: validation.hasFreeDeliveryProduct,
     // The buyer's segments that priced the cart: what apps see as `customer.segmentIds`.
@@ -999,13 +1002,37 @@ export async function quoteAgentStorefrontCheckout(
   assertDiscountCodesApplied(pricing.typedCodes);
   const quote = pricing.taxQuote;
   // Apps narrow and present the methods submit accepts (read only when an
-  // app adjusts them, or when a delivery abroad may rule a method out:
-  // cash on delivery serves Bangladesh).
+  // app adjusts them, or when a delivery abroad may rule a method out based
+  // on the configured provider's country coverage).
   const paymentProviders = input.paymentProviders ?? BUILT_IN_PAYMENT_PROVIDERS;
-  const manualDeposit = resolveManualCodDeposit(checkoutSettings, quote, shopCurrency, {
-    allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
-    giftCardsApplied: false,
-  }, paymentProviders);
+  const productPolicyById = new Map<string, string | null | undefined>(
+    projection.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
+  );
+  // The deposit basis is read only for an order that can pay cash on
+  // delivery: an order that cannot never carries deposit terms, so a
+  // pricing inconsistency in the deposit policy must not fail its quote.
+  const codDepositApplies = checkoutSettings.codDepositEnabled === true
+    && delivery.fulfilment.allowsCashOnDelivery;
+  const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseWhenApplicable(
+    codDepositApplies,
+    {
+      quoteLines: quote.lines,
+      cartItems: projection.items,
+      productPolicyById,
+      globalDefaultProductPolicy: checkoutSettings.codDepositDefaultProductPolicy,
+    },
+  ).minor;
+  const manualDeposit = resolveManualCodDeposit(
+    checkoutSettings,
+    quote,
+    shopCurrency,
+    {
+      allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
+      giftCardsApplied: false,
+    },
+    paymentProviders,
+    qualifyingMerchandiseMinor,
+  );
   // Where the order is handed over: the delivery country, else the store's.
   const paymentCountry = paymentCountryOf(delivery.fulfilment, delivery.address?.countryCode, pricing.storeCountryCode);
   const abroad = paymentCountry !== null && paymentCountry !== DELIVERY_HIERARCHY_COUNTRY;

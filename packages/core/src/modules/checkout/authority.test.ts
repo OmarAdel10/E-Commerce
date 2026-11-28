@@ -13,7 +13,7 @@ describe("assertStorefrontCheckoutAuthorityRevision — revision guard", () => {
 
     it("throws with checkout-changed message on mismatch", () => {
         expect(() => assertStorefrontCheckoutAuthorityRevision(6, 5)).toThrow(
-            "Checkout details changed while the order was being placed.",
+            "Checkout details changed while the order was being placed. Return to your cart to review them and try again.",
         );
     });
 

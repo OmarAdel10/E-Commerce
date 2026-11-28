@@ -10,6 +10,7 @@ Public entries: `index.ts` (the server API) and `browser.ts` (the quote fingerpr
 |------|---------|---------|
 | `cart-validation.ts` | `validateStorefrontCartItems()`, `presentStorefrontCartValidation()` | Batched buyer-cart freshness: products, SKUs, stock and server prices |
 | `prepare.ts` | `createStorefrontOrder()`, `validateStorefrontDeliveryPreflight()`, `presentStorefrontDeliveryPreflight()` | Server-priced order payload, delivery preflight, checkout-policy snapshots |
+| `manual-cod-deposit.ts` | `resolveManualCodDeposit()`, `resolveCodDepositQualifyingMerchandiseWhenApplicable()`, `resolveProductDepositPolicy()` | The manual COD deposit terms and the qualifying merchandise basis |
 | `authority.ts` | `loadStorefrontCheckoutAuthority()` | One read of everything a checkout is priced and validated against, with its revision |
 | `policy.ts` | `assertStorefrontCheckoutPolicy()`, `assertGuestStorefrontCheckoutPolicy()` | Merchant checkout policy (guests, countries, methods) |
 | `flow.ts` | `isCheckoutGatewayUsableForFlow()`, `getCheckoutFlowValidationIssues()` | Which payment methods a checkout mode and advance payment allow |

@@ -27,7 +27,7 @@ import { Page } from "~/components/admin/resource/Page";
 import { PageHeader } from "~/components/admin/resource/PageHeader";
 import { EmptyState, ErrorState } from "~/components/admin/states";
 import { SaveBarProvider, SaveNotCompleted, useSaveBar } from "~/components/admin/shared/SaveBar";
-import { pairFromStored, storedFromPair, type PricePair } from "~/components/admin/product-form/compare-at";
+import { pairFromStored, storedFromPair } from "~/components/admin/product-form/compare-at";
 import { usePermissions } from "~/contexts/PermissionContext";
 import { useCurrency } from "~/hooks/use-currency";
 import { apiData, type ApiResult } from "~/lib/api";
@@ -36,19 +36,25 @@ import { queryKeys } from "~/lib/query-keys";
 import { useMessages } from "~/i18n";
 import { productBulkEditMessages } from "~/i18n/product-bulk-edit";
 import { productMessages } from "~/i18n/products";
+import {
+  acknowledgeBasePatch,
+  bulkBasePatch,
+  captureBulkEditBaseline,
+  changedSkuWeights,
+  hasBulkEditChanges,
+  isLostWriteResponse,
+  productHasSkuWeight,
+  productMatchesBasePatch,
+  readBulkRow,
+  samePricePair,
+  type BulkEditBaseline,
+  type BulkEditDraft,
+  type BulkRowRead,
+} from "./bulk-edit-baseline";
 
 type BulkProduct = ApiResult<typeof getApiV1AdminProductsBulkEdit>["products"][number];
 
-interface ProductDraft {
-  isActive: boolean;
-  pair: PricePair;
-  /** Null: the default profile (General). */
-  profileId: string | null;
-  /** SKU id -> on hand. */
-  stock: Record<string, number | null>;
-  /** Shipped SKU id -> grams (null: no weight). */
-  weight: Record<string, number | null>;
-}
+type ProductDraft = BulkEditDraft;
 
 const DEFAULT_PROFILE = "shp_default";
 
@@ -58,12 +64,11 @@ const draftOf = (product: BulkProduct, salePrice: (price: number, discount: obje
     isActive: product.isActive,
     pair: pairFromStored(product.price, discounted ? salePrice(product.price, product) : null),
     profileId: product.shippingProfileId,
+    codDepositPolicy: product.codDepositPolicy,
     stock: Object.fromEntries(product.skus.map((sku) => [sku.id, sku.onHand])),
     weight: Object.fromEntries(product.skus.filter((sku) => sku.ships).map((sku) => [sku.id, sku.weightGrams])),
   };
 };
-
-const samePair = (a: PricePair, b: PricePair) => a.price === b.price && a.compareAt === b.compareAt;
 
 /**
  * Bulk editor (Shopify's "Bulk edit"): the selected products in one grid,
@@ -108,6 +113,7 @@ function BulkEditorSkeleton({ rows }: { rows: number }) {
       <TableCell className="w-40"><Skeleton className="ms-auto h-9 w-36" /></TableCell>
       <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
       <TableCell className="w-44"><Skeleton className="h-9 w-40" /></TableCell>
+      <TableCell className="w-40"><Skeleton className="h-9 w-36" /></TableCell>
       <TableCell className="w-32"><Skeleton className="ms-auto h-9 w-28" /></TableCell>
     </TableRow>
   ));
@@ -142,21 +148,43 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     [loaded, salePrice],
   );
   const [edits, setEdits] = useState<Record<string, ProductDraft>>({});
+  // The values each row held when the merchant started editing it, and the
+  // revision they came from: the draft is compared with this baseline, never
+  // with a refetched row, so a write by another admin cannot turn an
+  // untouched cell into a change and overwrite it with a stale value.
+  const [baselines, setBaselines] = useState<Record<string, BulkEditBaseline>>({});
   const [failures, setFailures] = useState<Record<string, string>>({});
+  const revisions = useMemo(() => Object.fromEntries(loaded.map((product) => [product.id, product.aggregateRevision])), [loaded]);
   const draft = (id: string) => edits[id] ?? base[id]!;
-  const change = (id: string, patch: Partial<ProductDraft>) =>
+  const baselineOf = (id: string): BulkEditBaseline | undefined => baselines[id];
+  // The row as the server holds it right now. It tells a lost response from a
+  // write that never reached the server: a row that already holds the patch
+  // means the write landed. A failed read stays apart from an absent row, so
+  // a transport failure is not reported as a missing product.
+  const freshBulkProduct = async (id: string): Promise<BulkRowRead<BulkProduct>> =>
+    readBulkRow(async () => {
+      const fresh = await apiData(getApiV1AdminProductsBulkEdit({ query: { ids: id } }));
+      return fresh?.products.find((row) => row.id === id) ?? null;
+    });
+  const change = (id: string, patch: Partial<ProductDraft>) => {
+    setBaselines((current) => current[id]
+      ? current
+      // The revision comes from the loaded row, never from a guess: a write
+      // guarded by the wrong revision would be rejected as a conflict.
+      : { ...current, [id]: captureBulkEditBaseline(base[id]!, revisions[id]!) });
     setEdits((current) => ({ ...current, [id]: { ...(current[id] ?? base[id]!), ...patch } }));
+  };
 
   const changed = loaded.filter((product) => {
     const next = edits[product.id];
     if (!next) return false;
-    const was = base[product.id]!;
-    return next.isActive !== was.isActive || !samePair(next.pair, was.pair) || next.profileId !== was.profileId
-      || product.skus.some((sku) => next.stock[sku.id] !== was.stock[sku.id] || next.weight[sku.id] !== was.weight[sku.id]);
+    const was = baselineOf(product.id)?.draft ?? base[product.id]!;
+    return hasBulkEditChanges(next, was, product.skus.map((sku) => sku.id));
   });
   const priceProblem = (product: BulkProduct) => {
     const pair = draft(product.id).pair;
-    if (product.hasOptions || samePair(pair, base[product.id]!.pair)) return null;
+    const was = baselineOf(product.id)?.draft ?? base[product.id]!;
+    if (product.hasOptions || samePricePair(pair, was.pair)) return null;
     if (pair.price === null || !Number.isFinite(pair.price) || pair.price < 0) return t("bulkEditPriceRequired");
     return storedFromPair(pair, decimalPlaces).problem ? t("bulkEditCompareAtHigher") : null;
   };
@@ -168,44 +196,111 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
   const save = async () => {
     const problems: Record<string, string> = {};
     for (const product of changed) {
-      const was = base[product.id]!;
+      const baseline = baselineOf(product.id);
       const next = draft(product.id);
+      // The values the server holds for this row, and the revision it holds:
+      // every accepted write moves them forward, so a retry sends only what
+      // the server still misses instead of repeating a write it already
+      // applied against a revision it moved past.
+      const start = baseline?.draft ?? base[product.id]!;
+      const acknowledged: BulkEditDraft = { ...start, stock: { ...start.stock }, weight: { ...start.weight } };
+      let revision = baseline?.revision ?? product.aggregateRevision;
+      const persistProgress = () => setBaselines((current) => ({ ...current, [product.id]: { draft: acknowledged, revision } }));
       try {
-        const patch: Record<string, unknown> = {};
-        if (next.isActive !== was.isActive) patch.isActive = next.isActive;
-        if (!product.hasOptions && !samePair(next.pair, was.pair)) {
-          const stored = storedFromPair(next.pair, decimalPlaces);
-          patch.price = stored.price;
-          patch.discountType = "flat";
-          patch.discountAmount = stored.discounted ? stored.discountAmount : 0;
-          patch.discountPercentage = 0;
-        }
-        if (next.profileId !== was.profileId) patch.shippingProfileId = next.profileId;
-        let revision = product.aggregateRevision;
+        const patch = bulkBasePatch(next, acknowledged, {
+          hasOptions: product.hasOptions,
+          decimalPlaces,
+        });
+        // The revision the baseline came from: a write by another admin since
+        // then makes the guarded write fail instead of overwriting it.
         if (Object.keys(patch).length > 0) {
-          revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
-            path: { id: product.id, section: "base" },
-            body: { section: "base", expectedAggregateRevision: revision, patch } as never,
-          })) as { aggregateRevision: number }).aggregateRevision;
+          try {
+            revision = (await apiData(patchApiV1AdminProductsByIdSectionsBySection({
+              path: { id: product.id, section: "base" },
+              body: { section: "base", expectedAggregateRevision: revision, patch } as never,
+            })) as { aggregateRevision: number }).aggregateRevision;
+            Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
+            persistProgress();
+          } catch (error) {
+            // A refusal the server sent is authoritative: the row failed, and
+            // reading the row again would adopt the value another admin wrote
+            // - the weight writes below would then overwrite their change.
+            if (!isLostWriteResponse(error)) throw error;
+            // The write may have committed even though its response was lost.
+            // A fresh row that already holds the patch means the server
+            // applied it: carry on with the remaining edits instead of
+            // repeating a write against a revision the server moved past.
+            const fresh = await freshBulkProduct(product.id);
+            if (fresh.error || !fresh.row || !productMatchesBasePatch(fresh.row, patch)) throw error;
+            revision = fresh.row.aggregateRevision;
+            Object.assign(acknowledged, acknowledgeBasePatch(acknowledged, next, patch));
+            persistProgress();
+          }
+        }
+        // The weights the server holds right now. A weight write must never
+        // overwrite a weight another admin changed since the baseline: the
+        // row fails instead, so the merchant decides what to do with the
+        // newer value.
+        const weightWrites = product.skus.filter((sku) => sku.ships && next.weight[sku.id] !== acknowledged.weight[sku.id]);
+        if (weightWrites.length > 0) {
+          const current = await freshBulkProduct(product.id);
+          if (current.error) throw current.error;
+          if (!current.row) throw new Error(t("bulkEditRowFailed"));
+          if (changedSkuWeights(current.row, weightWrites, acknowledged.weight).length > 0) {
+            throw new Error(t("bulkEditWeightChanged"));
+          }
         }
         // Each weight under the revision the last write left.
         for (const sku of product.skus) {
-          if (!sku.ships || next.weight[sku.id] === was.weight[sku.id]) continue;
+          if (!sku.ships || next.weight[sku.id] === acknowledged.weight[sku.id]) continue;
           const grams = next.weight[sku.id];
-          revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
-            path: { id: product.id, variantId: sku.id },
-            body: { expectedRevision: revision, weightGrams: grams === null || grams === undefined ? null : Math.round(grams) },
-          }))).product.revision;
+          const rounded = grams === null || grams === undefined ? null : Math.round(grams);
+          try {
+            revision = (await apiData(patchApiV1AdminResourcesProductsByIdVariantsByVariantId({
+              path: { id: product.id, variantId: sku.id },
+              body: { expectedRevision: revision, weightGrams: rounded },
+            }))).product.revision;
+          } catch (error) {
+            // A refusal the server sent is authoritative: the row failed.
+            if (!isLostWriteResponse(error)) throw error;
+            // The write may have committed even though its response was lost.
+            // A fresh row that holds the weight means it landed: carry the
+            // row's revision forward, so the next write - and the merchant's
+            // retry - does not send the revision the server moved past.
+            const fresh = await freshBulkProduct(product.id);
+            if (fresh.error || !fresh.row || !productHasSkuWeight(fresh.row, sku.id, rounded)) throw error;
+            revision = fresh.row.aggregateRevision;
+            // The row the editor holds now is newer than the row it checked
+            // before the first write. The weights that are still pending have
+            // to be checked against it again: another admin may have changed
+            // one of them in between, and the next write would overwrite it.
+            acknowledged.weight[sku.id] = rounded;
+            // Persist the confirmed weight and the fresh revision before the
+            // pending-weight check: a conflict below must not lose the fact
+            // that this write landed.
+            persistProgress();
+            const pendingWeights = product.skus.filter(
+              (entry) => entry.ships && next.weight[entry.id] !== acknowledged.weight[entry.id],
+            );
+            if (changedSkuWeights(fresh.row, pendingWeights, acknowledged.weight).length > 0) {
+              throw new Error(t("bulkEditWeightChanged"));
+            }
+          }
+          acknowledged.weight[sku.id] = rounded;
+          persistProgress();
         }
         for (const sku of product.skus) {
           const newStock = next.stock[sku.id];
-          if (!sku.trackInventory || newStock === was.stock[sku.id] || newStock === null || newStock === undefined) continue;
+          if (!sku.trackInventory || newStock === acknowledged.stock[sku.id] || newStock === null || newStock === undefined) continue;
           await apiData(postApiV1AdminInventoryStockSet({
             body: { variantId: sku.id, newStock, reason: "Bulk edit" },
             headers: { "idempotency-key": crypto.randomUUID() },
           }));
+          acknowledged.stock[sku.id] = newStock;
+          persistProgress();
         }
         setEdits((current) => { const { [product.id]: _, ...rest } = current; return rest; });
+        setBaselines((current) => { const { [product.id]: _, ...rest } = current; return rest; });
       } catch (error) {
         problems[product.id] = getServerFnError(error, t("bulkEditRowFailed"));
       }
@@ -221,7 +316,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
     dirty: changed.length > 0,
     invalid,
     save,
-    discard: () => { setEdits({}); setFailures({}); },
+    discard: () => { setEdits({}); setBaselines({}); setFailures({}); },
   });
 
   const statusOptions = [
@@ -262,6 +357,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                 <TableHead data-numeric>{t("bulkEditCompareAt")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditOnHand")}</TableHead>
                 <TableHead>{t("bulkEditShippingProfile")}</TableHead>
+                <TableHead>{t("bulkEditDepositPolicy")}</TableHead>
                 <TableHead data-numeric>{t("bulkEditWeight")}</TableHead>
               </TableRow>
             </TableHeader>
@@ -308,7 +404,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                       <TableCell className="w-36">
                         <SearchableSelect
                           triggerClassName="w-32"
-                          aria-label={t("bulkEditStatusFor", { name: product.name })}
+                          ariaLabel={t("bulkEditStatusFor", { name: product.name })}
                           disabled={!canEdit}
                           value={next.isActive ? "active" : "draft"}
                           onValueChange={(value) => change(product.id, { isActive: value === "active" })}
@@ -348,13 +444,27 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         {ships && profileOptions.length > 1 ? (
                           <SearchableSelect
                             triggerClassName="w-40"
-                            aria-label={t("bulkEditShippingProfileFor", { name: product.name })}
+                            ariaLabel={t("bulkEditShippingProfileFor", { name: product.name })}
                             disabled={!canEdit}
                             value={next.profileId ?? DEFAULT_PROFILE}
                             onValueChange={(value) => change(product.id, { profileId: value === DEFAULT_PROFILE ? null : value })}
                             options={profileOptions}
                           />
                         ) : null}
+                      </TableCell>
+                      <TableCell className="w-40">
+                        <SearchableSelect
+                          triggerClassName="w-36"
+                          ariaLabel={t("bulkEditDepositPolicyFor", { name: product.name })}
+                          disabled={!canEdit}
+                          value={next.codDepositPolicy}
+                          onValueChange={(value) => change(product.id, { codDepositPolicy: value as "inherit" | "required" | "exempt" })}
+                          options={[
+                            { value: "inherit", label: t("bulkEditDepositInherit") },
+                            { value: "required", label: t("bulkEditDepositRequired") },
+                            { value: "exempt", label: t("bulkEditDepositExempt") },
+                          ]}
+                        />
                       </TableCell>
                       <TableCell className="w-32">{product.hasOptions ? null : weightCell(single, product.name)}</TableCell>
                     </TableRow>
@@ -368,6 +478,7 @@ function BulkEditorGrid({ ids }: { ids: string[] }) {
                         <TableCell />
                         <TableCell />
                         <TableCell className="w-32">{stockCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
+                        <TableCell />
                         <TableCell />
                         <TableCell className="w-32">{weightCell(sku, `${product.name} ${sku.label ?? ""}`)}</TableCell>
                       </TableRow>

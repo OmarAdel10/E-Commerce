@@ -647,6 +647,7 @@ app.openapi(createOrderRoute, async (c) => {
         codDepositAmount: checkoutAuthority.checkoutSettings.codDepositAmount,
         codDepositPercent: checkoutAuthority.checkoutSettings.codDepositPercent,
         codDepositInstructions: checkoutAuthority.checkoutSettings.codDepositInstructions,
+        codDepositDefaultProductPolicy: checkoutAuthority.checkoutSettings.codDepositDefaultProductPolicy,
       }),
       checkoutAuthority.taxAuthority,
       { masterSecret: readMasterSecret(c.env) },

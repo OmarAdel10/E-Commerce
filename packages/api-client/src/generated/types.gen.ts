@@ -23201,7 +23201,7 @@ export type PostApiV1OrdersTaxQuoteResponses = {
                 hours: string | null;
             } | null;
             /**
-             * Payment methods for the amount due. Exactly ["gift_card"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country it serves (Bangladesh).
+             * Payment methods for the amount due. Exactly ["gift_card"] when gift cards cover the whole order; cash on delivery only when something is shipped, collected or performed, and only for a delivery to a country the configured provider serves.
              */
             allowedPaymentMethods: Array<string>;
             /**
@@ -50225,6 +50225,7 @@ export type GetApiV1AdminSettingsCheckoutFlowResponses = {
             codDepositAmount: number;
             codDepositPercent: number;
             codDepositInstructions: string;
+            codDepositDefaultProductPolicy: 'all' | 'selected';
             revision: number;
         };
     };
@@ -50238,6 +50239,7 @@ export type PutApiV1AdminSettingsCheckoutFlowData = {
         checkoutMode: 'guest_cod_only' | 'gateways_only' | 'all';
         partialPaymentEnabled: boolean;
         partialPaymentAmount: number;
+        codDepositDefaultProductPolicy?: 'all' | 'selected';
         autoFulfilMode?: 'after_payment' | 'after_confirmation';
         requireFullBillingAddress?: boolean;
         codDepositEnabled?: boolean;
@@ -50303,6 +50305,7 @@ export type PutApiV1AdminSettingsCheckoutFlowResponses = {
             codDepositAmount: number;
             codDepositPercent: number;
             codDepositInstructions: string;
+            codDepositDefaultProductPolicy: 'all' | 'selected';
             revision: number;
         };
     };
@@ -57927,6 +57930,7 @@ export type GetApiV1AdminOrdersCatalogProductsResponses = {
                  * The sales channels the product is published to.
                  */
                 salesChannelIds: Array<string>;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
                 /**
                  * Units buyers can still order across active SKUs; null when a SKU has no stock limit.
                  */
@@ -60463,6 +60467,9 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 balanceDueDate: string | null;
                 kind: string;
                 status: string;
+                codDepositAmount: number;
+                qualifyingMerchandiseMinor: number;
+                qualifyingProductIds: string | null;
                 createdAt: string | number;
                 updatedAt: string | number;
             } | null;
@@ -63007,6 +63014,10 @@ export type GetApiV1AdminProductsData = {
          */
         status?: 'active' | 'draft';
         /**
+         * Manual COD deposit policy filter: inherit / required / exempt
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
+        /**
          * Only products published to this sales channel (or, with salesChannelState=unpublished, not published to it).
          */
         salesChannel?: string;
@@ -63136,6 +63147,7 @@ export type GetApiV1AdminProductsResponses = {
                  * The sales channels the product is published to.
                  */
                 salesChannelIds: Array<string>;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
             }>;
             pagination: {
                 /**
@@ -63277,6 +63289,10 @@ export type PostApiV1AdminProductsData = {
          * A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it.
          */
         warrantyPolicyId?: string | null;
+        /**
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         optionMatrix?: {
             options: Array<{
                 id: string;
@@ -63660,6 +63676,7 @@ export type GetApiV1AdminProductsBulkEditResponses = {
                  * Null: the default profile (General). Save with the base section.
                  */
                 shippingProfileId: string | null;
+                codDepositPolicy: 'inherit' | 'required' | 'exempt';
                 skus: Array<{
                     id: string;
                     label: string | null;
@@ -63704,6 +63721,7 @@ export type PostApiV1AdminProductsBulkDeleteData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -63811,6 +63829,7 @@ export type PostApiV1AdminProductsBulkRestoreData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -63912,6 +63931,7 @@ export type PostApiV1AdminProductsBulkUpdateData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -64017,6 +64037,7 @@ export type PostApiV1AdminProductsPublicationsData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -64516,6 +64537,10 @@ export type PatchApiV1AdminProductsByIdSectionsBySectionData = {
             slug?: string;
             redirectOldUrl?: boolean;
             emiEligible?: boolean;
+            /**
+             * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value.
+             */
+            codDepositPolicy?: 'inherit' | 'required' | 'exempt';
             description?: string | null;
             metaTitle?: string | null;
             metaDescription?: string | null;
@@ -64887,6 +64912,7 @@ export type GetApiV1AdminProductsByIdResponses = {
                 attributeId: string;
                 value: string;
             }>;
+            codDepositPolicy: 'inherit' | 'required' | 'exempt';
             relatedObjects: Array<{
                 typeId: string;
                 typeHandle: string;
@@ -64983,6 +65009,10 @@ export type PutApiV1AdminProductsByIdData = {
          * A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it.
          */
         warrantyPolicyId?: string | null;
+        /**
+         * Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`.
+         */
+        codDepositPolicy?: 'inherit' | 'required' | 'exempt';
         id: string;
         expectedAggregateRevision: number;
         redirectOldUrl?: boolean;

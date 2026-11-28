@@ -165,6 +165,7 @@ export function createGiftCardCheckoutFixture(seedSql = ""): GiftCardCheckoutFix
                 codDepositAmount: options.codDeposit?.amount ?? 0,
                 codDepositPercent: 0,
                 codDepositInstructions: options.codDeposit?.instructions ?? "",
+                codDepositDefaultProductPolicy: "all",
             }),
             authority.taxAuthority,
             { masterSecret: TEST_MASTER_SECRET },

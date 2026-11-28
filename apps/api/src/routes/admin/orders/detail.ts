@@ -179,6 +179,12 @@ const paymentPlanSchema = z.object({
     balanceDueDate: z.string().nullable(),
     kind: z.string(),
     status: z.string(),
+    /** The configured deposit amount before the qualifying basis caps it, in minor units. */
+    codDepositAmount: z.number(),
+    /** The qualifying merchandise value the deposit was calculated from, in minor units. */
+    qualifyingMerchandiseMinor: z.number(),
+    /** The JSON array of product ids that qualified for the deposit. */
+    qualifyingProductIds: z.string().nullable(),
     createdAt: z.union([z.string(), z.number()]),
     updatedAt: z.union([z.string(), z.number()]),
 }).nullable();

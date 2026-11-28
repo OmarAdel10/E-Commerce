@@ -14,6 +14,7 @@ import type {
   ProductDetailDto as ProductDetail,
 } from "~/lib/api-query-options/products";
 import {
+  DEFAULT_COD_DEPOSIT_POLICY,
   DEFAULT_PRODUCT_CONDITION,
   type ProductFormValues,
   type Category,
@@ -113,6 +114,7 @@ function toFormValues(product: ProductDetail): ProductFormValues {
     warrantyPolicyId: product.warrantyPolicyId ?? null,
     brandId: product.brandId ?? null,
     customizationSchema: draftsFromView(product.customizationSchema),
+    codDepositPolicy: product.codDepositPolicy ?? DEFAULT_COD_DEPOSIT_POLICY,
   } as ProductFormValues;
 }
 
@@ -206,6 +208,8 @@ function ProductEditor({ productId, initialProduct, categories }: {
       categoryId: values.categoryId,
       brandId: values.brandId,
       isActive: values.isActive,
+      // The saved deposit policy is the new baseline: a discard must not restore the old one.
+      codDepositPolicy: values.codDepositPolicy ?? current.codDepositPolicy,
       media: values.media.map(({ effectiveAltText, altText, ...item }) => ({
         ...item,
         altText: altText.trim() || effectiveAltText,

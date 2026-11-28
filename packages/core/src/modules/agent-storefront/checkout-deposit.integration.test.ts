@@ -85,4 +85,84 @@ describe("agent storefront manual COD deposit", () => {
       fixture.close();
     }
   });
+
+  it("applies product-level COD deposit policies through quoteAgentStorefrontCheckout", async () => {
+    const grantId = "agr_codproducttest000001";
+    const contextId = "asc_codproducttest000001";
+    const fixture = createGiftCardCheckoutFixture();
+    try {
+      // Seed products with different deposit policies
+      fixture.sqlite.prepare(`
+        INSERT INTO agent_grants (id, kind, resource, label, preset, risk_ceiling, status, expires_at)
+        VALUES (?, 'pat', 'storefront', 'Checkout tests', 'operator', 'write', 'active', unixepoch() + 3600)
+      `).run(grantId);
+      fixture.sqlite.prepare(`
+        INSERT INTO agent_storefront_contexts (
+          id, grant_id, cart_json, country_code, city_id, zone_id, shipping_method_id, expires_at
+        ) VALUES (?, ?, ?, 'BD', ?, ?, ?, unixepoch() + 3600)
+      `).run(contextId, grantId, JSON.stringify([
+        { variantId: "v_mug", quantity: 1 },
+        { variantId: "v_svc", quantity: 1 },
+      ]), DELIVERY.city, DELIVERY.zone, DELIVERY.shippingMethodId);
+
+      // mug=required, svc=exempt -> only mug contributes to deposit basis.
+      // One statement per prepare(): node:sqlite compiles only the first
+      // statement of a prepared string, so the second update would never run.
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug';
+      `).run();
+      fixture.sqlite.prepare(`
+        UPDATE products SET cod_deposit_policy = 'exempt' WHERE id = 'p_svc';
+      `).run();
+
+      await checkoutDocument.write(fixture.db, {
+        checkoutMode: "guest_cod_only",
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 100,
+        codDepositInstructions: "Pay 100 BDT",
+        codDepositDefaultProductPolicy: "selected",
+      });
+
+      const customerPhone = "+8801712345678";
+      const quote = await quoteAgentStorefrontCheckout(fixture.db, grantId, contextId, {
+        customerPhone, cod: true,
+      });
+
+      // mug (required, 30000 minor = 300 BDT) contributes to deposit basis
+      // svc (exempt) does not contribute
+      // Deposit = min(10000 configured, qualifying merchandise) = min(10000, 30000) = 10000
+      expect(quote.manualCodDeposit).toMatchObject({
+        depositMinor: 10000,
+        // Order total = mug 30000 + svc 50000 + shipping 6000 = 86000
+        balanceMinor: 76000,
+      });
+
+      // The committed plan must record the qualifying basis, so a leak of the
+      // exempt service into the basis cannot pass unnoticed.
+      const placed = await submitAgentStorefrontCheckout(fixture.db, grantId, contextId, {
+        expectedRevision: quote.contextRevision,
+        expectedQuoteFingerprint: quote.quoteFingerprint,
+        idempotencyKey: "test-product-policy-deposit",
+        customerName: "Checkout Test",
+        customerPhone,
+        customerEmail: null,
+        shippingAddress: DELIVERY.shippingAddress,
+        notes: null,
+        paymentMethod: "cod",
+      }, { requestUrl: "https://example.test/checkout" });
+      expect(placed.response.paymentMethod).toBe("cod");
+      expect(fixture.one("SELECT deposit_amount_minor, balance_due_minor, total_amount_minor, qualifying_merchandise_minor, qualifying_product_ids, cod_deposit_amount FROM payment_plans"))
+        .toEqual({
+          deposit_amount_minor: 10000,
+          balance_due_minor: 76000,
+          total_amount_minor: 86000,
+          qualifying_merchandise_minor: 30000,
+          qualifying_product_ids: '["p_mug"]',
+          cod_deposit_amount: 10000,
+        });
+    } finally {
+      fixture.close();
+    }
+  });
 });

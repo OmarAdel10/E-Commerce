@@ -41,6 +41,8 @@ export interface ProductBulkEditRow {
     hasOptions: boolean;
     /** The product's shipping profile; null: the default (General). */
     shippingProfileId: string | null;
+    /** Manual COD deposit policy: inherit / required / exempt. */
+    codDepositPolicy: "inherit" | "required" | "exempt";
     skus: ProductBulkEditSku[];
 }
 
@@ -58,6 +60,7 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
             discountBps: products.discountBps,
             discountAmountMinor: products.discountAmountMinor,
             shippingProfileId: products.shippingProfileId,
+            codDepositPolicy: products.codDepositPolicy,
         }).from(products).where(and(inArray(products.id, lookup), isNull(products.deletedAt))),
         db.select({
             id: productVariants.id,
@@ -106,6 +109,7 @@ export async function readProductsForBulkEdit(db: Database, ids: readonly string
         discountAmount: fromMinor(row.discountAmountMinor ?? 0, decimalPlaces),
         hasOptions: optioned.has(row.id),
         shippingProfileId: row.shippingProfileId ?? null,
+        codDepositPolicy: row.codDepositPolicy,
         skus: (skusByProduct.get(row.id) ?? []).filter((sku) => !optioned.has(row.id) || sku.label !== null),
     })).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }

@@ -184,6 +184,9 @@ const productAdditionalInfoSchema = z.array(
 /** A product title is 1 to 255 characters, as Shopify's: "TV" is a title, and long Bangladesh listing titles fit. */
 export const PRODUCT_NAME_MAX_LENGTH = 255;
 
+/** Manual COD deposit policy for a product: `inherit` follows the global default, `required` always requires a deposit, `exempt` never requires one. Omit to keep the stored policy. */
+export const codDepositPolicySchema = z.enum(["inherit", "required", "exempt"]).optional();
+
 /** Base product fields shared between create and update */
 const productBaseSchema = z.object({
     name: z.string().trim().min(1).max(PRODUCT_NAME_MAX_LENGTH),
@@ -230,6 +233,9 @@ const productBaseSchema = z.object({
     /** A live warranty policy (wrp_…); null removes it. Omit to keep. */
     warrantyPolicyId: productWarrantyPolicyIdSchema.nullable().optional()
         .describe("A live warranty policy id (wrp_…). Omit to keep the current warranty; null removes it."),
+    /** Manual COD deposit policy: `inherit` follows the global default; `required` requires a deposit on this product; `exempt` never requires one. Omit to keep; defaults to `inherit`. */
+    codDepositPolicy: codDepositPolicySchema
+        .describe("Manual COD deposit policy for this product. `inherit` follows the global default; `required` requires a deposit; `exempt` never requires one. Omit to keep the current value; defaults to `inherit`."),
 });
 
 function requireCanonicalProductHandle(
