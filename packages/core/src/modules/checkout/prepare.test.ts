@@ -903,3 +903,77 @@ describe("createStorefrontOrder — manual COD deposit computation (Fix C)", () 
         });
     });
 });
+
+describe("createStorefrontOrder — the deposit basis is read only when the order can pay COD", () => {
+    const mockDb = createMockDb();
+    const requestUrl = "https://store.example.com/checkout";
+    const requestCurrency = {
+        code: "BDT",
+        decimalPlaces: 2,
+        priceIncrementMinor: 100,
+    };
+
+    /** A cart whose product carries a stored policy no merchant can set. */
+    const cartWithBrokenPolicy = () => createMockCartValidation({
+        productRows: createMockCartValidation().productRows.map((row) => ({
+            ...row,
+            codDepositPolicy: "broken",
+        })),
+    });
+
+    const depositPolicy = () => createMockCheckoutPolicy({
+        codDepositEnabled: true,
+        codDepositMode: "fixed",
+        codDepositAmount: 50,
+    });
+
+    it("fails closed when a COD order carries a corrupt deposit policy", async () => {
+        // The order pays cash on delivery, so the deposit terms are read and
+        // a policy that cannot be resolved must stop the order.
+        await expect(
+            createStorefrontOrder(
+                mockDb,
+                createMockOrderInput(),
+                requestUrl,
+                undefined,
+                cartWithBrokenPolicy(),
+                createMockDeliveryPreflight(),
+                undefined,
+                requestCurrency,
+                depositPolicy(),
+                mockTaxAuthoritySnapshot,
+            ),
+        ).rejects.toThrow("Invalid manual COD deposit policy");
+    });
+
+    it("does not read the deposit basis for an order that cannot pay COD", async () => {
+        // The order pays a gateway and its delivery does not offer cash on
+        // delivery, so it carries no deposit terms at all: a corrupt deposit
+        // policy must not fail a checkout that never reads one.
+        const delivery = createMockDeliveryPreflight({
+            fulfilment: {
+                requiresShipping: true,
+                allowsCashOnDelivery: false,
+                lineTypes: ["ship"],
+                requiresDeliveryMethod: true,
+                deliveryMethodKind: "delivery",
+            },
+        });
+
+        const result = await createStorefrontOrder(
+            mockDb,
+            createMockOrderInput({ paymentMethod: "stripe" }),
+            requestUrl,
+            undefined,
+            cartWithBrokenPolicy(),
+            delivery,
+            undefined,
+            requestCurrency,
+            depositPolicy(),
+            mockTaxAuthoritySnapshot,
+        );
+
+        expect(result.depositPlan).toBe(false);
+        expect(result.commitPayload.codDeposit).toBeUndefined();
+    });
+});

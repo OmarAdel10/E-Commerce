@@ -1068,8 +1068,14 @@ export async function createStorefrontOrder(
     const productPolicyById = new Map(
         cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
     );
+    // The deposit basis is read only for an order that can pay cash on
+    // delivery: an order that cannot never carries deposit terms, so a
+    // pricing inconsistency in the deposit policy must not fail its order.
+    const codDepositApplies = effectiveSettings?.codDepositEnabled === true
+        && allowsCashOnDelivery
+        && !giftCardsApplied;
     const qualifying = resolveCodDepositQualifyingMerchandiseWhenApplicable(
-        effectiveSettings?.codDepositEnabled === true,
+        codDepositApplies,
         {
             quoteLines: taxQuote.lines,
             cartItems: cartValidation.items,

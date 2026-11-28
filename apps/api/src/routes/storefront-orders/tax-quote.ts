@@ -386,12 +386,19 @@ app.openapi(taxQuoteRoute, async (c) => {
       .filter((item) => item.isGiftCard)
       .map((item) => buildStorefrontTaxAllocationLineId(item.index, item.variantId))),
   });
-  const coveredByGiftCards = giftCardTender.appliedTotalMinor > 0 && giftCardTender.amountDueMinor === 0;
+  const giftCardsApplied = giftCardTender.appliedTotalMinor > 0;
+  const coveredByGiftCards = giftCardsApplied && giftCardTender.amountDueMinor === 0;
   const productPolicyById = new Map(
     cartValidation.productRows.map((row) => [row.id, row.codDepositPolicy ?? null]),
   );
+  // The deposit basis is read only for an order that can pay cash on
+  // delivery: an order that cannot never carries deposit terms, so a
+  // pricing inconsistency in the deposit policy must not fail its quote.
+  const codDepositApplies = checkoutSettings.codDepositEnabled === true
+    && delivery.fulfilment.allowsCashOnDelivery
+    && !giftCardsApplied;
   const qualifyingMerchandiseMinor = resolveCodDepositQualifyingMerchandiseWhenApplicable(
-    checkoutSettings.codDepositEnabled === true,
+    codDepositApplies,
     {
       quoteLines: quote.lines,
       cartItems: cartValidation.items,
@@ -405,7 +412,7 @@ app.openapi(taxQuoteRoute, async (c) => {
     currency,
     {
       allowsCashOnDelivery: delivery.fulfilment.allowsCashOnDelivery,
-      giftCardsApplied: giftCardTender.appliedTotalMinor > 0,
+      giftCardsApplied,
     },
     paymentProviders,
     qualifyingMerchandiseMinor,
