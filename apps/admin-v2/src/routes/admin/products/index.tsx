@@ -17,6 +17,7 @@ import {
   type SearchValidatorInput,
 } from "~/lib/list-helpers";
 import { adoptListSearch, listSearchKey, useListSearch } from "~/lib/list-search";
+import { productMatchingFilter } from "~/lib/product-list-filter";
 import { RouteErrorComponent } from "~/lib/route-error";
 import { apiData } from "~/lib/api";
 import { queryKeys } from "~/lib/query-keys";
@@ -74,18 +75,6 @@ function validateProductSearch(search: SearchValidatorInput) {
 }
 
 type ProductSearch = ReturnType<typeof validateProductSearch>;
-
-/** The list's filter as "all matching" bulk actions send it (the API reads the rows). */
-export function productMatchingFilter(search: ProductSearch, term: string, appFilter: string | undefined) {
-  return {
-    ...(term ? { search: term } : {}),
-    ...(search.category ? { category: search.category } : {}),
-    ...(search.status && !search.trashed ? { status: search.status } : {}),
-    ...(search.channel ? { salesChannel: search.channel, salesChannelState: search.channelState ?? "published" } : {}),
-    ...(search.codDepositPolicy ? { codDepositPolicy: search.codDepositPolicy } : {}),
-    ...(appFilter ? { appFilter } : {}),
-  };
-}
 
 /**
  * `app` is what the active apps ask of the list (their columns and the filter
@@ -259,7 +248,6 @@ function ProductsPage() {
               });
             }}
             options={[
-              { value: "all", label: t("codDepositPolicyAll") },
               { value: "inherit", label: t("codDepositPolicyInherit") },
               { value: "required", label: t("codDepositPolicyRequired") },
               { value: "exempt", label: t("codDepositPolicyExempt") },
