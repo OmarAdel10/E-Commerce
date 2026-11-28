@@ -29,12 +29,17 @@
  */
 
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { describe, it, before, after } from "node:test";
 import { chromium } from "playwright";
 
 // ── Environment / credentials (correction #10: never commit real credentials) ──
-const ADMIN_EMAIL = process.env.LOCAL_ADMIN_EMAIL ?? "admin@local.scalius.test";
-const ADMIN_PASSWORD = process.env.LOCAL_ADMIN_PASSWORD ?? "ScaliusLocal123!";
+// The local admin account is never hardcoded here: the suite refuses to run
+// unless the credentials are passed in the environment.
+const ADMIN_EMAIL = process.env.LOCAL_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.LOCAL_ADMIN_PASSWORD;
+assert.ok(ADMIN_EMAIL, "LOCAL_ADMIN_EMAIL must be set to the local admin email");
+assert.ok(ADMIN_PASSWORD, "LOCAL_ADMIN_PASSWORD must be set to the local admin password");
 const API = "http://127.0.0.1:8787";
 const ADMIN = "http://localhost:4323";
 const STOREFRONT = "http://localhost:4322";
@@ -203,13 +208,16 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
   let createdProductId = null;
   let createdProductSlug = null;
   let createdVariantId = null;
+  let createdCategoryId = null;
+  let originalCheckoutFlow = null;
 
   before(async () => {
     // The prerequisites first: a store that cannot run the suite must fail
     // before it creates a product, not after.
     await assertEgyptianStorePrerequisites();
-    const chromeExecutable = process.env.CHROME_BIN || "/opt/google/chrome/chrome";
-    browser = await chromium.launch({ executablePath: chromeExecutable });
+    const chromeBinary = process.env.CHROME_BIN
+      ?? (existsSync("/opt/google/chrome/chrome") ? "/opt/google/chrome/chrome" : undefined);
+    browser = await chromium.launch(chromeBinary ? { executablePath: chromeBinary } : {});
     adminCookies = await signInAdmin();
     adminContext = await browser.newContext();
     await adminContext.addCookies(adminCookies);
@@ -221,6 +229,23 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       try {
         await productUpdate(createdProductId, { codDepositPolicy: "inherit" });
         await productDelete(createdProductId);
+      } catch { /* best-effort cleanup even on failure */ }
+    }
+    if (createdCategoryId) {
+      try {
+        await adminAuthed(`/api/v1/admin/categories/${encodeURIComponent(createdCategoryId)}`, { method: "DELETE" });
+      } catch { /* best-effort cleanup even on failure */ }
+    }
+    // The suite switched the manual deposit on: the store goes back to the
+    // settings it had before the run.
+    if (originalCheckoutFlow) {
+      try {
+        const current = await adminAuthed("/api/v1/admin/settings/checkout-flow");
+        if (current.ok) {
+          const { revision, ..._currentBody } = current.body.data;
+          const { revision: _originalRevision, ...originalBody } = originalCheckoutFlow;
+          await adminAuthed("/api/v1/admin/settings/checkout-flow", { method: "PUT", body: { ...originalBody, expectedRevision: revision } });
+        }
       } catch { /* best-effort cleanup even on failure */ }
     }
     try {
@@ -237,6 +262,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
     const currentSettings = await adminAuthed("/api/v1/admin/settings/checkout-flow");
     assert.ok(currentSettings.ok, `checkout-flow settings read failed: ${currentSettings.status}`);
     const { revision: _rev, ...settingsBody } = currentSettings.body.data;
+    originalCheckoutFlow = currentSettings.body.data;
     const settings = await adminAuthed("/api/v1/admin/settings/checkout-flow", { method: "PUT", body: {
       ...settingsBody,
       codDepositEnabled: true,       codDepositMode: "fixed",
@@ -264,6 +290,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
     const categorySlug = `browser-acceptance-category-${catTs}`;
     const category = await adminAuthed("/api/v1/admin/categories", { method: "POST", body: { name: categoryName, slug: categorySlug } });
     assert.ok(category.ok, `category creation failed: ${category.status} ${JSON.stringify(category.body)}`);
+    createdCategoryId = category.body.data?.category?.id ?? category.body?.category?.id ?? null;
 
     const context = await browser.newContext();
     await context.addCookies(adminCookies);
@@ -327,18 +354,22 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       assert.ok(saveResponse.ok(), `product creation failed: ${saveResponse.status()}`);
 
       // Read back the real product + variant IDs (correction #2: never guess).
-      const created = await adminAuthed("/api/v1/admin/products?limit=25&sort=createdAt&order=desc");
-      assert.strictEqual(created.ok, true, `product list failed: ${created.status}`);
-      const products = created.body.data?.products ?? created.body.products ?? [];
-      const product = products.find((p) => p.name === PRODUCT_NAME || p.slug === PRODUCT_SLUG);
-      assert.ok(product, "created product not found in API list");
-      createdProductId = product.id;
-      createdProductSlug = product.slug;
+      // The id comes from the creation response: a product of the same name
+      // that already existed must never be mistaken for the new one.
+      const savePayload = await saveResponse.json().catch(() => null);
+      const savedProduct = savePayload?.data ?? savePayload;
+      assert.ok(savedProduct?.id, `product creation response carried no product id: ${JSON.stringify(savePayload)}`);
+      createdProductId = savedProduct.id;
+      // The creation response carries no slug, so read the stored product back
+      // for the slug the storefront route needs.
+      const createdProduct = await productGet(createdProductId);
+      createdProductSlug = createdProduct?.slug ?? savedProduct.slug ?? null;
+      assert.ok(createdProductSlug, "the created product must carry a slug for the storefront route");
 
       // Variants may be created asynchronously after the UI save; poll until present.
       let variantId = null;
       await waitFor(async () => {
-        const variants = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(product.id)}/variants`);
+        const variants = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(createdProductId)}/variants`);
         const variantList = variants.body.data?.variants ?? variants.body.variants ?? [];
         if (variantList.length > 0) { variantId = variantList[0].id; return true; }
         return false;
@@ -355,7 +386,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       assert.ok(stockResult.ok, `stock set failed: ${stockResult.status} ${JSON.stringify(stockResult.body)}`);
 
       // Verify the deposit policy persisted via API.
-      const check = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(product.id)}`);
+      const check = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(createdProductId)}`);
       assert.strictEqual(check.ok, true, `product GET failed: ${check.status}`);
       const prod = check.body.data ?? check.body;
       assert.strictEqual(prod.codDepositPolicy, "required", `expected codDepositPolicy=required, got ${prod.codDepositPolicy}`);
@@ -378,7 +409,6 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
 
       // Confirm current policy is "Require deposit".
       await page.locator('[role="radio"][value="required"]').waitFor({ state: "visible", timeout: 120000 });
-      assert.strictEqual(await page.locator('[role="radio"][value="required"]').first().isChecked(), true, "Require deposit should be checked before edit");
       assert.strictEqual(await page.locator('[role="radio"][value="required"]').first().isChecked(), true, "Require deposit should be checked before edit");
 
       // Edit ONLY the deposit policy: switch to "Exempt".
@@ -505,24 +535,30 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
   void it("B4: bulk-edits deposit policies and verifies persistence", async () => {
     assert.ok(createdProductId, "B1 must create a product first");
 
-    // Create a category for the second product (categoryId is required).
-    const secondCategory = await adminAuthed("/api/v1/admin/categories", { method: "POST", body: { name: `Browser Acceptance Category 2 ${Date.now()}`, slug: `browser-acceptance-category-2-${Date.now()}` } });
-    assert.ok(secondCategory.ok, `second category creation failed: ${secondCategory.status} ${JSON.stringify(secondCategory.body)}`);
-    const secondCategoryId = secondCategory.body.data?.category?.id ?? secondCategory.body?.category?.id;
-    assert.ok(secondCategoryId, "second category id not found in creation response");
-
-    // Create a second product via API so bulk edit has multiple targets. All required fields supplied.
-    const secondSlug = `browser-acceptance-cod-product-2-${Date.now()}`;
-    const second = await adminAuthed("/api/v1/admin/products", { method: "POST", body: { name: "Browser Acceptance COD Product 2", slug: secondSlug, description: "Browser acceptance bulk edit product 2", price: PRODUCT_PRICE_MAJOR, categoryId: secondCategoryId, isActive: true, productCondition: "new", metaTitle: null, metaDescription: null, media: [], attributes: [], additionalInfo: [] } });
-    assert.ok(second.ok, `second product creation failed: ${second.status} ${JSON.stringify(second.body)}`);
-    const secondId = second.body.data?.id ?? second.body.id;
-    const secondVariant = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(secondId)}/variants`);
-    assert.ok(secondVariant.ok, `second variants list failed: ${secondVariant.status}`);
-
-    const context = await browser.newContext();
-    await context.addCookies(adminCookies);
-    const page = await context.newPage();
+    // The second product is a fixture too: it is registered for cleanup the
+    // moment it exists, so a failure between its creation and the end of the
+    // test cannot leave it behind.
+    let secondId = null;
+    let context = null;
     try {
+      // Create a category for the second product (categoryId is required).
+      const secondCategory = await adminAuthed("/api/v1/admin/categories", { method: "POST", body: { name: `Browser Acceptance Category 2 ${Date.now()}`, slug: `browser-acceptance-category-2-${Date.now()}` } });
+      assert.ok(secondCategory.ok, `second category creation failed: ${secondCategory.status} ${JSON.stringify(secondCategory.body)}`);
+      const secondCategoryId = secondCategory.body.data?.category?.id ?? secondCategory.body?.category?.id;
+      assert.ok(secondCategoryId, "second category id not found in creation response");
+
+      // Create a second product via API so bulk edit has multiple targets. All required fields supplied.
+      const secondSlug = `browser-acceptance-cod-product-2-${Date.now()}`;
+      const second = await adminAuthed("/api/v1/admin/products", { method: "POST", body: { name: "Browser Acceptance COD Product 2", slug: secondSlug, description: "Browser acceptance bulk edit product 2", price: PRODUCT_PRICE_MAJOR, categoryId: secondCategoryId, isActive: true, productCondition: "new", metaTitle: null, metaDescription: null, media: [], attributes: [], additionalInfo: [] } });
+      assert.ok(second.ok, `second product creation failed: ${second.status} ${JSON.stringify(second.body)}`);
+      secondId = second.body.data?.id ?? second.body.id;
+      assert.ok(secondId, "second product id not found in creation response");
+      const secondVariant = await adminAuthed(`/api/v1/admin/products/${encodeURIComponent(secondId)}/variants`);
+      assert.ok(secondVariant.ok, `second variants list failed: ${secondVariant.status}`);
+
+      context = await browser.newContext();
+      await context.addCookies(adminCookies);
+      const page = await context.newPage();
       // Products travel as ids in the URL query param (no checkboxes on the bulk editor).
       const res = await page.goto(`${ADMIN}/admin/products/bulk-edit?ids=${encodeURIComponent(createdProductId)},${encodeURIComponent(secondId)}`, { waitUntil: "domcontentloaded", timeout: 120000 });
       assert.ok([200].includes(res.status()), `bulk-edit page should load, got ${res.status()}`);
@@ -575,8 +611,8 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       await productUpdate(secondId, { codDepositPolicy: "inherit" });
       createdVariantId = secondVariant.body.data?.variants?.[0]?.id ?? secondVariant.body.variants?.[0]?.id ?? createdVariantId;
     } finally {
-      await context.close();
-      // Mark second product for cleanup.
+      if (context) await context.close();
+      // The second product is a fixture: it never outlives the test.
       if (secondId) {
         try { await productDelete(secondId); } catch { /* best effort */ }
       }
@@ -764,16 +800,32 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       const codButton = codMethod.locator("button");
       if (await codButton.count() > 0) await codButton.click();
 
-      // The payment step shows the exact deposit and the cash balance.
-      let summaryAmounts = null;
+      // The payment step shows the exact deposit and the cash balance, each in
+      // its own labelled row: a buyer has to read which amount is paid before
+      // the order is prepared and which is paid on delivery.
+      let depositRow = null;
+      let balanceRow = null;
       await waitFor(async () => {
-        const text = await page.evaluate(() => document.getElementById("summaryDetails")?.textContent ?? "");
-        const amounts = (text.match(/\d[\d,]*(?:\.\d+)?/g) ?? []).map((value) => Number(value.replace(/,/g, "")));
-        if (!amounts.includes(DEPOSIT_FIXED_MAJOR) || !amounts.includes(EXPECTED_BALANCE_MINOR / 100)) return false;
-        summaryAmounts = amounts;
-        return true;
-      }, { message: "payment step shows the exact deposit and balance", timeoutMs: 30000 });
-      assert.ok(summaryAmounts, `payment step should show deposit ${DEPOSIT_FIXED_MAJOR} and balance ${EXPECTED_BALANCE_MINOR / 100}`);
+        const rows = await page.evaluate(() => Array.from(
+          document.querySelectorAll("#summaryDetails > div"),
+        ).map((row) => {
+          const [label, value] = Array.from(row.querySelectorAll("span")).map((span) => span.textContent?.trim() ?? "");
+          return { label: label ?? "", value: value ?? "" };
+        }));
+        const amount = (row) => {
+          const match = row.value.match(/\d[\d,]*(?:\.\d+)?/);
+          return match ? Number(match[0].replace(/,/g, "")) : Number.NaN;
+        };
+        depositRow = rows.find((row) => amount(row) === DEPOSIT_FIXED_MAJOR) ?? null;
+        balanceRow = rows.find((row) => amount(row) === EXPECTED_BALANCE_MINOR / 100) ?? null;
+        return Boolean(depositRow && balanceRow);
+      }, { message: "payment step shows the exact deposit and balance in their own rows", timeoutMs: 30000 });
+      assert.ok(depositRow, `payment step should show the deposit ${DEPOSIT_FIXED_MAJOR} in its own summary row`);
+      assert.ok(depositRow.label.length > 0, "the deposit summary row must carry a label");
+      assert.ok(balanceRow, `payment step should show the balance ${EXPECTED_BALANCE_MINOR / 100} in its own summary row`);
+      assert.ok(balanceRow.label.length > 0, "the balance summary row must carry a label");
+      assert.notStrictEqual(depositRow.label, balanceRow.label, "the deposit and the balance must be separate labelled rows");
+      assert.notStrictEqual(depositRow.value, balanceRow.value, "the deposit and the balance must show different amounts");
 
       // The payment step places a cash order itself; when it offers the
       // place-order button to the buyer, the buyer presses it.
@@ -818,11 +870,15 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       const planBody = plan.body.data ?? plan.body;
       const planRow = planBody.plan ?? planBody.payment_plan ?? planBody;
       // The plan keeps its amounts in minor units; the presentation fields
-      // beside them are the currency's major units.
-      const depositMinor = planRow.codDepositAmount ?? (planRow.depositAmount != null ? Math.round(planRow.depositAmount * 100) : null);
+      // beside them are the currency's major units. The deposit is the amount
+      // the buyer actually paid up front; codDepositAmount is the configured
+      // amount before the qualifying basis caps it.
+      const depositMinor = planRow.depositAmount != null ? Math.round(planRow.depositAmount * 100) : null;
+      const configuredDepositMinor = planRow.codDepositAmount ?? null;
       const balanceMinor = planRow.balanceDueMinor ?? (planRow.balanceDue != null ? Math.round(planRow.balanceDue * 100) : null);
       const totalMinor = planRow.totalAmountMinor ?? (planRow.totalAmount != null ? Math.round(planRow.totalAmount * 100) : null);
       assert.strictEqual(depositMinor, EXPECTED_DEPOSIT_MINOR, `expected deposit ${EXPECTED_DEPOSIT_MINOR} minor, got ${JSON.stringify(planRow)}`);
+      assert.strictEqual(configuredDepositMinor, EXPECTED_DEPOSIT_MINOR, `expected configured deposit ${EXPECTED_DEPOSIT_MINOR} minor, got ${JSON.stringify(planRow)}`);
       assert.strictEqual(balanceMinor, EXPECTED_BALANCE_MINOR, `expected balance ${EXPECTED_BALANCE_MINOR} minor, got ${JSON.stringify(planRow)}`);
       assert.strictEqual(totalMinor, ORDER_TOTAL_MINOR, `expected order total ${ORDER_TOTAL_MINOR} minor, got ${JSON.stringify(planRow)}`);
       // The plan is a manual cash plan, still open, and it qualifies only the
