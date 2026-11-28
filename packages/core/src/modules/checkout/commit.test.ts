@@ -1,64 +1,20 @@
 // packages/core/src/modules/checkout/commit.test.ts
 // Behaviour of the payment plan rows the checkout commit writes:
 // - wantsOrderCreatedNotification from commit.ts decides the order notification.
-// - The payment_plans table stores the deposit snapshot columns that
-//   commitStorefrontOrderPayload inserts (qualifying merchandise, qualifying
-//   product ids, configured deposit amount) and rejects negative amounts.
-// The insert below mirrors the commit.ts column list; the commit path itself
-// is covered by the checkout integration tests.
+// - The committed payment plan carries the deposit snapshot (qualifying
+//   merchandise, qualifying product ids, configured deposit amount), and the
+//   real schema rejects negative snapshot values.
+// - A product deposit policy change bumps the checkout authority through the
+//   migration-0192 trigger, so an in-flight checkout cannot keep stale terms.
+// The commit path itself is driven here: the plan row is written by
+// commitStorefrontOrderPayload, never by a mirrored insert.
 
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { DatabaseSync as SQLiteDatabase } from "node:sqlite";
+import { describe, expect, it } from "vitest";
 import { wantsOrderCreatedNotification } from "./commit";
+import { createGiftCardCheckoutFixture, DELIVERY, line } from "../../testing/gift-card-checkout";
 
-describe("payment plan snapshot columns — commit.ts contract", () => {
-    let sqlite: SQLiteDatabase;
-
-    beforeAll(() => {
-        sqlite = new SQLiteDatabase(":memory:");
-        sqlite.exec(`
-            CREATE TABLE orders (
-                id text PRIMARY KEY,
-                total_amount_minor integer NOT NULL DEFAULT 0,
-                paid_amount_minor integer NOT NULL DEFAULT 0,
-                balance_due_minor integer NOT NULL DEFAULT 0,
-                currency_code text NOT NULL DEFAULT 'BDT',
-                currency_decimal_places integer NOT NULL DEFAULT 2,
-                created_at integer NOT NULL DEFAULT (unixepoch()),
-                updated_at integer NOT NULL DEFAULT (unixepoch())
-            );
-            CREATE TABLE payment_plans (
-                id text PRIMARY KEY,
-                order_id text NOT NULL REFERENCES orders(id),
-                total_amount_minor integer NOT NULL DEFAULT 0,
-                deposit_amount_minor integer NOT NULL DEFAULT 0,
-                balance_due_minor integer NOT NULL DEFAULT 0,
-                kind text NOT NULL DEFAULT 'online',
-                status text NOT NULL DEFAULT 'pending',
-                instructions text,
-                percent integer,
-                contact_snapshot text,
-                qualifying_merchandise_minor integer NOT NULL DEFAULT 0 CHECK (qualifying_merchandise_minor >= 0),
-                qualifying_product_ids text,
-                cod_deposit_amount integer NOT NULL DEFAULT 0 CHECK (cod_deposit_amount >= 0),
-                created_at integer NOT NULL DEFAULT (unixepoch()),
-                updated_at integer NOT NULL DEFAULT (unixepoch())
-            );
-            CREATE TABLE checkout_authority (
-                id text PRIMARY KEY,
-                revision integer NOT NULL DEFAULT 1,
-                updated_at integer NOT NULL DEFAULT (unixepoch())
-            );
-            INSERT INTO checkout_authority (id, revision, updated_at)
-            VALUES ('auth_1', 1, unixepoch());
-        `);
-    });
-
-    afterAll(() => {
-        sqlite.close();
-    });
-
-    it("wantsOrderCreatedNotification returns false without notification flag", () => {
+describe("wantsOrderCreatedNotification", () => {
+    it("returns false without notification flag", () => {
         const payload = {
             checkoutToken: "tok_1",
             checkoutAuthorityRevision: 1,
@@ -116,10 +72,10 @@ describe("payment plan snapshot columns — commit.ts contract", () => {
             checkoutSideEffects: { orderCreatedNotification: false, metaPurchase: false },
         } as any;
 
-    expect(wantsOrderCreatedNotification(payload)).toBe(false);
+        expect(wantsOrderCreatedNotification(payload)).toBe(false);
     });
 
-    it("wantsOrderCreatedNotification returns true with notification flag", () => {
+    it("returns true with notification flag", () => {
         const payload = {
             checkoutToken: "tok_1",
             checkoutAuthorityRevision: 1,
@@ -179,69 +135,92 @@ describe("payment plan snapshot columns — commit.ts contract", () => {
 
         expect(wantsOrderCreatedNotification(payload)).toBe(true);
     });
+});
 
-    it("stores the deposit snapshot columns in a payment plan row", () => {
-        // Insert an order
-        sqlite.prepare(
-            "INSERT INTO orders (id, total_amount_minor, paid_amount_minor, balance_due_minor, currency_code, currency_decimal_places) VALUES ('order_1', 20000, 0, 20000, 'EGP', 2)"
-        ).run();
-
-        // Simulate the commit.ts payment plan insert (lines 545-563)
-        sqlite.prepare(`
-            INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, instructions, percent, contact_snapshot, qualifying_merchandise_minor, qualifying_product_ids, cod_deposit_amount, created_at, updated_at)
-            VALUES ('plan_1', 'order_1', 20000, 12000, 8000, 'manual', 'pending', 'Pay 120 EGP to bKash', NULL, '{"phone":"+201000000000"}', 40000, '[\"prod_required\"]', 20000, unixepoch(), unixepoch())
-        `).run();
-
-        // Verify snapshot fields persisted
-        const plan = sqlite.prepare(
-            "SELECT * FROM payment_plans WHERE id = 'plan_1'"
-        ).get() as Record<string, unknown>;
-
-        expect(plan).not.toBeNull();
-        expect(plan.qualifying_merchandise_minor).toBe(40000);
-        expect(plan.qualifying_product_ids).toBe('[\"prod_required\"]');
-        expect(plan.cod_deposit_amount).toBe(20000);
-        expect(plan.deposit_amount_minor).toBe(12000);
-        expect(plan.balance_due_minor).toBe(8000);
-        expect(plan.kind).toBe("manual");
-        expect(plan.status).toBe("pending");
+describe("the committed payment plan", () => {
+    const input = () => ({
+        ...DELIVERY,
+        shippingCountryCode: "BD",
+        items: [line("p_mug", "v_mug", 1, 300)],
     });
 
-    it("rejects negative qualifying_merchandise_minor (CHECK constraint)", () => {
-        sqlite.prepare(
-            "INSERT INTO orders (id, total_amount_minor, paid_amount_minor, balance_due_minor, currency_code, currency_decimal_places) VALUES ('order_2', 20000, 0, 20000, 'EGP', 2)"
-        ).run();
+    it("stores the deposit snapshot the checkout calculated", async () => {
+        const fixture = createGiftCardCheckoutFixture();
+        try {
+            const { orderId } = await fixture.checkout(input(), {
+                codDeposit: { amount: 100, instructions: "Pay 100 BDT to the merchant" },
+            });
 
-        expect(() => {
-            sqlite.prepare(`
-                INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, created_at, updated_at)
-                VALUES ('plan_neg', 'order_2', 20000, 0, 20000, 'manual', 'pending', -1, unixepoch(), unixepoch())
-            `).run();
-        }).toThrow();
+            const plan = fixture.one(
+                "SELECT kind, status, deposit_amount_minor, balance_due_minor, total_amount_minor, qualifying_merchandise_minor, qualifying_product_ids, cod_deposit_amount FROM payment_plans WHERE order_id = ?",
+                orderId,
+            );
+            expect(plan).toEqual({
+                kind: "manual",
+                status: "pending",
+                deposit_amount_minor: 10000,
+                balance_due_minor: 26000,
+                total_amount_minor: 36000,
+                qualifying_merchandise_minor: 30000,
+                qualifying_product_ids: '["p_mug"]',
+                cod_deposit_amount: 10000,
+            });
+        } finally {
+            fixture.close();
+        }
     });
 
-    it("rejects negative cod_deposit_amount (CHECK constraint)", () => {
-        expect(() => {
-            sqlite.prepare(`
-                INSERT INTO payment_plans (id, order_id, total_amount_minor, deposit_amount_minor, balance_due_minor, kind, status, qualifying_merchandise_minor, cod_deposit_amount, created_at, updated_at)
-                VALUES ('plan_neg2', 'order_1', 20000, 0, 20000, 'manual', 'pending', 10000, -5000, unixepoch(), unixepoch())
-            `).run();
-        }).toThrow();
+    it("rejects a negative qualifying merchandise value", async () => {
+        const fixture = createGiftCardCheckoutFixture();
+        try {
+            const { orderId } = await fixture.checkout(input(), {
+                codDeposit: { amount: 100, instructions: "Pay 100 BDT to the merchant" },
+            });
+
+            expect(() => {
+                fixture.sqlite
+                    .prepare("UPDATE payment_plans SET qualifying_merchandise_minor = -1 WHERE order_id = ?")
+                    .run(orderId);
+            }).toThrow();
+        } finally {
+            fixture.close();
+        }
     });
 
-    it("checkout authority revision is bumped on product write", () => {
-        const current = sqlite.prepare(
-            "SELECT revision FROM checkout_authority WHERE id = 'auth_1'"
-        ).get() as { revision: number };
-        expect(current.revision).toBe(1);
+    it("rejects a negative configured deposit amount", async () => {
+        const fixture = createGiftCardCheckoutFixture();
+        try {
+            const { orderId } = await fixture.checkout(input(), {
+                codDeposit: { amount: 100, instructions: "Pay 100 BDT to the merchant" },
+            });
 
-        sqlite.prepare(
-            "UPDATE checkout_authority SET revision = revision + 1, updated_at = unixepoch() WHERE id = 'auth_1'"
-        ).run();
+            expect(() => {
+                fixture.sqlite
+                    .prepare("UPDATE payment_plans SET cod_deposit_amount = -1 WHERE order_id = ?")
+                    .run(orderId);
+            }).toThrow();
+        } finally {
+            fixture.close();
+        }
+    });
 
-        const updated = sqlite.prepare(
-            "SELECT revision FROM checkout_authority WHERE id = 'auth_1'"
-        ).get() as { revision: number };
-        expect(updated.revision).toBe(2);
+    it("bumps the checkout authority when a product deposit policy changes", async () => {
+        const fixture = createGiftCardCheckoutFixture();
+        try {
+            const revision = () => Number(
+                fixture.one<{ revision: number }>(
+                    "SELECT revision FROM checkout_authority WHERE id = 'default'",
+                ).revision,
+            );
+            const before = revision();
+
+            fixture.sqlite
+                .prepare("UPDATE products SET cod_deposit_policy = 'required' WHERE id = 'p_mug'")
+                .run();
+
+            expect(revision()).toBe(before + 1);
+        } finally {
+            fixture.close();
+        }
     });
 });
