@@ -1,5 +1,6 @@
 // Manual COD deposit policy: a radio group with inherit / required / exempt.
-// The card explains the effective behaviour based on the global default.
+// The card stores the policy on the product. The effective policy is resolved
+// at checkout, where inherit follows the global default.
 import React from "react";
 import { useWatch, type UseFormReturn } from "react-hook-form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,6 +27,7 @@ export function CodDepositPolicyCard({ form, readOnly }: {
           value={codDepositPolicy ?? "inherit"}
           onValueChange={(value) => form.setValue("codDepositPolicy", value as "inherit" | "required" | "exempt", { shouldDirty: true })}
           disabled={readOnly}
+          aria-label={t("depositPolicy")}
         >
           <label className="flex items-start gap-2 py-1 text-body">
             <span className="flex h-lh items-center"><RadioGroupItem value="inherit" aria-label={t("inheritGlobal")} /></span>

@@ -124,6 +124,17 @@ describe("CodDepositPolicyCard", () => {
     }
   });
 
+  it("names the policy group for assistive technology", async () => {
+    const { container, root } = await renderPolicyCard({});
+
+    try {
+      const group = container.querySelector('[role="radiogroup"]');
+      expect(group?.getAttribute("aria-label")).toBe("Manual COD deposit policy");
+    } finally {
+      await unmount(root, container);
+    }
+  });
+
   it("disables every policy option and keeps the value unchanged when read-only", async () => {
     const { container, root, form } = await renderPolicyCard({ readOnly: true });
     const required = radio(container, "required");
