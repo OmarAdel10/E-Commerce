@@ -214462,6 +214462,16 @@
                             "status": {
                               "type": "string"
                             },
+                            "codDepositAmount": {
+                              "type": "number"
+                            },
+                            "qualifyingMerchandiseMinor": {
+                              "type": "number"
+                            },
+                            "qualifyingProductIds": {
+                              "type": "string",
+                              "nullable": true
+                            },
                             "createdAt": {
                               "anyOf": [
                                 {
@@ -214495,6 +214505,9 @@
                             "balanceDueDate",
                             "kind",
                             "status",
+                            "codDepositAmount",
+                            "qualifyingMerchandiseMinor",
+                            "qualifyingProductIds",
                             "createdAt",
                             "updatedAt"
                           ]
@@ -226100,6 +226113,14 @@
                               "unpublished"
                             ]
                           },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
+                            ]
+                          },
                           "appFilter": {
                             "anyOf": [
                               {
@@ -226436,6 +226457,14 @@
                               "unpublished"
                             ]
                           },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
+                            ]
+                          },
                           "appFilter": {
                             "anyOf": [
                               {
@@ -226735,6 +226764,14 @@
                             "enum": [
                               "published",
                               "unpublished"
+                            ]
+                          },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
                             ]
                           },
                           "appFilter": {
@@ -227066,6 +227103,14 @@
                             "enum": [
                               "published",
                               "unpublished"
+                            ]
+                          },
+                          "codDepositPolicy": {
+                            "type": "string",
+                            "enum": [
+                              "inherit",
+                              "required",
+                              "exempt"
                             ]
                           },
                           "appFilter": {

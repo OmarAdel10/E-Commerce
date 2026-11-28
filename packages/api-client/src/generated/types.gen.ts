@@ -60467,6 +60467,9 @@ export type GetApiV1AdminOrdersByIdPaymentsResponses = {
                 balanceDueDate: string | null;
                 kind: string;
                 status: string;
+                codDepositAmount: number;
+                qualifyingMerchandiseMinor: number;
+                qualifyingProductIds: string | null;
                 createdAt: string | number;
                 updatedAt: string | number;
             } | null;
@@ -63718,6 +63721,7 @@ export type PostApiV1AdminProductsBulkDeleteData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -63825,6 +63829,7 @@ export type PostApiV1AdminProductsBulkRestoreData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -63926,6 +63931,7 @@ export type PostApiV1AdminProductsBulkUpdateData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
@@ -64031,6 +64037,7 @@ export type PostApiV1AdminProductsPublicationsData = {
                  */
                 salesChannel?: string;
                 salesChannelState?: 'published' | 'unpublished';
+                codDepositPolicy?: 'inherit' | 'required' | 'exempt';
                 /**
                  * Filter by an app column the app marks filterable: <app id>/<column id>:<value>, an exact match (up to 3). A money value is in major units of the store currency.
                  */
