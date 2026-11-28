@@ -83,7 +83,7 @@ gateway; the kernel suites in `gateways/gateway-kernel.test.ts` and
   becomes `NaN`, which the kernel refuses.
 - A payment method states the countries it serves (`countries`: `"any"`, the
   default, or ISO codes; MARKETS-DESIGN step 3b). Cash on delivery serves
-  `["BD"]` (`COD_COUNTRIES`). `PaymentProviders.countryIssue()` refuses a
+  `["BD", "EG"]` (`COD_COUNTRIES`). `PaymentProviders.countryIssue()` refuses a
   method for the country the order is handed over in, checkout's
   `paymentCountryOf()`: the delivery country, or the store's own (its default
   location's, the tax origin) for a pickup or an order that ships nothing; an

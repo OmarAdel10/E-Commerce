@@ -527,7 +527,7 @@ buyer contexts take the country, admin area and postal code. The order
 keeps them.
 
 **Cash on delivery** has a country rule in the payment provider port:
-`countries` (`"any"` by default; COD `["BD"]`). Checkout config, the cart's
+`countries` (`"any"` by default; COD `["BD", "EG"]`). Checkout config, the cart's
 methods, the agent quote and order placement hide or refuse a method for the
 country the order is handed over in (`payment_method_unavailable`): the
 delivery country, or for a pickup or an order that ships nothing the store's
