@@ -118,7 +118,7 @@ describe("recordCODCollection — manual vs online deposit validation message", 
       orderId: "order_cancelled",
       collectedBy: "staff",
       collectedAmountMinor: 8000,
-    })).rejects.toThrow("The manual deposit must be verified before collecting the cash balance on delivery.");
+    })).rejects.toThrow("The deposit plan for this order was cancelled, so the cash balance cannot be collected.");
   });
 
   it("rejects collection when online plan is cancelled", async () => {
@@ -130,6 +130,6 @@ describe("recordCODCollection — manual vs online deposit validation message", 
       orderId: "order_online_cancelled",
       collectedBy: "staff",
       collectedAmountMinor: 8000,
-    })).rejects.toThrow("The online deposit must be paid before collecting the cash balance on delivery.");
+    })).rejects.toThrow("The deposit plan for this order was cancelled, so the cash balance cannot be collected.");
   });
 });

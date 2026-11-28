@@ -253,6 +253,13 @@ export async function recordCODCollection(
     const collection = validateCODCollectionDetails(order, params);
     const isBalanceCollection = Boolean(paymentPlan);
     if (paymentPlan) {
+      if (paymentPlan.status === PaymentPlanStatus.CANCELLED) {
+        // A cancelled plan is not a plan waiting for a deposit: it was called
+        // off, so the cash balance must not be collected against it.
+        throw new ValidationError(
+          "The deposit plan for this order was cancelled, so the cash balance cannot be collected.",
+        );
+      }
       if (paymentPlan.status !== PaymentPlanStatus.DEPOSIT_PAID) {
         throw new ValidationError(
           paymentPlan.kind === "manual"
