@@ -255,12 +255,12 @@ export function resolveCodDepositQualifyingMerchandiseMinor(
 }
 
 /**
- * The qualifying merchandise, read only when a deposit can apply.
+ * The qualifying merchandise, read only when a store's manual deposit is
+ * switched on.
  *
- * A store with the manual deposit switched off (or an order that never pays
- * cash on delivery) carries no deposit terms, so the deposit basis is never
- * read there: a pricing inconsistency in the deposit policy must not fail a
- * checkout that carries no deposit.
+ * A store with the manual deposit switched off carries no deposit terms, so
+ * the deposit basis is never read there: a pricing inconsistency in the
+ * deposit policy must not fail a checkout that carries no deposit.
  */
 export function resolveCodDepositQualifyingMerchandiseWhenApplicable(
     applicable: boolean,
