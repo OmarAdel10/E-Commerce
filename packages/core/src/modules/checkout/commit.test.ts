@@ -1,13 +1,17 @@
 // packages/core/src/modules/checkout/commit.test.ts
-// Coverage tests for commit.ts payment plan snapshot fields insertion
-// (addresses coverage reviewer finding: commit.ts snapshot insertion untested)
-// Real test that imports and invokes commitStorefrontOrderPayload.
+// Behaviour of the payment plan rows the checkout commit writes:
+// - wantsOrderCreatedNotification from commit.ts decides the order notification.
+// - The payment_plans table stores the deposit snapshot columns that
+//   commitStorefrontOrderPayload inserts (qualifying merchandise, qualifying
+//   product ids, configured deposit amount) and rejects negative amounts.
+// The insert below mirrors the commit.ts column list; the commit path itself
+// is covered by the checkout integration tests.
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { DatabaseSync as SQLiteDatabase } from "node:sqlite";
 import { wantsOrderCreatedNotification } from "./commit";
 
-describe("commit.ts — payment plan snapshot fields", () => {
+describe("payment plan snapshot columns — commit.ts contract", () => {
     let sqlite: SQLiteDatabase;
 
     beforeAll(() => {
@@ -176,7 +180,7 @@ describe("commit.ts — payment plan snapshot fields", () => {
         expect(wantsOrderCreatedNotification(payload)).toBe(true);
     });
 
-    it("inserts payment plan with qualifying merchandise, product IDs, and cod_deposit_amount", () => {
+    it("stores the deposit snapshot columns in a payment plan row", () => {
         // Insert an order
         sqlite.prepare(
             "INSERT INTO orders (id, total_amount_minor, paid_amount_minor, balance_due_minor, currency_code, currency_decimal_places) VALUES ('order_1', 20000, 0, 20000, 'EGP', 2)"

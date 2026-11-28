@@ -44,16 +44,6 @@ describe("resolveAppDiscounts — app discounts combined with platform discounts
   const priceIncrementMinor = 100;
   const grossMinor = 30000;
 
-  function appResult(discounts: unknown[]): CheckoutAppFunctionResult<"checkout.discounts"> {
-    return {
-      pluginId: "app_discount",
-      appName: "App Discount",
-      priority: 0,
-      output: { discounts } as PluginFunctionOutput<"checkout.discounts">,
-      commits: [],
-    };
-  }
-
   it("platform order discount + app line discount: app takes what is left after platform", () => {
     // Platform: 20% off order = 6000 on 30000 gross. Line remaining: 24000.
     // App: 10% off line (product class) = 2400 of remaining.

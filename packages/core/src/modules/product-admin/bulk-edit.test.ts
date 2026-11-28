@@ -5,7 +5,7 @@
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { createSqliteD1Database } from "@scalius/database/testing/sqlite-d1";
-import { readProductsForBulkEdit, type ProductBulkEditRow } from "./bulk-edit";
+import { readProductsForBulkEdit } from "./bulk-edit";
 
 describe("product-admin/bulk-edit.ts — codDepositPolicy", () => {
     let testDb: ReturnType<typeof createSqliteD1Database>;
@@ -58,34 +58,8 @@ describe("product-admin/bulk-edit.ts — codDepositPolicy", () => {
         expect(byId.get("p3")).toBe("inherit");
     });
 
-    it("ProductBulkEditRow interface includes codDepositPolicy field", () => {
-        // Type-level assertion: the interface declares codDepositPolicy
-        const row: ProductBulkEditRow = {
-            id: "p1",
-            name: "Test Product",
-            isActive: true,
-            aggregateRevision: 1,
-            price: 100,
-            discountType: "percentage",
-            discountPercentage: 0,
-            discountAmount: 0,
-            hasOptions: false,
-            shippingProfileId: null,
-            codDepositPolicy: "required",
-            skus: [],
-        };
-        expect(row.codDepositPolicy).toBe("required");
-    });
-
-    it("codDepositPolicy accepts inherit, required, and exempt values", () => {
-        const policies: ProductBulkEditRow["codDepositPolicy"][] = [
-            "inherit",
-            "required",
-            "exempt",
-        ];
-        expect(policies).toHaveLength(3);
-        expect(policies).toContain("inherit");
-        expect(policies).toContain("required");
-        expect(policies).toContain("exempt");
+    it("readProductsForBulkEdit returns only the products that exist", async () => {
+        const rows = await readProductsForBulkEdit(testDb.db, ["p1", "p_missing"]);
+        expect(rows.map((row) => row.id)).toEqual(["p1"]);
     });
 });
