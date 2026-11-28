@@ -15,10 +15,16 @@ export interface ManualCodDepositTerms extends ManualCodDepositQuote {
 }
 
 /** Round up to a pricing increment and leave a positive balance for COD. */
-export function manualCodPercentageDepositMinor(totalMinor: number, percent: number, incrementMinor: number): number {
+/**
+ * The percentage-mode deposit for one order, in minor units.
+ *
+ * The percentage is a share of the qualifying merchandise, so the first
+ * argument is that value: it is never the order total.
+ */
+export function manualCodPercentageDepositMinor(qualifyingMinor: number, percent: number, incrementMinor: number): number {
   const step = Math.max(1, incrementMinor);
-  const rounded = Math.ceil(totalMinor * percent / 100 / step) * step;
-  return rounded >= totalMinor ? rounded - step : rounded;
+  const rounded = Math.ceil(qualifyingMinor * percent / 100 / step) * step;
+  return rounded >= qualifyingMinor ? rounded - step : rounded;
 }
 
 /**
