@@ -209,6 +209,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
   let createdProductSlug = null;
   let createdVariantId = null;
   let createdCategoryId = null;
+  let secondCategoryId = null;
   let originalCheckoutFlow = null;
 
   before(async () => {
@@ -234,6 +235,11 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
     if (createdCategoryId) {
       try {
         await adminAuthed(`/api/v1/admin/categories/${encodeURIComponent(createdCategoryId)}`, { method: "DELETE" });
+      } catch { /* best-effort cleanup even on failure */ }
+    }
+    if (secondCategoryId) {
+      try {
+        await adminAuthed(`/api/v1/admin/categories/${encodeURIComponent(secondCategoryId)}`, { method: "DELETE" });
       } catch { /* best-effort cleanup even on failure */ }
     }
     // The suite switched the manual deposit on: the store goes back to the
@@ -544,7 +550,7 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
       // Create a category for the second product (categoryId is required).
       const secondCategory = await adminAuthed("/api/v1/admin/categories", { method: "POST", body: { name: `Browser Acceptance Category 2 ${Date.now()}`, slug: `browser-acceptance-category-2-${Date.now()}` } });
       assert.ok(secondCategory.ok, `second category creation failed: ${secondCategory.status} ${JSON.stringify(secondCategory.body)}`);
-      const secondCategoryId = secondCategory.body.data?.category?.id ?? secondCategory.body?.category?.id;
+      secondCategoryId = secondCategory.body.data?.category?.id ?? secondCategory.body?.category?.id;
       assert.ok(secondCategoryId, "second category id not found in creation response");
 
       // Create a second product via API so bulk edit has multiple targets. All required fields supplied.
@@ -802,7 +808,10 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
 
       // The payment step shows the exact deposit and the cash balance, each in
       // its own labelled row: a buyer has to read which amount is paid before
-      // the order is prepared and which is paid on delivery.
+      // the order is prepared and which is paid on delivery. The rows are
+      // picked by their label, so a swapped deposit and balance cannot pass.
+      const DEPOSIT_ROW_LABEL = "Deposit required before we prepare your order";
+      const BALANCE_ROW_LABEL = "Due on delivery";
       let depositRow = null;
       let balanceRow = null;
       await waitFor(async () => {
@@ -816,14 +825,12 @@ void describe("manual COD deposit — genuine browser acceptance (live stack)", 
           const match = row.value.match(/\d[\d,]*(?:\.\d+)?/);
           return match ? Number(match[0].replace(/,/g, "")) : Number.NaN;
         };
-        depositRow = rows.find((row) => amount(row) === DEPOSIT_FIXED_MAJOR) ?? null;
-        balanceRow = rows.find((row) => amount(row) === EXPECTED_BALANCE_MINOR / 100) ?? null;
+        depositRow = rows.find((row) => row.label === DEPOSIT_ROW_LABEL && amount(row) === DEPOSIT_FIXED_MAJOR) ?? null;
+        balanceRow = rows.find((row) => row.label === BALANCE_ROW_LABEL && amount(row) === EXPECTED_BALANCE_MINOR / 100) ?? null;
         return Boolean(depositRow && balanceRow);
-      }, { message: "payment step shows the exact deposit and balance in their own rows", timeoutMs: 30000 });
-      assert.ok(depositRow, `payment step should show the deposit ${DEPOSIT_FIXED_MAJOR} in its own summary row`);
-      assert.ok(depositRow.label.length > 0, "the deposit summary row must carry a label");
-      assert.ok(balanceRow, `payment step should show the balance ${EXPECTED_BALANCE_MINOR / 100} in its own summary row`);
-      assert.ok(balanceRow.label.length > 0, "the balance summary row must carry a label");
+      }, { message: "payment step shows the exact deposit and balance in their own labelled rows", timeoutMs: 30000 });
+      assert.ok(depositRow, `payment step should show the deposit ${DEPOSIT_FIXED_MAJOR} in the ${DEPOSIT_ROW_LABEL} row`);
+      assert.ok(balanceRow, `payment step should show the balance ${EXPECTED_BALANCE_MINOR / 100} in the ${BALANCE_ROW_LABEL} row`);
       assert.notStrictEqual(depositRow.label, balanceRow.label, "the deposit and the balance must be separate labelled rows");
       assert.notStrictEqual(depositRow.value, balanceRow.value, "the deposit and the balance must show different amounts");
 
